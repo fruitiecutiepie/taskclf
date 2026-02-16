@@ -21,7 +21,7 @@ dependencies = [
 ]
 
 [project.scripts]
-taskclf = "taskclf:main"
+taskclf = "taskclf.cli.main:app"
 
 [build-system]
 requires = ["uv_build>=0.9.5,<0.10.0"]

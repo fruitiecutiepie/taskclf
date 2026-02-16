@@ -1,0 +1,1 @@
+# optional: HID events aggregator

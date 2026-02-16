@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# uv
+uv.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing / Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Data & Models (large/generated artifacts)
+data/*.parquet
+data/*.csv
+data/*.db
+data/*.duckdb
+models/*.pkl
+models/*.joblib
+models/*.bin
+models/*.txt
+
+# Logs
+*.log
+
+# Environment / Secrets
+.env
+.env.*
+
+# Cursor / Specstory
+.specstory/
+.cursor/
