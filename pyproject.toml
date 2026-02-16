@@ -7,7 +7,16 @@ authors = [
     { name = "fruitiecutiepie", email = "104437268+fruitiecutiepie@users.noreply.github.com" }
 ]
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "duckdb>=1.4.4",
+    "lightgbm>=4.6.0",
+    "pandas>=3.0.0",
+    "pyarrow>=23.0.0",
+    "pydantic>=2.12.5",
+    "rich>=14.3.2",
+    "scikit-learn>=1.8.0",
+    "typer>=0.23.1",
+]
 
 [project.scripts]
 taskclf = "taskclf:main"
