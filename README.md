@@ -1,301 +1,172 @@
-We’ll optimize for:
+# taskclf — Task Type Classifier from Local Activity Signals
 
-* Fast feedback loop
-* Privacy-safe logging
-* Strong baseline in < 1 week
-* Architecture that scales
+Train and run a personal task-type classifier (e.g. coding / writing / meetings) using privacy-preserving computer activity signals such as foreground app/window metadata and aggregated input statistics (counts/rates only).
 
----
+This project is intentionally scoped as a **personalized classifier** (single-user first). The architecture keeps:
+- **Collectors** (platform/tool dependent) isolated behind adapters
+- **Features** as a versioned, validated contract
+- **Models** as bundled artifacts with schema checks
+- **Inference** as a small, stable loop that emits task segments and daily summaries
 
-# Phase 0 — Define the Target (1 hour)
+## Goals
+- Fast iteration: first useful model in < 1 week of data
+- Privacy: no raw keystrokes, no raw window titles persisted
+- Stability: feature schema versioning + schema hash gates
+- Extensibility: add new collectors and models without breaking consumers
 
-### 1️⃣ Lock the label schema (don’t overcomplicate)
-
-Start with 6 classes:
-
-```
-coding
-writing_docs
-messaging_email
-browsing_research
-meetings_calls
-break_idle
-```
-
-Write this down in a `labels.yaml`.
-Don’t change it for 2 weeks.
+## Non-Goals
+- Universal (multi-user) generalization out of the box
+- Storing or analyzing raw typed content
+- “Perfect” labeling UI (start minimal, iterate later)
 
 ---
 
-# Phase 1 — Data Collection (Day 1)
+## Labels (v1)
+Start with a small, consistent label set and don’t churn it:
 
-## Step 1: Install ActivityWatch
+- `coding`
+- `writing_docs`
+- `messaging_email`
+- `browsing_research`
+- `meetings_calls`
+- `break_idle`
 
-It already logs:
-
-* Active app
-* Window title
-* Idle time
-
-Install:
-[https://github.com/ActivityWatch/activitywatch](https://github.com/ActivityWatch/activitywatch)
-
-Let it run in the background.
+Labels are stored as **time spans** (not per-keystroke events).
 
 ---
 
-## Step 2: Create a feature extraction script
+## Data Flow Overview
 
-Create repo:
+### Structures (pipelines)
+* ETL pipeline reads raw → produces features parquet
+* Training pipeline reads features + labels → produces model
+* Inference pipeline reads new events → emits predictions + segments
 
+### Batch (repeatable)
+1. **Ingest**: pull ActivityWatch export or API -> `data/raw/`
+2. **Feature build**: events -> per-minute features -> `data/processed/features_v1/`
+3. **Label import**: label spans -> `data/processed/labels_v1/`
+4. **Train**: join features + labels (split by day) -> `models/<run_id>/`
+5. **Report**: daily summaries -> `artifacts/reports/`
+
+### Online (real-time)
+Every N seconds:
+- read the last minute(s) of events
+- compute the latest feature bucket
+- predict + smooth
+- append predictions -> `artifacts/predictions/`
+At end-of-day:
+- produce report
+
+---
+
+## Privacy & Safety
+This repo enforces the following:
+- **No raw keystrokes** are stored (only aggregate counts/rates).
+- **No raw window titles** are stored by default.
+  - Titles are hashed or locally tokenized; you can keep a local mapping if you choose.
+- Dataset artifacts stay **local-first**.
+
+---
+
+## Quick Start
+
+### Requirements
+- Python >= 3.11
+- `uv` installed
+
+### Setup
+```bash
+uv sync
+uv run taskclf --help
 ```
-task-classifier/
-  data/
-  notebooks/
-  src/
-  models/
+
+### Ingest (ActivityWatch)
+
+Option 1: ingest from an export directory:
+
+```bash
+uv run taskclf ingest aw --input /path/to/activitywatch-export --out data/raw
 ```
 
-Inside `src/feature_pipeline.py`:
+Option 2: ingest from ActivityWatch API (if supported in your adapter):
 
-Extract per-minute rows with:
-
-### Required Features
-
-**Context**
-
-* app_id
-* window_title_hash
-* is_browser
-* is_editor
-* is_terminal
-* app_switch_count_last_5m
-
-**Keyboard (if you add logger later)**
-
-* keys_per_min
-* backspace_ratio
-* shortcut_rate
-
-**Mouse**
-
-* clicks_per_min
-* scroll_events_per_min
-* mouse_distance
-
-**Temporal**
-
-* hour_of_day
-* day_of_week
-* session_length_so_far
-
-If you want quick start:
-Begin with app + time only.
-That alone will give decent performance.
-
-Export to:
-
+```bash
+uv run taskclf ingest aw --api --out data/raw
 ```
-data/features.parquet
+
+### Build features
+
+```bash
+uv run taskclf features build --date 2026-02-16
+```
+
+### Import labels
+
+```bash
+uv run taskclf labels import --file data/interim/labels.csv
+```
+
+### Train baseline model
+
+```bash
+uv run taskclf train lgbm --from 2026-02-01 --to 2026-02-16
+```
+
+### Run online inference
+
+```bash
+uv run taskclf infer online --poll-seconds 60
+```
+
+### Produce report
+
+```bash
+uv run taskclf report daily --date 2026-02-16
 ```
 
 ---
 
-# Phase 2 — Labeling (Days 2–5)
+## Repo Layout
 
-## Step 3: Build minimal labeling UI (simple > perfect)
+High-level directories:
 
-Option A (fastest):
+* `src/taskclf/` — application code
+* `configs/` — configuration (schema version, hashing policy, model params)
+* `data/` — raw and processed datasets (local)
+* `models/` — trained model bundles
+* `artifacts/` — predictions, reports, evaluation outputs
+* `scripts/` — one-off utilities
 
-* Export top continuous segments by app
-* Label in CSV
-
-Option B (better):
-Small Streamlit app:
-
-```
-streamlit run label_app.py
-```
-
-Shows:
-
-* app
-* window title
-* duration
-* time range
-
-You click a label.
-
-### Label only:
-
-* Long segments (>5 min)
-* Most frequent apps
-
-Target:
-~6–10 hours labeled total time
+Each folder contains its own README describing scope and invariants.
 
 ---
 
-# Phase 3 — Baseline Model (Day 5–6)
+## Model Artifact Contract
 
-## Step 4: Train baseline
+Every saved model bundle contains:
 
-Start simple:
+* the model file
+* `metadata.json` including:
 
-```python
-import lightgbm as lgb
-```
-
-Use:
-
-* Multiclass objective
-* 100–300 trees
-* No heavy tuning
-
-Important:
-Split by **day**, not random rows.
-
-Metrics:
-
-* Macro F1
-* Confusion matrix
-
-If F1 > 0.7 after 1 week of data → you’re doing great.
+  * feature schema version + schema hash
+  * label set
+  * training date range
+  * metrics summary
+    Inference refuses to run if schema mismatches.
 
 ---
 
-# Phase 4 — Improve Signal (Week 2)
+## Development
 
-Add:
-
-### 1️⃣ App Category Mapping Layer
-
-Manual mapping:
-
+```bash
+uv run ruff check .
+uv run pytest
+uv run mypy src
 ```
-VSCode → coding
-Chrome (docs.google.com) → writing_docs
-Slack → messaging_email
-```
-
-Treat as feature, not label override.
-
-### 2️⃣ Rolling Window Smoothing
-
-Prediction smoothing:
-
-```
-final_label[t] = majority(pred[t-2:t+2])
-```
-
-This massively stabilizes output.
 
 ---
 
-# Phase 5 — Inference Loop
+## License
 
-## Step 5: Real-time inference service
-
-Simple loop:
-
-```
-every 60s:
-  extract last-minute features
-  predict
-  append to daily log
-```
-
-Export daily summary:
-
-```
-coding: 4h 12m
-writing: 1h 38m
-```
-
-Now you have:
-Auto time tracking.
-
----
-
-# Architecture (Important for You)
-
-Keep strict boundaries:
-
-```
-collector → feature extractor → model → inference → report
-```
-
-Never mix them.
-
-* Collector = platform dependent
-* Features = stable schema
-* Model = swappable
-* Inference = stateless consumer
-
-Design feature schema as a versioned contract:
-
-```
-feature_schema_v1.json
-```
-
-This prevents silent breakage later.
-
----
-
-## Execution architecture (how it runs)
-
-You want two “modes”:
-
-### A) Batch mode (repeatable, easiest to debug)
-
-1. `ingest` pulls/reads ActivityWatch export
-2. `features` builds per-minute rows → parquet partitioned by day
-3. `labels` you create/merge label spans
-4. `train` builds dataset, splits by day, trains model, writes `models/<run_id>/`
-5. `report` generates daily summaries
-
-### B) Online mode (real-time predictions)
-
-A lightweight loop:
-
-* every 60s:
-
-  * read last 1–5 minutes of events
-  * build features for latest bucket
-  * predict + smooth
-  * append to `artifacts/predictions/YYYY-MM-DD.parquet`
-* end of day:
-
-  * produce summary report
-
-Online mode should **not** retrain. Retraining is batch-only.
-
----
-
-# Privacy Rules (Non-negotiable)
-
-Do NOT store:
-
-* Raw keystrokes
-* Full window titles (store hash or tokenize locally)
-* Clipboard
-
-Only store:
-Aggregated counts per minute.
-
----
-
-# Expected Timeline
-
-Day 1: Data collecting
-Day 3: First labeled dataset
-Day 6: First model
-Week 2: Stable auto-tracking
-
----
-
-# When You’ll Know It’s Working
-
-You stop manually tracking time.
-
-That’s the success metric.
+TBD (local-first personal project by default).

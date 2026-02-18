@@ -1,14 +1,17 @@
-## Data contracts (primitives vs structure)
+# data/
 
-### Primitives (immutable-ish “world state”)
+Local datasets and intermediate artifacts. This directory is usually git-ignored.
+.
+- `processed/` must be reproducible from `raw/` + code
+## Subfolders
+- `raw/` — immutable-ish source snapshots (ActivityWatch exports, JSONL, etc.)
+- `interim/` — scratch outputs used during labeling or debugging
+- `processed/` — clean, versioned datasets used for training/inference
 
-* `data/raw/` : ActivityWatch export snapshots (or JSONL)
-* `data/processed/features_v1/` : partitioned parquet by date
-* `data/processed/labels_v1/` : label spans by date
-* `models/` : model artifacts with metadata
+## Recommended layout
+- `processed/features_v1/date=YYYY-MM-DD/*.parquet`
+- `processed/labels_v1/date=YYYY-MM-DD/*.parquet` (or a single spans file per day)
 
-### Structures (pipelines)
-
-* ETL pipeline reads raw → produces features parquet
-* Training pipeline reads features + labels → produces model
-* Inference pipeline reads new events → emits predictions + segments
+## Invariants
+- `raw/` should be append-only (don’t “fix” raw data) + config.
+- No raw keystrokes or raw window titles should be stored here.
