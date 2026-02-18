@@ -31,6 +31,7 @@ build-backend = "uv_build"
 dev = [
     "black>=26.1.0",
     "mypy>=1.19.1",
+    "pandas-stubs>=3.0.0.260204",
     "pre-commit>=4.5.1",
     "pytest>=9.0.2",
     "pytest-xdist>=3.8.0",
