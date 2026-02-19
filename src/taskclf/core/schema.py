@@ -59,7 +59,15 @@ class FeatureSchemaV1:
     def validate_row(cls, data: dict[str, Any]) -> FeatureRow:
         """Validate *data* as a ``FeatureRow`` and verify schema metadata.
 
-        Returns the validated ``FeatureRow`` or raises ``ValueError``.
+        Args:
+            data: Raw dict of field values (e.g. from JSON or ``model_dump()``).
+
+        Returns:
+            The validated ``FeatureRow``.
+
+        Raises:
+            ValueError: If pydantic validation fails, or ``schema_version`` /
+                ``schema_hash`` do not match the current contract.
         """
         row = FeatureRow.model_validate(data)
         if row.schema_version != cls.VERSION:
@@ -80,8 +88,12 @@ class FeatureSchemaV1:
     def validate_dataframe(cls, df: pd.DataFrame) -> None:
         """Check that *df* conforms to the v1 column contract.
 
-        Raises ``ValueError`` on missing/extra columns or dtype mismatches
-        for the columns that have a direct pandas dtype mapping.
+        Args:
+            df: DataFrame to validate (typically built from ``FeatureRow.model_dump()``).
+
+        Raises:
+            ValueError: If columns are missing, unexpected columns are present,
+                or pandas dtype kinds do not match the expected Python types.
         """
         expected = set(cls.COLUMNS)
         actual = set(df.columns)

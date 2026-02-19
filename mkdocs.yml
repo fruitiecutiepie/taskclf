@@ -1,0 +1,26 @@
+site_name: taskclf
+site_description: Task Type Classifier from Local Activity Signals
+
+theme:
+  name: material
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            show_source: true
+            show_root_heading: true
+            members_order: source
+
+nav:
+  - Home: index.md
+  - API Reference:
+      - core/store: api/core/store.md
+      - core/types: api/core/types.md
+      - core/schema: api/core/schema.md
+      - core/hashing: api/core/hashing.md
+      - features/build: api/features/build.md
+      - cli: api/cli/main.md

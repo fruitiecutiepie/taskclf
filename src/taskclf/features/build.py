@@ -30,7 +30,15 @@ _DUMMY_APPS: list[tuple[str, bool, bool, bool]] = [
 def generate_dummy_features(
     date: dt.date, n_rows: int = 10
 ) -> list[FeatureRow]:
-    """Create *n_rows* synthetic FeatureRow instances spanning *date*."""
+    """Create *n_rows* synthetic FeatureRow instances spanning *date*.
+
+    Args:
+        date: The calendar date to generate buckets for (hours 9-17).
+        n_rows: Number of rows to generate.
+
+    Returns:
+        Validated ``FeatureRow`` instances with dummy app/keyboard/mouse data.
+    """
     rows: list[FeatureRow] = []
     day_of_week = date.weekday()
 
@@ -74,7 +82,16 @@ def generate_dummy_features(
 def build_features_for_date(date: dt.date, data_dir: Path) -> Path:
     """Generate dummy features for *date*, validate, and write to parquet.
 
-    Returns the path of the written parquet file.
+    Args:
+        date: Calendar date to build features for.
+        data_dir: Root of processed data (e.g. ``Path("data/processed")``).
+            Output lands at ``data_dir/features_v1/date=YYYY-MM-DD/features.parquet``.
+
+    Returns:
+        Path of the written parquet file.
+
+    Raises:
+        ValueError: If generated data fails ``FeatureSchemaV1`` validation.
     """
     rows = generate_dummy_features(date)
     df = pd.DataFrame([r.model_dump() for r in rows])

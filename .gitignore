@@ -54,6 +54,9 @@ models/*.txt
 .env
 .env.*
 
+# Docs (MkDocs build output)
+site/
+
 # Cursor / Specstory
 .specstory/
 .cursor/

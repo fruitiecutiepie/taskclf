@@ -165,6 +165,15 @@ uv run pytest
 uv run mypy src
 ```
 
+### Docs
+
+API reference is auto-generated from source docstrings via MkDocs + mkdocstrings.
+
+```bash
+uv run --group docs mkdocs serve      # local preview at http://127.0.0.1:8000
+uv run --group docs mkdocs build      # static site in site/
+```
+
 ---
 
 ## License
