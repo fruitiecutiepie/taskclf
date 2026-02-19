@@ -36,11 +36,12 @@ htmlcov/
 # Jupyter
 .ipynb_checkpoints/
 
-# Data & Models (large/generated artifacts)
-data/*.parquet
-data/*.csv
-data/*.db
-data/*.duckdb
+# Data (local, reproducible from raw + code)
+data/raw/
+data/interim/
+data/processed/
+
+# Models (large/generated artifacts)
 models/*.pkl
 models/*.joblib
 models/*.bin
