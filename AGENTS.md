@@ -125,6 +125,13 @@ Lint/test:
 - Must output normalized events compatible with core types.
 - Must not leak sensitive payloads into persisted datasets.
 
+### Documentation
+- Every code change must include corresponding updates to `docs/`.
+- New modules, classes, and public functions require API reference pages under `docs/api/`.
+- Changed signatures, behaviors, or defaults must be reflected in existing doc pages.
+- CLI changes must update `docs/api/cli/` and any relevant guides.
+- Do not merge code that leaves docs stale; treat doc drift as a defect.
+
 ---
 
 ## Execution Modes
