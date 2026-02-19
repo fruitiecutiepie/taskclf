@@ -1,3 +1,5 @@
+"""Parquet I/O primitives for persisting DataFrames."""
+
 # TODO: duckdb IO
 
 from __future__ import annotations

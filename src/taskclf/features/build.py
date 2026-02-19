@@ -1,3 +1,5 @@
+"""Feature computation pipeline: build bucketed feature rows and write to parquet."""
+
 # TODO: real event→minute features pipeline (currently dummy data)
 
 from __future__ import annotations

@@ -43,5 +43,10 @@ nav:
       - core/types: api/core/types.md
       - core/schema: api/core/schema.md
       - core/hashing: api/core/hashing.md
+      - core/metrics: api/core/metrics.md
+      - core/model_io: api/core/model_io.md
       - features/build: api/features/build.md
+      - labels/store: api/labels/store.md
+      - train/dataset: api/train/dataset.md
+      - train/lgbm: api/train/lgbm.md
       - cli: api/cli/main.md

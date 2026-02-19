@@ -1,3 +1,5 @@
+"""Deterministic hashing utilities for schema fingerprinting."""
+
 from __future__ import annotations
 
 # TODO: salt handling (salted hashing for window titles, separate from schema hashing)

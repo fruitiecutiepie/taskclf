@@ -1,10 +1,20 @@
+"""Pydantic models for the core data contracts: feature rows and label spans."""
+
 from __future__ import annotations
 
-# TODO: Event, LabelSpan pydantic models
-
 from datetime import datetime
+from typing import Final
 
 from pydantic import BaseModel, Field, model_validator
+
+LABEL_SET_V1: Final[frozenset[str]] = frozenset({
+    "coding",
+    "writing_docs",
+    "messaging_email",
+    "browsing_research",
+    "meetings_calls",
+    "break_idle",
+})
 
 _PROHIBITED_FIELD_PREFIXES = ("raw_",)
 
@@ -71,3 +81,30 @@ class FeatureRow(BaseModel, frozen=True):
                             f"'{prefix}' must not appear in a FeatureRow"
                         )
         return values
+
+
+class LabelSpan(BaseModel, frozen=True):
+    """A contiguous time span carrying a single task-type label.
+
+    Gold labels and weak labels share this structure; ``provenance``
+    distinguishes them (e.g. ``"manual"`` vs ``"weak:app_rule"``).
+    """
+
+    start_ts: datetime = Field(description="Span start (UTC, inclusive).")
+    end_ts: datetime = Field(description="Span end (UTC, exclusive).")
+    label: str = Field(description="Task-type label from LABEL_SET_V1.")
+    provenance: str = Field(description="Origin tag, e.g. 'manual' or 'weak:app_rule'.")
+
+    @model_validator(mode="after")
+    def _check_invariants(self) -> LabelSpan:
+        if self.end_ts <= self.start_ts:
+            raise ValueError(
+                f"end_ts ({self.end_ts}) must be strictly after "
+                f"start_ts ({self.start_ts})"
+            )
+        if self.label not in LABEL_SET_V1:
+            raise ValueError(
+                f"Unknown label {self.label!r}; "
+                f"must be one of {sorted(LABEL_SET_V1)}"
+            )
+        return self
