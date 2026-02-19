@@ -1,2 +1,2 @@
 def main() -> None:
-  print("Hello from taskclf!")
+    print("Hello from taskclf!")
