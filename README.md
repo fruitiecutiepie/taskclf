@@ -159,19 +159,14 @@ Every saved model bundle contains:
 
 ## Development
 
-```bash
-uv run ruff check .
-uv run pytest
-uv run mypy src
-```
-
-### Docs
-
-API reference is auto-generated from source docstrings via MkDocs + mkdocstrings.
+Common tasks are in the `Makefile`:
 
 ```bash
-uv run --group docs mkdocs serve      # local preview at http://127.0.0.1:8000
-uv run --group docs mkdocs build      # static site in site/
+make lint        # ruff check .
+make test        # pytest
+make typecheck   # mypy src
+make docs-serve  # local preview at http://127.0.0.1:8000
+make docs-build  # static site in site/
 ```
 
 ---
