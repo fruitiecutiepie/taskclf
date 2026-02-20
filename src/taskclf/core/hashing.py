@@ -13,6 +13,12 @@ def stable_hash(payload: str) -> str:
 
     Used for schema hashing (not for title hashing — that uses a salted
     variant handled elsewhere).
+
+    Args:
+        payload: Arbitrary string to hash.
+
+    Returns:
+        First 12 hexadecimal characters of the SHA-256 digest.
     """
     digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
     return digest[:_HASH_TRUNCATION]

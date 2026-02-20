@@ -19,7 +19,20 @@ def assign_labels_to_buckets(
     For each feature row, the first span whose ``[start_ts, end_ts)``
     interval contains the row's ``bucket_start_ts`` wins.  Rows with no
     covering span are dropped.
+
+    Args:
+        features_df: Feature DataFrame with a ``bucket_start_ts`` column.
+        label_spans: Label spans to match against feature timestamps.
+
+    Returns:
+        A copy of *features_df* with an added ``label`` column, containing
+        only the rows that had a covering span.
     """
+    if not label_spans:
+        result = features_df.copy()
+        result["label"] = None
+        return result.dropna(subset=["label"]).reset_index(drop=True)
+
     labels_df = pd.DataFrame(
         [{"start_ts": s.start_ts, "end_ts": s.end_ts, "label": s.label} for s in label_spans]
     )
@@ -46,6 +59,12 @@ def split_by_day(
 
     The last unique day becomes the validation set.  If there is only one
     day, fall back to an 80/20 chronological split and emit a warning.
+
+    Args:
+        df: Labeled feature DataFrame with a ``bucket_start_ts`` column.
+
+    Returns:
+        A ``(train_df, val_df)`` tuple of DataFrames.
     """
     df = df.sort_values("bucket_start_ts").reset_index(drop=True)
     days = df["bucket_start_ts"].dt.date.unique()

@@ -48,7 +48,11 @@ def _current_git_commit() -> str:
 
 
 def generate_run_id() -> str:
-    """Produce a unique run directory name: ``YYYY-MM-DD_HHMMSS_run-XXXX``."""
+    """Produce a unique run directory name: ``YYYY-MM-DD_HHMMSS_run-XXXX``.
+
+    Returns:
+        A string like ``2026-02-19_013000_run-0042``.
+    """
     now = datetime.utcnow()
     suffix = f"{random.randint(0, 9999):04d}"
     return f"{now.strftime('%Y-%m-%d_%H%M%S')}_run-{suffix}"
@@ -66,7 +70,20 @@ def save_model_bundle(
     Writes four files per the Model Bundle Contract:
     ``model.txt``, ``metadata.json``, ``metrics.json``, ``confusion_matrix.csv``.
 
-    Returns the path to the run directory.
+    Args:
+        model: Trained LightGBM booster.
+        metadata: Provenance record (schema hash, label set, params, etc.).
+        metrics: Evaluation dict (as returned by
+            :func:`~taskclf.core.metrics.compute_metrics`).
+        confusion_df: Labelled confusion matrix for CSV export.
+        base_dir: Parent directory (e.g. ``Path("models")``).
+            A new ``<run_id>/`` subdirectory is created inside it.
+
+    Returns:
+        Path to the newly created run directory.
+
+    Raises:
+        FileExistsError: If the generated run directory already exists.
     """
     run_id = generate_run_id()
     run_dir = base_dir / run_id
@@ -96,8 +113,19 @@ def load_model_bundle(
 ) -> tuple[lgb.Booster, ModelMetadata]:
     """Load a model bundle and optionally validate the schema hash.
 
-    Raises ``ValueError`` if *validate_schema* is True and the bundle's
-    schema hash does not match the current ``FeatureSchemaV1.SCHEMA_HASH``.
+    Args:
+        run_dir: Path to an existing run directory (e.g.
+            ``models/2026-02-19_013000_run-0042/``).
+        validate_schema: When ``True`` (the default), raise if the
+            bundle's schema hash differs from the current
+            ``FeatureSchemaV1.SCHEMA_HASH``.
+
+    Returns:
+        A ``(model, metadata)`` tuple.
+
+    Raises:
+        ValueError: If *validate_schema* is ``True`` and the schema hash
+            recorded in the bundle does not match the running code.
     """
     model = lgb.Booster(model_file=str(run_dir / "model.txt"))
 
@@ -119,7 +147,17 @@ def build_metadata(
     train_date_to: date,
     params: dict[str, Any],
 ) -> ModelMetadata:
-    """Convenience builder that fills in schema info and git commit."""
+    """Convenience builder that fills in schema info and git commit.
+
+    Args:
+        label_set: Task-type labels used during training.
+        train_date_from: First date of the training range.
+        train_date_to: Last date (inclusive) of the training range.
+        params: LightGBM (or other model) hyperparameters dict.
+
+    Returns:
+        A populated ``ModelMetadata`` instance.
+    """
     return ModelMetadata(
         schema_version=FeatureSchemaV1.VERSION,
         schema_hash=FeatureSchemaV1.SCHEMA_HASH,

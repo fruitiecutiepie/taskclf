@@ -46,6 +46,18 @@ def prepare_xy(
     Missing values are filled with 0.  If *label_encoder* is ``None`` a
     new one is fitted on the sorted ``LABEL_SET_V1`` vocabulary so that
     class indices are stable across train/val.
+
+    Args:
+        df: Labeled feature DataFrame (must contain ``FEATURE_COLUMNS``
+            and a ``label`` column).
+        label_encoder: Pre-fitted encoder to reuse (e.g. the one returned
+            from the training call).  If ``None``, a new encoder is fitted
+            on the canonical ``LABEL_SET_V1``.
+
+    Returns:
+        A ``(X, y, label_encoder)`` tuple where *X* is the feature matrix,
+        *y* is the integer-encoded label vector, and *label_encoder* is the
+        encoder used (either the one passed in or a newly fitted one).
     """
     x = df[FEATURE_COLUMNS].fillna(0).to_numpy(dtype=np.float64)
 
@@ -66,12 +78,19 @@ def train_lgbm(
 ) -> tuple[lgb.Booster, dict, pd.DataFrame, dict[str, Any]]:
     """Train a LightGBM multiclass model and evaluate on the val set.
 
-    Returns
-    -------
-    model : lgb.Booster
-    metrics : dict   (macro_f1, confusion_matrix, label_names)
-    confusion_df : pd.DataFrame
-    params : dict    (the LightGBM parameter dict used)
+    Args:
+        train_df: Training DataFrame with feature columns and a ``label``
+            column.
+        val_df: Validation DataFrame (same schema as *train_df*).
+        num_boost_round: Number of boosting iterations.
+        extra_params: Additional LightGBM parameters merged on top of the
+            built-in defaults.
+
+    Returns:
+        A ``(model, metrics, confusion_df, params)`` tuple where *model*
+        is the trained ``lgb.Booster``, *metrics* is the evaluation dict,
+        *confusion_df* is the labelled confusion matrix, and *params* is
+        the full LightGBM parameter dict that was used.
     """
     x_train, y_train, le = prepare_xy(train_df)
     x_val, y_val, _ = prepare_xy(val_df, label_encoder=le)
