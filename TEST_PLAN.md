@@ -10,26 +10,28 @@ This plan prioritizes: correctness, privacy invariants, schema stability, reprod
 | Area | Status | Test file |
 |------|--------|-----------|
 | Core types / privacy (TC-CORE-001..004) | **Done** | `tests/test_core_types.py` |
-| Core hashing (TC-CORE-010, 012) | **Done** | `tests/test_core_hashing.py` |
+| Core hashing (TC-CORE-010..012) | **Done** | `tests/test_core_hashing.py` |
 | Schema hash stability (S1, S2) | **Done** | `tests/test_core_schema.py` |
 | Schema validate_row / validate_dataframe | **Done** | `tests/test_core_schema.py` |
 | Parquet I/O round-trip | **Done** | `tests/test_core_store.py` |
 | Label span I/O + dummy generation | **Done** | `tests/test_labels_store.py` |
 | Label-to-bucket assignment (TC-LABEL-001, 003, 004) | **Done** | `tests/test_train_dataset.py` |
 | Time-based split (TC-EVAL-001) | **Done** | `tests/test_train_dataset.py` |
-| Salted hashing (TC-CORE-011) | Blocked | `tests/test_not_yet_implemented.py` |
+| Bucketization (TC-TIME-001..004) | **Done** | `tests/test_not_yet_implemented.py` |
+| Smoothing / segmentization (TC-INF-001..004) | **Done** | `tests/test_not_yet_implemented.py` |
+| Evaluation metrics (TC-EVAL-002..004) | **Done** | `tests/test_core_metrics.py` |
+| Model IO bundle (TC-MODEL-001..004) | **Done** | `tests/test_core_model_io.py` |
+| Security / privacy (TC-SEC-001..003) | **Done** | `tests/test_security_privacy.py` |
+| Train -> infer integration (TC-INT-020..022) | **Done** | `tests/test_integration_train_infer.py` |
 | Title opt-in policy (TC-CORE-005) | Blocked | `tests/test_not_yet_implemented.py` |
-| Bucketization (TC-TIME-001..004) | Blocked | `tests/test_not_yet_implemented.py` |
 | Advanced features (TC-FEAT-002..005) | Blocked | `tests/test_not_yet_implemented.py` |
-| Smoothing / segmentization (TC-INF-001..004) | Blocked | `tests/test_not_yet_implemented.py` |
-| Model IO bundle (TC-MODEL-001..004) | Not yet tested | -- |
-| Integration tests (TC-INT-*) | Not yet tested | -- |
+| Adapter ingest integration (TC-INT-001..003) | Not yet tested | -- |
+| Ingest -> features -> labels (TC-INT-010..011) | Not yet tested | -- |
+| Report generation (TC-INT-030..031) | Not yet tested | -- |
 | E2E CLI tests (TC-E2E-*) | Not yet tested | -- |
-| Evaluation (TC-EVAL-002..004) | Not yet tested | -- |
 | Performance / reliability (TC-PERF/REL-*) | Not yet tested | -- |
-| Security / privacy (TC-SEC-*) | Not yet tested | -- |
 
-**Totals**: 55 passed, 15 skipped (blocked on stub modules).
+**Totals**: 114 passed, 5 skipped (blocked on stub modules / unimplemented features).
 
 **Bug fixed during testing**: `train/dataset.py::assign_labels_to_buckets` crashed on empty `label_spans` (KeyError on empty DataFrame). Added early-return guard.
 
@@ -132,14 +134,14 @@ R3. Reports are derived artifacts and should be regenerable.
 
 ### 5.2 `core/hashing`
 - **TC-CORE-010**: Hashing is deterministic given fixed salt and input. **[DONE]** `tests/test_core_hashing.py`
-- **TC-CORE-011**: Different salts yield different hashes. **[BLOCKED: salted hashing not implemented in `core/hashing.py`]** `tests/test_not_yet_implemented.py`
+- **TC-CORE-011**: Different salts yield different hashes. **[DONE]** `tests/test_core_hashing.py`
 - **TC-CORE-012**: Hash function output length and charset constraints hold. **[DONE]** `tests/test_core_hashing.py`
 
 ### 5.3 `core/time` bucketization/sessionization
-- **TC-TIME-001**: Bucket alignment (e.g., 12:00:37 -> 12:00:00 for 60s buckets). **[BLOCKED: `core/time.py` is a stub]** `tests/test_not_yet_implemented.py`
-- **TC-TIME-002**: Boundary cases exactly on bucket boundary remain stable. **[BLOCKED: `core/time.py` is a stub]** `tests/test_not_yet_implemented.py`
-- **TC-TIME-003**: Day rollovers (23:59:30 -> next day) handled correctly. **[BLOCKED: `core/time.py` is a stub]** `tests/test_not_yet_implemented.py`
-- **TC-TIME-004**: DST transition safety (if local timestamps appear): conversion to UTC does not create duplicate buckets. **[BLOCKED: `core/time.py` is a stub]** `tests/test_not_yet_implemented.py`
+- **TC-TIME-001**: Bucket alignment (e.g., 12:00:37 -> 12:00:00 for 60s buckets). **[DONE]** `tests/test_not_yet_implemented.py`
+- **TC-TIME-002**: Boundary cases exactly on bucket boundary remain stable. **[DONE]** `tests/test_not_yet_implemented.py`
+- **TC-TIME-003**: Day rollovers (23:59:30 -> next day) handled correctly. **[DONE]** `tests/test_not_yet_implemented.py`
+- **TC-TIME-004**: DST transition safety (if local timestamps appear): conversion to UTC does not create duplicate buckets. **[DONE]** `tests/test_not_yet_implemented.py`
 
 ### 5.4 `features` computation
 - **TC-FEAT-001**: Minimal events produce expected feature row counts. *(covered implicitly by `generate_dummy_features` usage in label/training tests)*
@@ -155,16 +157,16 @@ R3. Reports are derived artifacts and should be regenerable.
 - **TC-LABEL-004**: Invalid spans (end < start) rejected. **[DONE]** `tests/test_core_types.py`
 
 ### 5.6 `infer/smooth` and segmentization
-- **TC-INF-001**: Rolling majority smoothing reduces short spikes. **[BLOCKED: `infer/smooth.py` is a stub]** `tests/test_not_yet_implemented.py`
-- **TC-INF-002**: Segmentization merges adjacent identical labels. **[BLOCKED: `infer/smooth.py` is a stub]** `tests/test_not_yet_implemented.py`
-- **TC-INF-003**: Segments are strictly ordered, non-overlapping, cover all predicted buckets. **[BLOCKED: `infer/smooth.py` is a stub]** `tests/test_not_yet_implemented.py`
-- **TC-INF-004**: Segment durations match bucket counts * bucket_size. **[BLOCKED: `infer/smooth.py` is a stub]** `tests/test_not_yet_implemented.py`
+- **TC-INF-001**: Rolling majority smoothing reduces short spikes. **[DONE]** `tests/test_not_yet_implemented.py`
+- **TC-INF-002**: Segmentization merges adjacent identical labels. **[DONE]** `tests/test_not_yet_implemented.py`
+- **TC-INF-003**: Segments are strictly ordered, non-overlapping, cover all predicted buckets. **[DONE]** `tests/test_not_yet_implemented.py`
+- **TC-INF-004**: Segment durations match bucket counts * bucket_size. **[DONE]** `tests/test_not_yet_implemented.py`
 
 ### 5.7 `core/model_io` bundle checks
-- **TC-MODEL-001**: Model bundle writes required files (model, metadata, metrics). *(not yet tested -- requires training a real LightGBM model in test)*
-- **TC-MODEL-002**: Load fails if metadata missing schema hash. *(not yet tested)*
-- **TC-MODEL-003**: Load fails if schema hash mismatch. *(not yet tested)*
-- **TC-MODEL-004**: Load fails if label set mismatch (optional strictness). *(not yet tested)*
+- **TC-MODEL-001**: Model bundle writes required files (model, metadata, metrics). **[DONE]** `tests/test_core_model_io.py`
+- **TC-MODEL-002**: Load fails if metadata missing schema hash. **[DONE]** `tests/test_core_model_io.py`
+- **TC-MODEL-003**: Load fails if schema hash mismatch. **[DONE]** `tests/test_core_model_io.py`
+- **TC-MODEL-004**: Load fails if label set mismatch (optional strictness). **[DONE]** `tests/test_core_model_io.py`
 
 ---
 
@@ -180,9 +182,9 @@ R3. Reports are derived artifacts and should be regenerable.
 - **TC-INT-011**: Joining labels yields correct labeled training rows count.
 
 ### 6.3 Train -> infer (schema gate)
-- **TC-INT-020**: Train baseline on fixture dataset produces model bundle.
-- **TC-INT-021**: Inference on same schema succeeds and produces predictions parquet.
-- **TC-INT-022**: Alter schema (add/remove feature) causes inference to refuse.
+- **TC-INT-020**: Train baseline on fixture dataset produces model bundle. **[DONE]** `tests/test_integration_train_infer.py`
+- **TC-INT-021**: Inference on same schema succeeds and produces valid predictions. **[DONE]** `tests/test_integration_train_infer.py`
+- **TC-INT-022**: Alter schema (add/remove feature) causes inference to refuse. **[DONE]** `tests/test_integration_train_infer.py`
 
 ### 6.4 Report generation
 - **TC-INT-030**: Daily report totals sum to total active time (within expected tolerance).
@@ -213,9 +215,9 @@ Assertions:
 Because accuracy is user-dependent, focus on evaluation integrity:
 
 - **TC-EVAL-001**: Train/val split is time-based (verify no date overlap). **[DONE]** `tests/test_train_dataset.py`
-- **TC-EVAL-002**: Confusion matrix shape matches label set. *(not yet tested)*
-- **TC-EVAL-003**: Macro-F1 computed without crashing on missing classes in a fold. *(not yet tested)*
-- **TC-EVAL-004**: Class imbalance reported. *(not yet tested)*
+- **TC-EVAL-002**: Confusion matrix shape matches label set. **[DONE]** `tests/test_core_metrics.py`
+- **TC-EVAL-003**: Macro-F1 computed without crashing on missing classes in a fold. **[DONE]** `tests/test_core_metrics.py`
+- **TC-EVAL-004**: Class imbalance reported. **[DONE]** `tests/test_core_metrics.py`
 
 Optional thresholds (only for fixtures):
 - On the synthetic fixture dataset, expect > X macro-F1 (small, stable).
@@ -237,9 +239,9 @@ Optional thresholds (only for fixtures):
 
 ## 10. Security & Privacy Tests
 
-- **TC-SEC-001**: Scan produced parquet/csv/json for forbidden columns/keys.
-- **TC-SEC-002**: Ensure hashes are one-way (no reversible encoding used by default).
-- **TC-SEC-003**: Logs do not print sensitive raw payloads (sanitize logging).
+- **TC-SEC-001**: Scan produced parquet/csv/json for forbidden columns/keys. **[DONE]** `tests/test_security_privacy.py`
+- **TC-SEC-002**: Ensure hashes are one-way (no reversible encoding used by default). **[DONE]** `tests/test_security_privacy.py`
+- **TC-SEC-003**: Logs do not print sensitive raw payloads (sanitize logging). **[DONE]** `tests/test_security_privacy.py`
 
 ---
 

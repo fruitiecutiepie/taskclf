@@ -19,36 +19,66 @@ def test_tc_core_005_raw_title_opt_in() -> None:
 
 
 # ---------------------------------------------------------------------------
-# TC-CORE-011: salted hashing for window titles
+# TC-TIME-*: bucketization / sessionization
 # ---------------------------------------------------------------------------
 
-@pytest.mark.skip(reason="TODO: remove .skip once salted hashing is implemented in core/hashing.py")
-def test_tc_core_011_different_salts_yield_different_hashes() -> None:
-    """TC-CORE-011: different salts produce different hashes."""
-
-
-# ---------------------------------------------------------------------------
-# TC-TIME-*: bucketization / sessionization (core/time.py is a stub)
-# ---------------------------------------------------------------------------
-
-@pytest.mark.skip(reason="TODO: remove .skip once core/time.py bucketization is implemented")
 def test_tc_time_001_bucket_alignment() -> None:
     """TC-TIME-001: e.g. 12:00:37 -> 12:00:00 for 60s buckets."""
+    from datetime import datetime
+
+    from taskclf.core.time import align_to_bucket
+
+    ts = datetime(2025, 6, 15, 12, 0, 37)
+    assert align_to_bucket(ts) == datetime(2025, 6, 15, 12, 0, 0)
+
+    ts2 = datetime(2025, 6, 15, 12, 0, 59)
+    assert align_to_bucket(ts2) == datetime(2025, 6, 15, 12, 0, 0)
+
+    ts3 = datetime(2025, 6, 15, 12, 1, 1)
+    assert align_to_bucket(ts3) == datetime(2025, 6, 15, 12, 1, 0)
 
 
-@pytest.mark.skip(reason="TODO: remove .skip once core/time.py bucketization is implemented")
 def test_tc_time_002_boundary_on_exact_bucket() -> None:
     """TC-TIME-002: timestamp exactly on boundary stays stable."""
+    from datetime import datetime
+
+    from taskclf.core.time import align_to_bucket
+
+    exact = datetime(2025, 6, 15, 12, 0, 0)
+    assert align_to_bucket(exact) == exact
+
+    exact2 = datetime(2025, 6, 15, 0, 0, 0)
+    assert align_to_bucket(exact2) == exact2
 
 
-@pytest.mark.skip(reason="TODO: remove .skip once core/time.py bucketization is implemented")
 def test_tc_time_003_day_rollover() -> None:
-    """TC-TIME-003: 23:59:30 -> next day handled correctly."""
+    """TC-TIME-003: 23:59:30 aligns to 23:59:00, not next day."""
+    from datetime import datetime
+
+    from taskclf.core.time import align_to_bucket
+
+    ts = datetime(2025, 6, 15, 23, 59, 30)
+    assert align_to_bucket(ts) == datetime(2025, 6, 15, 23, 59, 0)
 
 
-@pytest.mark.skip(reason="TODO: remove .skip once core/time.py bucketization is implemented")
 def test_tc_time_004_dst_transition() -> None:
-    """TC-TIME-004: DST transitions don't create duplicate buckets."""
+    """TC-TIME-004: DST-aware timestamps convert to UTC, no duplicate buckets."""
+    from datetime import datetime, timezone, timedelta
+
+    from taskclf.core.time import align_to_bucket
+
+    eastern_std = timezone(timedelta(hours=-5))
+    eastern_dst = timezone(timedelta(hours=-4))
+
+    ts_std = datetime(2025, 3, 9, 1, 30, 15, tzinfo=eastern_std)   # 06:30:15 UTC
+    ts_dst = datetime(2025, 3, 9, 3, 30, 15, tzinfo=eastern_dst)   # 07:30:15 UTC
+
+    aligned_std = align_to_bucket(ts_std)
+    aligned_dst = align_to_bucket(ts_dst)
+
+    assert aligned_std.tzinfo is None
+    assert aligned_dst.tzinfo is None
+    assert aligned_std != aligned_dst
 
 
 # ---------------------------------------------------------------------------
@@ -76,24 +106,73 @@ def test_tc_feat_005_rolling_window_start_of_day() -> None:
 
 
 # ---------------------------------------------------------------------------
-# TC-INF-*: smoothing and segmentization (infer/smooth.py is a stub)
+# TC-INF-*: smoothing and segmentization
 # ---------------------------------------------------------------------------
 
-@pytest.mark.skip(reason="TODO: remove .skip once infer/smooth.py smoothing is implemented")
 def test_tc_inf_001_rolling_majority_reduces_spikes() -> None:
     """TC-INF-001: rolling majority smoothing reduces short spikes."""
+    from taskclf.infer.smooth import rolling_majority
+
+    labels = ["coding", "coding", "break_idle", "coding", "coding"]
+    smoothed = rolling_majority(labels, window=3)
+    assert smoothed[2] == "coding"
+    assert len(smoothed) == len(labels)
 
 
-@pytest.mark.skip(reason="TODO: remove .skip once infer/smooth.py segmentization is implemented")
 def test_tc_inf_002_segmentization_merges_adjacent() -> None:
     """TC-INF-002: segmentization merges adjacent identical labels."""
+    from datetime import datetime, timedelta
+
+    from taskclf.infer.smooth import segmentize
+
+    base = datetime(2025, 6, 15, 10, 0, 0)
+    bucket_starts = [base + timedelta(minutes=i) for i in range(5)]
+    labels = ["coding", "coding", "coding", "writing_docs", "writing_docs"]
+
+    segs = segmentize(bucket_starts, labels)
+    assert len(segs) == 2
+    assert segs[0].label == "coding"
+    assert segs[0].bucket_count == 3
+    assert segs[1].label == "writing_docs"
+    assert segs[1].bucket_count == 2
 
 
-@pytest.mark.skip(reason="TODO: remove .skip once infer/smooth.py segmentization is implemented")
 def test_tc_inf_003_segments_ordered_nonoverlapping_full_coverage() -> None:
     """TC-INF-003: segments are strictly ordered, non-overlapping, cover all predicted buckets."""
+    from datetime import datetime, timedelta
+
+    from taskclf.infer.smooth import segmentize
+
+    base = datetime(2025, 6, 15, 10, 0, 0)
+    n = 10
+    bucket_starts = [base + timedelta(minutes=i) for i in range(n)]
+    labels = ["coding"] * 3 + ["break_idle"] * 2 + ["writing_docs"] * 5
+
+    segs = segmentize(bucket_starts, labels)
+
+    for i in range(len(segs) - 1):
+        assert segs[i].end_ts <= segs[i + 1].start_ts
+        assert segs[i].end_ts == segs[i + 1].start_ts
+
+    total_buckets = sum(s.bucket_count for s in segs)
+    assert total_buckets == n
+
+    assert segs[0].start_ts == bucket_starts[0]
+    assert segs[-1].end_ts == bucket_starts[-1] + timedelta(minutes=1)
 
 
-@pytest.mark.skip(reason="TODO: remove .skip once infer/smooth.py segmentization is implemented")
 def test_tc_inf_004_segment_durations_match_bucket_counts() -> None:
-    """TC-INF-004: segment durations match bucket counts * bucket_size."""
+    """TC-INF-004: segment durations match bucket_count * bucket_size."""
+    from datetime import datetime, timedelta
+
+    from taskclf.infer.smooth import segmentize
+
+    base = datetime(2025, 6, 15, 10, 0, 0)
+    bucket_starts = [base + timedelta(minutes=i) for i in range(6)]
+    labels = ["coding", "coding", "coding", "break_idle", "break_idle", "break_idle"]
+    bucket_seconds = 60
+
+    segs = segmentize(bucket_starts, labels, bucket_seconds=bucket_seconds)
+    for seg in segs:
+        expected_duration = timedelta(seconds=seg.bucket_count * bucket_seconds)
+        assert seg.end_ts - seg.start_ts == expected_duration

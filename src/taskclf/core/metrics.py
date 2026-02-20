@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from typing import Sequence
 
 import numpy as np
@@ -34,6 +35,33 @@ def compute_metrics(
         "macro_f1": round(macro_f1, 4),
         "confusion_matrix": cm.tolist(),
         "label_names": list(label_names),
+    }
+
+
+def class_distribution(
+    y_true: Sequence[str],
+    label_names: Sequence[str],
+) -> dict[str, dict[str, float | int]]:
+    """Per-class counts and fractions for imbalance reporting.
+
+    Args:
+        y_true: Ground-truth label strings.
+        label_names: Full label vocabulary (defines which classes appear
+            in the output, even if absent from *y_true*).
+
+    Returns:
+        Dict mapping each label to ``{"count": int, "fraction": float}``.
+        Fractions sum to 1.0 (within rounding tolerance).  If *y_true* is
+        empty, all fractions are 0.0.
+    """
+    counts = Counter(y_true)
+    total = len(y_true)
+    return {
+        label: {
+            "count": counts.get(label, 0),
+            "fraction": round(counts.get(label, 0) / total, 4) if total > 0 else 0.0,
+        }
+        for label in label_names
     }
 
 

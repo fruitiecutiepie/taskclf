@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import random
 import subprocess
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +14,7 @@ import pandas as pd
 from pydantic import BaseModel, Field
 
 from taskclf.core.schema import FeatureSchemaV1
+from taskclf.core.types import LABEL_SET_V1
 
 
 class ModelMetadata(BaseModel, frozen=True):
@@ -31,7 +32,7 @@ class ModelMetadata(BaseModel, frozen=True):
     train_date_to: str
     params: dict[str, Any]
     git_commit: str
-    created_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
+    created_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
 
 
 def _current_git_commit() -> str:
@@ -53,7 +54,7 @@ def generate_run_id() -> str:
     Returns:
         A string like ``2026-02-19_013000_run-0042``.
     """
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     suffix = f"{random.randint(0, 9999):04d}"
     return f"{now.strftime('%Y-%m-%d_%H%M%S')}_run-{suffix}"
 
@@ -110,8 +111,9 @@ def load_model_bundle(
     run_dir: Path,
     *,
     validate_schema: bool = True,
+    validate_labels: bool = True,
 ) -> tuple[lgb.Booster, ModelMetadata]:
-    """Load a model bundle and optionally validate the schema hash.
+    """Load a model bundle and optionally validate schema hash and label set.
 
     Args:
         run_dir: Path to an existing run directory (e.g.
@@ -119,13 +121,15 @@ def load_model_bundle(
         validate_schema: When ``True`` (the default), raise if the
             bundle's schema hash differs from the current
             ``FeatureSchemaV1.SCHEMA_HASH``.
+        validate_labels: When ``True`` (the default), raise if the
+            bundle's label set differs from the current ``LABEL_SET_V1``.
 
     Returns:
         A ``(model, metadata)`` tuple.
 
     Raises:
-        ValueError: If *validate_schema* is ``True`` and the schema hash
-            recorded in the bundle does not match the running code.
+        ValueError: If validation is enabled and the schema hash or label
+            set recorded in the bundle does not match the running code.
     """
     model = lgb.Booster(model_file=str(run_dir / "model.txt"))
 
@@ -136,6 +140,12 @@ def load_model_bundle(
         raise ValueError(
             f"Schema hash mismatch: bundle has {metadata.schema_hash!r}, "
             f"current schema is {FeatureSchemaV1.SCHEMA_HASH!r}"
+        )
+
+    if validate_labels and sorted(metadata.label_set) != sorted(LABEL_SET_V1):
+        raise ValueError(
+            f"Label set mismatch: bundle has {sorted(metadata.label_set)!r}, "
+            f"current label set is {sorted(LABEL_SET_V1)!r}"
         )
 
     return model, metadata
