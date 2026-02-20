@@ -1,4 +1,4 @@
-.PHONY: lint test typecheck docs-serve docs-build
+.PHONY: lint test typecheck docs-serve docs-build ci
 
 lint:
 	uv run ruff check .
@@ -14,3 +14,5 @@ docs-serve:
 
 docs-build:
 	uv run --group docs zensical build
+
+ci: lint test
