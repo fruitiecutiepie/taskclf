@@ -25,13 +25,15 @@ This plan prioritizes: correctness, privacy invariants, schema stability, reprod
 | Train -> infer integration (TC-INT-020..022) | **Done** | `tests/test_integration_train_infer.py` |
 | Title opt-in policy (TC-CORE-005) | Blocked | `tests/test_not_yet_implemented.py` |
 | Advanced features (TC-FEAT-002..005) | Blocked | `tests/test_not_yet_implemented.py` |
-| Adapter ingest integration (TC-INT-001..003) | Not yet tested | -- |
-| Ingest -> features -> labels (TC-INT-010..011) | Not yet tested | -- |
-| Report generation (TC-INT-030..031) | Not yet tested | -- |
-| E2E CLI tests (TC-E2E-*) | Not yet tested | -- |
+| Adapter ingest integration (TC-INT-001..003) | Blocked | `tests/test_not_yet_implemented.py` |
+| Features -> labels pipeline (TC-INT-010..011) | **Done** | `tests/test_integration_features_labels.py` |
+| Report generation (TC-INT-030..031) | Blocked | `tests/test_not_yet_implemented.py` |
+| E2E CLI: features build (TC-E2E-002) | **Done** | `tests/test_cli_main.py` |
+| E2E CLI: train lgbm (TC-E2E-004) | **Done** | `tests/test_cli_main.py` |
+| E2E CLI: remaining commands (TC-E2E-001,003,005,006) | Blocked | `tests/test_cli_main.py` |
 | Performance / reliability (TC-PERF/REL-*) | Not yet tested | -- |
 
-**Totals**: 114 passed, 5 skipped (blocked on stub modules / unimplemented features).
+**Totals**: 132 passed, 14 skipped (blocked on stub modules / unimplemented features).
 
 **Bug fixed during testing**: `train/dataset.py::assign_labels_to_buckets` crashed on empty `label_spans` (KeyError on empty DataFrame). Added early-return guard.
 
@@ -173,13 +175,13 @@ R3. Reports are derived artifacts and should be regenerable.
 ## 6. Integration Test Cases
 
 ### 6.1 Adapter ingest -> normalized events
-- **TC-INT-001**: Ingest fixture ActivityWatch export produces normalized events with expected fields.
-- **TC-INT-002**: Unknown app ids are normalized to `app_id="unknown"` with provenance retained.
-- **TC-INT-003**: Window titles are hashed/tokenized during normalization if required.
+- **TC-INT-001**: Ingest fixture ActivityWatch export produces normalized events with expected fields. **[BLOCKED: `adapters/activitywatch/client.py` not implemented]** `tests/test_not_yet_implemented.py`
+- **TC-INT-002**: Unknown app ids are normalized to `app_id="unknown"` with provenance retained. **[BLOCKED: `adapters/activitywatch/mapping.py` not implemented]** `tests/test_not_yet_implemented.py`
+- **TC-INT-003**: Window titles are hashed/tokenized during normalization if required. **[BLOCKED: `adapters/activitywatch/mapping.py` not implemented]** `tests/test_not_yet_implemented.py`
 
 ### 6.2 Ingest -> features -> labels join
-- **TC-INT-010**: Pipeline produces `features_v1` parquet partition for date.
-- **TC-INT-011**: Joining labels yields correct labeled training rows count.
+- **TC-INT-010**: Pipeline produces `features_v1` parquet partition for date. **[DONE]** `tests/test_integration_features_labels.py`
+- **TC-INT-011**: Joining labels yields correct labeled training rows count. **[DONE]** `tests/test_integration_features_labels.py`
 
 ### 6.3 Train -> infer (schema gate)
 - **TC-INT-020**: Train baseline on fixture dataset produces model bundle. **[DONE]** `tests/test_integration_train_infer.py`
@@ -187,20 +189,20 @@ R3. Reports are derived artifacts and should be regenerable.
 - **TC-INT-022**: Alter schema (add/remove feature) causes inference to refuse. **[DONE]** `tests/test_integration_train_infer.py`
 
 ### 6.4 Report generation
-- **TC-INT-030**: Daily report totals sum to total active time (within expected tolerance).
-- **TC-INT-031**: Report does not leak raw titles or sensitive data.
+- **TC-INT-030**: Daily report totals sum to total active time (within expected tolerance). **[BLOCKED: `report/daily.py` not implemented]** `tests/test_not_yet_implemented.py`
+- **TC-INT-031**: Report does not leak raw titles or sensitive data. **[BLOCKED: `report/daily.py` and `report/export.py` not implemented]** `tests/test_not_yet_implemented.py`
 
 ---
 
 ## 7. End-to-End CLI Tests
 
 Use `pytest` to invoke CLI commands on fixtures (temp dirs):
-- **TC-E2E-001**: `taskclf ingest aw ...` -> creates `data/raw/...`
-- **TC-E2E-002**: `taskclf features build --date ...` -> creates processed parquet
-- **TC-E2E-003**: `taskclf labels import ...` -> creates labels parquet
-- **TC-E2E-004**: `taskclf train lgbm ...` -> creates new model run dir
-- **TC-E2E-005**: `taskclf infer batch ...` -> creates predictions and segments
-- **TC-E2E-006**: `taskclf report daily ...` -> creates report outputs
+- **TC-E2E-001**: `taskclf ingest aw ...` -> creates `data/raw/...` **[BLOCKED: CLI command not implemented]** `tests/test_cli_main.py`
+- **TC-E2E-002**: `taskclf features build --date ...` -> creates processed parquet **[DONE]** `tests/test_cli_main.py`
+- **TC-E2E-003**: `taskclf labels import ...` -> creates labels parquet **[BLOCKED: CLI command not implemented]** `tests/test_cli_main.py`
+- **TC-E2E-004**: `taskclf train lgbm ...` -> creates new model run dir **[DONE]** `tests/test_cli_main.py`
+- **TC-E2E-005**: `taskclf infer batch ...` -> creates predictions and segments **[BLOCKED: CLI command not implemented]** `tests/test_cli_main.py`
+- **TC-E2E-006**: `taskclf report daily ...` -> creates report outputs **[BLOCKED: CLI command not implemented]** `tests/test_cli_main.py`
 
 Assertions:
 - exit codes

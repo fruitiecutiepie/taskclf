@@ -21,12 +21,15 @@ app.add_typer(features_app, name="features")
 
 
 @features_app.command("build")
-def features_build(date: str = typer.Option(..., help="Date in YYYY-MM-DD format")) -> None:
+def features_build(
+    date: str = typer.Option(..., help="Date in YYYY-MM-DD format"),
+    data_dir: str = typer.Option("data/processed", help="Processed data directory"),
+) -> None:
     """Build per-minute feature rows for a given date and write to parquet."""
     from taskclf.features.build import build_features_for_date
 
     parsed_date = dt.date.fromisoformat(date)
-    out_path = build_features_for_date(parsed_date, Path("data/processed"))
+    out_path = build_features_for_date(parsed_date, Path(data_dir))
     typer.echo(f"Wrote features to {out_path}")
 
 

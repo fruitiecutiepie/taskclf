@@ -176,3 +176,36 @@ def test_tc_inf_004_segment_durations_match_bucket_counts() -> None:
     for seg in segs:
         expected_duration = timedelta(seconds=seg.bucket_count * bucket_seconds)
         assert seg.end_ts - seg.start_ts == expected_duration
+
+
+# ---------------------------------------------------------------------------
+# TC-INT-001..003: adapter ingest integration (adapters are stubs)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.skip(reason="TODO: remove .skip once adapters/activitywatch/client.py is implemented")
+def test_tc_int_001_ingest_produces_normalized_events() -> None:
+    """TC-INT-001: ingest fixture AW export produces normalized events with expected fields."""
+
+
+@pytest.mark.skip(reason="TODO: remove .skip once adapters/activitywatch/mapping.py is implemented")
+def test_tc_int_002_unknown_app_ids_normalized() -> None:
+    """TC-INT-002: unknown app ids are normalized to app_id='unknown' with provenance retained."""
+
+
+@pytest.mark.skip(reason="TODO: remove .skip once adapters/activitywatch/mapping.py is implemented")
+def test_tc_int_003_titles_hashed_during_normalization() -> None:
+    """TC-INT-003: window titles are hashed/tokenized during normalization if required."""
+
+
+# ---------------------------------------------------------------------------
+# TC-INT-030..031: report generation (report modules are stubs)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.skip(reason="TODO: remove .skip once report/daily.py is implemented")
+def test_tc_int_030_daily_report_totals_match_active_time() -> None:
+    """TC-INT-030: daily report totals sum to total active time (within tolerance)."""
+
+
+@pytest.mark.skip(reason="TODO: remove .skip once report/daily.py and report/export.py are implemented")
+def test_tc_int_031_report_does_not_leak_raw_titles() -> None:
+    """TC-INT-031: report does not leak raw titles or sensitive data."""
