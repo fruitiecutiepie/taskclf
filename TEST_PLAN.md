@@ -34,11 +34,17 @@ This plan prioritizes: correctness, privacy invariants, schema stability, reprod
 | E2E CLI: infer batch (TC-E2E-005) | **Done** | `tests/test_cli_main.py` |
 | E2E CLI: report daily (TC-E2E-006) | **Done** | `tests/test_cli_main.py` |
 | E2E CLI: ingest aw (TC-E2E-001) | Blocked | `tests/test_cli_main.py` |
-| Performance / reliability (TC-PERF/REL-*) | Not yet tested | -- |
+| Performance smoke (TC-PERF-001) | **Done** | `tests/test_performance_reliability.py` |
+| DuckDB query perf (TC-PERF-002) | Blocked | `tests/test_performance_reliability.py` |
+| Online reliability (TC-REL-001) | Blocked | `tests/test_performance_reliability.py` |
+| Adapter retry (TC-REL-002) | Blocked | `tests/test_performance_reliability.py` |
+| Atomic writes (TC-REL-003) | **Done** | `tests/test_performance_reliability.py` |
 
-**Totals**: 150 passed, 9 skipped (blocked on stub modules / unimplemented features).
+**Totals**: 157 passed, 12 skipped (blocked on stub modules / unimplemented features).
 
 **Bug fixed during testing**: `train/dataset.py::assign_labels_to_buckets` crashed on empty `label_spans` (KeyError on empty DataFrame). Added early-return guard.
+
+**Improvement during testing**: `core/store.py::write_parquet` now uses atomic writes (tempfile + `os.replace`) to prevent readers from seeing partial files (TC-REL-003).
 
 ---
 
@@ -232,13 +238,13 @@ Optional thresholds (only for fixtures):
 ## 9. Performance & Reliability Tests
 
 ### 9.1 Batch performance smoke tests
-- **TC-PERF-001**: Feature build processes 1 day under N seconds on fixture (loose bound).
-- **TC-PERF-002**: DuckDB queries for last 7 days return under N seconds (if used).
+- **TC-PERF-001**: Feature build processes 1 day under 5 seconds on fixture (loose bound). **[DONE]** `tests/test_performance_reliability.py`
+- **TC-PERF-002**: DuckDB queries for last 7 days return under N seconds (if used). **[BLOCKED: DuckDB query path not implemented in `core/store.py`]** `tests/test_performance_reliability.py`
 
 ### 9.2 Online loop reliability
-- **TC-REL-001**: Online inference handles missing minute gracefully (no crash).
-- **TC-REL-002**: Adapter temporary failure retries with backoff (if implemented).
-- **TC-REL-003**: Writes are atomic (write temp -> rename).
+- **TC-REL-001**: Online inference handles missing minute gracefully (no crash). **[BLOCKED: `infer/online.py` not implemented]** `tests/test_performance_reliability.py`
+- **TC-REL-002**: Adapter temporary failure retries with backoff (if implemented). **[BLOCKED: `adapters/activitywatch/client.py` retry logic not implemented]** `tests/test_performance_reliability.py`
+- **TC-REL-003**: Writes are atomic (write temp -> rename). **[DONE]** `tests/test_performance_reliability.py`
 
 ---
 

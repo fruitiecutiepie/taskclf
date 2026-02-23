@@ -4,13 +4,20 @@
 
 from __future__ import annotations
 
+import contextlib
+import os
+import tempfile
 from pathlib import Path
 
 import pandas as pd
 
 
 def write_parquet(df: pd.DataFrame, path: Path) -> Path:
-    """Write *df* to a parquet file at *path*, creating parent dirs as needed.
+    """Write *df* to a parquet file at *path* atomically.
+
+    Writes to a temporary file in the same directory first, then
+    atomically replaces the target via :func:`os.replace`.  This
+    prevents readers from ever seeing a partially-written file.
 
     Args:
         df: DataFrame to persist.
@@ -20,7 +27,15 @@ def write_parquet(df: pd.DataFrame, path: Path) -> Path:
         The *path* that was written, for convenient chaining.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    df.to_parquet(path, engine="pyarrow", index=False)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".parquet.tmp")
+    try:
+        os.close(fd)
+        df.to_parquet(tmp, engine="pyarrow", index=False)
+        os.replace(tmp, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
     return path
 
 
