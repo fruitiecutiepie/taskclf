@@ -9,6 +9,7 @@ from typing import Sequence
 
 import pandas as pd
 
+from taskclf.adapters.activitywatch.types import AWInputEvent
 from taskclf.core.defaults import (
     DEFAULT_APP_SWITCH_WINDOW_MINUTES,
     DEFAULT_BUCKET_SECONDS,
@@ -22,18 +23,18 @@ from taskclf.core.time import align_to_bucket
 from taskclf.core.types import Event, FeatureRow
 from taskclf.features.sessions import detect_session_boundaries, session_start_for_bucket
 
-_DUMMY_APPS: list[tuple[str, bool, bool, bool]] = [
-    # (app_id, is_browser, is_editor, is_terminal)
-    ("com.apple.Terminal", False, False, True),
-    ("org.mozilla.firefox", True, False, False),
-    ("com.microsoft.VSCode", False, True, False),
-    ("com.apple.mail", False, False, False),
-    ("us.zoom.xos", False, False, False),
-    ("com.tinyspeck.slackmacgap", False, False, False),
-    ("com.google.Chrome", True, False, False),
-    ("com.jetbrains.intellij", False, True, False),
-    ("com.apple.finder", False, False, False),
-    ("com.apple.Notes", False, False, False),
+_DUMMY_APPS: list[tuple[str, bool, bool, bool, str]] = [
+    # (app_id, is_browser, is_editor, is_terminal, app_category)
+    ("com.apple.Terminal", False, False, True, "terminal"),
+    ("org.mozilla.firefox", True, False, False, "browser"),
+    ("com.microsoft.VSCode", False, True, False, "editor"),
+    ("com.apple.mail", False, False, False, "email"),
+    ("us.zoom.xos", False, False, False, "meeting"),
+    ("com.tinyspeck.slackmacgap", False, False, False, "chat"),
+    ("com.google.Chrome", True, False, False, "browser"),
+    ("com.jetbrains.intellij", False, True, False, "editor"),
+    ("com.apple.finder", False, False, False, "file_manager"),
+    ("com.apple.Notes", False, False, False, "docs"),
 ]
 
 
@@ -57,7 +58,7 @@ def generate_dummy_features(
         minute = (i * 7) % 60
         ts = dt.datetime(date.year, date.month, date.day, hour, minute)
 
-        app_id, is_browser, is_editor, is_terminal = _DUMMY_APPS[
+        app_id, is_browser, is_editor, is_terminal, app_category = _DUMMY_APPS[
             i % len(_DUMMY_APPS)
         ]
         title_hash = stable_hash(f"window-title-{app_id}-{i}")
@@ -69,6 +70,7 @@ def generate_dummy_features(
                 schema_hash=FeatureSchemaV1.SCHEMA_HASH,
                 source_ids=[f"dummy-{i:03d}"],
                 app_id=app_id,
+                app_category=app_category,
                 window_title_hash=title_hash,
                 is_browser=is_browser,
                 is_editor=is_editor,
@@ -89,9 +91,42 @@ def generate_dummy_features(
     return rows
 
 
+def _aggregate_input_for_bucket(
+    bucket_ts: dt.datetime,
+    bucket_input: list[AWInputEvent],
+    bucket_seconds: int,
+) -> dict[str, float | None]:
+    """Aggregate input events within a single time bucket into feature values.
+
+    Returns a dict with keys matching the keyboard/mouse ``FeatureRow``
+    fields.  If *bucket_input* is empty every value is ``None``.
+    """
+    if not bucket_input:
+        return {
+            "keys_per_min": None,
+            "clicks_per_min": None,
+            "scroll_events_per_min": None,
+            "mouse_distance": None,
+        }
+
+    total_presses = sum(e.presses for e in bucket_input)
+    total_clicks = sum(e.clicks for e in bucket_input)
+    total_scroll = sum(e.scroll_x + e.scroll_y for e in bucket_input)
+    total_distance = sum(e.delta_x + e.delta_y for e in bucket_input)
+
+    minutes = bucket_seconds / 60.0
+    return {
+        "keys_per_min": round(total_presses / minutes, 2),
+        "clicks_per_min": round(total_clicks / minutes, 2),
+        "scroll_events_per_min": round(total_scroll / minutes, 2),
+        "mouse_distance": float(total_distance),
+    }
+
+
 def build_features_from_aw_events(
     events: Sequence[Event],
     *,
+    input_events: Sequence[AWInputEvent] | None = None,
     bucket_seconds: int = DEFAULT_BUCKET_SECONDS,
     session_start: dt.datetime | None = None,
     idle_gap_seconds: float = DEFAULT_IDLE_GAP_SECONDS,
@@ -101,8 +136,13 @@ def build_features_from_aw_events(
     Events are grouped into fixed-width time buckets.  For each bucket
     the *dominant* application (longest total duration) is selected and
     its metadata (app ID, title hash, flags) is used to populate the
-    context columns.  Keyboard and mouse columns are left as ``None``
-    because the AW window watcher does not capture those signals.
+    context columns.
+
+    When *input_events* from ``aw-watcher-input`` are provided, keyboard
+    and mouse features (``keys_per_min``, ``clicks_per_min``,
+    ``scroll_events_per_min``, ``mouse_distance``) are computed by
+    aggregating the 5-second input samples that fall within each bucket.
+    Without input events those fields remain ``None``.
 
     Session detection is performed automatically via idle-gap analysis
     (see :func:`~taskclf.features.sessions.detect_session_boundaries`).
@@ -113,6 +153,9 @@ def build_features_from_aw_events(
         events: Sorted, normalised events satisfying the
             :class:`~taskclf.core.types.Event` protocol (e.g. from
             :func:`~taskclf.adapters.activitywatch.client.parse_aw_export`).
+        input_events: Optional sorted input events from
+            ``aw-watcher-input``.  When provided, keyboard/mouse feature
+            columns are populated; otherwise they remain ``None``.
         bucket_seconds: Width of each time bucket in seconds (default 60).
         session_start: If provided, used as the session start for every
             bucket (online mode).  When ``None`` (batch mode), sessions
@@ -130,6 +173,15 @@ def build_features_from_aw_events(
     for ev in events:
         bucket_ts = align_to_bucket(ev.timestamp, bucket_seconds)
         bucket_events[bucket_ts].append(ev)
+
+    # Pre-bucket input events for O(n) aggregation
+    bucket_input_events: dict[dt.datetime, list[AWInputEvent]] = defaultdict(list)
+    if input_events:
+        for ie in input_events:
+            ie_bucket = align_to_bucket(ie.timestamp, bucket_seconds)
+            bucket_input_events[ie_bucket].append(ie)
+
+    has_input = bool(input_events)
 
     sorted_buckets = sorted(bucket_events.keys())
     all_events_sorted = sorted(events, key=lambda e: e.timestamp)
@@ -172,24 +224,33 @@ def build_features_from_aw_events(
         cur_session = session_start_for_bucket(bucket_ts, session_starts)
         elapsed_minutes = (bucket_ts - cur_session).total_seconds() / 60.0
 
+        input_agg = _aggregate_input_for_bucket(
+            bucket_ts, bucket_input_events.get(bucket_ts, []), bucket_seconds,
+        )
+
+        source_ids = ["aw-watcher-window"]
+        if has_input:
+            source_ids.append("aw-watcher-input")
+
         rows.append(
             FeatureRow(
                 bucket_start_ts=bucket_ts,
                 schema_version=FeatureSchemaV1.VERSION,
                 schema_hash=FeatureSchemaV1.SCHEMA_HASH,
-                source_ids=["aw-watcher-window"],
+                source_ids=source_ids,
                 app_id=dominant_app_id,
+                app_category=dominant_ev.app_category,
                 window_title_hash=dominant_ev.window_title_hash,
                 is_browser=dominant_ev.is_browser,
                 is_editor=dominant_ev.is_editor,
                 is_terminal=dominant_ev.is_terminal,
                 app_switch_count_last_5m=switch_count,
-                keys_per_min=None,
+                keys_per_min=input_agg["keys_per_min"],
                 backspace_ratio=None,
                 shortcut_rate=None,
-                clicks_per_min=None,
-                scroll_events_per_min=None,
-                mouse_distance=None,
+                clicks_per_min=input_agg["clicks_per_min"],
+                scroll_events_per_min=input_agg["scroll_events_per_min"],
+                mouse_distance=input_agg["mouse_distance"],
                 hour_of_day=bucket_ts.hour,
                 day_of_week=bucket_ts.weekday(),
                 session_length_so_far=round(elapsed_minutes, 2),

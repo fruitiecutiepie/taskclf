@@ -19,6 +19,7 @@ _COLUMNS_V1: Final[dict[str, type]] = {
     "schema_hash": str,
     "source_ids": list,
     "app_id": str,
+    "app_category": str,
     "window_title_hash": str,
     "is_browser": bool,
     "is_editor": bool,

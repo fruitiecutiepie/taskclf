@@ -16,13 +16,14 @@ from sklearn.preprocessing import LabelEncoder
 from taskclf.core.defaults import DEFAULT_BUCKET_SECONDS, DEFAULT_SMOOTH_WINDOW
 from taskclf.core.types import LABEL_SET_V1
 from taskclf.infer.smooth import Segment, rolling_majority, segmentize
-from taskclf.train.lgbm import FEATURE_COLUMNS
+from taskclf.train.lgbm import FEATURE_COLUMNS, encode_categoricals
 
 
 def predict_labels(
     model: lgb.Booster,
     features_df: pd.DataFrame,
     label_encoder: LabelEncoder,
+    cat_encoders: dict[str, LabelEncoder] | None = None,
 ) -> list[str]:
     """Run the model on *features_df* and return predicted label strings.
 
@@ -30,11 +31,14 @@ def predict_labels(
         model: Trained LightGBM booster.
         features_df: Feature DataFrame with ``FEATURE_COLUMNS``.
         label_encoder: Encoder fitted on the canonical label vocabulary.
+        cat_encoders: Pre-fitted categorical encoders for string columns.
 
     Returns:
         Predicted label per row.
     """
-    x = features_df[FEATURE_COLUMNS].fillna(0).to_numpy(dtype=np.float64)
+    feat_df = features_df[FEATURE_COLUMNS].copy()
+    feat_df, _ = encode_categoricals(feat_df, cat_encoders)
+    x = feat_df.fillna(0).to_numpy(dtype=np.float64)
     proba = model.predict(x)
     pred_indices = proba.argmax(axis=1)
     return list(label_encoder.inverse_transform(pred_indices))
@@ -44,6 +48,7 @@ def run_batch_inference(
     model: lgb.Booster,
     features_df: pd.DataFrame,
     *,
+    cat_encoders: dict[str, LabelEncoder] | None = None,
     smooth_window: int = DEFAULT_SMOOTH_WINDOW,
     bucket_seconds: int = DEFAULT_BUCKET_SECONDS,
 ) -> tuple[list[str], list[Segment]]:
@@ -53,6 +58,7 @@ def run_batch_inference(
         model: Trained LightGBM booster.
         features_df: Feature DataFrame (must contain ``FEATURE_COLUMNS``
             and ``bucket_start_ts``).
+        cat_encoders: Pre-fitted categorical encoders for string columns.
         smooth_window: Window size for rolling-majority smoothing.
         bucket_seconds: Width of each time bucket in seconds.
 
@@ -64,7 +70,7 @@ def run_batch_inference(
     le = LabelEncoder()
     le.fit(sorted(LABEL_SET_V1))
 
-    raw_labels = predict_labels(model, features_df, le)
+    raw_labels = predict_labels(model, features_df, le, cat_encoders=cat_encoders)
     smoothed = rolling_majority(raw_labels, window=smooth_window)
 
     bucket_starts: list[datetime] = [

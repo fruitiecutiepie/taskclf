@@ -48,7 +48,22 @@ class TestIngestAW:
                         {"timestamp": "2026-02-24T09:00:00Z", "duration": 20.0,
                          "data": {"app": "Terminal", "title": "bash"}},
                     ],
-                }
+                },
+                "aw-watcher-input_testhost": {
+                    "id": "aw-watcher-input_testhost",
+                    "type": "os.hid.input",
+                    "client": "aw-watcher-input",
+                    "hostname": "testhost",
+                    "created": "2026-01-01T00:00:00.000000",
+                    "events": [
+                        {"timestamp": "2026-02-23T10:00:00Z", "duration": 5.0,
+                         "data": {"presses": 12, "clicks": 3, "deltaX": 100,
+                                  "deltaY": 50, "scrollX": 0, "scrollY": 2}},
+                        {"timestamp": "2026-02-23T10:00:05Z", "duration": 5.0,
+                         "data": {"presses": 8, "clicks": 1, "deltaX": 80,
+                                  "deltaY": 30, "scrollX": 0, "scrollY": 0}},
+                    ],
+                },
             }
         }
         f = tmp_path / "aw-export.json"
@@ -86,6 +101,21 @@ class TestIngestAW:
         for val in df["window_title_hash"]:
             assert "GitHub" not in str(val)
             assert "main.py" not in str(val)
+
+    def test_input_events_ingested(self, tmp_path: Path, aw_export_file: Path) -> None:
+        out_dir = tmp_path / "raw_aw"
+        result = runner.invoke(app, [
+            "ingest", "aw",
+            "--input", str(aw_export_file),
+            "--out-dir", str(out_dir),
+        ])
+        assert result.exit_code == 0, result.output
+        input_parquet = out_dir.parent / "aw-input" / "2026-02-23" / "events.parquet"
+        assert input_parquet.exists()
+        df = pd.read_parquet(input_parquet)
+        assert len(df) == 2
+        assert "presses" in df.columns
+        assert "clicks" in df.columns
 
     def test_file_not_found(self, tmp_path: Path) -> None:
         result = runner.invoke(app, [

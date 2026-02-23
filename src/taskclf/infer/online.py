@@ -12,6 +12,7 @@ import time
 from collections import deque
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
 import lightgbm as lgb
 import numpy as np
@@ -30,7 +31,7 @@ from taskclf.core.model_io import ModelMetadata, load_model_bundle
 from taskclf.core.types import LABEL_SET_V1, FeatureRow
 from taskclf.infer.batch import write_segments_json
 from taskclf.infer.smooth import Segment, rolling_majority, segmentize
-from taskclf.train.lgbm import FEATURE_COLUMNS
+from taskclf.train.lgbm import CATEGORICAL_COLUMNS, FEATURE_COLUMNS
 
 logger = logging.getLogger(__name__)
 
@@ -48,11 +49,13 @@ class OnlinePredictor:
         model: lgb.Booster,
         metadata: ModelMetadata,
         *,
+        cat_encoders: dict[str, LabelEncoder] | None = None,
         smooth_window: int = DEFAULT_SMOOTH_WINDOW,
         bucket_seconds: int = DEFAULT_BUCKET_SECONDS,
     ) -> None:
         self._model = model
         self._metadata = metadata
+        self._cat_encoders = cat_encoders or {}
         self._smooth_window = smooth_window
         self._bucket_seconds = bucket_seconds
 
@@ -63,6 +66,17 @@ class OnlinePredictor:
         self._bucket_ts_buffer: deque[datetime] = deque(maxlen=max(smooth_window, 1))
         self._all_bucket_ts: list[datetime] = []
         self._all_smoothed: list[str] = []
+
+    def _encode_value(self, col: str, value: Any) -> float:
+        """Encode a single feature value, handling categoricals and nulls."""
+        if col in CATEGORICAL_COLUMNS:
+            le = self._cat_encoders.get(col)
+            if le is not None:
+                str_val = str(value)
+                if str_val in set(le.classes_):
+                    return float(le.transform([str_val])[0])
+            return -1.0
+        return float(value) if value is not None else 0.0
 
     def predict_bucket(self, row: FeatureRow) -> str:
         """Predict a single bucket and return the smoothed label.
@@ -79,7 +93,7 @@ class OnlinePredictor:
             The smoothed predicted label string.
         """
         x = np.array(
-            [[getattr(row, c) if getattr(row, c) is not None else 0.0 for c in FEATURE_COLUMNS]],
+            [[self._encode_value(c, getattr(row, c)) for c in FEATURE_COLUMNS]],
             dtype=np.float64,
         )
         proba = self._model.predict(x)
@@ -151,19 +165,28 @@ def run_online_loop(
     """
     from taskclf.adapters.activitywatch.client import (
         fetch_aw_events,
+        fetch_aw_input_events,
+        find_input_bucket_id,
         find_window_bucket_id,
     )
     from taskclf.features.build import build_features_from_aw_events
 
-    model, metadata = load_model_bundle(Path(model_dir))
+    model, metadata, cat_encoders = load_model_bundle(Path(model_dir))
     logger.info("Loaded model from %s (schema=%s)", model_dir, metadata.schema_hash)
 
     bucket_id = find_window_bucket_id(aw_host)
-    logger.info("Using AW bucket: %s", bucket_id)
+    logger.info("Using AW window bucket: %s", bucket_id)
+
+    input_bucket_id = find_input_bucket_id(aw_host)
+    if input_bucket_id:
+        logger.info("Using AW input bucket: %s", input_bucket_id)
+    else:
+        logger.info("No aw-watcher-input bucket found; keyboard/mouse features will be None")
 
     predictor = OnlinePredictor(
         model,
         metadata,
+        cat_encoders=cat_encoders,
         smooth_window=smooth_window,
         bucket_seconds=bucket_seconds,
     )
@@ -176,6 +199,8 @@ def run_online_loop(
     idle_gap = timedelta(seconds=idle_gap_seconds)
 
     print(f"Online inference started (polling every {poll_seconds}s, bucket={bucket_id})")
+    if input_bucket_id:
+        print(f"Input watcher active: {input_bucket_id}")
     print("Press Ctrl+C to stop.\n")
 
     try:
@@ -197,6 +222,15 @@ def run_online_loop(
                 time.sleep(poll_seconds)
                 continue
 
+            input_events = None
+            if input_bucket_id:
+                try:
+                    input_events = fetch_aw_input_events(
+                        aw_host, input_bucket_id, window_start, now,
+                    ) or None
+                except Exception:
+                    logger.warning("Failed to fetch input events", exc_info=True)
+
             earliest_new = min(ev.timestamp for ev in events)
             if last_event_ts is not None and earliest_new - last_event_ts >= idle_gap:
                 session_start = earliest_new
@@ -207,6 +241,7 @@ def run_online_loop(
 
             rows = build_features_from_aw_events(
                 events,
+                input_events=input_events,
                 bucket_seconds=bucket_seconds,
                 session_start=session_start,
             )

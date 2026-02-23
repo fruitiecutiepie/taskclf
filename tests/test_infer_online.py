@@ -46,8 +46,8 @@ def trained_model_dir(tmp_path: Path) -> Path:
 
 @pytest.fixture()
 def predictor(trained_model_dir: Path) -> OnlinePredictor:
-    model, metadata = load_model_bundle(trained_model_dir)
-    return OnlinePredictor(model, metadata, smooth_window=3)
+    model, metadata, cat_encoders = load_model_bundle(trained_model_dir)
+    return OnlinePredictor(model, metadata, cat_encoders=cat_encoders, smooth_window=3)
 
 
 class TestOnlinePredictor:
@@ -87,9 +87,9 @@ class TestOnlinePredictor:
         assert predictor.get_segments() == []
 
     def test_smoothing_window_respected(self, trained_model_dir: Path) -> None:
-        model, metadata = load_model_bundle(trained_model_dir)
-        pred_w1 = OnlinePredictor(model, metadata, smooth_window=1)
-        pred_w5 = OnlinePredictor(model, metadata, smooth_window=5)
+        model, metadata, cat_encoders = load_model_bundle(trained_model_dir)
+        pred_w1 = OnlinePredictor(model, metadata, cat_encoders=cat_encoders, smooth_window=1)
+        pred_w5 = OnlinePredictor(model, metadata, cat_encoders=cat_encoders, smooth_window=5)
 
         rows = generate_dummy_features(dt.date(2025, 6, 15), n_rows=10)
         labels_w1 = [pred_w1.predict_bucket(r) for r in rows]
@@ -125,6 +125,7 @@ class TestOnlineSessionTracking:
             is_browser=True,
             is_editor=False,
             is_terminal=False,
+            app_category="browser",
         )
 
     def test_session_start_persists_across_polls(self) -> None:

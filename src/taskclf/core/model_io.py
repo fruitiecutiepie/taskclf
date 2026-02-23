@@ -66,11 +66,13 @@ def save_model_bundle(
     metrics: dict,
     confusion_df: pd.DataFrame,
     base_dir: Path,
+    cat_encoders: dict | None = None,
 ) -> Path:
     """Persist a complete model bundle into ``base_dir/<run_id>/``.
 
-    Writes four files per the Model Bundle Contract:
-    ``model.txt``, ``metadata.json``, ``metrics.json``, ``confusion_matrix.csv``.
+    Writes the core files per the Model Bundle Contract plus an optional
+    ``categorical_encoders.json`` mapping each categorical column to its
+    sorted vocabulary list.
 
     Args:
         model: Trained LightGBM booster.
@@ -80,6 +82,9 @@ def save_model_bundle(
         confusion_df: Labelled confusion matrix for CSV export.
         base_dir: Parent directory (e.g. ``Path("models")``).
             A new ``<run_id>/`` subdirectory is created inside it.
+        cat_encoders: Optional dict mapping categorical column names to
+            fitted ``LabelEncoder`` instances.  Persisted as JSON
+            vocabulary lists so inference can reconstruct them.
 
     Returns:
         Path to the newly created run directory.
@@ -105,6 +110,12 @@ def save_model_bundle(
 
     confusion_df.to_csv(run_dir / "confusion_matrix.csv")
 
+    if cat_encoders:
+        vocab = {col: list(le.classes_) for col, le in cat_encoders.items()}
+        (run_dir / "categorical_encoders.json").write_text(
+            json.dumps(vocab, indent=2)
+        )
+
     return run_dir
 
 
@@ -113,7 +124,7 @@ def load_model_bundle(
     *,
     validate_schema: bool = True,
     validate_labels: bool = True,
-) -> tuple[lgb.Booster, ModelMetadata]:
+) -> tuple[lgb.Booster, ModelMetadata, dict | None]:
     """Load a model bundle and optionally validate schema hash and label set.
 
     Args:
@@ -126,12 +137,16 @@ def load_model_bundle(
             bundle's label set differs from the current ``LABEL_SET_V1``.
 
     Returns:
-        A ``(model, metadata)`` tuple.
+        A ``(model, metadata, cat_encoders)`` tuple where *cat_encoders*
+        is a dict mapping column names to fitted ``LabelEncoder``
+        instances, or ``None`` if no encoder file exists in the bundle.
 
     Raises:
         ValueError: If validation is enabled and the schema hash or label
             set recorded in the bundle does not match the running code.
     """
+    from sklearn.preprocessing import LabelEncoder
+
     model = lgb.Booster(model_file=str(run_dir / "model.txt"))
 
     raw = json.loads((run_dir / "metadata.json").read_text())
@@ -149,7 +164,17 @@ def load_model_bundle(
             f"current label set is {sorted(LABEL_SET_V1)!r}"
         )
 
-    return model, metadata
+    cat_encoders: dict[str, LabelEncoder] | None = None
+    enc_path = run_dir / "categorical_encoders.json"
+    if enc_path.exists():
+        vocab = json.loads(enc_path.read_text())
+        cat_encoders = {}
+        for col, classes in vocab.items():
+            le = LabelEncoder()
+            le.classes_ = __import__("numpy").array(classes)
+            cat_encoders[col] = le
+
+    return model, metadata, cat_encoders
 
 
 def build_metadata(

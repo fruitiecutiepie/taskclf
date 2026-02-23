@@ -24,6 +24,7 @@ def valid_feature_row_data() -> dict[str, Any]:
         "schema_hash": FeatureSchemaV1.SCHEMA_HASH,
         "source_ids": ["test-collector"],
         "app_id": "com.apple.Terminal",
+        "app_category": "terminal",
         "window_title_hash": "abc123def456",
         "is_browser": False,
         "is_editor": False,

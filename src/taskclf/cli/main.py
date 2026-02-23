@@ -35,7 +35,10 @@ def ingest_aw_cmd(
 
     import pandas as pd
 
-    from taskclf.adapters.activitywatch.client import parse_aw_export
+    from taskclf.adapters.activitywatch.client import (
+        parse_aw_export,
+        parse_aw_input_export,
+    )
     from taskclf.core.store import write_parquet
 
     input_path = Path(input_file)
@@ -66,6 +69,30 @@ def ingest_aw_cmd(
         f"Ingested {len(events)} events across {len(by_date)} day(s) "
         f"({date_range}), {len(unique_apps)} unique apps"
     )
+
+    # Ingest input events (aw-watcher-input) if present
+    input_events = parse_aw_input_export(input_path)
+    if input_events:
+        input_by_date: dict[str, list] = defaultdict(list)
+        for ie in input_events:
+            day = ie.timestamp.date().isoformat()
+            input_by_date[day].append(ie.model_dump())
+
+        input_out_base = Path(out_dir).parent / "aw-input"
+        for day, rows in sorted(input_by_date.items()):
+            df = pd.DataFrame(rows)
+            out_path = input_out_base / day / "events.parquet"
+            write_parquet(df, out_path)
+            typer.echo(f"  {day}: {len(rows)} input events -> {out_path}")
+
+        ie_range = (
+            f"{input_events[0].timestamp.date()} to "
+            f"{input_events[-1].timestamp.date()}"
+        )
+        typer.echo(
+            f"Ingested {len(input_events)} input events across "
+            f"{len(input_by_date)} day(s) ({ie_range})"
+        )
 
 
 # -- features ----------------------------------------------------------------
@@ -178,7 +205,7 @@ def train_lgbm_cmd(
     train_df, val_df = split_by_day(labeled_df)
     typer.echo(f"Train: {len(train_df)} rows, Val: {len(val_df)} rows")
 
-    model, metrics, cm_df, params = train_lgbm(
+    model, metrics, cm_df, params, cat_encoders = train_lgbm(
         train_df, val_df, num_boost_round=num_boost_round,
     )
     typer.echo(f"Macro F1: {metrics['macro_f1']}")
@@ -196,6 +223,7 @@ def train_lgbm_cmd(
         metrics=metrics,
         confusion_df=cm_df,
         base_dir=Path(models_dir),
+        cat_encoders=cat_encoders,
     )
     typer.echo(f"Model bundle saved to {run_dir}")
 
@@ -227,7 +255,7 @@ def infer_batch_cmd(
         write_segments_json,
     )
 
-    model, metadata = load_model_bundle(Path(model_dir))
+    model, metadata, cat_encoders = load_model_bundle(Path(model_dir))
     typer.echo(f"Loaded model from {model_dir} (schema={metadata.schema_hash})")
 
     start = dt.date.fromisoformat(date_from)
@@ -258,7 +286,7 @@ def infer_batch_cmd(
     typer.echo(f"Loaded {len(features_df)} feature rows")
 
     smoothed_labels, segments = run_batch_inference(
-        model, features_df, smooth_window=smooth_window,
+        model, features_df, cat_encoders=cat_encoders, smooth_window=smooth_window,
     )
     typer.echo(f"Predicted {len(smoothed_labels)} buckets -> {len(segments)} segments")
 

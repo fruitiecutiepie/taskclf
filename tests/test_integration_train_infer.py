@@ -55,7 +55,7 @@ def pipeline_artifacts(tmp_path_factory: pytest.TempPathFactory):
     labeled = _build_labeled_df()
     train_df, val_df = split_by_day(labeled)
 
-    model, metrics, cm_df, params = train_lgbm(
+    model, metrics, cm_df, params, cat_encoders = train_lgbm(
         train_df, val_df, num_boost_round=5,
     )
 
@@ -66,7 +66,7 @@ def pipeline_artifacts(tmp_path_factory: pytest.TempPathFactory):
         train_date_to=dt.date(2025, 6, 15),
         params=params,
     )
-    run_dir = save_model_bundle(model, metadata, metrics, cm_df, base_dir)
+    run_dir = save_model_bundle(model, metadata, metrics, cm_df, base_dir, cat_encoders=cat_encoders)
 
     le = LabelEncoder()
     le.fit(sorted(LABEL_SET_V1))
@@ -114,11 +114,14 @@ class TestInferOnSameSchema:
     """TC-INT-021: load bundle and predict on same-schema features."""
 
     def test_load_and_predict_produces_valid_labels(self, pipeline_artifacts) -> None:
-        model, metadata = load_model_bundle(pipeline_artifacts["run_dir"])
+        from taskclf.train.lgbm import encode_categoricals
+
+        model, metadata, cat_encoders = load_model_bundle(pipeline_artifacts["run_dir"])
         val_df = pipeline_artifacts["val_df"]
         le = pipeline_artifacts["label_encoder"]
 
-        x = val_df[FEATURE_COLUMNS].fillna(0).to_numpy(dtype=np.float64)
+        feat_df, _ = encode_categoricals(val_df[FEATURE_COLUMNS].copy(), cat_encoders)
+        x = feat_df.fillna(0).to_numpy(dtype=np.float64)
         proba = model.predict(x)
         pred_indices = proba.argmax(axis=1)
         pred_labels = le.inverse_transform(pred_indices)
@@ -128,18 +131,24 @@ class TestInferOnSameSchema:
             assert label in valid_labels, f"Prediction {label!r} not in LABEL_SET_V1"
 
     def test_prediction_count_matches_input_rows(self, pipeline_artifacts) -> None:
-        model, _ = load_model_bundle(pipeline_artifacts["run_dir"])
+        from taskclf.train.lgbm import encode_categoricals
+
+        model, _, cat_encoders = load_model_bundle(pipeline_artifacts["run_dir"])
         val_df = pipeline_artifacts["val_df"]
 
-        x = val_df[FEATURE_COLUMNS].fillna(0).to_numpy(dtype=np.float64)
+        feat_df, _ = encode_categoricals(val_df[FEATURE_COLUMNS].copy(), cat_encoders)
+        x = feat_df.fillna(0).to_numpy(dtype=np.float64)
         proba = model.predict(x)
         assert proba.shape[0] == len(val_df)
 
     def test_probabilities_sum_to_one(self, pipeline_artifacts) -> None:
-        model, _ = load_model_bundle(pipeline_artifacts["run_dir"])
+        from taskclf.train.lgbm import encode_categoricals
+
+        model, _, cat_encoders = load_model_bundle(pipeline_artifacts["run_dir"])
         val_df = pipeline_artifacts["val_df"]
 
-        x = val_df[FEATURE_COLUMNS].fillna(0).to_numpy(dtype=np.float64)
+        feat_df, _ = encode_categoricals(val_df[FEATURE_COLUMNS].copy(), cat_encoders)
+        x = feat_df.fillna(0).to_numpy(dtype=np.float64)
         proba = model.predict(x)
         row_sums = proba.sum(axis=1)
         np.testing.assert_allclose(row_sums, 1.0, atol=1e-6)
@@ -173,6 +182,6 @@ class TestSchemaAlterationRefusesInference:
             load_model_bundle(run_dir, validate_schema=False)
 
     def test_both_validations_pass_on_valid_bundle(self, pipeline_artifacts) -> None:
-        model, metadata = load_model_bundle(pipeline_artifacts["run_dir"])
+        model, metadata, _ = load_model_bundle(pipeline_artifacts["run_dir"])
         assert metadata.schema_hash == FeatureSchemaV1.SCHEMA_HASH
         assert sorted(metadata.label_set) == sorted(LABEL_SET_V1)

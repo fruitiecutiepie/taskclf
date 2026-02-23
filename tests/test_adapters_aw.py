@@ -41,6 +41,7 @@ class TestEventProtocol:
             is_browser=True,
             is_editor=False,
             is_terminal=False,
+            app_category="browser",
         )
         assert isinstance(ev, Event)
 
@@ -52,46 +53,65 @@ class TestEventProtocol:
 
 class TestNormalizeApp:
     def test_known_browser(self) -> None:
-        app_id, is_browser, is_editor, is_terminal = normalize_app("Firefox")
+        app_id, is_browser, is_editor, is_terminal, cat = normalize_app("Firefox")
         assert app_id == "org.mozilla.firefox"
         assert is_browser is True
         assert is_editor is False
         assert is_terminal is False
+        assert cat == "browser"
 
     def test_known_editor(self) -> None:
-        app_id, is_browser, is_editor, is_terminal = normalize_app("Code")
+        app_id, is_browser, is_editor, is_terminal, cat = normalize_app("Code")
         assert app_id == "com.microsoft.VSCode"
         assert is_editor is True
+        assert cat == "editor"
 
     def test_known_terminal(self) -> None:
-        app_id, _, _, is_terminal = normalize_app("Terminal")
+        app_id, _, _, is_terminal, cat = normalize_app("Terminal")
         assert app_id == "com.apple.Terminal"
         assert is_terminal is True
+        assert cat == "terminal"
 
     def test_case_insensitive(self) -> None:
         assert normalize_app("FIREFOX") == normalize_app("firefox")
         assert normalize_app("Google Chrome") == normalize_app("google chrome")
 
     def test_unknown_app_fallback(self) -> None:
-        app_id, is_browser, is_editor, is_terminal = normalize_app("MyCustomApp")
+        app_id, is_browser, is_editor, is_terminal, cat = normalize_app("MyCustomApp")
         assert app_id == "unknown.mycustomapp"
         assert is_browser is False
         assert is_editor is False
         assert is_terminal is False
+        assert cat == "other"
 
     def test_unknown_app_with_spaces(self) -> None:
-        app_id, _, _, _ = normalize_app("My Custom App")
+        app_id, _, _, _, _ = normalize_app("My Custom App")
         assert app_id == "unknown.my_custom_app"
 
     def test_all_known_apps_have_valid_tuples(self) -> None:
+        from taskclf.adapters.activitywatch.mapping import APP_CATEGORIES
+
         for name, info in KNOWN_APPS.items():
-            assert len(info) == 4
+            assert len(info) == 5
             assert isinstance(info[0], str)
             assert isinstance(info[1], bool)
             assert isinstance(info[2], bool)
             assert isinstance(info[3], bool)
+            assert isinstance(info[4], str)
+            assert info[4] in APP_CATEGORIES, f"{name}: unknown category {info[4]!r}"
             flags = (info[1], info[2], info[3])
             assert sum(flags) <= 1, f"{name}: multiple flags set"
+
+    def test_category_assignments(self) -> None:
+        assert normalize_app("Slack")[4] == "chat"
+        assert normalize_app("Zoom")[4] == "meeting"
+        assert normalize_app("Mail")[4] == "email"
+        assert normalize_app("Obsidian")[4] == "docs"
+        assert normalize_app("Figma")[4] == "design"
+        assert normalize_app("Postman")[4] == "devtools"
+        assert normalize_app("Spotify")[4] == "media"
+        assert normalize_app("Finder")[4] == "file_manager"
+        assert normalize_app("Linear")[4] == "project_mgmt"
 
 
 # ---------------------------------------------------------------------------

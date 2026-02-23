@@ -58,7 +58,7 @@ def trained_bundle(tmp_path_factory: pytest.TempPathFactory):
     labeled = _build_labeled_df()
     train_df, val_df = split_by_day(labeled)
 
-    model, metrics, cm_df, params = train_lgbm(
+    model, metrics, cm_df, params, cat_encoders = train_lgbm(
         train_df, val_df, num_boost_round=5,
     )
 
@@ -69,7 +69,7 @@ def trained_bundle(tmp_path_factory: pytest.TempPathFactory):
         train_date_to=dt.date(2025, 6, 15),
         params=params,
     )
-    run_dir = save_model_bundle(model, metadata, metrics, cm_df, base_dir)
+    run_dir = save_model_bundle(model, metadata, metrics, cm_df, base_dir, cat_encoders=cat_encoders)
 
     return {
         "model": model,
@@ -163,11 +163,11 @@ class TestLoadModelBundleSchemaHashMismatch:
         meta_dict["schema_hash"] = "000000000000"
         (run_dir / "metadata.json").write_text(json.dumps(meta_dict))
 
-        model, loaded_meta = load_model_bundle(run_dir, validate_schema=False)
+        model, loaded_meta, _ = load_model_bundle(run_dir, validate_schema=False)
         assert loaded_meta.schema_hash == "000000000000"
 
     def test_valid_hash_loads_successfully(self, trained_bundle) -> None:
-        model, metadata = load_model_bundle(trained_bundle["run_dir"])
+        model, metadata, _ = load_model_bundle(trained_bundle["run_dir"])
         assert metadata.schema_hash == FeatureSchemaV1.SCHEMA_HASH
 
 
@@ -195,12 +195,12 @@ class TestLoadModelBundleLabelSetMismatch:
         meta_dict["label_set"] = ["coding", "sleeping"]
         (run_dir / "metadata.json").write_text(json.dumps(meta_dict))
 
-        model, loaded_meta = load_model_bundle(
+        model, loaded_meta, _ = load_model_bundle(
             run_dir, validate_schema=False, validate_labels=False,
         )
         assert sorted(loaded_meta.label_set) == ["coding", "sleeping"]
 
     def test_valid_label_set_loads_successfully(self, trained_bundle) -> None:
-        model, metadata = load_model_bundle(trained_bundle["run_dir"])
+        model, metadata, _ = load_model_bundle(trained_bundle["run_dir"])
         from taskclf.core.types import LABEL_SET_V1
         assert sorted(metadata.label_set) == sorted(LABEL_SET_V1)

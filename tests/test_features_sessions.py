@@ -25,6 +25,7 @@ def _ev(ts: dt.datetime, duration: float = 30.0) -> AWEvent:
         is_browser=True,
         is_editor=False,
         is_terminal=False,
+        app_category="browser",
     )
 
 

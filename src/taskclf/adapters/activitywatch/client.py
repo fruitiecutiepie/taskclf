@@ -24,13 +24,14 @@ from pathlib import Path
 from typing import Any
 
 from taskclf.adapters.activitywatch.mapping import normalize_app
-from taskclf.adapters.activitywatch.types import AWEvent
+from taskclf.adapters.activitywatch.types import AWEvent, AWInputEvent
 from taskclf.core.defaults import DEFAULT_AW_TIMEOUT_SECONDS
 from taskclf.core.hashing import salted_hash
 
 logger = logging.getLogger(__name__)
 
 _CURRENTWINDOW_TYPE = "currentwindow"
+_INPUT_TYPE = "os.hid.input"
 
 
 def _parse_timestamp(raw: str) -> datetime:
@@ -47,7 +48,7 @@ def _raw_event_to_aw_event(raw: dict[str, Any], *, title_salt: str) -> AWEvent:
     app_name = data.get("app", "unknown")
     title = data.get("title", "")
 
-    app_id, is_browser, is_editor, is_terminal = normalize_app(app_name)
+    app_id, is_browser, is_editor, is_terminal, app_category = normalize_app(app_name)
     title_hash = salted_hash(title, salt=title_salt)
 
     return AWEvent(
@@ -58,6 +59,7 @@ def _raw_event_to_aw_event(raw: dict[str, Any], *, title_salt: str) -> AWEvent:
         is_browser=is_browser,
         is_editor=is_editor,
         is_terminal=is_terminal,
+        app_category=app_category,
     )
 
 
@@ -102,6 +104,56 @@ def parse_aw_export(path: Path, *, title_salt: str) -> list[AWEvent]:
         )
         for raw_event in bucket.get("events", []):
             events.append(_raw_event_to_aw_event(raw_event, title_salt=title_salt))
+
+    events.sort(key=lambda e: e.timestamp)
+    return events
+
+
+def _raw_to_input_event(raw: dict[str, Any]) -> AWInputEvent:
+    """Convert a single raw AW input event dict into an :class:`AWInputEvent`."""
+    data = raw.get("data", {})
+    return AWInputEvent(
+        timestamp=_parse_timestamp(raw["timestamp"]),
+        duration_seconds=float(raw.get("duration", 0)),
+        presses=int(data.get("presses", 0)),
+        clicks=int(data.get("clicks", 0)),
+        delta_x=int(data.get("deltaX", 0)),
+        delta_y=int(data.get("deltaY", 0)),
+        scroll_x=int(data.get("scrollX", 0)),
+        scroll_y=int(data.get("scrollY", 0)),
+    )
+
+
+def parse_aw_input_export(path: Path) -> list[AWInputEvent]:
+    """Parse ``aw-watcher-input`` events from an AW JSON export.
+
+    Filters for buckets of type ``os.hid.input``.  These events carry
+    only aggregate counts (key presses, mouse clicks, movement, scroll)
+    and contain no sensitive payload.
+
+    Args:
+        path: Path to the AW export JSON file.
+
+    Returns:
+        Sorted (by timestamp) list of :class:`AWInputEvent` instances.
+        Empty if no ``os.hid.input`` bucket exists in the export.
+    """
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    buckets: dict[str, Any] = raw.get("buckets", raw)
+
+    events: list[AWInputEvent] = []
+    for bucket_id, bucket in buckets.items():
+        bucket_type = bucket.get("type", "")
+        if bucket_type != _INPUT_TYPE:
+            continue
+
+        logger.info(
+            "Processing input bucket %s (%d events)",
+            bucket_id,
+            len(bucket.get("events", [])),
+        )
+        for raw_event in bucket.get("events", []):
+            events.append(_raw_to_input_event(raw_event))
 
     events.sort(key=lambda e: e.timestamp)
     return events
@@ -154,6 +206,26 @@ def find_window_bucket_id(host: str) -> str:
     )
 
 
+def find_input_bucket_id(host: str) -> str | None:
+    """Auto-discover the ``aw-watcher-input`` bucket on *host*.
+
+    Unlike :func:`find_window_bucket_id`, this returns ``None`` when no
+    input bucket exists because ``aw-watcher-input`` is an optional
+    watcher that many users don't run.
+
+    Args:
+        host: Base URL of the AW server.
+
+    Returns:
+        The bucket ID whose ``type`` is ``os.hid.input``, or ``None``.
+    """
+    buckets = list_aw_buckets(host)
+    for bucket_id, meta in buckets.items():
+        if meta.get("type") == _INPUT_TYPE:
+            return bucket_id
+    return None
+
+
 def fetch_aw_events(
     host: str,
     bucket_id: str,
@@ -187,5 +259,38 @@ def fetch_aw_events(
     events = [
         _raw_event_to_aw_event(e, title_salt=title_salt) for e in raw_events
     ]
+    events.sort(key=lambda e: e.timestamp)
+    return events
+
+
+def fetch_aw_input_events(
+    host: str,
+    bucket_id: str,
+    start: datetime,
+    end: datetime,
+) -> list[AWInputEvent]:
+    """Fetch input events from the AW REST API for a time range.
+
+    Args:
+        host: Base URL of the AW server.
+        bucket_id: Input bucket to query (e.g.
+            ``"aw-watcher-input_myhostname"``).
+        start: Inclusive start of the query window (UTC).
+        end: Exclusive end of the query window (UTC).
+
+    Returns:
+        Sorted list of :class:`AWInputEvent` instances.
+    """
+    base = host.rstrip("/")
+    start_iso = start.isoformat() + "Z" if start.tzinfo is None else start.isoformat()
+    end_iso = end.isoformat() + "Z" if end.tzinfo is None else end.isoformat()
+
+    url = (
+        f"{base}/api/0/buckets/{bucket_id}/events"
+        f"?start={start_iso}&end={end_iso}"
+    )
+    raw_events: list[dict] = _api_get(url)
+
+    events = [_raw_to_input_event(e) for e in raw_events]
     events.sort(key=lambda e: e.timestamp)
     return events

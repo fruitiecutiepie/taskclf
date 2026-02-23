@@ -32,6 +32,8 @@ class Event(Protocol):
     def is_editor(self) -> bool: ...
     @property
     def is_terminal(self) -> bool: ...
+    @property
+    def app_category(self) -> str: ...
 
 
 LABEL_SET_V1: Final[frozenset[str]] = frozenset({
@@ -56,8 +58,9 @@ class FeatureRow(BaseModel, frozen=True):
 
     - **meta** — ``bucket_start_ts``, ``schema_version``, ``schema_hash``,
       ``source_ids``.
-    - **context** — ``app_id``, ``window_title_hash``, ``is_browser``,
-      ``is_editor``, ``is_terminal``, ``app_switch_count_last_5m``.
+    - **context** — ``app_id``, ``app_category``, ``window_title_hash``,
+      ``is_browser``, ``is_editor``, ``is_terminal``,
+      ``app_switch_count_last_5m``.
     - **keyboard / mouse** — nullable until the corresponding collector is
       wired (``keys_per_min``, ``backspace_ratio``, ``shortcut_rate``,
       ``clicks_per_min``, ``scroll_events_per_min``, ``mouse_distance``).
@@ -75,6 +78,7 @@ class FeatureRow(BaseModel, frozen=True):
 
     # -- context --
     app_id: str = Field(description="Reverse-domain app identifier, e.g. 'com.apple.Terminal'.")
+    app_category: str = Field(description="Semantic app category, e.g. 'editor', 'chat', 'meeting'.")
     window_title_hash: str = Field(description="Hashed window title (never raw).")
     is_browser: bool = Field(description="True if the foreground app is a web browser.")
     is_editor: bool = Field(description="True if the foreground app is a code editor.")
