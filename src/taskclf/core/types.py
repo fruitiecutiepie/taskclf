@@ -1,11 +1,38 @@
-"""Pydantic models for the core data contracts: feature rows and label spans."""
+"""Core data contracts: Event protocol, feature rows, and label spans."""
 
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Final
+from typing import Final, Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field, model_validator
+
+
+@runtime_checkable
+class Event(Protocol):
+    """Normalized activity event contract.
+
+    Any adapter event type that exposes these read-only attributes
+    satisfies the protocol -- no inheritance required.  For example,
+    :class:`~taskclf.adapters.activitywatch.types.AWEvent` is a valid
+    ``Event`` without importing or subclassing this protocol.
+    """
+
+    @property
+    def timestamp(self) -> datetime: ...
+    @property
+    def duration_seconds(self) -> float: ...
+    @property
+    def app_id(self) -> str: ...
+    @property
+    def window_title_hash(self) -> str: ...
+    @property
+    def is_browser(self) -> bool: ...
+    @property
+    def is_editor(self) -> bool: ...
+    @property
+    def is_terminal(self) -> bool: ...
+
 
 LABEL_SET_V1: Final[frozenset[str]] = frozenset({
     "coding",

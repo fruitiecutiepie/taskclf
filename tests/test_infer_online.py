@@ -5,6 +5,7 @@ Covers:
 - Rolling smoothing buffer behavior
 - Segment accumulation over multiple predictions
 - No retraining (model is used read-only)
+- Session tracking across poll cycles (via build_features_from_aw_events)
 """
 
 from __future__ import annotations
@@ -16,11 +17,12 @@ import pandas as pd
 import pytest
 from typer.testing import CliRunner
 
+from taskclf.adapters.activitywatch.types import AWEvent
 from taskclf.cli.main import app
 from taskclf.core.model_io import load_model_bundle
 from taskclf.core.schema import FeatureSchemaV1
 from taskclf.core.types import LABEL_SET_V1, FeatureRow
-from taskclf.features.build import generate_dummy_features
+from taskclf.features.build import build_features_from_aw_events, generate_dummy_features
 from taskclf.infer.online import OnlinePredictor
 
 runner = CliRunner()
@@ -104,3 +106,44 @@ class TestOnlinePredictor:
         segments = predictor.get_segments()
         for seg in segments:
             assert seg.label in LABEL_SET_V1
+
+
+class TestOnlineSessionTracking:
+    """Verify that the online loop's session_start mechanism works.
+
+    The online loop passes session_start to build_features_from_aw_events,
+    resetting it when an idle gap is detected between poll cycles.
+    """
+
+    @staticmethod
+    def _ev(ts: dt.datetime, duration: float = 30.0) -> AWEvent:
+        return AWEvent(
+            timestamp=ts,
+            duration_seconds=duration,
+            app_id="org.mozilla.firefox",
+            window_title_hash="hash",
+            is_browser=True,
+            is_editor=False,
+            is_terminal=False,
+        )
+
+    def test_session_start_persists_across_polls(self) -> None:
+        """Consecutive poll windows with no idle gap share session_start."""
+        session_start = dt.datetime(2026, 2, 23, 10, 0, 0)
+
+        poll_1_events = [self._ev(dt.datetime(2026, 2, 23, 10, 0, 0))]
+        poll_2_events = [self._ev(dt.datetime(2026, 2, 23, 10, 1, 0))]
+
+        rows_1 = build_features_from_aw_events(poll_1_events, session_start=session_start)
+        rows_2 = build_features_from_aw_events(poll_2_events, session_start=session_start)
+
+        assert rows_1[0].session_length_so_far == 0.0
+        assert rows_2[0].session_length_so_far == 1.0
+
+    def test_session_start_resets_after_gap(self) -> None:
+        """After an idle gap the online loop would set a new session_start."""
+        new_session_start = dt.datetime(2026, 2, 23, 11, 0, 0)
+        events = [self._ev(dt.datetime(2026, 2, 23, 11, 2, 0))]
+
+        rows = build_features_from_aw_events(events, session_start=new_session_start)
+        assert rows[0].session_length_so_far == 2.0

@@ -9,12 +9,12 @@ from typing import Sequence
 
 import pandas as pd
 
-from taskclf.adapters.activitywatch.types import AWEvent
 from taskclf.core.hashing import stable_hash
 from taskclf.core.schema import FeatureSchemaV1
 from taskclf.core.store import write_parquet
 from taskclf.core.time import align_to_bucket
-from taskclf.core.types import FeatureRow
+from taskclf.core.types import Event, FeatureRow
+from taskclf.features.sessions import detect_session_boundaries, session_start_for_bucket
 
 _DUMMY_APPS: list[tuple[str, bool, bool, bool]] = [
     # (app_id, is_browser, is_editor, is_terminal)
@@ -84,11 +84,13 @@ def generate_dummy_features(
 
 
 def build_features_from_aw_events(
-    events: Sequence[AWEvent],
+    events: Sequence[Event],
     *,
     bucket_seconds: int = 60,
+    session_start: dt.datetime | None = None,
+    idle_gap_seconds: float = 300.0,
 ) -> list[FeatureRow]:
-    """Convert normalized AW events into per-bucket :class:`FeatureRow` instances.
+    """Convert normalised events into per-bucket :class:`FeatureRow` instances.
 
     Events are grouped into fixed-width time buckets.  For each bucket
     the *dominant* application (longest total duration) is selected and
@@ -96,10 +98,21 @@ def build_features_from_aw_events(
     context columns.  Keyboard and mouse columns are left as ``None``
     because the AW window watcher does not capture those signals.
 
+    Session detection is performed automatically via idle-gap analysis
+    (see :func:`~taskclf.features.sessions.detect_session_boundaries`).
+    In online mode the caller may pass a known *session_start* to
+    avoid resetting the session each poll cycle.
+
     Args:
-        events: Sorted, normalized :class:`AWEvent` list (e.g. from
+        events: Sorted, normalised events satisfying the
+            :class:`~taskclf.core.types.Event` protocol (e.g. from
             :func:`~taskclf.adapters.activitywatch.client.parse_aw_export`).
         bucket_seconds: Width of each time bucket in seconds (default 60).
+        session_start: If provided, used as the session start for every
+            bucket (online mode).  When ``None`` (batch mode), sessions
+            are detected from idle gaps in *events*.
+        idle_gap_seconds: Minimum gap in seconds that splits sessions
+            (only used when *session_start* is ``None``).
 
     Returns:
         Validated ``FeatureRow`` instances ordered by ``bucket_start_ts``.
@@ -107,14 +120,25 @@ def build_features_from_aw_events(
     if not events:
         return []
 
-    bucket_events: dict[dt.datetime, list[AWEvent]] = defaultdict(list)
+    bucket_events: dict[dt.datetime, list[Event]] = defaultdict(list)
     for ev in events:
         bucket_ts = align_to_bucket(ev.timestamp, bucket_seconds)
         bucket_events[bucket_ts].append(ev)
 
     sorted_buckets = sorted(bucket_events.keys())
-    session_start = sorted_buckets[0]
     all_events_sorted = sorted(events, key=lambda e: e.timestamp)
+
+    if session_start is not None:
+        session_starts: list[dt.datetime] = [
+            align_to_bucket(session_start, bucket_seconds),
+        ]
+    else:
+        session_starts = [
+            align_to_bucket(ts, bucket_seconds)
+            for ts in detect_session_boundaries(
+                all_events_sorted, idle_gap_seconds=idle_gap_seconds,
+            )
+        ]
 
     rows: list[FeatureRow] = []
     for bucket_ts in sorted_buckets:
@@ -139,7 +163,8 @@ def build_features_from_aw_events(
             apps_in_window.add(ev.app_id)
         switch_count = max(0, len(apps_in_window) - 1)
 
-        elapsed_minutes = (bucket_ts - session_start).total_seconds() / 60.0
+        cur_session = session_start_for_bucket(bucket_ts, session_starts)
+        elapsed_minutes = (bucket_ts - cur_session).total_seconds() / 60.0
 
         rows.append(
             FeatureRow(

@@ -21,8 +21,28 @@ from taskclf.adapters.activitywatch.client import (
 )
 from taskclf.adapters.activitywatch.mapping import KNOWN_APPS, normalize_app
 from taskclf.adapters.activitywatch.types import AWEvent
+from taskclf.core.types import Event
 
 SALT = "test-salt-42"
+
+
+# ---------------------------------------------------------------------------
+# Event protocol conformance
+# ---------------------------------------------------------------------------
+
+
+class TestEventProtocol:
+    def test_awevent_satisfies_event_protocol(self) -> None:
+        ev = AWEvent(
+            timestamp=datetime(2026, 2, 23, 10, 0, 0),
+            duration_seconds=30.0,
+            app_id="org.mozilla.firefox",
+            window_title_hash="abc123",
+            is_browser=True,
+            is_editor=False,
+            is_terminal=False,
+        )
+        assert isinstance(ev, Event)
 
 
 # ---------------------------------------------------------------------------

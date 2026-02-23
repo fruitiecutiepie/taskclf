@@ -49,6 +49,7 @@ nav:
       - core/logging: api/core/logging.md
       - adapters/activitywatch: api/adapters/activitywatch.md
       - features/build: api/features/build.md
+      - features/sessions: api/features/sessions.md
       - labels/store: api/labels/store.md
       - train/dataset: api/train/dataset.md
       - train/lgbm: api/train/lgbm.md

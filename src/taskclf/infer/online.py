@@ -119,11 +119,16 @@ def run_online_loop(
     title_salt: str = "taskclf-default-salt",
     out_dir: Path = Path("artifacts"),
     bucket_seconds: int = 60,
+    idle_gap_seconds: float = 300.0,
 ) -> None:
     """Poll ActivityWatch, predict, smooth, and write results continuously.
 
     Runs until interrupted with ``KeyboardInterrupt`` (Ctrl+C).  On
     shutdown, writes final segments and prints a summary.
+
+    Session state is tracked across poll cycles.  A new session starts
+    when the gap since the last observed event exceeds
+    *idle_gap_seconds*.
 
     Args:
         model_dir: Path to a trained model bundle directory.
@@ -133,6 +138,7 @@ def run_online_loop(
         title_salt: Salt for hashing window titles.
         out_dir: Directory for ``predictions.csv`` and ``segments.json``.
         bucket_seconds: Width of each time bucket in seconds.
+        idle_gap_seconds: Minimum gap (seconds) that starts a new session.
     """
     from taskclf.adapters.activitywatch.client import (
         fetch_aw_events,
@@ -156,6 +162,10 @@ def run_online_loop(
     pred_path = out_dir / "predictions.csv"
     seg_path = out_dir / "segments.json"
 
+    session_start: datetime | None = None
+    last_event_ts: datetime | None = None
+    idle_gap = timedelta(seconds=idle_gap_seconds)
+
     print(f"Online inference started (polling every {poll_seconds}s, bucket={bucket_id})")
     print("Press Ctrl+C to stop.\n")
 
@@ -178,10 +188,24 @@ def run_online_loop(
                 time.sleep(poll_seconds)
                 continue
 
-            rows = build_features_from_aw_events(events, bucket_seconds=bucket_seconds)
+            earliest_new = min(ev.timestamp for ev in events)
+            if last_event_ts is not None and earliest_new - last_event_ts >= idle_gap:
+                session_start = earliest_new
+                logger.info("New session started at %s", session_start)
+
+            if session_start is None:
+                session_start = earliest_new
+
+            rows = build_features_from_aw_events(
+                events,
+                bucket_seconds=bucket_seconds,
+                session_start=session_start,
+            )
             if not rows:
                 time.sleep(poll_seconds)
                 continue
+
+            last_event_ts = max(ev.timestamp for ev in events)
 
             for row in rows:
                 label = predictor.predict_bucket(row)

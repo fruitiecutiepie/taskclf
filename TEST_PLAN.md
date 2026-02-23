@@ -18,6 +18,8 @@ This plan prioritizes: correctness, privacy invariants, schema stability, reprod
 | Label-to-bucket assignment (TC-LABEL-001, 003, 004) | **Done** | `tests/test_train_dataset.py` |
 | Time-based split (TC-EVAL-001) | **Done** | `tests/test_train_dataset.py` |
 | Bucketization (TC-TIME-001..004) | **Done** | `tests/test_not_yet_implemented.py` |
+| Sessionization (TC-TIME-005..008) | **Done** | `tests/test_features_sessions.py`, `tests/test_features_from_aw.py`, `tests/test_infer_online.py` |
+| Event protocol conformance | **Done** | `tests/test_adapters_aw.py` |
 | Smoothing / segmentization (TC-INF-001..004) | **Done** | `tests/test_not_yet_implemented.py` |
 | Evaluation metrics (TC-EVAL-002..004) | **Done** | `tests/test_core_metrics.py` |
 | Model IO bundle (TC-MODEL-001..004) | **Done** | `tests/test_core_model_io.py` |
@@ -40,7 +42,7 @@ This plan prioritizes: correctness, privacy invariants, schema stability, reprod
 | Adapter retry (TC-REL-002) | Blocked | `tests/test_performance_reliability.py` |
 | Atomic writes (TC-REL-003) | **Done** | `tests/test_performance_reliability.py` |
 
-**Totals**: 157 passed, 12 skipped (blocked on stub modules / unimplemented features).
+**Totals**: 215 passed, 11 skipped (blocked on stub modules / unimplemented features).
 
 **Bug fixed during testing**: `train/dataset.py::assign_labels_to_buckets` crashed on empty `label_spans` (KeyError on empty DataFrame). Added early-return guard.
 
@@ -153,6 +155,10 @@ R3. Reports are derived artifacts and should be regenerable.
 - **TC-TIME-002**: Boundary cases exactly on bucket boundary remain stable. **[DONE]** `tests/test_not_yet_implemented.py`
 - **TC-TIME-003**: Day rollovers (23:59:30 -> next day) handled correctly. **[DONE]** `tests/test_not_yet_implemented.py`
 - **TC-TIME-004**: DST transition safety (if local timestamps appear): conversion to UTC does not create duplicate buckets. **[DONE]** `tests/test_not_yet_implemented.py`
+- **TC-TIME-005**: Session boundary detection splits on idle gap >= threshold. **[DONE]** `tests/test_features_sessions.py`
+- **TC-TIME-006**: `session_length_so_far` resets to 0 at session boundaries. **[DONE]** `tests/test_features_from_aw.py`
+- **TC-TIME-007**: Explicit `session_start` parameter overrides auto-detection. **[DONE]** `tests/test_features_from_aw.py`
+- **TC-TIME-008**: Online session tracking persists across poll cycles. **[DONE]** `tests/test_infer_online.py`
 
 ### 5.4 `features` computation
 - **TC-FEAT-001**: Minimal events produce expected feature row counts. *(covered implicitly by `generate_dummy_features` usage in label/training tests)*

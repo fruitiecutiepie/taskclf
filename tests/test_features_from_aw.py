@@ -124,6 +124,34 @@ class TestBuildFeaturesFromAWEvents:
         last_row = rows[-1]
         assert last_row.app_switch_count_last_5m >= 2
 
+    def test_session_resets_after_idle_gap(self) -> None:
+        """A gap > idle_gap_seconds resets session_length_so_far to 0."""
+        events = [
+            _make_event(dt.datetime(2026, 2, 23, 10, 0, 0), duration=10.0),
+            _make_event(dt.datetime(2026, 2, 23, 10, 1, 0), duration=10.0),
+            # 10-minute gap (>> 5 min default threshold)
+            _make_event(dt.datetime(2026, 2, 23, 10, 12, 0), duration=10.0),
+            _make_event(dt.datetime(2026, 2, 23, 10, 13, 0), duration=10.0),
+        ]
+        rows = build_features_from_aw_events(events)
+        assert len(rows) == 4
+        assert rows[0].session_length_so_far == 0.0
+        assert rows[1].session_length_so_far == 1.0
+        assert rows[2].session_length_so_far == 0.0
+        assert rows[3].session_length_so_far == 1.0
+
+    def test_explicit_session_start_overrides_detection(self) -> None:
+        """When session_start is provided, it is used for all buckets."""
+        forced_start = dt.datetime(2026, 2, 23, 9, 50, 0)
+        events = [
+            _make_event(dt.datetime(2026, 2, 23, 10, 0, 0)),
+            # large gap that would normally split sessions
+            _make_event(dt.datetime(2026, 2, 23, 10, 20, 0)),
+        ]
+        rows = build_features_from_aw_events(events, session_start=forced_start)
+        assert rows[0].session_length_so_far == 10.0
+        assert rows[1].session_length_so_far == 30.0
+
     def test_dominant_app_by_duration(self) -> None:
         base = dt.datetime(2026, 2, 23, 10, 0, 0)
         events = [
