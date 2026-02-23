@@ -1,15 +1,60 @@
 """Typer CLI entrypoint and command definitions for taskclf."""
 
-# TODO: remaining commands:
-# * taskclf ingest aw --input <path> --out data/raw/aw/YYYY-MM-DD/
-# * taskclf infer online --poll-seconds 60
-
 import datetime as dt
 from pathlib import Path
 
 import typer
 
 app = typer.Typer()
+
+# -- ingest -------------------------------------------------------------------
+ingest_app = typer.Typer()
+app.add_typer(ingest_app, name="ingest")
+
+
+@ingest_app.command("aw")
+def ingest_aw_cmd(
+    input_file: str = typer.Option(..., "--input", help="Path to an ActivityWatch export JSON file"),
+    out_dir: str = typer.Option("data/raw/aw", help="Output directory for normalized events (partitioned by date)"),
+    title_salt: str = typer.Option("taskclf-default-salt", "--title-salt", help="Salt for hashing window titles"),
+) -> None:
+    """Ingest an ActivityWatch JSON export into privacy-safe normalized events."""
+    from collections import defaultdict
+
+    import pandas as pd
+
+    from taskclf.adapters.activitywatch.client import parse_aw_export
+    from taskclf.core.store import write_parquet
+
+    input_path = Path(input_file)
+    if not input_path.exists():
+        typer.echo(f"File not found: {input_path}", err=True)
+        raise typer.Exit(code=1)
+
+    events = parse_aw_export(input_path, title_salt=title_salt)
+    if not events:
+        typer.echo("No window events found in the export file.", err=True)
+        raise typer.Exit(code=1)
+
+    by_date: dict[str, list] = defaultdict(list)
+    for ev in events:
+        day = ev.timestamp.date().isoformat()
+        by_date[day].append(ev.model_dump())
+
+    out_base = Path(out_dir)
+    for day, rows in sorted(by_date.items()):
+        df = pd.DataFrame(rows)
+        out_path = out_base / day / "events.parquet"
+        write_parquet(df, out_path)
+        typer.echo(f"  {day}: {len(rows)} events -> {out_path}")
+
+    unique_apps = {ev.app_id for ev in events}
+    date_range = f"{events[0].timestamp.date()} to {events[-1].timestamp.date()}"
+    typer.echo(
+        f"Ingested {len(events)} events across {len(by_date)} day(s) "
+        f"({date_range}), {len(unique_apps)} unique apps"
+    )
+
 
 # -- features ----------------------------------------------------------------
 features_app = typer.Typer()
@@ -211,6 +256,28 @@ def infer_batch_cmd(
 
     typer.echo(f"Predictions: {pred_path}")
     typer.echo(f"Segments:    {seg_path}")
+
+
+@infer_app.command("online")
+def infer_online_cmd(
+    model_dir: str = typer.Option(..., "--model-dir", help="Path to a model run directory"),
+    poll_seconds: int = typer.Option(60, "--poll-seconds", help="Seconds between polling iterations"),
+    aw_host: str = typer.Option("http://localhost:5600", "--aw-host", help="ActivityWatch server URL"),
+    smooth_window: int = typer.Option(3, "--smooth-window", help="Rolling majority smoothing window size"),
+    title_salt: str = typer.Option("taskclf-default-salt", "--title-salt", help="Salt for hashing window titles"),
+    out_dir: str = typer.Option("artifacts", help="Output directory for predictions and segments"),
+) -> None:
+    """Run online inference: poll ActivityWatch, predict, smooth, and report."""
+    from taskclf.infer.online import run_online_loop
+
+    run_online_loop(
+        model_dir=Path(model_dir),
+        aw_host=aw_host,
+        poll_seconds=poll_seconds,
+        smooth_window=smooth_window,
+        title_salt=title_salt,
+        out_dir=Path(out_dir),
+    )
 
 
 # -- report -------------------------------------------------------------------

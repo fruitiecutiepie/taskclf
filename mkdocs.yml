@@ -47,12 +47,14 @@ nav:
       - core/model_io: api/core/model_io.md
       - core/time: api/core/time.md
       - core/logging: api/core/logging.md
+      - adapters/activitywatch: api/adapters/activitywatch.md
       - features/build: api/features/build.md
       - labels/store: api/labels/store.md
       - train/dataset: api/train/dataset.md
       - train/lgbm: api/train/lgbm.md
       - infer/batch: api/infer/batch.md
       - infer/smooth: api/infer/smooth.md
+      - infer/online: api/infer/online.md
       - report/daily: api/report/daily.md
       - report/export: api/report/export.md
       - cli: api/cli/main.md

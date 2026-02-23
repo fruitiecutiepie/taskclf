@@ -1,17 +1,19 @@
 """Feature computation pipeline: build bucketed feature rows and write to parquet."""
 
-# TODO: real event→minute features pipeline (currently dummy data)
-
 from __future__ import annotations
 
 import datetime as dt
+from collections import defaultdict
 from pathlib import Path
+from typing import Sequence
 
 import pandas as pd
 
+from taskclf.adapters.activitywatch.types import AWEvent
 from taskclf.core.hashing import stable_hash
 from taskclf.core.schema import FeatureSchemaV1
 from taskclf.core.store import write_parquet
+from taskclf.core.time import align_to_bucket
 from taskclf.core.types import FeatureRow
 
 _DUMMY_APPS: list[tuple[str, bool, bool, bool]] = [
@@ -75,6 +77,91 @@ def generate_dummy_features(
                 hour_of_day=hour,
                 day_of_week=day_of_week,
                 session_length_so_far=float(i * 5),
+            )
+        )
+
+    return rows
+
+
+def build_features_from_aw_events(
+    events: Sequence[AWEvent],
+    *,
+    bucket_seconds: int = 60,
+) -> list[FeatureRow]:
+    """Convert normalized AW events into per-bucket :class:`FeatureRow` instances.
+
+    Events are grouped into fixed-width time buckets.  For each bucket
+    the *dominant* application (longest total duration) is selected and
+    its metadata (app ID, title hash, flags) is used to populate the
+    context columns.  Keyboard and mouse columns are left as ``None``
+    because the AW window watcher does not capture those signals.
+
+    Args:
+        events: Sorted, normalized :class:`AWEvent` list (e.g. from
+            :func:`~taskclf.adapters.activitywatch.client.parse_aw_export`).
+        bucket_seconds: Width of each time bucket in seconds (default 60).
+
+    Returns:
+        Validated ``FeatureRow`` instances ordered by ``bucket_start_ts``.
+    """
+    if not events:
+        return []
+
+    bucket_events: dict[dt.datetime, list[AWEvent]] = defaultdict(list)
+    for ev in events:
+        bucket_ts = align_to_bucket(ev.timestamp, bucket_seconds)
+        bucket_events[bucket_ts].append(ev)
+
+    sorted_buckets = sorted(bucket_events.keys())
+    session_start = sorted_buckets[0]
+    all_events_sorted = sorted(events, key=lambda e: e.timestamp)
+
+    rows: list[FeatureRow] = []
+    for bucket_ts in sorted_buckets:
+        evs = bucket_events[bucket_ts]
+
+        # Dominant app: highest total duration in this bucket
+        app_durations: dict[str, float] = defaultdict(float)
+        for ev in evs:
+            app_durations[ev.app_id] += ev.duration_seconds
+        dominant_app_id = max(app_durations, key=app_durations.get)  # type: ignore[arg-type]
+
+        dominant_ev = next(ev for ev in evs if ev.app_id == dominant_app_id)
+
+        # App switches in the preceding 5 minutes
+        window_start = bucket_ts - dt.timedelta(minutes=5)
+        apps_in_window: set[str] = set()
+        for ev in all_events_sorted:
+            if ev.timestamp < window_start:
+                continue
+            if ev.timestamp >= bucket_ts + dt.timedelta(seconds=bucket_seconds):
+                break
+            apps_in_window.add(ev.app_id)
+        switch_count = max(0, len(apps_in_window) - 1)
+
+        elapsed_minutes = (bucket_ts - session_start).total_seconds() / 60.0
+
+        rows.append(
+            FeatureRow(
+                bucket_start_ts=bucket_ts,
+                schema_version=FeatureSchemaV1.VERSION,
+                schema_hash=FeatureSchemaV1.SCHEMA_HASH,
+                source_ids=["aw-watcher-window"],
+                app_id=dominant_app_id,
+                window_title_hash=dominant_ev.window_title_hash,
+                is_browser=dominant_ev.is_browser,
+                is_editor=dominant_ev.is_editor,
+                is_terminal=dominant_ev.is_terminal,
+                app_switch_count_last_5m=switch_count,
+                keys_per_min=None,
+                backspace_ratio=None,
+                shortcut_rate=None,
+                clicks_per_min=None,
+                scroll_events_per_min=None,
+                mouse_distance=None,
+                hour_of_day=bucket_ts.hour,
+                day_of_week=bucket_ts.weekday(),
+                session_length_so_far=round(elapsed_minutes, 2),
             )
         )
 

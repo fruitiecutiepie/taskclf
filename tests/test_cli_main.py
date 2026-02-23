@@ -27,9 +27,73 @@ FORBIDDEN_COLUMNS = {"raw_keystrokes", "window_title_raw", "clipboard_content"}
 # TC-E2E-001: taskclf ingest aw
 # ---------------------------------------------------------------------------
 
-@pytest.mark.skip(reason="TODO: remove .skip once `taskclf ingest aw` CLI command is implemented")
-def test_tc_e2e_001_ingest_aw() -> None:
+class TestIngestAW:
     """TC-E2E-001: `taskclf ingest aw` creates data/raw/ artifacts."""
+
+    @pytest.fixture()
+    def aw_export_file(self, tmp_path: Path) -> Path:
+        export = {
+            "buckets": {
+                "aw-watcher-window_testhost": {
+                    "id": "aw-watcher-window_testhost",
+                    "type": "currentwindow",
+                    "client": "aw-watcher-window",
+                    "hostname": "testhost",
+                    "created": "2026-01-01T00:00:00.000000",
+                    "events": [
+                        {"timestamp": "2026-02-23T10:00:00Z", "duration": 30.0,
+                         "data": {"app": "Firefox", "title": "GitHub"}},
+                        {"timestamp": "2026-02-23T10:01:00Z", "duration": 45.0,
+                         "data": {"app": "Code", "title": "main.py"}},
+                        {"timestamp": "2026-02-24T09:00:00Z", "duration": 20.0,
+                         "data": {"app": "Terminal", "title": "bash"}},
+                    ],
+                }
+            }
+        }
+        f = tmp_path / "aw-export.json"
+        f.write_text(json.dumps(export))
+        return f
+
+    def test_exit_code_zero(self, tmp_path: Path, aw_export_file: Path) -> None:
+        out_dir = tmp_path / "raw_aw"
+        result = runner.invoke(app, [
+            "ingest", "aw",
+            "--input", str(aw_export_file),
+            "--out-dir", str(out_dir),
+        ])
+        assert result.exit_code == 0, result.output
+
+    def test_parquet_files_created_per_day(self, tmp_path: Path, aw_export_file: Path) -> None:
+        out_dir = tmp_path / "raw_aw"
+        runner.invoke(app, [
+            "ingest", "aw",
+            "--input", str(aw_export_file),
+            "--out-dir", str(out_dir),
+        ])
+        assert (out_dir / "2026-02-23" / "events.parquet").exists()
+        assert (out_dir / "2026-02-24" / "events.parquet").exists()
+
+    def test_no_raw_titles_in_output(self, tmp_path: Path, aw_export_file: Path) -> None:
+        out_dir = tmp_path / "raw_aw"
+        runner.invoke(app, [
+            "ingest", "aw",
+            "--input", str(aw_export_file),
+            "--out-dir", str(out_dir),
+        ])
+        df = pd.read_parquet(out_dir / "2026-02-23" / "events.parquet")
+        assert "window_title_hash" in df.columns
+        for val in df["window_title_hash"]:
+            assert "GitHub" not in str(val)
+            assert "main.py" not in str(val)
+
+    def test_file_not_found(self, tmp_path: Path) -> None:
+        result = runner.invoke(app, [
+            "ingest", "aw",
+            "--input", str(tmp_path / "nonexistent.json"),
+            "--out-dir", str(tmp_path / "out"),
+        ])
+        assert result.exit_code == 1
 
 
 # ---------------------------------------------------------------------------
