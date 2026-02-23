@@ -81,18 +81,20 @@ uv sync
 uv run taskclf --help
 ```
 
-### Ingest (ActivityWatch) — not yet implemented
-
-> The `ingest` command group is on the roadmap but not yet available.
-> Once implemented, usage will look like:
+### Ingest (ActivityWatch)
 
 ```bash
-# Option 1: ingest from an export directory
-uv run taskclf ingest aw --input /path/to/activitywatch-export --out data/raw
-
-# Option 2: ingest from ActivityWatch API
-uv run taskclf ingest aw --api --out data/raw
+uv run taskclf ingest aw --input /path/to/activitywatch-export.json
 ```
+
+This parses an ActivityWatch JSON export, normalizes app names to reverse-domain
+identifiers, hashes window titles (never storing raw text), and writes
+privacy-safe events to `data/raw/aw/<YYYY-MM-DD>/events.parquet` partitioned by
+date.
+
+Options:
+- `--out-dir` — output directory (default: `data/raw/aw`)
+- `--title-salt` — salt for hashing window titles (default: `taskclf-default-salt`)
 
 ### Build features
 
@@ -118,14 +120,23 @@ uv run taskclf train lgbm --from 2026-02-01 --to 2026-02-16
 uv run taskclf infer batch --model-dir models/<run_id> --from 2026-02-01 --to 2026-02-16
 ```
 
-### Run online inference — not yet implemented
-
-> The `infer online` command is on the roadmap but not yet available.
-> Once implemented, usage will look like:
+### Run online inference
 
 ```bash
-uv run taskclf infer online --poll-seconds 60
+uv run taskclf infer online --model-dir models/<run_id>
 ```
+
+Starts a polling loop that queries a running ActivityWatch server, builds
+feature rows from live window events, predicts task types using a trained model,
+smooths predictions, and writes running outputs to `artifacts/`. Press Ctrl+C
+to stop; a final daily report is generated on shutdown.
+
+Options:
+- `--poll-seconds` — seconds between polls (default: 60)
+- `--aw-host` — ActivityWatch server URL (default: `http://localhost:5600`)
+- `--smooth-window` — rolling majority window size (default: 3)
+- `--title-salt` — salt for hashing window titles (default: `taskclf-default-salt`)
+- `--out-dir` — output directory (default: `artifacts`)
 
 ### Produce report
 

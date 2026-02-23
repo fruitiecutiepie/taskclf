@@ -17,8 +17,9 @@ All modules are auto-generated from source docstrings.
 
 ### Core
 
-- [core/types](api/core/types.md) — Pydantic models for data contracts
+- [core/types](api/core/types.md) — Event protocol, FeatureRow, and LabelSpan contracts
 - [core/schema](api/core/schema.md) — feature schema versioning and validation
+- [core/defaults](api/core/defaults.md) — centralised default constants
 - [core/store](api/core/store.md) — parquet IO primitives
 - [core/hashing](api/core/hashing.md) — deterministic hashing utilities
 - [core/time](api/core/time.md) — time-bucket alignment and range generation
@@ -26,9 +27,14 @@ All modules are auto-generated from source docstrings.
 - [core/model_io](api/core/model_io.md) — model bundle persistence
 - [core/logging](api/core/logging.md) — sanitizing log filter
 
+### Adapters
+
+- [adapters/activitywatch](api/adapters/activitywatch.md) — AW export parsing, REST API client, and app-name normalization
+
 ### Features
 
 - [features/build](api/features/build.md) — feature computation pipeline
+- [features/sessions](api/features/sessions.md) — session boundary detection
 
 ### Labels
 
@@ -43,6 +49,7 @@ All modules are auto-generated from source docstrings.
 
 - [infer/batch](api/infer/batch.md) — batch inference pipeline
 - [infer/smooth](api/infer/smooth.md) — smoothing and segmentization
+- [infer/online](api/infer/online.md) — real-time prediction loop (polls ActivityWatch)
 
 ### Report
 
