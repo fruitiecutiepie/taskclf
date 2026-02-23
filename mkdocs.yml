@@ -38,6 +38,8 @@ plugins:
 
 nav:
   - Home: index.md
+  - Guide:
+      - Usage: guide/usage.md
   - API Reference:
       - core/defaults: api/core/defaults.md
       - core/store: api/core/store.md

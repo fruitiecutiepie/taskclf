@@ -8,6 +8,7 @@ metadata and aggregated input statistics (counts/rates only).
 
 ## Quick links
 
+- [Usage Guide](guide/usage.md) — step-by-step workflows and use cases
 - [CLI Reference](api/cli/main.md) — command-line interface
 - [README](https://github.com/fruitiecutiepie/taskclf#readme) — setup, CLI usage, data flow
 
