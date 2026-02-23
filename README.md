@@ -72,7 +72,7 @@ This repo enforces the following:
 ## Quick Start
 
 ### Requirements
-- Python >= 3.11
+- Python >= 3.14
 - `uv` installed
 
 ### Setup
@@ -81,17 +81,16 @@ uv sync
 uv run taskclf --help
 ```
 
-### Ingest (ActivityWatch)
+### Ingest (ActivityWatch) — not yet implemented
 
-Option 1: ingest from an export directory:
+> The `ingest` command group is on the roadmap but not yet available.
+> Once implemented, usage will look like:
 
 ```bash
+# Option 1: ingest from an export directory
 uv run taskclf ingest aw --input /path/to/activitywatch-export --out data/raw
-```
 
-Option 2: ingest from ActivityWatch API (if supported in your adapter):
-
-```bash
+# Option 2: ingest from ActivityWatch API
 uv run taskclf ingest aw --api --out data/raw
 ```
 
@@ -113,7 +112,16 @@ uv run taskclf labels import --file data/interim/labels.csv
 uv run taskclf train lgbm --from 2026-02-01 --to 2026-02-16
 ```
 
-### Run online inference
+### Run batch inference
+
+```bash
+uv run taskclf infer batch --model-dir models/<run_id> --from 2026-02-01 --to 2026-02-16
+```
+
+### Run online inference — not yet implemented
+
+> The `infer online` command is on the roadmap but not yet available.
+> Once implemented, usage will look like:
 
 ```bash
 uv run taskclf infer online --poll-seconds 60
@@ -122,7 +130,7 @@ uv run taskclf infer online --poll-seconds 60
 ### Produce report
 
 ```bash
-uv run taskclf report daily --date 2026-02-16
+uv run taskclf report daily --segments-file artifacts/segments.json
 ```
 
 ---

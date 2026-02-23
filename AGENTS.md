@@ -97,7 +97,7 @@ Each model run dir contains:
 ---
 
 ## Coding Standards
-- Python >= 3.11
+- Python >= 3.14
 - Prefer pure functions in feature computation and dataset joins.
 - Use `pydantic` (or dataclasses + explicit validators) for contracts.
 - Avoid implicit globals; pass config explicitly or via typed config object.
