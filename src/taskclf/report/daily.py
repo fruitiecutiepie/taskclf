@@ -7,6 +7,7 @@ from typing import Sequence
 
 from pydantic import BaseModel, Field
 
+from taskclf.core.defaults import DEFAULT_BUCKET_SECONDS
 from taskclf.infer.smooth import Segment
 
 
@@ -27,7 +28,7 @@ class DailyReport(BaseModel, frozen=True):
 def build_daily_report(
     segments: Sequence[Segment],
     *,
-    bucket_seconds: int = 60,
+    bucket_seconds: int = DEFAULT_BUCKET_SECONDS,
 ) -> DailyReport:
     """Aggregate *segments* into a :class:`DailyReport`.
 

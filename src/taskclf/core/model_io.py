@@ -13,6 +13,7 @@ import lightgbm as lgb
 import pandas as pd
 from pydantic import BaseModel, Field
 
+from taskclf.core.defaults import DEFAULT_GIT_TIMEOUT_SECONDS
 from taskclf.core.schema import FeatureSchemaV1
 from taskclf.core.types import LABEL_SET_V1
 
@@ -41,7 +42,7 @@ def _current_git_commit() -> str:
             ["git", "rev-parse", "HEAD"],
             capture_output=True,
             text=True,
-            timeout=5,
+            timeout=DEFAULT_GIT_TIMEOUT_SECONDS,
         )
         return result.stdout.strip() if result.returncode == 0 else "unknown"
     except Exception:

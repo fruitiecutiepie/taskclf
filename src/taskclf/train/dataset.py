@@ -7,6 +7,7 @@ from typing import Sequence
 
 import pandas as pd
 
+from taskclf.core.defaults import DEFAULT_TRAIN_SPLIT_RATIO
 from taskclf.core.types import LabelSpan
 
 
@@ -74,7 +75,7 @@ def split_by_day(
             "Only one day of data — using 80/20 chronological split instead of by-day.",
             stacklevel=2,
         )
-        split_idx = int(len(df) * 0.8)
+        split_idx = int(len(df) * DEFAULT_TRAIN_SPLIT_RATIO)
         return df.iloc[:split_idx].copy(), df.iloc[split_idx:].copy()
 
     val_day = days[-1]

@@ -5,6 +5,18 @@ from pathlib import Path
 
 import typer
 
+from taskclf.core.defaults import (
+    DEFAULT_AW_HOST,
+    DEFAULT_DATA_DIR,
+    DEFAULT_MODELS_DIR,
+    DEFAULT_NUM_BOOST_ROUND,
+    DEFAULT_OUT_DIR,
+    DEFAULT_POLL_SECONDS,
+    DEFAULT_RAW_AW_DIR,
+    DEFAULT_SMOOTH_WINDOW,
+    DEFAULT_TITLE_SALT,
+)
+
 app = typer.Typer()
 
 # -- ingest -------------------------------------------------------------------
@@ -15,8 +27,8 @@ app.add_typer(ingest_app, name="ingest")
 @ingest_app.command("aw")
 def ingest_aw_cmd(
     input_file: str = typer.Option(..., "--input", help="Path to an ActivityWatch export JSON file"),
-    out_dir: str = typer.Option("data/raw/aw", help="Output directory for normalized events (partitioned by date)"),
-    title_salt: str = typer.Option("taskclf-default-salt", "--title-salt", help="Salt for hashing window titles"),
+    out_dir: str = typer.Option(DEFAULT_RAW_AW_DIR, help="Output directory for normalized events (partitioned by date)"),
+    title_salt: str = typer.Option(DEFAULT_TITLE_SALT, "--title-salt", help="Salt for hashing window titles"),
 ) -> None:
     """Ingest an ActivityWatch JSON export into privacy-safe normalized events."""
     from collections import defaultdict
@@ -64,7 +76,7 @@ app.add_typer(features_app, name="features")
 @features_app.command("build")
 def features_build(
     date: str = typer.Option(..., help="Date in YYYY-MM-DD format"),
-    data_dir: str = typer.Option("data/processed", help="Processed data directory"),
+    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory"),
 ) -> None:
     """Build per-minute feature rows for a given date and write to parquet."""
     from taskclf.features.build import build_features_for_date
@@ -82,7 +94,7 @@ app.add_typer(labels_app, name="labels")
 @labels_app.command("import")
 def labels_import_cmd(
     file: str = typer.Option(..., "--file", help="Path to labels CSV (start_ts, end_ts, label, provenance)"),
-    data_dir: str = typer.Option("data/processed", help="Processed data directory"),
+    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory"),
 ) -> None:
     """Import label spans from a CSV file and write to parquet."""
     from taskclf.labels.store import import_labels_from_csv, write_label_spans
@@ -110,9 +122,9 @@ def train_lgbm_cmd(
     date_from: str = typer.Option(..., "--from", help="Start date (YYYY-MM-DD)"),
     date_to: str = typer.Option(..., "--to", help="End date (YYYY-MM-DD, inclusive)"),
     synthetic: bool = typer.Option(False, "--synthetic", help="Generate dummy features + labels instead of reading from disk"),
-    models_dir: str = typer.Option("models", help="Base directory for model bundles"),
-    data_dir: str = typer.Option("data/processed", help="Processed data directory"),
-    num_boost_round: int = typer.Option(100, help="Number of boosting rounds"),
+    models_dir: str = typer.Option(DEFAULT_MODELS_DIR, help="Base directory for model bundles"),
+    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory"),
+    num_boost_round: int = typer.Option(DEFAULT_NUM_BOOST_ROUND, help="Number of boosting rounds"),
 ) -> None:
     """Train a LightGBM multiclass model and save the model bundle."""
     import pandas as pd
@@ -199,9 +211,9 @@ def infer_batch_cmd(
     date_from: str = typer.Option(..., "--from", help="Start date (YYYY-MM-DD)"),
     date_to: str = typer.Option(..., "--to", help="End date (YYYY-MM-DD, inclusive)"),
     synthetic: bool = typer.Option(False, "--synthetic", help="Generate dummy features instead of reading from disk"),
-    data_dir: str = typer.Option("data/processed", help="Processed data directory"),
-    out_dir: str = typer.Option("artifacts", help="Output directory for predictions and segments"),
-    smooth_window: int = typer.Option(3, help="Rolling majority smoothing window size"),
+    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory"),
+    out_dir: str = typer.Option(DEFAULT_OUT_DIR, help="Output directory for predictions and segments"),
+    smooth_window: int = typer.Option(DEFAULT_SMOOTH_WINDOW, help="Rolling majority smoothing window size"),
 ) -> None:
     """Run batch inference: predict, smooth, and segmentize."""
     import pandas as pd
@@ -261,11 +273,11 @@ def infer_batch_cmd(
 @infer_app.command("online")
 def infer_online_cmd(
     model_dir: str = typer.Option(..., "--model-dir", help="Path to a model run directory"),
-    poll_seconds: int = typer.Option(60, "--poll-seconds", help="Seconds between polling iterations"),
-    aw_host: str = typer.Option("http://localhost:5600", "--aw-host", help="ActivityWatch server URL"),
-    smooth_window: int = typer.Option(3, "--smooth-window", help="Rolling majority smoothing window size"),
-    title_salt: str = typer.Option("taskclf-default-salt", "--title-salt", help="Salt for hashing window titles"),
-    out_dir: str = typer.Option("artifacts", help="Output directory for predictions and segments"),
+    poll_seconds: int = typer.Option(DEFAULT_POLL_SECONDS, "--poll-seconds", help="Seconds between polling iterations"),
+    aw_host: str = typer.Option(DEFAULT_AW_HOST, "--aw-host", help="ActivityWatch server URL"),
+    smooth_window: int = typer.Option(DEFAULT_SMOOTH_WINDOW, "--smooth-window", help="Rolling majority smoothing window size"),
+    title_salt: str = typer.Option(DEFAULT_TITLE_SALT, "--title-salt", help="Salt for hashing window titles"),
+    out_dir: str = typer.Option(DEFAULT_OUT_DIR, help="Output directory for predictions and segments"),
 ) -> None:
     """Run online inference: poll ActivityWatch, predict, smooth, and report."""
     from taskclf.infer.online import run_online_loop
@@ -288,7 +300,7 @@ app.add_typer(report_app, name="report")
 @report_app.command("daily")
 def report_daily_cmd(
     segments_file: str = typer.Option(..., "--segments-file", help="Path to segments.json"),
-    out_dir: str = typer.Option("artifacts", help="Output directory for report files"),
+    out_dir: str = typer.Option(DEFAULT_OUT_DIR, help="Output directory for report files"),
 ) -> None:
     """Generate a daily report from a segments JSON file."""
     from taskclf.infer.batch import read_segments_json

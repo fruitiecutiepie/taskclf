@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Sequence
 
+from taskclf.core.defaults import DEFAULT_BUCKET_SECONDS, DEFAULT_SMOOTH_WINDOW
+
 
 @dataclass(frozen=True)
 class Segment:
@@ -22,7 +24,7 @@ class Segment:
     bucket_count: int
 
 
-def rolling_majority(labels: Sequence[str], window: int = 3) -> list[str]:
+def rolling_majority(labels: Sequence[str], window: int = DEFAULT_SMOOTH_WINDOW) -> list[str]:
     """Smooth *labels* with a centred sliding-window majority vote.
 
     For each position the most common label within the window wins.
@@ -58,7 +60,7 @@ def rolling_majority(labels: Sequence[str], window: int = 3) -> list[str]:
 def segmentize(
     bucket_starts: Sequence[datetime],
     labels: Sequence[str],
-    bucket_seconds: int = 60,
+    bucket_seconds: int = DEFAULT_BUCKET_SECONDS,
 ) -> list[Segment]:
     """Merge runs of identical labels into :class:`Segment` spans.
 

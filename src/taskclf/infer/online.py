@@ -17,6 +17,15 @@ import lightgbm as lgb
 import numpy as np
 from sklearn.preprocessing import LabelEncoder
 
+from taskclf.core.defaults import (
+    DEFAULT_AW_HOST,
+    DEFAULT_BUCKET_SECONDS,
+    DEFAULT_IDLE_GAP_SECONDS,
+    DEFAULT_OUT_DIR,
+    DEFAULT_POLL_SECONDS,
+    DEFAULT_SMOOTH_WINDOW,
+    DEFAULT_TITLE_SALT,
+)
 from taskclf.core.model_io import ModelMetadata, load_model_bundle
 from taskclf.core.types import LABEL_SET_V1, FeatureRow
 from taskclf.infer.batch import write_segments_json
@@ -39,8 +48,8 @@ class OnlinePredictor:
         model: lgb.Booster,
         metadata: ModelMetadata,
         *,
-        smooth_window: int = 3,
-        bucket_seconds: int = 60,
+        smooth_window: int = DEFAULT_SMOOTH_WINDOW,
+        bucket_seconds: int = DEFAULT_BUCKET_SECONDS,
     ) -> None:
         self._model = model
         self._metadata = metadata
@@ -113,13 +122,13 @@ def _append_prediction_csv(path: Path, bucket_ts: datetime, label: str) -> None:
 def run_online_loop(
     *,
     model_dir: Path,
-    aw_host: str = "http://localhost:5600",
-    poll_seconds: int = 60,
-    smooth_window: int = 3,
-    title_salt: str = "taskclf-default-salt",
-    out_dir: Path = Path("artifacts"),
-    bucket_seconds: int = 60,
-    idle_gap_seconds: float = 300.0,
+    aw_host: str = DEFAULT_AW_HOST,
+    poll_seconds: int = DEFAULT_POLL_SECONDS,
+    smooth_window: int = DEFAULT_SMOOTH_WINDOW,
+    title_salt: str = DEFAULT_TITLE_SALT,
+    out_dir: Path = Path(DEFAULT_OUT_DIR),
+    bucket_seconds: int = DEFAULT_BUCKET_SECONDS,
+    idle_gap_seconds: float = DEFAULT_IDLE_GAP_SECONDS,
 ) -> None:
     """Poll ActivityWatch, predict, smooth, and write results continuously.
 

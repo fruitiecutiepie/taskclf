@@ -10,12 +10,12 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Sequence
 
-_DEFAULT_BUCKET_SECONDS = 60
+from taskclf.core.defaults import DEFAULT_BUCKET_SECONDS
 
 
 def align_to_bucket(
     ts: datetime,
-    bucket_seconds: int = _DEFAULT_BUCKET_SECONDS,
+    bucket_seconds: int = DEFAULT_BUCKET_SECONDS,
 ) -> datetime:
     """Floor *ts* to the nearest bucket boundary.
 
@@ -42,7 +42,7 @@ def align_to_bucket(
 def generate_bucket_range(
     start: datetime,
     end: datetime,
-    bucket_seconds: int = _DEFAULT_BUCKET_SECONDS,
+    bucket_seconds: int = DEFAULT_BUCKET_SECONDS,
 ) -> list[datetime]:
     """Enumerate bucket-start timestamps from *start* to *end* (exclusive).
 

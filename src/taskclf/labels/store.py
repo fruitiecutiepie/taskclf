@@ -8,6 +8,7 @@ from typing import Final, Sequence
 
 import pandas as pd
 
+from taskclf.core.defaults import DEFAULT_BUCKET_SECONDS, DEFAULT_DUMMY_ROWS
 from taskclf.core.store import read_parquet, write_parquet
 from taskclf.core.types import LabelSpan
 
@@ -107,7 +108,7 @@ def import_labels_from_csv(path: Path) -> list[LabelSpan]:
     return spans
 
 
-def generate_dummy_labels(date: dt.date, n_rows: int = 10) -> list[LabelSpan]:
+def generate_dummy_labels(date: dt.date, n_rows: int = DEFAULT_DUMMY_ROWS) -> list[LabelSpan]:
     """Create synthetic label spans aligned to the dummy feature timestamps.
 
     Each span covers exactly one minute bucket, mirroring the timestamps
@@ -126,7 +127,7 @@ def generate_dummy_labels(date: dt.date, n_rows: int = 10) -> list[LabelSpan]:
         hour = 9 + (i * 8 // max(n_rows, 1))
         minute = (i * 7) % 60
         start = dt.datetime(date.year, date.month, date.day, hour, minute)
-        end = start + dt.timedelta(seconds=60)
+        end = start + dt.timedelta(seconds=DEFAULT_BUCKET_SECONDS)
 
         app_id = _DUMMY_APPS_ORDER[i % len(_DUMMY_APPS_ORDER)]
         label = _APP_LABEL_MAP[app_id]

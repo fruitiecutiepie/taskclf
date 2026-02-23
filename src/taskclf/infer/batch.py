@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import LabelEncoder
 
+from taskclf.core.defaults import DEFAULT_BUCKET_SECONDS, DEFAULT_SMOOTH_WINDOW
 from taskclf.core.types import LABEL_SET_V1
 from taskclf.infer.smooth import Segment, rolling_majority, segmentize
 from taskclf.train.lgbm import FEATURE_COLUMNS
@@ -43,8 +44,8 @@ def run_batch_inference(
     model: lgb.Booster,
     features_df: pd.DataFrame,
     *,
-    smooth_window: int = 3,
-    bucket_seconds: int = 60,
+    smooth_window: int = DEFAULT_SMOOTH_WINDOW,
+    bucket_seconds: int = DEFAULT_BUCKET_SECONDS,
 ) -> tuple[list[str], list[Segment]]:
     """Predict, smooth, and segmentize a batch of feature rows.
 

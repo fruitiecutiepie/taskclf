@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import LabelEncoder
 
+from taskclf.core.defaults import DEFAULT_NUM_BOOST_ROUND
 from taskclf.core.metrics import compute_metrics, confusion_matrix_df
 from taskclf.core.types import LABEL_SET_V1
 
@@ -73,7 +74,7 @@ def train_lgbm(
     train_df: pd.DataFrame,
     val_df: pd.DataFrame,
     *,
-    num_boost_round: int = 100,
+    num_boost_round: int = DEFAULT_NUM_BOOST_ROUND,
     extra_params: dict[str, Any] | None = None,
 ) -> tuple[lgb.Booster, dict, pd.DataFrame, dict[str, Any]]:
     """Train a LightGBM multiclass model and evaluate on the val set.

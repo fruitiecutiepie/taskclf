@@ -9,6 +9,12 @@ from typing import Sequence
 
 import pandas as pd
 
+from taskclf.core.defaults import (
+    DEFAULT_APP_SWITCH_WINDOW_MINUTES,
+    DEFAULT_BUCKET_SECONDS,
+    DEFAULT_DUMMY_ROWS,
+    DEFAULT_IDLE_GAP_SECONDS,
+)
 from taskclf.core.hashing import stable_hash
 from taskclf.core.schema import FeatureSchemaV1
 from taskclf.core.store import write_parquet
@@ -32,7 +38,7 @@ _DUMMY_APPS: list[tuple[str, bool, bool, bool]] = [
 
 
 def generate_dummy_features(
-    date: dt.date, n_rows: int = 10
+    date: dt.date, n_rows: int = DEFAULT_DUMMY_ROWS
 ) -> list[FeatureRow]:
     """Create *n_rows* synthetic FeatureRow instances spanning *date*.
 
@@ -86,9 +92,9 @@ def generate_dummy_features(
 def build_features_from_aw_events(
     events: Sequence[Event],
     *,
-    bucket_seconds: int = 60,
+    bucket_seconds: int = DEFAULT_BUCKET_SECONDS,
     session_start: dt.datetime | None = None,
-    idle_gap_seconds: float = 300.0,
+    idle_gap_seconds: float = DEFAULT_IDLE_GAP_SECONDS,
 ) -> list[FeatureRow]:
     """Convert normalised events into per-bucket :class:`FeatureRow` instances.
 
@@ -153,7 +159,7 @@ def build_features_from_aw_events(
         dominant_ev = next(ev for ev in evs if ev.app_id == dominant_app_id)
 
         # App switches in the preceding 5 minutes
-        window_start = bucket_ts - dt.timedelta(minutes=5)
+        window_start = bucket_ts - dt.timedelta(minutes=DEFAULT_APP_SWITCH_WINDOW_MINUTES)
         apps_in_window: set[str] = set()
         for ev in all_events_sorted:
             if ev.timestamp < window_start:

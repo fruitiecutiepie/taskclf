@@ -25,6 +25,7 @@ from typing import Any
 
 from taskclf.adapters.activitywatch.mapping import normalize_app
 from taskclf.adapters.activitywatch.types import AWEvent
+from taskclf.core.defaults import DEFAULT_AW_TIMEOUT_SECONDS
 from taskclf.core.hashing import salted_hash
 
 logger = logging.getLogger(__name__)
@@ -114,7 +115,7 @@ def parse_aw_export(path: Path, *, title_salt: str) -> list[AWEvent]:
 def _api_get(url: str) -> Any:
     """Issue a GET request and return the parsed JSON body."""
     req = urllib.request.Request(url, headers={"Accept": "application/json"})
-    with urllib.request.urlopen(req, timeout=10) as resp:
+    with urllib.request.urlopen(req, timeout=DEFAULT_AW_TIMEOUT_SECONDS) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
 

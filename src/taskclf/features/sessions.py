@@ -12,14 +12,13 @@ import bisect
 from datetime import datetime, timedelta
 from typing import Sequence
 
+from taskclf.core.defaults import DEFAULT_IDLE_GAP_SECONDS
 from taskclf.core.types import Event
-
-_DEFAULT_IDLE_GAP_SECONDS: float = 300.0
 
 
 def detect_session_boundaries(
     events: Sequence[Event],
-    idle_gap_seconds: float = _DEFAULT_IDLE_GAP_SECONDS,
+    idle_gap_seconds: float = DEFAULT_IDLE_GAP_SECONDS,
 ) -> list[datetime]:
     """Return the start timestamp of each detected session.
 

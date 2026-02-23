@@ -39,6 +39,7 @@ plugins:
 nav:
   - Home: index.md
   - API Reference:
+      - core/defaults: api/core/defaults.md
       - core/store: api/core/store.md
       - core/types: api/core/types.md
       - core/schema: api/core/schema.md
