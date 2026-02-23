@@ -27,13 +27,16 @@ This plan prioritizes: correctness, privacy invariants, schema stability, reprod
 | Advanced features (TC-FEAT-002..005) | Blocked | `tests/test_not_yet_implemented.py` |
 | Adapter ingest integration (TC-INT-001..003) | Blocked | `tests/test_not_yet_implemented.py` |
 | Features -> labels pipeline (TC-INT-010..011) | **Done** | `tests/test_integration_features_labels.py` |
-| Report generation (TC-INT-030..031) | Blocked | `tests/test_not_yet_implemented.py` |
+| Report generation (TC-INT-030..031) | **Done** | `tests/test_not_yet_implemented.py` |
 | E2E CLI: features build (TC-E2E-002) | **Done** | `tests/test_cli_main.py` |
+| E2E CLI: labels import (TC-E2E-003) | **Done** | `tests/test_cli_main.py` |
 | E2E CLI: train lgbm (TC-E2E-004) | **Done** | `tests/test_cli_main.py` |
-| E2E CLI: remaining commands (TC-E2E-001,003,005,006) | Blocked | `tests/test_cli_main.py` |
+| E2E CLI: infer batch (TC-E2E-005) | **Done** | `tests/test_cli_main.py` |
+| E2E CLI: report daily (TC-E2E-006) | **Done** | `tests/test_cli_main.py` |
+| E2E CLI: ingest aw (TC-E2E-001) | Blocked | `tests/test_cli_main.py` |
 | Performance / reliability (TC-PERF/REL-*) | Not yet tested | -- |
 
-**Totals**: 132 passed, 14 skipped (blocked on stub modules / unimplemented features).
+**Totals**: 150 passed, 9 skipped (blocked on stub modules / unimplemented features).
 
 **Bug fixed during testing**: `train/dataset.py::assign_labels_to_buckets` crashed on empty `label_spans` (KeyError on empty DataFrame). Added early-return guard.
 
@@ -189,8 +192,8 @@ R3. Reports are derived artifacts and should be regenerable.
 - **TC-INT-022**: Alter schema (add/remove feature) causes inference to refuse. **[DONE]** `tests/test_integration_train_infer.py`
 
 ### 6.4 Report generation
-- **TC-INT-030**: Daily report totals sum to total active time (within expected tolerance). **[BLOCKED: `report/daily.py` not implemented]** `tests/test_not_yet_implemented.py`
-- **TC-INT-031**: Report does not leak raw titles or sensitive data. **[BLOCKED: `report/daily.py` and `report/export.py` not implemented]** `tests/test_not_yet_implemented.py`
+- **TC-INT-030**: Daily report totals sum to total active time (within expected tolerance). **[DONE]** `tests/test_not_yet_implemented.py`
+- **TC-INT-031**: Report does not leak raw titles or sensitive data. **[DONE]** `tests/test_not_yet_implemented.py`
 
 ---
 
@@ -199,10 +202,10 @@ R3. Reports are derived artifacts and should be regenerable.
 Use `pytest` to invoke CLI commands on fixtures (temp dirs):
 - **TC-E2E-001**: `taskclf ingest aw ...` -> creates `data/raw/...` **[BLOCKED: CLI command not implemented]** `tests/test_cli_main.py`
 - **TC-E2E-002**: `taskclf features build --date ...` -> creates processed parquet **[DONE]** `tests/test_cli_main.py`
-- **TC-E2E-003**: `taskclf labels import ...` -> creates labels parquet **[BLOCKED: CLI command not implemented]** `tests/test_cli_main.py`
+- **TC-E2E-003**: `taskclf labels import ...` -> creates labels parquet **[DONE]** `tests/test_cli_main.py`
 - **TC-E2E-004**: `taskclf train lgbm ...` -> creates new model run dir **[DONE]** `tests/test_cli_main.py`
-- **TC-E2E-005**: `taskclf infer batch ...` -> creates predictions and segments **[BLOCKED: CLI command not implemented]** `tests/test_cli_main.py`
-- **TC-E2E-006**: `taskclf report daily ...` -> creates report outputs **[BLOCKED: CLI command not implemented]** `tests/test_cli_main.py`
+- **TC-E2E-005**: `taskclf infer batch ...` -> creates predictions and segments **[DONE]** `tests/test_cli_main.py`
+- **TC-E2E-006**: `taskclf report daily ...` -> creates report outputs **[DONE]** `tests/test_cli_main.py`
 
 Assertions:
 - exit codes

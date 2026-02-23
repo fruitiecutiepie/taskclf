@@ -67,6 +67,46 @@ def read_label_spans(path: Path) -> list[LabelSpan]:
     return [LabelSpan.model_validate(row) for row in df.to_dict(orient="records")]
 
 
+def import_labels_from_csv(path: Path) -> list[LabelSpan]:
+    """Read label spans from a CSV file and validate each row.
+
+    Expected columns: ``start_ts``, ``end_ts``, ``label``, ``provenance``.
+    Timestamps are parsed via ``pd.to_datetime`` so ISO-8601 and common
+    date-time formats are accepted.
+
+    Args:
+        path: Path to an existing CSV file.
+
+    Returns:
+        List of validated ``LabelSpan`` instances.
+
+    Raises:
+        ValueError: If required columns are missing or any row fails
+            ``LabelSpan`` validation.
+    """
+    df = pd.read_csv(path)
+
+    required = {"start_ts", "end_ts", "label", "provenance"}
+    missing = required - set(df.columns)
+    if missing:
+        raise ValueError(f"CSV missing required columns: {sorted(missing)}")
+
+    df["start_ts"] = pd.to_datetime(df["start_ts"])
+    df["end_ts"] = pd.to_datetime(df["end_ts"])
+
+    spans: list[LabelSpan] = []
+    for i, row in df.iterrows():
+        spans.append(
+            LabelSpan(
+                start_ts=row["start_ts"].to_pydatetime(),
+                end_ts=row["end_ts"].to_pydatetime(),
+                label=row["label"],
+                provenance=row["provenance"],
+            )
+        )
+    return spans
+
+
 def generate_dummy_labels(date: dt.date, n_rows: int = 10) -> list[LabelSpan]:
     """Create synthetic label spans aligned to the dummy feature timestamps.
 

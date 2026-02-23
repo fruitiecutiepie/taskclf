@@ -87,9 +87,64 @@ class TestFeaturesBuild:
 # TC-E2E-003: taskclf labels import
 # ---------------------------------------------------------------------------
 
-@pytest.mark.skip(reason="TODO: remove .skip once `taskclf labels import` CLI command is implemented")
-def test_tc_e2e_003_labels_import() -> None:
+class TestLabelsImport:
     """TC-E2E-003: `taskclf labels import` creates labels parquet."""
+
+    @pytest.fixture()
+    def labels_csv(self, tmp_path: Path) -> Path:
+        csv_path = tmp_path / "labels.csv"
+        csv_path.write_text(
+            "start_ts,end_ts,label,provenance\n"
+            "2025-06-15 09:00:00,2025-06-15 10:00:00,coding,manual\n"
+            "2025-06-15 10:00:00,2025-06-15 11:00:00,writing_docs,manual\n"
+            "2025-06-15 11:00:00,2025-06-15 12:00:00,browsing_research,manual\n"
+        )
+        return csv_path
+
+    def test_exit_code_zero(self, tmp_path: Path, labels_csv: Path) -> None:
+        data_dir = tmp_path / "processed"
+        result = runner.invoke(app, [
+            "labels", "import",
+            "--file", str(labels_csv),
+            "--data-dir", str(data_dir),
+        ])
+        assert result.exit_code == 0, result.output
+
+    def test_parquet_file_created(self, tmp_path: Path, labels_csv: Path) -> None:
+        data_dir = tmp_path / "processed"
+        runner.invoke(app, [
+            "labels", "import",
+            "--file", str(labels_csv),
+            "--data-dir", str(data_dir),
+        ])
+        expected = data_dir / "labels_v1" / "labels.parquet"
+        assert expected.exists()
+
+    def test_round_trip_preserves_spans(self, tmp_path: Path, labels_csv: Path) -> None:
+        from taskclf.labels.store import read_label_spans
+
+        data_dir = tmp_path / "processed"
+        runner.invoke(app, [
+            "labels", "import",
+            "--file", str(labels_csv),
+            "--data-dir", str(data_dir),
+        ])
+        spans = read_label_spans(data_dir / "labels_v1" / "labels.parquet")
+        assert len(spans) == 3
+        assert spans[0].label == "coding"
+        assert spans[1].label == "writing_docs"
+        assert spans[2].label == "browsing_research"
+
+    def test_no_forbidden_columns_in_parquet(self, tmp_path: Path, labels_csv: Path) -> None:
+        data_dir = tmp_path / "processed"
+        runner.invoke(app, [
+            "labels", "import",
+            "--file", str(labels_csv),
+            "--data-dir", str(data_dir),
+        ])
+        df = pd.read_parquet(data_dir / "labels_v1" / "labels.parquet")
+        leaked = FORBIDDEN_COLUMNS & set(df.columns)
+        assert not leaked, f"Forbidden columns in output: {leaked}"
 
 
 # ---------------------------------------------------------------------------
@@ -155,15 +210,208 @@ class TestTrainLgbm:
 # TC-E2E-005: taskclf infer batch
 # ---------------------------------------------------------------------------
 
-@pytest.mark.skip(reason="TODO: remove .skip once `taskclf infer batch` CLI command is implemented")
-def test_tc_e2e_005_infer_batch() -> None:
+class TestInferBatch:
     """TC-E2E-005: `taskclf infer batch` creates predictions and segments."""
+
+    @pytest.fixture()
+    def trained_model_dir(self, tmp_path: Path) -> Path:
+        """Train a model first so we have a bundle to infer with."""
+        models_dir = tmp_path / "models"
+        result = runner.invoke(app, [
+            "train", "lgbm",
+            "--from", "2025-06-14",
+            "--to", "2025-06-15",
+            "--synthetic",
+            "--models-dir", str(models_dir),
+            "--num-boost-round", "5",
+        ])
+        assert result.exit_code == 0, result.output
+        return next(models_dir.iterdir())
+
+    def test_exit_code_zero(self, tmp_path: Path, trained_model_dir: Path) -> None:
+        out_dir = tmp_path / "artifacts"
+        result = runner.invoke(app, [
+            "infer", "batch",
+            "--model-dir", str(trained_model_dir),
+            "--from", "2025-06-15",
+            "--to", "2025-06-15",
+            "--synthetic",
+            "--out-dir", str(out_dir),
+        ])
+        assert result.exit_code == 0, result.output
+
+    def test_predictions_csv_created(self, tmp_path: Path, trained_model_dir: Path) -> None:
+        out_dir = tmp_path / "artifacts"
+        runner.invoke(app, [
+            "infer", "batch",
+            "--model-dir", str(trained_model_dir),
+            "--from", "2025-06-15",
+            "--to", "2025-06-15",
+            "--synthetic",
+            "--out-dir", str(out_dir),
+        ])
+        assert (out_dir / "predictions.csv").exists()
+
+    def test_segments_json_created(self, tmp_path: Path, trained_model_dir: Path) -> None:
+        out_dir = tmp_path / "artifacts"
+        runner.invoke(app, [
+            "infer", "batch",
+            "--model-dir", str(trained_model_dir),
+            "--from", "2025-06-15",
+            "--to", "2025-06-15",
+            "--synthetic",
+            "--out-dir", str(out_dir),
+        ])
+        assert (out_dir / "segments.json").exists()
+
+    def test_predictions_have_expected_columns(self, tmp_path: Path, trained_model_dir: Path) -> None:
+        out_dir = tmp_path / "artifacts"
+        runner.invoke(app, [
+            "infer", "batch",
+            "--model-dir", str(trained_model_dir),
+            "--from", "2025-06-15",
+            "--to", "2025-06-15",
+            "--synthetic",
+            "--out-dir", str(out_dir),
+        ])
+        df = pd.read_csv(out_dir / "predictions.csv")
+        assert "bucket_start_ts" in df.columns
+        assert "predicted_label" in df.columns
+
+    def test_predicted_labels_are_valid(self, tmp_path: Path, trained_model_dir: Path) -> None:
+        out_dir = tmp_path / "artifacts"
+        runner.invoke(app, [
+            "infer", "batch",
+            "--model-dir", str(trained_model_dir),
+            "--from", "2025-06-15",
+            "--to", "2025-06-15",
+            "--synthetic",
+            "--out-dir", str(out_dir),
+        ])
+        df = pd.read_csv(out_dir / "predictions.csv")
+        invalid = set(df["predicted_label"].unique()) - set(LABEL_SET_V1)
+        assert not invalid, f"Invalid predicted labels: {invalid}"
+
+    def test_segments_are_ordered_and_nonoverlapping(self, tmp_path: Path, trained_model_dir: Path) -> None:
+        out_dir = tmp_path / "artifacts"
+        runner.invoke(app, [
+            "infer", "batch",
+            "--model-dir", str(trained_model_dir),
+            "--from", "2025-06-15",
+            "--to", "2025-06-15",
+            "--synthetic",
+            "--out-dir", str(out_dir),
+        ])
+        segments = json.loads((out_dir / "segments.json").read_text())
+        assert len(segments) > 0
+        for i in range(len(segments) - 1):
+            assert segments[i]["end_ts"] <= segments[i + 1]["start_ts"]
+
+    def test_no_sensitive_fields_in_outputs(self, tmp_path: Path, trained_model_dir: Path) -> None:
+        out_dir = tmp_path / "artifacts"
+        runner.invoke(app, [
+            "infer", "batch",
+            "--model-dir", str(trained_model_dir),
+            "--from", "2025-06-15",
+            "--to", "2025-06-15",
+            "--synthetic",
+            "--out-dir", str(out_dir),
+        ])
+        for fname in ("predictions.csv", "segments.json"):
+            raw = (out_dir / fname).read_text()
+            for forbidden in ("raw_keystrokes", "window_title_raw", "clipboard"):
+                assert forbidden not in raw, f"Sensitive field {forbidden!r} in {fname}"
 
 
 # ---------------------------------------------------------------------------
 # TC-E2E-006: taskclf report daily
 # ---------------------------------------------------------------------------
 
-@pytest.mark.skip(reason="TODO: remove .skip once `taskclf report daily` CLI command is implemented")
-def test_tc_e2e_006_report_daily() -> None:
+class TestReportDaily:
     """TC-E2E-006: `taskclf report daily` creates report outputs."""
+
+    @pytest.fixture()
+    def segments_file(self, tmp_path: Path) -> Path:
+        """Train + infer to produce a segments.json, then return its path."""
+        models_dir = tmp_path / "models"
+        runner.invoke(app, [
+            "train", "lgbm",
+            "--from", "2025-06-14",
+            "--to", "2025-06-15",
+            "--synthetic",
+            "--models-dir", str(models_dir),
+            "--num-boost-round", "5",
+        ])
+        model_dir = next(models_dir.iterdir())
+
+        out_dir = tmp_path / "artifacts"
+        runner.invoke(app, [
+            "infer", "batch",
+            "--model-dir", str(model_dir),
+            "--from", "2025-06-15",
+            "--to", "2025-06-15",
+            "--synthetic",
+            "--out-dir", str(out_dir),
+        ])
+        return out_dir / "segments.json"
+
+    def test_exit_code_zero(self, tmp_path: Path, segments_file: Path) -> None:
+        out_dir = tmp_path / "reports"
+        result = runner.invoke(app, [
+            "report", "daily",
+            "--segments-file", str(segments_file),
+            "--out-dir", str(out_dir),
+        ])
+        assert result.exit_code == 0, result.output
+
+    def test_report_json_created(self, tmp_path: Path, segments_file: Path) -> None:
+        out_dir = tmp_path / "reports"
+        runner.invoke(app, [
+            "report", "daily",
+            "--segments-file", str(segments_file),
+            "--out-dir", str(out_dir),
+        ])
+        report_files = list(out_dir.glob("report_*.json"))
+        assert len(report_files) == 1
+
+    def test_report_contains_expected_fields(self, tmp_path: Path, segments_file: Path) -> None:
+        out_dir = tmp_path / "reports"
+        runner.invoke(app, [
+            "report", "daily",
+            "--segments-file", str(segments_file),
+            "--out-dir", str(out_dir),
+        ])
+        report_file = next(out_dir.glob("report_*.json"))
+        report = json.loads(report_file.read_text())
+
+        assert "date" in report
+        assert "total_minutes" in report
+        assert "breakdown" in report
+        assert "segments_count" in report
+        assert isinstance(report["breakdown"], dict)
+
+    def test_breakdown_sums_to_total(self, tmp_path: Path, segments_file: Path) -> None:
+        out_dir = tmp_path / "reports"
+        runner.invoke(app, [
+            "report", "daily",
+            "--segments-file", str(segments_file),
+            "--out-dir", str(out_dir),
+        ])
+        report_file = next(out_dir.glob("report_*.json"))
+        report = json.loads(report_file.read_text())
+
+        breakdown_sum = sum(report["breakdown"].values())
+        assert abs(breakdown_sum - report["total_minutes"]) < 0.01
+
+    def test_no_sensitive_fields_in_report(self, tmp_path: Path, segments_file: Path) -> None:
+        out_dir = tmp_path / "reports"
+        runner.invoke(app, [
+            "report", "daily",
+            "--segments-file", str(segments_file),
+            "--out-dir", str(out_dir),
+        ])
+        report_file = next(out_dir.glob("report_*.json"))
+        raw = report_file.read_text()
+
+        for forbidden in ("raw_keystrokes", "window_title_raw", "clipboard"):
+            assert forbidden not in raw, f"Sensitive field {forbidden!r} in report"
