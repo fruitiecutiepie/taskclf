@@ -17,32 +17,32 @@ This plan prioritizes: correctness, privacy invariants, schema stability, reprod
 | Label span I/O + dummy generation | **Done** | `tests/test_labels_store.py` |
 | Label-to-bucket assignment (TC-LABEL-001, 003, 004) | **Done** | `tests/test_train_dataset.py` |
 | Time-based split (TC-EVAL-001) | **Done** | `tests/test_train_dataset.py` |
-| Bucketization (TC-TIME-001..004) | **Done** | `tests/test_not_yet_implemented.py` |
+| Bucketization (TC-TIME-001..004) | **Done** | `tests/test_core_time.py` |
 | Sessionization (TC-TIME-005..008) | **Done** | `tests/test_features_sessions.py`, `tests/test_features_from_aw.py`, `tests/test_infer_online.py` |
 | Event protocol conformance | **Done** | `tests/test_adapters_aw.py` |
-| Smoothing / segmentization (TC-INF-001..004) | **Done** | `tests/test_not_yet_implemented.py` |
+| Smoothing / segmentization (TC-INF-001..004) | **Done** | `tests/test_infer_smooth.py` |
 | Evaluation metrics (TC-EVAL-002..004) | **Done** | `tests/test_core_metrics.py` |
 | Model IO bundle (TC-MODEL-001..004) | **Done** | `tests/test_core_model_io.py` |
 | Security / privacy (TC-SEC-001..003) | **Done** | `tests/test_security_privacy.py` |
 | Train -> infer integration (TC-INT-020..022) | **Done** | `tests/test_integration_train_infer.py` |
 | Title opt-in policy (TC-CORE-005) | **Done** | `tests/test_core_types.py` |
-| Advanced features (TC-FEAT-002..005) | Blocked | `tests/test_not_yet_implemented.py` |
-| Adapter ingest integration (TC-INT-001..003) | Blocked | `tests/test_not_yet_implemented.py` |
+| Advanced features (TC-FEAT-002..005) | **Done** | `tests/test_features_windows.py`, `tests/test_features_from_aw.py`, `tests/test_features_text.py` |
+| Adapter ingest integration (TC-INT-001..003) | **Done** | `tests/test_adapters_aw.py` |
 | Features -> labels pipeline (TC-INT-010..011) | **Done** | `tests/test_integration_features_labels.py` |
-| Report generation (TC-INT-030..031) | **Done** | `tests/test_not_yet_implemented.py` |
+| Report generation (TC-INT-030..031) | **Done** | `tests/test_report.py` |
 | E2E CLI: features build (TC-E2E-002) | **Done** | `tests/test_cli_main.py` |
 | E2E CLI: labels import (TC-E2E-003) | **Done** | `tests/test_cli_main.py` |
 | E2E CLI: train lgbm (TC-E2E-004) | **Done** | `tests/test_cli_main.py` |
 | E2E CLI: infer batch (TC-E2E-005) | **Done** | `tests/test_cli_main.py` |
 | E2E CLI: report daily (TC-E2E-006) | **Done** | `tests/test_cli_main.py` |
-| E2E CLI: ingest aw (TC-E2E-001) | Blocked | `tests/test_cli_main.py` |
+| E2E CLI: ingest aw (TC-E2E-001) | **Done** | `tests/test_cli_main.py` |
 | Performance smoke (TC-PERF-001) | **Done** | `tests/test_performance_reliability.py` |
 | DuckDB query perf (TC-PERF-002) | Blocked | `tests/test_performance_reliability.py` |
 | Online reliability (TC-REL-001) | Blocked | `tests/test_performance_reliability.py` |
 | Adapter retry (TC-REL-002) | Blocked | `tests/test_performance_reliability.py` |
 | Atomic writes (TC-REL-003) | **Done** | `tests/test_performance_reliability.py` |
 
-**Totals**: 215 passed, 11 skipped (blocked on stub modules / unimplemented features).
+**Totals**: 250 passed, 3 skipped (blocked on DuckDB query path and online/retry logic).
 
 **Bug fixed during testing**: `train/dataset.py::assign_labels_to_buckets` crashed on empty `label_spans` (KeyError on empty DataFrame). Added early-return guard.
 
@@ -151,10 +151,10 @@ R3. Reports are derived artifacts and should be regenerable.
 - **TC-CORE-012**: Hash function output length and charset constraints hold. **[DONE]** `tests/test_core_hashing.py`
 
 ### 5.3 `core/time` bucketization/sessionization
-- **TC-TIME-001**: Bucket alignment (e.g., 12:00:37 -> 12:00:00 for 60s buckets). **[DONE]** `tests/test_not_yet_implemented.py`
-- **TC-TIME-002**: Boundary cases exactly on bucket boundary remain stable. **[DONE]** `tests/test_not_yet_implemented.py`
-- **TC-TIME-003**: Day rollovers (23:59:30 -> next day) handled correctly. **[DONE]** `tests/test_not_yet_implemented.py`
-- **TC-TIME-004**: DST transition safety (if local timestamps appear): conversion to UTC does not create duplicate buckets. **[DONE]** `tests/test_not_yet_implemented.py`
+- **TC-TIME-001**: Bucket alignment (e.g., 12:00:37 -> 12:00:00 for 60s buckets). **[DONE]** `tests/test_core_time.py`
+- **TC-TIME-002**: Boundary cases exactly on bucket boundary remain stable. **[DONE]** `tests/test_core_time.py`
+- **TC-TIME-003**: Day rollovers (23:59:30 -> next day) handled correctly. **[DONE]** `tests/test_core_time.py`
+- **TC-TIME-004**: DST transition safety (if local timestamps appear): conversion to UTC does not create duplicate buckets. **[DONE]** `tests/test_core_time.py`
 - **TC-TIME-005**: Session boundary detection splits on idle gap >= threshold. **[DONE]** `tests/test_features_sessions.py`
 - **TC-TIME-006**: `session_length_so_far` resets to 0 at session boundaries. **[DONE]** `tests/test_features_from_aw.py`
 - **TC-TIME-007**: Explicit `session_start` parameter overrides auto-detection. **[DONE]** `tests/test_features_from_aw.py`
@@ -162,10 +162,10 @@ R3. Reports are derived artifacts and should be regenerable.
 
 ### 5.4 `features` computation
 - **TC-FEAT-001**: Minimal events produce expected feature row counts. *(covered implicitly by `generate_dummy_features` usage in label/training tests)*
-- **TC-FEAT-002**: App switch counts in last 5 minutes match expected. **[BLOCKED: `features/windows.py` rolling-window aggregations not implemented]** `tests/test_not_yet_implemented.py`
-- **TC-FEAT-003**: Idle segments produce `active_seconds=0` and correct idle flags. **[BLOCKED: real idle event handling not implemented]** `tests/test_not_yet_implemented.py`
-- **TC-FEAT-004**: Window title featurization uses hash/tokenization only. **[BLOCKED: `features/text.py` not implemented]** `tests/test_not_yet_implemented.py`
-- **TC-FEAT-005**: Rolling-window features are consistent at start-of-day (insufficient history). **[BLOCKED: `features/windows.py` not implemented]** `tests/test_not_yet_implemented.py`
+- **TC-FEAT-002**: App switch counts in last 5 minutes match expected. **[DONE]** `tests/test_features_windows.py`
+- **TC-FEAT-003**: Idle segments produce `active_seconds=0` and correct idle flags. **[DONE]** `tests/test_features_from_aw.py`
+- **TC-FEAT-004**: Window title featurization uses hash/tokenization only. **[DONE]** `tests/test_features_text.py`
+- **TC-FEAT-005**: Rolling-window features are consistent at start-of-day (insufficient history). **[DONE]** `tests/test_features_windows.py`
 
 ### 5.5 `labels` span alignment
 - **TC-LABEL-001**: Bucket receives label if bucket_start_ts is inside `[start_ts, end_ts)`. **[DONE]** `tests/test_train_dataset.py` *(policy: first matching span wins; start inclusive, end exclusive)*
@@ -174,10 +174,10 @@ R3. Reports are derived artifacts and should be regenerable.
 - **TC-LABEL-004**: Invalid spans (end < start) rejected. **[DONE]** `tests/test_core_types.py`
 
 ### 5.6 `infer/smooth` and segmentization
-- **TC-INF-001**: Rolling majority smoothing reduces short spikes. **[DONE]** `tests/test_not_yet_implemented.py`
-- **TC-INF-002**: Segmentization merges adjacent identical labels. **[DONE]** `tests/test_not_yet_implemented.py`
-- **TC-INF-003**: Segments are strictly ordered, non-overlapping, cover all predicted buckets. **[DONE]** `tests/test_not_yet_implemented.py`
-- **TC-INF-004**: Segment durations match bucket counts * bucket_size. **[DONE]** `tests/test_not_yet_implemented.py`
+- **TC-INF-001**: Rolling majority smoothing reduces short spikes. **[DONE]** `tests/test_infer_smooth.py`
+- **TC-INF-002**: Segmentization merges adjacent identical labels. **[DONE]** `tests/test_infer_smooth.py`
+- **TC-INF-003**: Segments are strictly ordered, non-overlapping, cover all predicted buckets. **[DONE]** `tests/test_infer_smooth.py`
+- **TC-INF-004**: Segment durations match bucket counts * bucket_size. **[DONE]** `tests/test_infer_smooth.py`
 
 ### 5.7 `core/model_io` bundle checks
 - **TC-MODEL-001**: Model bundle writes required files (model, metadata, metrics). **[DONE]** `tests/test_core_model_io.py`
@@ -190,9 +190,9 @@ R3. Reports are derived artifacts and should be regenerable.
 ## 6. Integration Test Cases
 
 ### 6.1 Adapter ingest -> normalized events
-- **TC-INT-001**: Ingest fixture ActivityWatch export produces normalized events with expected fields. **[BLOCKED: `adapters/activitywatch/client.py` not implemented]** `tests/test_not_yet_implemented.py`
-- **TC-INT-002**: Unknown app ids are normalized to `app_id="unknown"` with provenance retained. **[BLOCKED: `adapters/activitywatch/mapping.py` not implemented]** `tests/test_not_yet_implemented.py`
-- **TC-INT-003**: Window titles are hashed/tokenized during normalization if required. **[BLOCKED: `adapters/activitywatch/mapping.py` not implemented]** `tests/test_not_yet_implemented.py`
+- **TC-INT-001**: Ingest fixture ActivityWatch export produces normalized events with expected fields. **[DONE]** `tests/test_adapters_aw.py`
+- **TC-INT-002**: Unknown app ids are normalized to `app_id="unknown"` with provenance retained. **[DONE]** `tests/test_adapters_aw.py`
+- **TC-INT-003**: Window titles are hashed/tokenized during normalization if required. **[DONE]** `tests/test_adapters_aw.py`
 
 ### 6.2 Ingest -> features -> labels join
 - **TC-INT-010**: Pipeline produces `features_v1` parquet partition for date. **[DONE]** `tests/test_integration_features_labels.py`
@@ -204,15 +204,15 @@ R3. Reports are derived artifacts and should be regenerable.
 - **TC-INT-022**: Alter schema (add/remove feature) causes inference to refuse. **[DONE]** `tests/test_integration_train_infer.py`
 
 ### 6.4 Report generation
-- **TC-INT-030**: Daily report totals sum to total active time (within expected tolerance). **[DONE]** `tests/test_not_yet_implemented.py`
-- **TC-INT-031**: Report does not leak raw titles or sensitive data. **[DONE]** `tests/test_not_yet_implemented.py`
+- **TC-INT-030**: Daily report totals sum to total active time (within expected tolerance). **[DONE]** `tests/test_report.py`
+- **TC-INT-031**: Report does not leak raw titles or sensitive data. **[DONE]** `tests/test_report.py`
 
 ---
 
 ## 7. End-to-End CLI Tests
 
 Use `pytest` to invoke CLI commands on fixtures (temp dirs):
-- **TC-E2E-001**: `taskclf ingest aw ...` -> creates `data/raw/...` **[BLOCKED: CLI command not implemented]** `tests/test_cli_main.py`
+- **TC-E2E-001**: `taskclf ingest aw ...` -> creates `data/raw/...` **[DONE]** `tests/test_cli_main.py`
 - **TC-E2E-002**: `taskclf features build --date ...` -> creates processed parquet **[DONE]** `tests/test_cli_main.py`
 - **TC-E2E-003**: `taskclf labels import ...` -> creates labels parquet **[DONE]** `tests/test_cli_main.py`
 - **TC-E2E-004**: `taskclf train lgbm ...` -> creates new model run dir **[DONE]** `tests/test_cli_main.py`

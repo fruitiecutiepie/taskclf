@@ -119,14 +119,16 @@ The CSV must have four columns:
 | `label` | string | `coding` |
 | `provenance` | string | `manual` |
 
-Valid labels (v1):
+Valid labels (v1) — see [Task Ontology](labels_v1.md) for full definitions:
 
-- `coding`
-- `writing_docs`
-- `messaging_email`
-- `browsing_research`
-- `meetings_calls`
-- `break_idle`
+- `Build`
+- `Debug`
+- `Review`
+- `Write`
+- `ReadResearch`
+- `Communicate`
+- `Meet`
+- `BreakIdle`
 
 | Option | Default | Description |
 |---|---|---|
