@@ -144,6 +144,73 @@ train_app = typer.Typer()
 app.add_typer(train_app, name="train")
 
 
+@train_app.command("build-dataset")
+def train_build_dataset_cmd(
+    date_from: str = typer.Option(..., "--from", help="Start date (YYYY-MM-DD)"),
+    date_to: str = typer.Option(..., "--to", help="End date (YYYY-MM-DD, inclusive)"),
+    synthetic: bool = typer.Option(False, "--synthetic", help="Generate dummy features + labels"),
+    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory"),
+    out_dir: str = typer.Option(DEFAULT_DATA_DIR, "--out-dir", help="Output directory for X/y/splits"),
+    holdout_fraction: float = typer.Option(0.0, "--holdout-fraction", help="Fraction of users to hold out for test"),
+    train_ratio: float = typer.Option(0.70, "--train-ratio", help="Chronological train fraction per user"),
+    val_ratio: float = typer.Option(0.15, "--val-ratio", help="Chronological val fraction per user"),
+) -> None:
+    """Build a training dataset: join features + labels, exclude, split, and write X/y/splits."""
+    import pandas as pd
+
+    from taskclf.core.store import read_parquet
+    from taskclf.features.build import generate_dummy_features
+    from taskclf.labels.store import generate_dummy_labels
+    from taskclf.train.build_dataset import build_training_dataset
+
+    start = dt.date.fromisoformat(date_from)
+    end = dt.date.fromisoformat(date_to)
+
+    all_features: list[pd.DataFrame] = []
+    all_labels: list = []
+    current = start
+
+    while current <= end:
+        if synthetic:
+            rows = generate_dummy_features(current, n_rows=60)
+            df = pd.DataFrame([r.model_dump() for r in rows])
+            labels = generate_dummy_labels(current, n_rows=60)
+        else:
+            parquet_path = Path(data_dir) / f"features_v1/date={current.isoformat()}" / "features.parquet"
+            if not parquet_path.exists():
+                typer.echo(f"  skipping {current} (no features file)")
+                current += dt.timedelta(days=1)
+                continue
+            df = read_parquet(parquet_path)
+            labels = generate_dummy_labels(current, n_rows=len(df))
+
+        all_features.append(df)
+        all_labels.extend(labels)
+        current += dt.timedelta(days=1)
+
+    if not all_features:
+        typer.echo("No feature data found for the given date range.", err=True)
+        raise typer.Exit(code=1)
+
+    features_df = pd.concat(all_features, ignore_index=True)
+    typer.echo(f"Loaded {len(features_df)} feature rows across {len(all_features)} day(s)")
+
+    manifest = build_training_dataset(
+        features_df,
+        all_labels,
+        output_dir=Path(out_dir) / "training_dataset",
+        train_ratio=train_ratio,
+        val_ratio=val_ratio,
+        holdout_user_fraction=holdout_fraction,
+    )
+
+    typer.echo(f"Dataset: {manifest.total_rows} rows ({manifest.excluded_rows} excluded)")
+    typer.echo(f"  Train: {manifest.train_rows}  Val: {manifest.val_rows}  Test: {manifest.test_rows}")
+    typer.echo(f"  X -> {manifest.x_path}")
+    typer.echo(f"  y -> {manifest.y_path}")
+    typer.echo(f"  splits -> {manifest.splits_path}")
+
+
 @train_app.command("lgbm")
 def train_lgbm_cmd(
     date_from: str = typer.Option(..., "--from", help="Start date (YYYY-MM-DD)"),

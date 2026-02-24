@@ -29,6 +29,9 @@ DEFAULT_AW_TIMEOUT_SECONDS: Final[int] = 10
 DEFAULT_TITLE_SALT: Final[str] = "taskclf-default-salt"
 DEFAULT_TITLE_POLICY: Final[str] = "hash_only"
 
+# ── Aggregation ──
+MIN_BLOCK_DURATION_SECONDS: Final[int] = 180
+
 # ── Training ──
 DEFAULT_NUM_BOOST_ROUND: Final[int] = 100
 DEFAULT_TRAIN_SPLIT_RATIO: Final[float] = 0.8

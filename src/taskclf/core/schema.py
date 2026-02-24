@@ -14,7 +14,11 @@ from taskclf.core.types import FeatureRow
 # Canonical column registry for feature schema v1.
 # Keys are ordered; the deterministic hash depends on this ordering.
 _COLUMNS_V1: Final[dict[str, type]] = {
+    "user_id": str,
+    "device_id": str,
+    "session_id": str,
     "bucket_start_ts": datetime,
+    "bucket_end_ts": datetime,
     "schema_version": str,
     "schema_hash": str,
     "source_ids": list,

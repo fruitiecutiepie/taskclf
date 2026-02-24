@@ -110,8 +110,14 @@ class FeatureRow(BaseModel, frozen=True):
     leak into persisted datasets.
     """
 
+    # -- identity --
+    user_id: str = Field(description="Random UUID identifying the user (not PII).")
+    device_id: str | None = Field(default=None, description="Optional device identifier.")
+    session_id: str = Field(description="Deterministic session identifier derived from user_id + session start.")
+
     # -- meta --
     bucket_start_ts: datetime = Field(description="Start of the 60 s bucket (UTC).")
+    bucket_end_ts: datetime = Field(description="End of the 60 s bucket (UTC, exclusive).")
     schema_version: str = Field(description="Schema version tag, e.g. 'v1'.")
     schema_hash: str = Field(description="Deterministic hash of the column registry.")
     source_ids: list[str] = Field(min_length=1, description="Collector IDs that contributed to this row.")

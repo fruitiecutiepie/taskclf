@@ -39,24 +39,33 @@ _DUMMY_APPS: list[tuple[str, bool, bool, bool, str]] = [
 
 
 def generate_dummy_features(
-    date: dt.date, n_rows: int = DEFAULT_DUMMY_ROWS
+    date: dt.date,
+    n_rows: int = DEFAULT_DUMMY_ROWS,
+    *,
+    user_id: str = "dummy-user-001",
+    device_id: str | None = None,
 ) -> list[FeatureRow]:
     """Create *n_rows* synthetic FeatureRow instances spanning *date*.
 
     Args:
         date: The calendar date to generate buckets for (hours 9-17).
         n_rows: Number of rows to generate.
+        user_id: User identifier for all generated rows.
+        device_id: Optional device identifier.
 
     Returns:
         Validated ``FeatureRow`` instances with dummy app/keyboard/mouse data.
     """
     rows: list[FeatureRow] = []
     day_of_week = date.weekday()
+    session_start = dt.datetime(date.year, date.month, date.day, 9, 0)
+    sid = stable_hash(f"{user_id}:{session_start.isoformat()}")
 
     for i in range(n_rows):
         hour = 9 + (i * 8 // max(n_rows, 1))
         minute = (i * 7) % 60
         ts = dt.datetime(date.year, date.month, date.day, hour, minute)
+        end_ts = ts + dt.timedelta(seconds=DEFAULT_BUCKET_SECONDS)
 
         app_id, is_browser, is_editor, is_terminal, app_category = _DUMMY_APPS[
             i % len(_DUMMY_APPS)
@@ -65,7 +74,11 @@ def generate_dummy_features(
 
         rows.append(
             FeatureRow(
+                user_id=user_id,
+                device_id=device_id,
+                session_id=sid,
                 bucket_start_ts=ts,
+                bucket_end_ts=end_ts,
                 schema_version=FeatureSchemaV1.VERSION,
                 schema_hash=FeatureSchemaV1.SCHEMA_HASH,
                 source_ids=[f"dummy-{i:03d}"],
@@ -182,6 +195,8 @@ def _aggregate_input_for_bucket(
 def build_features_from_aw_events(
     events: Sequence[Event],
     *,
+    user_id: str = "default-user",
+    device_id: str | None = None,
     input_events: Sequence[AWInputEvent] | None = None,
     bucket_seconds: int = DEFAULT_BUCKET_SECONDS,
     session_start: dt.datetime | None = None,
@@ -209,6 +224,8 @@ def build_features_from_aw_events(
         events: Sorted, normalised events satisfying the
             :class:`~taskclf.core.types.Event` protocol (e.g. from
             :func:`~taskclf.adapters.activitywatch.client.parse_aw_export`).
+        user_id: Random UUID identifying the user (not PII).
+        device_id: Optional device identifier.
         input_events: Optional sorted input events from
             ``aw-watcher-input``.  When provided, keyboard/mouse feature
             columns are populated; otherwise they remain ``None``.
@@ -230,7 +247,6 @@ def build_features_from_aw_events(
         bucket_ts = align_to_bucket(ev.timestamp, bucket_seconds)
         bucket_events[bucket_ts].append(ev)
 
-    # Pre-bucket input events for O(n) aggregation
     bucket_input_events: dict[dt.datetime, list[AWInputEvent]] = defaultdict(list)
     if input_events:
         for ie in input_events:
@@ -254,11 +270,16 @@ def build_features_from_aw_events(
             )
         ]
 
+    # Pre-compute session_id for each session start
+    session_id_map: dict[dt.datetime, str] = {
+        ss: stable_hash(f"{user_id}:{ss.isoformat()}")
+        for ss in session_starts
+    }
+
     rows: list[FeatureRow] = []
     for bucket_ts in sorted_buckets:
         evs = bucket_events[bucket_ts]
 
-        # Dominant app: highest total duration in this bucket
         app_durations: dict[str, float] = defaultdict(float)
         for ev in evs:
             app_durations[ev.app_id] += ev.duration_seconds
@@ -280,6 +301,7 @@ def build_features_from_aw_events(
 
         cur_session = session_start_for_bucket(bucket_ts, session_starts)
         elapsed_minutes = (bucket_ts - cur_session).total_seconds() / 60.0
+        sid = session_id_map[cur_session]
 
         input_agg = _aggregate_input_for_bucket(
             bucket_ts, bucket_input_events.get(bucket_ts, []), bucket_seconds,
@@ -291,7 +313,11 @@ def build_features_from_aw_events(
 
         rows.append(
             FeatureRow(
+                user_id=user_id,
+                device_id=device_id,
+                session_id=sid,
                 bucket_start_ts=bucket_ts,
+                bucket_end_ts=bucket_ts + dt.timedelta(seconds=bucket_seconds),
                 schema_version=FeatureSchemaV1.VERSION,
                 schema_hash=FeatureSchemaV1.SCHEMA_HASH,
                 source_ids=source_ids,

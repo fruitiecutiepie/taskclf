@@ -19,7 +19,11 @@ def sample_date() -> dt.date:
 def valid_feature_row_data() -> dict[str, Any]:
     """Minimal valid data dict for constructing a FeatureRow."""
     return {
+        "user_id": "test-user-001",
+        "device_id": None,
+        "session_id": "test-session-001",
         "bucket_start_ts": dt.datetime(2025, 6, 15, 10, 0),
+        "bucket_end_ts": dt.datetime(2025, 6, 15, 10, 1),
         "schema_version": FeatureSchemaV1.VERSION,
         "schema_hash": FeatureSchemaV1.SCHEMA_HASH,
         "source_ids": ["test-collector"],

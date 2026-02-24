@@ -2,6 +2,21 @@
 
 Pydantic models for the core data contracts.
 
+## FeatureRow identity fields
+
+Every `FeatureRow` carries stable identity columns alongside the schema
+metadata and feature values:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `user_id` | `str` | Random UUID identifying the user (not PII). |
+| `device_id` | `str \| None` | Optional device identifier. |
+| `session_id` | `str` | Deterministic session identifier derived from `user_id` + session start timestamp. |
+| `bucket_start_ts` | `datetime` | Start of the 60 s bucket (UTC, inclusive). |
+| `bucket_end_ts` | `datetime` | End of the 60 s bucket (UTC, exclusive). |
+
+The primary key is `(user_id, bucket_start_ts)`.
+
 ## TitlePolicy
 
 `TitlePolicy` controls whether raw window titles may appear in a

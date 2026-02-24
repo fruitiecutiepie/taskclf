@@ -6,16 +6,18 @@
 2. ~~Write a **labeling guide** (1–3 bullets per label; observable rules; include “Mixed/Unknown” rule via reject threshold).~~ — `docs/guide/labels_v1.md`.
 3. ~~Define **windowing spec**: bucket size (e.g., 30s/60s), session definition (idle gap minutes), and how labels attach to windows vs blocks.~~ — `docs/guide/time_spec.md` (60s buckets, 5min idle gap, block→window projection rules).
 
-### 1) Data + schemas
+### 1) Data + schemas ✔
 
-4. Define a versioned **feature schema** (names, types, units, nullability; include schema version in every row).
-5. Add/confirm stable IDs: `user_id`, `session_id`, `bucket_ts`, `device_id` (optional).
-6. Implement a **training dataset builder** that outputs:
+4. ~~Define a versioned **feature schema** (names, types, units, nullability; include schema version in every row).~~ — `FeatureSchemaV1` in `src/taskclf/core/schema.py`; canonical JSON at `schema/features_v1.json`. `FeatureRow` carries `schema_version` + `schema_hash` on every row.
+5. ~~Add/confirm stable IDs: `user_id`, `session_id`, `bucket_ts`, `device_id` (optional).~~ — `FeatureRow` now has `user_id`, `session_id`, `bucket_start_ts`, `bucket_end_ts`, `device_id` (optional). Primary key is `(user_id, bucket_start_ts)`.
+6. ~~Implement a **training dataset builder** that outputs:~~
 
-   * `X.parquet` (features + ids + schema_version)
-   * `y.parquet` (label per window + provenance)
-   * `splits.json` (train/val/test by time and/or by session)
-7. Add **data validation** (hard checks): ranges, missing rates, monotonic timestamps, session boundaries, feature distributions.
+   * ~~`X.parquet` (features + ids + schema_version)~~
+   * ~~`y.parquet` (label per window + provenance)~~
+   * ~~`splits.json` (train/val/test by time and/or by session)~~
+
+   — `build_training_dataset()` in `src/taskclf/train/build_dataset.py`; `split_by_time()` in `src/taskclf/train/dataset.py` (3-way per-user chronological 70/15/15 + cross-user holdout). CLI: `taskclf train build-dataset`.
+7. ~~Add **data validation** (hard checks): ranges, missing rates, monotonic timestamps, session boundaries, feature distributions.~~ — `validate_feature_dataframe()` in `src/taskclf/core/validation.py`; hard checks (ranges, nulls, monotonic ts, bucket_end consistency) + soft checks (distributions, class balance).
 
 ### 2) Ground-truth collection (blocks, not windows)
 
