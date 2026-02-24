@@ -10,9 +10,10 @@ import lightgbm as lgb
 import numpy as np
 import pandas as pd
 from pydantic import BaseModel
+from sklearn.metrics import accuracy_score, f1_score
 from sklearn.preprocessing import LabelEncoder
 
-from taskclf.core.defaults import MIXED_UNKNOWN
+from taskclf.core.defaults import DEFAULT_REJECT_THRESHOLD, MIXED_UNKNOWN
 from taskclf.core.metrics import (
     calibration_curve_data,
     compute_metrics,
@@ -23,7 +24,7 @@ from taskclf.core.metrics import (
     user_stratification_report,
 )
 from taskclf.core.types import LABEL_SET_V1
-from taskclf.train.lgbm import FEATURE_COLUMNS, encode_categoricals
+from taskclf.infer.batch import predict_proba
 
 # ---------------------------------------------------------------------------
 # Acceptance thresholds (from docs/guide/acceptance.md)
@@ -58,16 +59,19 @@ class EvaluationReport(BaseModel, frozen=True):
     acceptance_details: dict[str, str]
 
 
-def _predict_proba(
-    model: lgb.Booster,
-    df: pd.DataFrame,
-    cat_encoders: dict[str, LabelEncoder] | None,
-) -> np.ndarray:
-    """Return raw probability matrix for *df*."""
-    feat_df = df[FEATURE_COLUMNS].copy()
-    feat_df, _ = encode_categoricals(feat_df, cat_encoders)
-    x = feat_df.fillna(0).to_numpy(dtype=np.float64)
-    return model.predict(x)
+class RejectTuningResult(BaseModel, frozen=True):
+    """Result of sweeping reject thresholds on a validation set.
+
+    Attributes:
+        best_threshold: Threshold that maximises accuracy on accepted
+            windows while keeping reject rate within acceptance bounds.
+        sweep: List of dicts, one per candidate threshold, each with
+            ``threshold``, ``accuracy_on_accepted``, ``reject_rate``,
+            ``coverage``, and ``macro_f1``.
+    """
+
+    best_threshold: float
+    sweep: list[dict[str, float]]
 
 
 def _check_acceptance(
@@ -143,7 +147,7 @@ def evaluate_model(
     *,
     cat_encoders: dict[str, LabelEncoder] | None = None,
     holdout_users: Sequence[str] = (),
-    reject_threshold: float = 0.55,
+    reject_threshold: float = DEFAULT_REJECT_THRESHOLD,
 ) -> EvaluationReport:
     """Run comprehensive evaluation of a trained model on a test set.
 
@@ -168,7 +172,7 @@ def evaluate_model(
     le.fit(sorted(LABEL_SET_V1))
     label_names = list(le.classes_)
 
-    y_proba = _predict_proba(model, test_df, cat_encoders)
+    y_proba = predict_proba(model, test_df, cat_encoders)
     y_pred_indices = y_proba.argmax(axis=1)
     y_pred_labels = list(le.inverse_transform(y_pred_indices))
 
@@ -202,8 +206,6 @@ def evaluate_model(
         if any(seen_mask):
             seen_true = [y for y, m in zip(y_true, seen_mask) if m]
             seen_pred = [y for y, m in zip(y_pred_labels, seen_mask) if m]
-            from sklearn.metrics import f1_score
-
             seen_f1 = round(float(
                 f1_score(seen_true, seen_pred, labels=label_names, average="macro", zero_division=0)
             ), 4)
@@ -211,8 +213,6 @@ def evaluate_model(
         if any(unseen_mask):
             unseen_true = [y for y, m in zip(y_true, unseen_mask) if m]
             unseen_pred = [y for y, m in zip(y_pred_labels, unseen_mask) if m]
-            from sklearn.metrics import f1_score
-
             unseen_f1 = round(float(
                 f1_score(unseen_true, unseen_pred, labels=label_names, average="macro", zero_division=0)
             ), 4)
@@ -235,6 +235,88 @@ def evaluate_model(
         reject_rate=round(rr, 4),
         acceptance_checks=checks,
         acceptance_details=check_details,
+    )
+
+
+def tune_reject_threshold(
+    model: lgb.Booster,
+    val_df: pd.DataFrame,
+    *,
+    cat_encoders: dict[str, LabelEncoder] | None = None,
+    thresholds: Sequence[float] | None = None,
+    reject_rate_min: float = _ACCEPT_REJECT_RATE_MIN,
+    reject_rate_max: float = _ACCEPT_REJECT_RATE_MAX,
+) -> RejectTuningResult:
+    """Sweep reject thresholds and pick the best one.
+
+    For each candidate threshold the function computes accuracy on
+    accepted (non-rejected) windows, the reject rate, coverage (fraction
+    of windows kept), and macro-F1.  The best threshold is the one that
+    maximises accuracy on accepted windows while keeping reject rate
+    within *[reject_rate_min, reject_rate_max]*.
+
+    Args:
+        model: Trained LightGBM booster.
+        val_df: Validation DataFrame with ``FEATURE_COLUMNS``, ``label``,
+            and ``user_id`` columns.
+        cat_encoders: Pre-fitted categorical encoders.
+        thresholds: Candidate thresholds to evaluate.  Defaults to
+            ``np.arange(0.10, 1.00, 0.05)``.
+        reject_rate_min: Lower bound for acceptable reject rate.
+        reject_rate_max: Upper bound for acceptable reject rate.
+
+    Returns:
+        A :class:`RejectTuningResult` with the optimal threshold and
+        the full sweep table.
+    """
+    if thresholds is None:
+        thresholds = list(np.round(np.arange(0.10, 1.00, 0.05), 2))
+
+    le = LabelEncoder()
+    le.fit(sorted(LABEL_SET_V1))
+    label_names = list(le.classes_)
+
+    y_proba = predict_proba(model, val_df, cat_encoders)
+    y_pred_indices = y_proba.argmax(axis=1)
+    y_pred_labels = np.array(le.inverse_transform(y_pred_indices))
+    y_true = np.array(val_df["label"].values)
+    confidences = y_proba.max(axis=1)
+
+    sweep: list[dict[str, float]] = []
+    best_threshold = DEFAULT_REJECT_THRESHOLD
+    best_acc = -1.0
+
+    for t in thresholds:
+        rejected = confidences < t
+        rr = float(rejected.mean())
+        coverage = 1.0 - rr
+
+        accepted_mask = ~rejected
+        if accepted_mask.any():
+            acc = float(accuracy_score(y_true[accepted_mask], y_pred_labels[accepted_mask]))
+            mf1 = float(f1_score(
+                y_true[accepted_mask], y_pred_labels[accepted_mask],
+                labels=label_names, average="macro", zero_division=0,
+            ))
+        else:
+            acc = 0.0
+            mf1 = 0.0
+
+        sweep.append({
+            "threshold": round(float(t), 4),
+            "accuracy_on_accepted": round(acc, 4),
+            "reject_rate": round(rr, 4),
+            "coverage": round(coverage, 4),
+            "macro_f1": round(mf1, 4),
+        })
+
+        if reject_rate_min <= rr <= reject_rate_max and acc > best_acc:
+            best_acc = acc
+            best_threshold = float(t)
+
+    return RejectTuningResult(
+        best_threshold=round(best_threshold, 4),
+        sweep=sweep,
     )
 
 

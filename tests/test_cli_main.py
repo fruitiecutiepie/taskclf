@@ -15,8 +15,11 @@ import pytest
 from typer.testing import CliRunner
 
 from taskclf.cli.main import app
+from taskclf.core.defaults import MIXED_UNKNOWN
 from taskclf.core.schema import FeatureSchemaV1
 from taskclf.core.types import LABEL_SET_V1
+
+_VALID_LABELS = set(LABEL_SET_V1) | {MIXED_UNKNOWN}
 
 runner = CliRunner()
 
@@ -383,7 +386,7 @@ class TestInferBatch:
             "--out-dir", str(out_dir),
         ])
         df = pd.read_csv(out_dir / "predictions.csv")
-        invalid = set(df["predicted_label"].unique()) - set(LABEL_SET_V1)
+        invalid = set(df["predicted_label"].unique()) - _VALID_LABELS
         assert not invalid, f"Invalid predicted labels: {invalid}"
 
     def test_segments_are_ordered_and_nonoverlapping(self, tmp_path: Path, trained_model_dir: Path) -> None:

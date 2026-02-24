@@ -33,6 +33,7 @@ class ModelMetadata(BaseModel, frozen=True):
     train_date_to: str
     params: dict[str, Any]
     git_commit: str
+    reject_threshold: float | None = None
     created_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
 
 
@@ -182,6 +183,8 @@ def build_metadata(
     train_date_from: date,
     train_date_to: date,
     params: dict[str, Any],
+    *,
+    reject_threshold: float | None = None,
 ) -> ModelMetadata:
     """Convenience builder that fills in schema info and git commit.
 
@@ -190,6 +193,7 @@ def build_metadata(
         train_date_from: First date of the training range.
         train_date_to: Last date (inclusive) of the training range.
         params: LightGBM (or other model) hyperparameters dict.
+        reject_threshold: Reject threshold used during evaluation.
 
     Returns:
         A populated ``ModelMetadata`` instance.
@@ -202,4 +206,5 @@ def build_metadata(
         train_date_to=train_date_to.isoformat(),
         params=params,
         git_commit=_current_git_commit(),
+        reject_threshold=reject_threshold,
     )

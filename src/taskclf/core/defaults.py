@@ -39,6 +39,7 @@ DEFAULT_LABEL_SUMMARY_MINUTES: Final[int] = 30
 
 # ── Training ──
 DEFAULT_NUM_BOOST_ROUND: Final[int] = 100
+DEFAULT_REJECT_THRESHOLD: Final[float] = 0.55
 
 # ── Baseline (rule-based) classifier ──
 MIXED_UNKNOWN: Final[str] = "Mixed/Unknown"

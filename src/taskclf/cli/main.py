@@ -13,6 +13,7 @@ from taskclf.core.defaults import (
     DEFAULT_OUT_DIR,
     DEFAULT_POLL_SECONDS,
     DEFAULT_RAW_AW_DIR,
+    DEFAULT_REJECT_THRESHOLD,
     DEFAULT_SMOOTH_WINDOW,
     DEFAULT_TITLE_SALT,
 )
@@ -502,7 +503,7 @@ def train_evaluate_cmd(
     data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory"),
     out_dir: str = typer.Option(DEFAULT_OUT_DIR, help="Output directory for evaluation artifacts"),
     holdout_fraction: float = typer.Option(0.0, "--holdout-fraction", help="Fraction of users held out for unseen-user evaluation"),
-    reject_threshold: float = typer.Option(0.55, "--reject-threshold", help="Max-probability below which prediction is rejected"),
+    reject_threshold: float = typer.Option(DEFAULT_REJECT_THRESHOLD, "--reject-threshold", help="Max-probability below which prediction is rejected"),
 ) -> None:
     """Run full evaluation of a trained model: metrics, calibration, acceptance checks."""
     import pandas as pd
@@ -639,6 +640,106 @@ def train_evaluate_cmd(
         console.print("[bold red]Some acceptance checks failed.[/bold red]")
 
 
+@train_app.command("tune-reject")
+def train_tune_reject_cmd(
+    model_dir: str = typer.Option(..., "--model-dir", help="Path to a model run directory"),
+    date_from: str = typer.Option(..., "--from", help="Start date (YYYY-MM-DD)"),
+    date_to: str = typer.Option(..., "--to", help="End date (YYYY-MM-DD, inclusive)"),
+    synthetic: bool = typer.Option(False, "--synthetic", help="Generate dummy features + labels"),
+    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory"),
+    out_dir: str = typer.Option(DEFAULT_OUT_DIR, help="Output directory for tuning report"),
+) -> None:
+    """Sweep reject thresholds on a validation set and recommend the best one."""
+    import json
+
+    import pandas as pd
+    from rich.console import Console
+    from rich.table import Table
+
+    from taskclf.core.model_io import load_model_bundle
+    from taskclf.core.store import read_parquet
+    from taskclf.features.build import generate_dummy_features
+    from taskclf.labels.projection import project_blocks_to_windows
+    from taskclf.labels.store import generate_dummy_labels
+    from taskclf.train.dataset import split_by_time
+    from taskclf.train.evaluate import tune_reject_threshold
+
+    console = Console()
+
+    model, metadata, cat_encoders = load_model_bundle(Path(model_dir))
+    typer.echo(f"Loaded model from {model_dir} (schema={metadata.schema_hash})")
+
+    start = dt.date.fromisoformat(date_from)
+    end = dt.date.fromisoformat(date_to)
+
+    all_features: list[pd.DataFrame] = []
+    all_labels: list = []
+    current = start
+    while current <= end:
+        if synthetic:
+            rows = generate_dummy_features(current, n_rows=60)
+            df = pd.DataFrame([r.model_dump() for r in rows])
+            labels = generate_dummy_labels(current, n_rows=60)
+        else:
+            parquet_path = Path(data_dir) / f"features_v1/date={current.isoformat()}" / "features.parquet"
+            if not parquet_path.exists():
+                typer.echo(f"  skipping {current} (no features file)")
+                current += dt.timedelta(days=1)
+                continue
+            df = read_parquet(parquet_path)
+            labels = generate_dummy_labels(current, n_rows=len(df))
+        all_features.append(df)
+        all_labels.extend(labels)
+        current += dt.timedelta(days=1)
+
+    if not all_features:
+        typer.echo("No feature data found for the given date range.", err=True)
+        raise typer.Exit(code=1)
+
+    features_df = pd.concat(all_features, ignore_index=True)
+    labeled_df = project_blocks_to_windows(features_df, all_labels)
+
+    if labeled_df.empty:
+        typer.echo("No labeled rows — cannot tune.", err=True)
+        raise typer.Exit(code=1)
+
+    splits = split_by_time(labeled_df)
+    val_df = splits["val"]
+    if val_df.empty:
+        typer.echo("Validation split is empty — using full dataset.", err=True)
+        val_df = labeled_df
+
+    typer.echo(f"Tuning reject threshold on {len(val_df)} validation rows")
+
+    result = tune_reject_threshold(model, val_df, cat_encoders=cat_encoders)
+
+    sweep_table = Table(title="Reject Threshold Sweep")
+    sweep_table.add_column("Threshold", justify="right")
+    sweep_table.add_column("Accuracy", justify="right")
+    sweep_table.add_column("Reject Rate", justify="right")
+    sweep_table.add_column("Coverage", justify="right")
+    sweep_table.add_column("Macro F1", justify="right")
+
+    for row in result.sweep:
+        marker = " *" if row["threshold"] == result.best_threshold else ""
+        sweep_table.add_row(
+            f"{row['threshold']:.2f}{marker}",
+            f"{row['accuracy_on_accepted']:.4f}",
+            f"{row['reject_rate']:.4f}",
+            f"{row['coverage']:.4f}",
+            f"{row['macro_f1']:.4f}",
+        )
+
+    console.print(sweep_table)
+    console.print(f"\n[bold]Recommended reject threshold:[/bold] {result.best_threshold:.4f}")
+
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    report_path = out / "reject_tuning.json"
+    report_path.write_text(json.dumps(result.model_dump(), indent=2))
+    typer.echo(f"Tuning report: {report_path}")
+
+
 # -- infer --------------------------------------------------------------------
 infer_app = typer.Typer()
 app.add_typer(infer_app, name="infer")
@@ -653,10 +754,13 @@ def infer_batch_cmd(
     data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory"),
     out_dir: str = typer.Option(DEFAULT_OUT_DIR, help="Output directory for predictions and segments"),
     smooth_window: int = typer.Option(DEFAULT_SMOOTH_WINDOW, help="Rolling majority smoothing window size"),
+    reject_threshold: float = typer.Option(DEFAULT_REJECT_THRESHOLD, "--reject-threshold", help="Max-probability below which prediction is rejected as Mixed/Unknown"),
 ) -> None:
     """Run batch inference: predict, smooth, and segmentize."""
     import pandas as pd
 
+    from taskclf.core.defaults import MIXED_UNKNOWN
+    from taskclf.core.metrics import reject_rate
     from taskclf.core.model_io import load_model_bundle
     from taskclf.core.store import read_parquet
     from taskclf.features.build import generate_dummy_features
@@ -696,13 +800,23 @@ def infer_batch_cmd(
     features_df = features_df.sort_values("bucket_start_ts").reset_index(drop=True)
     typer.echo(f"Loaded {len(features_df)} feature rows")
 
-    smoothed_labels, segments = run_batch_inference(
-        model, features_df, cat_encoders=cat_encoders, smooth_window=smooth_window,
+    smoothed_labels, segments, confidences, is_rejected = run_batch_inference(
+        model, features_df,
+        cat_encoders=cat_encoders,
+        smooth_window=smooth_window,
+        reject_threshold=reject_threshold,
     )
-    typer.echo(f"Predicted {len(smoothed_labels)} buckets -> {len(segments)} segments")
+    rr = reject_rate(smoothed_labels, MIXED_UNKNOWN)
+    typer.echo(
+        f"Predicted {len(smoothed_labels)} buckets -> {len(segments)} segments "
+        f"(reject rate: {rr:.1%})"
+    )
 
     out = Path(out_dir)
-    pred_path = write_predictions_csv(features_df, smoothed_labels, out / "predictions.csv")
+    pred_path = write_predictions_csv(
+        features_df, smoothed_labels, out / "predictions.csv",
+        confidences=confidences, is_rejected=is_rejected,
+    )
     seg_path = write_segments_json(segments, out / "segments.json")
 
     typer.echo(f"Predictions: {pred_path}")
@@ -717,6 +831,7 @@ def infer_online_cmd(
     smooth_window: int = typer.Option(DEFAULT_SMOOTH_WINDOW, "--smooth-window", help="Rolling majority smoothing window size"),
     title_salt: str = typer.Option(DEFAULT_TITLE_SALT, "--title-salt", help="Salt for hashing window titles"),
     out_dir: str = typer.Option(DEFAULT_OUT_DIR, help="Output directory for predictions and segments"),
+    reject_threshold: float = typer.Option(DEFAULT_REJECT_THRESHOLD, "--reject-threshold", help="Max-probability below which prediction is rejected as Mixed/Unknown"),
 ) -> None:
     """Run online inference: poll ActivityWatch, predict, smooth, and report."""
     from taskclf.infer.online import run_online_loop
@@ -728,6 +843,7 @@ def infer_online_cmd(
         smooth_window=smooth_window,
         title_salt=title_salt,
         out_dir=Path(out_dir),
+        reject_threshold=reject_threshold,
     )
 
 

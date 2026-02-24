@@ -24,8 +24,10 @@ from taskclf.core.defaults import (
     DEFAULT_IDLE_GAP_SECONDS,
     DEFAULT_OUT_DIR,
     DEFAULT_POLL_SECONDS,
+    DEFAULT_REJECT_THRESHOLD,
     DEFAULT_SMOOTH_WINDOW,
     DEFAULT_TITLE_SALT,
+    MIXED_UNKNOWN,
 )
 from taskclf.core.model_io import ModelMetadata, load_model_bundle
 from taskclf.core.types import LABEL_SET_V1, FeatureRow
@@ -52,12 +54,14 @@ class OnlinePredictor:
         cat_encoders: dict[str, LabelEncoder] | None = None,
         smooth_window: int = DEFAULT_SMOOTH_WINDOW,
         bucket_seconds: int = DEFAULT_BUCKET_SECONDS,
+        reject_threshold: float | None = DEFAULT_REJECT_THRESHOLD,
     ) -> None:
         self._model = model
         self._metadata = metadata
         self._cat_encoders = cat_encoders or {}
         self._smooth_window = smooth_window
         self._bucket_seconds = bucket_seconds
+        self._reject_threshold = reject_threshold
 
         self._le = LabelEncoder()
         self._le.fit(sorted(LABEL_SET_V1))
@@ -97,8 +101,12 @@ class OnlinePredictor:
             dtype=np.float64,
         )
         proba = self._model.predict(x)
+        confidence = float(proba.max(axis=1)[0])
         pred_idx = int(proba.argmax(axis=1)[0])
-        raw_label = self._le.inverse_transform([pred_idx])[0]
+        raw_label: str = self._le.inverse_transform([pred_idx])[0]
+
+        if self._reject_threshold is not None and confidence < self._reject_threshold:
+            raw_label = MIXED_UNKNOWN
 
         self._raw_buffer.append(raw_label)
         self._bucket_ts_buffer.append(row.bucket_start_ts)
@@ -143,6 +151,7 @@ def run_online_loop(
     out_dir: Path = Path(DEFAULT_OUT_DIR),
     bucket_seconds: int = DEFAULT_BUCKET_SECONDS,
     idle_gap_seconds: float = DEFAULT_IDLE_GAP_SECONDS,
+    reject_threshold: float | None = DEFAULT_REJECT_THRESHOLD,
 ) -> None:
     """Poll ActivityWatch, predict, smooth, and write results continuously.
 
@@ -162,6 +171,8 @@ def run_online_loop(
         out_dir: Directory for ``predictions.csv`` and ``segments.json``.
         bucket_seconds: Width of each time bucket in seconds.
         idle_gap_seconds: Minimum gap (seconds) that starts a new session.
+        reject_threshold: If given, predictions with
+            ``max(proba) < reject_threshold`` become ``Mixed/Unknown``.
     """
     from taskclf.adapters.activitywatch.client import (
         fetch_aw_events,
@@ -189,6 +200,7 @@ def run_online_loop(
         cat_encoders=cat_encoders,
         smooth_window=smooth_window,
         bucket_seconds=bucket_seconds,
+        reject_threshold=reject_threshold,
     )
 
     pred_path = out_dir / "predictions.csv"

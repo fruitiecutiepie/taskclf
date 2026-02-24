@@ -21,7 +21,10 @@ from taskclf.adapters.activitywatch.types import AWEvent
 from taskclf.cli.main import app
 from taskclf.core.model_io import load_model_bundle
 from taskclf.core.schema import FeatureSchemaV1
+from taskclf.core.defaults import MIXED_UNKNOWN
 from taskclf.core.types import LABEL_SET_V1, FeatureRow
+
+_VALID_LABELS = LABEL_SET_V1 | {MIXED_UNKNOWN}
 from taskclf.features.build import build_features_from_aw_events, generate_dummy_features
 from taskclf.infer.online import OnlinePredictor
 
@@ -54,7 +57,7 @@ class TestOnlinePredictor:
     def test_predict_single_bucket(self, predictor: OnlinePredictor) -> None:
         rows = generate_dummy_features(dt.date(2025, 6, 15), n_rows=1)
         label = predictor.predict_bucket(rows[0])
-        assert label in LABEL_SET_V1
+        assert label in _VALID_LABELS
 
     def test_predict_multiple_buckets(self, predictor: OnlinePredictor) -> None:
         rows = generate_dummy_features(dt.date(2025, 6, 15), n_rows=5)
@@ -62,7 +65,7 @@ class TestOnlinePredictor:
         for row in rows:
             labels.append(predictor.predict_bucket(row))
         assert len(labels) == 5
-        assert all(lbl in LABEL_SET_V1 for lbl in labels)
+        assert all(lbl in _VALID_LABELS for lbl in labels)
 
     def test_segments_accumulate(self, predictor: OnlinePredictor) -> None:
         rows = generate_dummy_features(dt.date(2025, 6, 15), n_rows=10)
@@ -95,8 +98,8 @@ class TestOnlinePredictor:
         labels_w1 = [pred_w1.predict_bucket(r) for r in rows]
         labels_w5 = [pred_w5.predict_bucket(r) for r in rows]
 
-        assert all(lbl in LABEL_SET_V1 for lbl in labels_w1)
-        assert all(lbl in LABEL_SET_V1 for lbl in labels_w5)
+        assert all(lbl in _VALID_LABELS for lbl in labels_w1)
+        assert all(lbl in _VALID_LABELS for lbl in labels_w5)
 
     def test_segment_labels_are_valid(self, predictor: OnlinePredictor) -> None:
         rows = generate_dummy_features(dt.date(2025, 6, 15), n_rows=10)
@@ -105,7 +108,7 @@ class TestOnlinePredictor:
 
         segments = predictor.get_segments()
         for seg in segments:
-            assert seg.label in LABEL_SET_V1
+            assert seg.label in _VALID_LABELS
 
 
 class TestOnlineSessionTracking:

@@ -331,3 +331,65 @@ def user_stratification_report(
         "user_count": len(user_counts),
         "warnings": warnings,
     }
+
+
+# ---------------------------------------------------------------------------
+# Per-user/day reject rate (drift detection)
+# ---------------------------------------------------------------------------
+
+
+def reject_rate_by_group(
+    labels: Sequence[str],
+    user_ids: Sequence[str],
+    timestamps: Sequence,
+    *,
+    reject_label: str = MIXED_UNKNOWN,
+    spike_multiplier: float = 2.0,
+) -> dict:
+    """Compute reject rate grouped by ``(user_id, date)`` for drift detection.
+
+    A group is flagged as a drift signal when its reject rate exceeds
+    *spike_multiplier* times the global reject rate.
+
+    Args:
+        labels: Predicted label strings (may include *reject_label*).
+        user_ids: User identifier per window.
+        timestamps: Timestamp per window (anything parseable by
+            ``pd.Timestamp``; only the date portion is used).
+        reject_label: The label treated as a reject / unknown.
+        spike_multiplier: A group's reject rate must exceed
+            ``global_reject_rate * spike_multiplier`` to be flagged.
+
+    Returns:
+        Dict with ``global_reject_rate``, ``per_group`` (keyed by
+        ``"user_id|YYYY-MM-DD"`` with ``reject_rate``, ``total``, and
+        ``rejected``), and ``drift_flags`` (list of flagged group keys).
+    """
+    global_rr = reject_rate(labels, reject_label)
+
+    groups: dict[str, tuple[int, int]] = defaultdict(lambda: (0, 0))
+    for lbl, uid, ts in zip(labels, user_ids, timestamps):
+        date_str = pd.Timestamp(ts).strftime("%Y-%m-%d")
+        key = f"{uid}|{date_str}"
+        total, rejected = groups[key]
+        groups[key] = (total + 1, rejected + (1 if lbl == reject_label else 0))
+
+    per_group: dict[str, dict[str, float | int]] = {}
+    drift_flags: list[str] = []
+    spike_threshold = global_rr * spike_multiplier
+
+    for key, (total, rejected) in sorted(groups.items()):
+        grp_rr = rejected / total if total > 0 else 0.0
+        per_group[key] = {
+            "reject_rate": round(grp_rr, 4),
+            "total": total,
+            "rejected": rejected,
+        }
+        if grp_rr > spike_threshold and total > 0:
+            drift_flags.append(key)
+
+    return {
+        "global_reject_rate": round(global_rr, 4),
+        "per_group": per_group,
+        "drift_flags": drift_flags,
+    }

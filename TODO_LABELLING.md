@@ -81,14 +81,21 @@
 
    — `evaluate_model()` in `src/taskclf/train/evaluate.py` returns `EvaluationReport` (macro-F1, weighted-F1, per-class P/R/F1, confusion matrix, per-user macro-F1, calibration curves, seen/unseen user splits, acceptance checks). `write_evaluation_artifacts()` writes `evaluation.json`, `calibration.json`, `confusion_matrix.csv`, `calibration.png`. CLI: `taskclf train evaluate`.
 
-### 5) Reject option (Mixed/Unknown by threshold)
+### 5) Reject option (Mixed/Unknown by threshold) ✔
 
-16. Pick reject strategy:
+16. ~~Pick reject strategy:~~
 
-* if `max_proba < p_reject` → `Mixed/Unknown`
+~~* if `max_proba < p_reject` → `Mixed/Unknown`~~
 
-17. Tune `p_reject` on validation set to trade off coverage vs accuracy.
-18. Log "rejected" rate per user/day; treat spikes as drift signals.
+   — `predict_labels()` and `run_batch_inference()` in `src/taskclf/infer/batch.py` accept `reject_threshold` parameter; `OnlinePredictor` in `src/taskclf/infer/online.py` applies threshold per bucket. `DEFAULT_REJECT_THRESHOLD = 0.55` in `core/defaults.py`. `predict_proba()` extracted as shared function. CLI: `taskclf infer batch --reject-threshold`, `taskclf infer online --reject-threshold`.
+
+17. ~~Tune `p_reject` on validation set to trade off coverage vs accuracy.~~
+
+   — `tune_reject_threshold()` in `src/taskclf/train/evaluate.py` sweeps thresholds (0.10–0.95), returns `RejectTuningResult` with optimal threshold maximising accuracy within acceptance bounds (5–30% reject rate). CLI: `taskclf train tune-reject`.
+
+18. ~~Log "rejected" rate per user/day; treat spikes as drift signals.~~
+
+   — `reject_rate_by_group()` in `src/taskclf/core/metrics.py` groups by `(user_id, date)`, flags groups exceeding `spike_multiplier × global_reject_rate` as drift signals. `reject_threshold` recorded in `ModelMetadata` for reproducibility.
 
 ### 6) Personalization (without label explosion)
 
