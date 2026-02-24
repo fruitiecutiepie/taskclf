@@ -583,6 +583,188 @@ def infer_online_cmd(
     )
 
 
+@infer_app.command("baseline")
+def infer_baseline_cmd(
+    date_from: str = typer.Option(..., "--from", help="Start date (YYYY-MM-DD)"),
+    date_to: str = typer.Option(..., "--to", help="End date (YYYY-MM-DD, inclusive)"),
+    synthetic: bool = typer.Option(False, "--synthetic", help="Generate dummy features instead of reading from disk"),
+    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory"),
+    out_dir: str = typer.Option(DEFAULT_OUT_DIR, help="Output directory for predictions and segments"),
+    smooth_window: int = typer.Option(DEFAULT_SMOOTH_WINDOW, help="Rolling majority smoothing window size"),
+) -> None:
+    """Run rule-based baseline inference (no ML model required)."""
+    import pandas as pd
+
+    from taskclf.core.defaults import MIXED_UNKNOWN
+    from taskclf.core.store import read_parquet
+    from taskclf.features.build import generate_dummy_features
+    from taskclf.infer.baseline import run_baseline_inference
+    from taskclf.infer.batch import write_predictions_csv, write_segments_json
+
+    start = dt.date.fromisoformat(date_from)
+    end = dt.date.fromisoformat(date_to)
+
+    all_features: list[pd.DataFrame] = []
+    current = start
+    while current <= end:
+        if synthetic:
+            rows = generate_dummy_features(current, n_rows=60)
+            df = pd.DataFrame([r.model_dump() for r in rows])
+        else:
+            parquet_path = Path(data_dir) / f"features_v1/date={current.isoformat()}" / "features.parquet"
+            if not parquet_path.exists():
+                typer.echo(f"  skipping {current} (no features file)")
+                current += dt.timedelta(days=1)
+                continue
+            df = read_parquet(parquet_path)
+        all_features.append(df)
+        current += dt.timedelta(days=1)
+
+    if not all_features:
+        typer.echo("No feature data found for the given date range.", err=True)
+        raise typer.Exit(code=1)
+
+    features_df = pd.concat(all_features, ignore_index=True)
+    features_df = features_df.sort_values("bucket_start_ts").reset_index(drop=True)
+    typer.echo(f"Loaded {len(features_df)} feature rows")
+
+    smoothed_labels, segments = run_baseline_inference(
+        features_df, smooth_window=smooth_window,
+    )
+
+    from taskclf.core.metrics import reject_rate
+
+    rr = reject_rate(smoothed_labels, MIXED_UNKNOWN)
+    typer.echo(
+        f"Baseline predicted {len(smoothed_labels)} buckets -> "
+        f"{len(segments)} segments (reject rate: {rr:.1%})"
+    )
+
+    out = Path(out_dir)
+    pred_path = write_predictions_csv(features_df, smoothed_labels, out / "baseline_predictions.csv")
+    seg_path = write_segments_json(segments, out / "baseline_segments.json")
+
+    typer.echo(f"Predictions: {pred_path}")
+    typer.echo(f"Segments:    {seg_path}")
+
+
+@infer_app.command("compare")
+def infer_compare_cmd(
+    model_dir: str = typer.Option(..., "--model-dir", help="Path to a model run directory"),
+    date_from: str = typer.Option(..., "--from", help="Start date (YYYY-MM-DD)"),
+    date_to: str = typer.Option(..., "--to", help="End date (YYYY-MM-DD, inclusive)"),
+    synthetic: bool = typer.Option(False, "--synthetic", help="Generate dummy features + labels"),
+    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory"),
+    out_dir: str = typer.Option(DEFAULT_OUT_DIR, help="Output directory for comparison report"),
+) -> None:
+    """Compare rule baseline vs ML model on labeled data."""
+    import json
+
+    import pandas as pd
+    from rich.console import Console
+    from rich.table import Table
+
+    from taskclf.core.defaults import MIXED_UNKNOWN
+    from taskclf.core.metrics import compare_baselines
+    from taskclf.core.model_io import load_model_bundle
+    from taskclf.core.store import read_parquet
+    from taskclf.core.types import LABEL_SET_V1
+    from taskclf.features.build import generate_dummy_features
+    from taskclf.infer.baseline import predict_baseline
+    from taskclf.infer.batch import predict_labels
+    from taskclf.labels.projection import project_blocks_to_windows
+    from taskclf.labels.store import generate_dummy_labels
+
+    console = Console()
+    start = dt.date.fromisoformat(date_from)
+    end = dt.date.fromisoformat(date_to)
+
+    all_features: list[pd.DataFrame] = []
+    all_labels: list = []
+    current = start
+    while current <= end:
+        if synthetic:
+            rows = generate_dummy_features(current, n_rows=60)
+            df = pd.DataFrame([r.model_dump() for r in rows])
+            labels = generate_dummy_labels(current, n_rows=60)
+        else:
+            parquet_path = Path(data_dir) / f"features_v1/date={current.isoformat()}" / "features.parquet"
+            if not parquet_path.exists():
+                typer.echo(f"  skipping {current} (no features file)")
+                current += dt.timedelta(days=1)
+                continue
+            df = read_parquet(parquet_path)
+            labels = generate_dummy_labels(current, n_rows=len(df))
+        all_features.append(df)
+        all_labels.extend(labels)
+        current += dt.timedelta(days=1)
+
+    if not all_features:
+        typer.echo("No feature data found for the given date range.", err=True)
+        raise typer.Exit(code=1)
+
+    features_df = pd.concat(all_features, ignore_index=True)
+    labeled_df = project_blocks_to_windows(features_df, all_labels)
+
+    if labeled_df.empty:
+        typer.echo("No labeled rows — cannot compare.", err=True)
+        raise typer.Exit(code=1)
+
+    y_true = list(labeled_df["label"].values)
+    typer.echo(f"Comparing on {len(y_true)} labeled windows")
+
+    baseline_preds = predict_baseline(labeled_df)
+
+    from sklearn.preprocessing import LabelEncoder
+
+    model, _meta, cat_encoders = load_model_bundle(Path(model_dir))
+    le = LabelEncoder()
+    le.fit(sorted(LABEL_SET_V1))
+    model_preds = predict_labels(model, labeled_df, le, cat_encoders=cat_encoders)
+
+    label_names = sorted(LABEL_SET_V1)
+    results = compare_baselines(
+        y_true,
+        {"baseline": baseline_preds, "model": model_preds},
+        label_names,
+        reject_label=MIXED_UNKNOWN,
+    )
+
+    summary_table = Table(title="Baseline vs Model Comparison")
+    summary_table.add_column("Metric", style="bold")
+    summary_table.add_column("Baseline", justify="right")
+    summary_table.add_column("Model", justify="right")
+    summary_table.add_column("Delta", justify="right")
+
+    bl = results["baseline"]
+    ml = results["model"]
+    for metric in ("macro_f1", "weighted_f1", "reject_rate"):
+        delta = ml[metric] - bl[metric]
+        sign = "+" if delta >= 0 else ""
+        summary_table.add_row(
+            metric, f"{bl[metric]:.4f}", f"{ml[metric]:.4f}", f"{sign}{delta:.4f}",
+        )
+    console.print(summary_table)
+
+    detail_table = Table(title="Per-Class F1")
+    detail_table.add_column("Class", style="bold")
+    detail_table.add_column("Baseline F1", justify="right")
+    detail_table.add_column("Model F1", justify="right")
+
+    all_labels_list = bl.get("label_names", label_names)
+    for cls in all_labels_list:
+        bl_f1 = bl["per_class"].get(cls, {}).get("f1", 0.0)
+        ml_f1 = ml["per_class"].get(cls, {}).get("f1", 0.0)
+        detail_table.add_row(cls, f"{bl_f1:.4f}", f"{ml_f1:.4f}")
+    console.print(detail_table)
+
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    report_path = out / "baseline_vs_model.json"
+    report_path.write_text(json.dumps(results, indent=2))
+    typer.echo(f"Full comparison report: {report_path}")
+
+
 # -- report -------------------------------------------------------------------
 report_app = typer.Typer()
 app.add_typer(report_app, name="report")

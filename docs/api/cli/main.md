@@ -15,6 +15,8 @@ Typer CLI entrypoint and commands.
 | `taskclf train build-dataset` | Build training dataset (X/y/splits artifacts) |
 | `taskclf train lgbm` | Train a LightGBM multiclass model |
 | `taskclf infer batch` | Run batch inference |
+| `taskclf infer baseline` | Run rule-based baseline inference (no ML) |
+| `taskclf infer compare` | Compare baseline vs ML model on labeled data |
 | `taskclf infer online` | Run online inference loop |
 | `taskclf report daily` | Generate a daily report |
 
@@ -57,6 +59,27 @@ taskclf train build-dataset \
   --from 2025-06-10 --to 2025-06-15 \
   --synthetic \
   --holdout-fraction 0.1
+```
+
+### infer baseline
+
+Run rule-based heuristic inference without a trained model.  Produces
+`baseline_predictions.csv` and `baseline_segments.json`.
+
+```bash
+taskclf infer baseline \
+  --from 2025-06-10 --to 2025-06-15 --synthetic
+```
+
+### infer compare
+
+Compare rule baseline vs a trained ML model on labeled data.  Outputs a
+Rich summary table and writes `baseline_vs_model.json`.
+
+```bash
+taskclf infer compare \
+  --model-dir models/run_20250615_120000 \
+  --from 2025-06-10 --to 2025-06-15 --synthetic
 ```
 
 ::: taskclf.cli.main

@@ -41,16 +41,20 @@
 
    — `ActiveLabelingQueue` in `src/taskclf/labels/queue.py`; `LabelRequest` model, `enqueue_low_confidence()`, `enqueue_drift()`, `get_pending()` (sorted by confidence, daily cap), `mark_done()`. JSON persistence at `data/processed/labels_v1/queue.json`. CLI: `taskclf labels show-queue`.
 
-### 3) Baseline system (cold start)
+### 3) Baseline system (cold start) ✔
 
-11. Implement **rule baseline** (no ML):
+11. ~~Implement **rule baseline** (no ML):~~
 
-* idle gap → `BreakIdle`
-* browser+scroll high+keys low → `ReadResearch`
-* editor/terminal+keys high+shortcuts → `Build`
-* else → `Mixed/Unknown`
+~~* idle gap → `BreakIdle`~~
+~~* browser+scroll high+keys low → `ReadResearch`~~
+~~* editor/terminal+keys high+shortcuts → `Build`~~
+~~* else → `Mixed/Unknown`~~
 
-12. Add metrics comparing baseline vs later ML (so you can prove improvement).
+   — `classify_single_row()`, `predict_baseline()`, `run_baseline_inference()` in `src/taskclf/infer/baseline.py`; priority-ordered rules with configurable thresholds in `core/defaults.py`. CLI: `taskclf infer baseline`.
+
+12. ~~Add metrics comparing baseline vs later ML (so you can prove improvement).~~
+
+   — `reject_rate()`, `per_class_metrics()`, `compare_baselines()` in `src/taskclf/core/metrics.py`. CLI: `taskclf infer compare` (Rich side-by-side table + JSON report).
 
 ### 4) Global model (core labels)
 

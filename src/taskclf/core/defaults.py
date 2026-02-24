@@ -40,6 +40,15 @@ DEFAULT_LABEL_SUMMARY_MINUTES: Final[int] = 30
 # ── Training ──
 DEFAULT_NUM_BOOST_ROUND: Final[int] = 100
 
+# ── Baseline (rule-based) classifier ──
+MIXED_UNKNOWN: Final[str] = "Mixed/Unknown"
+BASELINE_IDLE_ACTIVE_THRESHOLD: Final[float] = 5.0
+BASELINE_IDLE_RUN_THRESHOLD: Final[float] = 50.0
+BASELINE_SCROLL_HIGH: Final[float] = 3.0
+BASELINE_KEYS_LOW: Final[float] = 10.0
+BASELINE_KEYS_HIGH: Final[float] = 30.0
+BASELINE_SHORTCUT_HIGH: Final[float] = 1.0
+
 # ── Misc ──
 DEFAULT_GIT_TIMEOUT_SECONDS: Final[int] = 5
 DEFAULT_DUMMY_ROWS: Final[int] = 10
