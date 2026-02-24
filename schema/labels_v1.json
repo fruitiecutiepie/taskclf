@@ -1,0 +1,54 @@
+{
+  "schema_name": "labels_v1",
+  "version": "1.0",
+  "description": "Core task classification label schema",
+  "num_classes": 8,
+  "labels": [
+    {
+      "id": 0,
+      "name": "Build",
+      "description": "Writing or implementing structured content in editor/terminal"
+    },
+    {
+      "id": 1,
+      "name": "Debug",
+      "description": "Investigating issues, terminal-heavy troubleshooting"
+    },
+    {
+      "id": 2,
+      "name": "Review",
+      "description": "Reviewing technical material or diffs with light edits"
+    },
+    {
+      "id": 3,
+      "name": "Write",
+      "description": "Writing structured non-code content"
+    },
+    {
+      "id": 4,
+      "name": "ReadResearch",
+      "description": "Consuming information with minimal production"
+    },
+    {
+      "id": 5,
+      "name": "Communicate",
+      "description": "Asynchronous coordination (chat/email)"
+    },
+    {
+      "id": 6,
+      "name": "Meet",
+      "description": "Synchronous meetings or calls"
+    },
+    {
+      "id": 7,
+      "name": "BreakIdle",
+      "description": "Idle or break period"
+    }
+  ],
+  "training_policy": {
+    "mixed_unknown_in_training": false,
+    "reject_threshold_defined_externally": true
+  },
+  "ordering_is_stable": true,
+  "probability_vector_order": "sorted_by_id"
+}

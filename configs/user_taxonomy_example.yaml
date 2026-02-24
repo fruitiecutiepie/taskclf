@@ -1,0 +1,95 @@
+# User-Specific Taxonomy Mapping
+# Version: 1.0
+# This file defines how core labels (labels_v1) map to user-facing categories.
+# This file is user-editable.
+# Core label semantics MUST NOT be changed here.
+
+version: 1.0
+label_schema_version: labels_v1
+
+user_id: "example-user-uuid"
+
+# Optional display preferences
+display:
+  show_core_labels: false
+  default_view: "mapped"
+  color_theme: "default"
+
+# Reject behavior
+reject:
+  mixed_label_name: "Mixed/Unknown"
+  include_rejected_in_reports: false
+
+# Mapping Rules
+# Each user-facing bucket aggregates one or more core labels.
+# Order matters only for display.
+
+buckets:
+
+  - name: "Deep Work"
+    description: "Focused, cognitively demanding work"
+    core_labels:
+      - Build
+      - Debug
+      - Review
+      - Write
+    color: "#2E86DE"
+
+  - name: "Learning / Research"
+    description: "Reading and knowledge acquisition"
+    core_labels:
+      - ReadResearch
+      - Review
+    color: "#9B59B6"
+
+  - name: "Communication"
+    description: "Async coordination"
+    core_labels:
+      - Communicate
+    color: "#27AE60"
+
+  - name: "Meetings"
+    description: "Synchronous meetings"
+    core_labels:
+      - Meet
+    color: "#E67E22"
+
+  - name: "Break"
+    description: "Idle or away time"
+    core_labels:
+      - BreakIdle
+    color: "#7F8C8D"
+
+# Optional advanced configuration
+
+advanced:
+
+  # If true, probability aggregation sums core_probs
+  # If false, bucket probability equals max(core_prob) within bucket
+  probability_aggregation: "sum"  # options: sum | max
+
+  # Minimum confidence required before mapping
+  # If below threshold, label becomes Mixed/Unknown
+  min_confidence_for_mapping: 0.55
+
+  # Optional reweighting (advanced users only)
+  # Adjust bucket contribution weights without retraining model
+  # Format: core_label: multiplier
+  reweight_core_labels:
+    Build: 1.0
+    Debug: 1.0
+    Review: 1.0
+    Write: 1.0
+    ReadResearch: 1.0
+    Communicate: 1.0
+    Meet: 1.0
+    BreakIdle: 1.0
+
+# Validation Rules (must hold)
+#
+# - Every core label must appear in at least one bucket OR be intentionally omitted.
+# - No unknown core labels allowed.
+# - Bucket names must be unique.
+# - Colors must be valid hex values.
+#
+# If validation fails, system must fall back to core labels only.

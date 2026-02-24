@@ -1,0 +1,218 @@
+{
+  "schema_name": "features_v1",
+  "version": "1.0",
+  "description": "Window-level feature schema for task classification",
+  "primary_key": ["user_id", "bucket_start_ts"],
+  "time_standard": "UTC ISO8601",
+  "window_size_seconds": 60,
+  "features": [
+    {
+      "name": "user_id",
+      "type": "string",
+      "nullable": false,
+      "description": "Random UUID (not PII)"
+    },
+    {
+      "name": "device_id",
+      "type": "string",
+      "nullable": true,
+      "description": "Optional device identifier"
+    },
+    {
+      "name": "bucket_start_ts",
+      "type": "timestamp",
+      "nullable": false,
+      "description": "Window start timestamp (UTC, inclusive)"
+    },
+    {
+      "name": "bucket_end_ts",
+      "type": "timestamp",
+      "nullable": false,
+      "description": "Window end timestamp (UTC, exclusive)"
+    },
+    {
+      "name": "session_id",
+      "type": "string",
+      "nullable": false,
+      "description": "Deterministic session identifier"
+    },
+    {
+      "name": "is_browser",
+      "type": "boolean",
+      "nullable": false,
+      "default": false
+    },
+    {
+      "name": "is_editor",
+      "type": "boolean",
+      "nullable": false,
+      "default": false
+    },
+    {
+      "name": "is_terminal",
+      "type": "boolean",
+      "nullable": false,
+      "default": false
+    },
+    {
+      "name": "app_id",
+      "type": "string",
+      "nullable": false,
+      "description": "Reverse-domain app identifier (e.g. com.microsoft.VSCode)"
+    },
+    {
+      "name": "app_category",
+      "type": "string",
+      "nullable": false,
+      "description": "Semantic app category (browser, editor, terminal, chat, email, meeting, docs, design, devtools, media, file_manager, utilities, project_mgmt, other)"
+    },
+    {
+      "name": "app_switch_count_last_5m",
+      "type": "integer",
+      "nullable": false,
+      "min": 0,
+      "description": "Unique apps seen in last 5 minutes"
+    },
+    {
+      "name": "app_foreground_time_ratio",
+      "type": "float",
+      "nullable": false,
+      "min": 0,
+      "max": 1,
+      "description": "Fraction of bucket the dominant app was foreground"
+    },
+    {
+      "name": "app_change_count",
+      "type": "integer",
+      "nullable": false,
+      "min": 0,
+      "description": "Number of app transitions within this bucket"
+    },
+    {
+      "name": "hour_of_day",
+      "type": "integer",
+      "nullable": false,
+      "min": 0,
+      "max": 23,
+      "description": "Derived from local time"
+    },
+    {
+      "name": "day_of_week",
+      "type": "integer",
+      "nullable": false,
+      "min": 0,
+      "max": 6,
+      "description": "0=Mon, 6=Sun"
+    },
+    {
+      "name": "session_length_so_far",
+      "type": "float",
+      "nullable": false,
+      "min": 0,
+      "description": "Minutes since session start"
+    },
+    {
+      "name": "keys_per_min",
+      "type": "float",
+      "nullable": true,
+      "min": 0
+    },
+    {
+      "name": "backspace_ratio",
+      "type": "float",
+      "nullable": true,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "shortcut_rate",
+      "type": "float",
+      "nullable": true,
+      "min": 0
+    },
+    {
+      "name": "clicks_per_min",
+      "type": "float",
+      "nullable": true,
+      "min": 0
+    },
+    {
+      "name": "scroll_events_per_min",
+      "type": "float",
+      "nullable": true,
+      "min": 0
+    },
+    {
+      "name": "mouse_distance",
+      "type": "float",
+      "nullable": true,
+      "min": 0,
+      "description": "Total mouse movement in pixels during window"
+    },
+    {
+      "name": "active_seconds_keyboard",
+      "type": "float",
+      "nullable": true,
+      "min": 0,
+      "max": 60,
+      "description": "Seconds with keyboard activity within this bucket"
+    },
+    {
+      "name": "active_seconds_mouse",
+      "type": "float",
+      "nullable": true,
+      "min": 0,
+      "max": 60,
+      "description": "Seconds with mouse activity within this bucket"
+    },
+    {
+      "name": "active_seconds_any",
+      "type": "float",
+      "nullable": true,
+      "min": 0,
+      "max": 60,
+      "description": "Seconds with any input activity within this bucket"
+    },
+    {
+      "name": "max_idle_run_seconds",
+      "type": "float",
+      "nullable": true,
+      "min": 0,
+      "description": "Longest consecutive idle run (seconds) within this bucket"
+    },
+    {
+      "name": "event_density",
+      "type": "float",
+      "nullable": true,
+      "min": 0,
+      "description": "Input events per active second within this bucket"
+    }
+  ],
+  "categorical_features": [
+    "app_id",
+    "app_category",
+    "is_browser",
+    "is_editor",
+    "is_terminal",
+    "day_of_week"
+  ],
+  "numerical_features": [
+    "app_switch_count_last_5m",
+    "app_foreground_time_ratio",
+    "app_change_count",
+    "hour_of_day",
+    "session_length_so_far",
+    "keys_per_min",
+    "backspace_ratio",
+    "shortcut_rate",
+    "clicks_per_min",
+    "scroll_events_per_min",
+    "mouse_distance",
+    "active_seconds_keyboard",
+    "active_seconds_mouse",
+    "active_seconds_any",
+    "max_idle_run_seconds",
+    "event_density"
+  ],
+  "determinism_requirement": true
+}
