@@ -189,9 +189,9 @@ class TestLabelsImport:
         csv_path = tmp_path / "labels.csv"
         csv_path.write_text(
             "start_ts,end_ts,label,provenance\n"
-            "2025-06-15 09:00:00,2025-06-15 10:00:00,coding,manual\n"
-            "2025-06-15 10:00:00,2025-06-15 11:00:00,writing_docs,manual\n"
-            "2025-06-15 11:00:00,2025-06-15 12:00:00,browsing_research,manual\n"
+            "2025-06-15 09:00:00,2025-06-15 10:00:00,Build,manual\n"
+            "2025-06-15 10:00:00,2025-06-15 11:00:00,Write,manual\n"
+            "2025-06-15 11:00:00,2025-06-15 12:00:00,ReadResearch,manual\n"
         )
         return csv_path
 
@@ -225,9 +225,9 @@ class TestLabelsImport:
         ])
         spans = read_label_spans(data_dir / "labels_v1" / "labels.parquet")
         assert len(spans) == 3
-        assert spans[0].label == "coding"
-        assert spans[1].label == "writing_docs"
-        assert spans[2].label == "browsing_research"
+        assert spans[0].label == "Build"
+        assert spans[1].label == "Write"
+        assert spans[2].label == "ReadResearch"
 
     def test_no_forbidden_columns_in_parquet(self, tmp_path: Path, labels_csv: Path) -> None:
         data_dir = tmp_path / "processed"

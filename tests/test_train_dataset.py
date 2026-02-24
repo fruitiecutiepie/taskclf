@@ -29,13 +29,13 @@ class TestAssignLabelsToBuckets:
             LabelSpan(
                 start_ts=dt.datetime(2025, 6, 15, 9, 55),
                 end_ts=dt.datetime(2025, 6, 15, 10, 5),
-                label="coding",
+                label="Build",
                 provenance="manual",
             ),
         ]
         result = assign_labels_to_buckets(features, spans)
         assert len(result) == 1
-        assert result.iloc[0]["label"] == "coding"
+        assert result.iloc[0]["label"] == "Build"
 
     def test_drops_rows_outside_any_span(self) -> None:
         ts_inside = dt.datetime(2025, 6, 15, 10, 0)
@@ -45,7 +45,7 @@ class TestAssignLabelsToBuckets:
             LabelSpan(
                 start_ts=dt.datetime(2025, 6, 15, 9, 55),
                 end_ts=dt.datetime(2025, 6, 15, 10, 5),
-                label="coding",
+                label="Build",
                 provenance="manual",
             ),
         ]
@@ -59,18 +59,18 @@ class TestAssignLabelsToBuckets:
             LabelSpan(
                 start_ts=dt.datetime(2025, 6, 15, 9, 55),
                 end_ts=dt.datetime(2025, 6, 15, 10, 5),
-                label="coding",
+                label="Build",
                 provenance="manual",
             ),
             LabelSpan(
                 start_ts=dt.datetime(2025, 6, 15, 9, 50),
                 end_ts=dt.datetime(2025, 6, 15, 10, 10),
-                label="writing_docs",
+                label="Write",
                 provenance="manual",
             ),
         ]
         result = assign_labels_to_buckets(features, spans)
-        assert result.iloc[0]["label"] == "coding"
+        assert result.iloc[0]["label"] == "Build"
 
     def test_boundary_start_is_inclusive(self) -> None:
         ts = dt.datetime(2025, 6, 15, 10, 0)
@@ -79,13 +79,13 @@ class TestAssignLabelsToBuckets:
             LabelSpan(
                 start_ts=ts,
                 end_ts=dt.datetime(2025, 6, 15, 10, 5),
-                label="break_idle",
+                label="BreakIdle",
                 provenance="manual",
             ),
         ]
         result = assign_labels_to_buckets(features, spans)
         assert len(result) == 1
-        assert result.iloc[0]["label"] == "break_idle"
+        assert result.iloc[0]["label"] == "BreakIdle"
 
     def test_boundary_end_is_exclusive(self) -> None:
         ts = dt.datetime(2025, 6, 15, 10, 5)
@@ -94,7 +94,7 @@ class TestAssignLabelsToBuckets:
             LabelSpan(
                 start_ts=dt.datetime(2025, 6, 15, 10, 0),
                 end_ts=ts,
-                label="coding",
+                label="Build",
                 provenance="manual",
             ),
         ]

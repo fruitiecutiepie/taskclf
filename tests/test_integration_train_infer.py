@@ -37,13 +37,13 @@ def _build_labeled_df() -> pd.DataFrame:
         base = dt.datetime(d.year, d.month, d.day)
         spans.extend([
             LabelSpan(start_ts=base.replace(hour=9), end_ts=base.replace(hour=12),
-                       label="coding", provenance="test"),
+                       label="Build", provenance="test"),
             LabelSpan(start_ts=base.replace(hour=12), end_ts=base.replace(hour=14),
-                       label="writing_docs", provenance="test"),
+                       label="Write", provenance="test"),
             LabelSpan(start_ts=base.replace(hour=14), end_ts=base.replace(hour=16),
-                       label="messaging_email", provenance="test"),
+                       label="Communicate", provenance="test"),
             LabelSpan(start_ts=base.replace(hour=16), end_ts=base.replace(hour=17),
-                       label="break_idle", provenance="test"),
+                       label="BreakIdle", provenance="test"),
         ])
 
     return assign_labels_to_buckets(features_df, spans)
@@ -175,7 +175,7 @@ class TestSchemaAlterationRefusesInference:
         shutil.copy(pipeline_artifacts["run_dir"] / "model.txt", run_dir / "model.txt")
 
         meta_dict = pipeline_artifacts["metadata"].model_dump()
-        meta_dict["label_set"] = ["coding", "unknown_task"]
+        meta_dict["label_set"] = ["Build", "unknown_task"]
         (run_dir / "metadata.json").write_text(json.dumps(meta_dict))
 
         with pytest.raises(ValueError, match="Label set mismatch"):

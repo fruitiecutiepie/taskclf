@@ -113,9 +113,9 @@ def test_tc_inf_001_rolling_majority_reduces_spikes() -> None:
     """TC-INF-001: rolling majority smoothing reduces short spikes."""
     from taskclf.infer.smooth import rolling_majority
 
-    labels = ["coding", "coding", "break_idle", "coding", "coding"]
+    labels = ["Build", "Build", "BreakIdle", "Build", "Build"]
     smoothed = rolling_majority(labels, window=3)
-    assert smoothed[2] == "coding"
+    assert smoothed[2] == "Build"
     assert len(smoothed) == len(labels)
 
 
@@ -127,13 +127,13 @@ def test_tc_inf_002_segmentization_merges_adjacent() -> None:
 
     base = datetime(2025, 6, 15, 10, 0, 0)
     bucket_starts = [base + timedelta(minutes=i) for i in range(5)]
-    labels = ["coding", "coding", "coding", "writing_docs", "writing_docs"]
+    labels = ["Build", "Build", "Build", "Write", "Write"]
 
     segs = segmentize(bucket_starts, labels)
     assert len(segs) == 2
-    assert segs[0].label == "coding"
+    assert segs[0].label == "Build"
     assert segs[0].bucket_count == 3
-    assert segs[1].label == "writing_docs"
+    assert segs[1].label == "Write"
     assert segs[1].bucket_count == 2
 
 
@@ -146,7 +146,7 @@ def test_tc_inf_003_segments_ordered_nonoverlapping_full_coverage() -> None:
     base = datetime(2025, 6, 15, 10, 0, 0)
     n = 10
     bucket_starts = [base + timedelta(minutes=i) for i in range(n)]
-    labels = ["coding"] * 3 + ["break_idle"] * 2 + ["writing_docs"] * 5
+    labels = ["Build"] * 3 + ["BreakIdle"] * 2 + ["Write"] * 5
 
     segs = segmentize(bucket_starts, labels)
 
@@ -169,7 +169,7 @@ def test_tc_inf_004_segment_durations_match_bucket_counts() -> None:
 
     base = datetime(2025, 6, 15, 10, 0, 0)
     bucket_starts = [base + timedelta(minutes=i) for i in range(6)]
-    labels = ["coding", "coding", "coding", "break_idle", "break_idle", "break_idle"]
+    labels = ["Build", "Build", "Build", "BreakIdle", "BreakIdle", "BreakIdle"]
     bucket_seconds = 60
 
     segs = segmentize(bucket_starts, labels, bucket_seconds=bucket_seconds)
@@ -210,9 +210,9 @@ def test_tc_int_030_daily_report_totals_match_active_time() -> None:
 
     base = datetime(2025, 6, 15, 10, 0, 0)
     segments = [
-        Segment(start_ts=base, end_ts=base + timedelta(minutes=3), label="coding", bucket_count=3),
-        Segment(start_ts=base + timedelta(minutes=3), end_ts=base + timedelta(minutes=5), label="writing_docs", bucket_count=2),
-        Segment(start_ts=base + timedelta(minutes=5), end_ts=base + timedelta(minutes=10), label="break_idle", bucket_count=5),
+        Segment(start_ts=base, end_ts=base + timedelta(minutes=3), label="Build", bucket_count=3),
+        Segment(start_ts=base + timedelta(minutes=3), end_ts=base + timedelta(minutes=5), label="Write", bucket_count=2),
+        Segment(start_ts=base + timedelta(minutes=5), end_ts=base + timedelta(minutes=10), label="BreakIdle", bucket_count=5),
     ]
 
     report = build_daily_report(segments, bucket_seconds=60)
@@ -224,9 +224,9 @@ def test_tc_int_030_daily_report_totals_match_active_time() -> None:
     breakdown_sum = sum(report.breakdown.values())
     assert abs(breakdown_sum - report.total_minutes) < 0.01
 
-    assert report.breakdown["coding"] == 3.0
-    assert report.breakdown["writing_docs"] == 2.0
-    assert report.breakdown["break_idle"] == 5.0
+    assert report.breakdown["Build"] == 3.0
+    assert report.breakdown["Write"] == 2.0
+    assert report.breakdown["BreakIdle"] == 5.0
     assert report.segments_count == 3
 
 
@@ -242,8 +242,8 @@ def test_tc_int_031_report_does_not_leak_raw_titles(tmp_path) -> None:
 
     base = datetime(2025, 6, 15, 10, 0, 0)
     segments = [
-        Segment(start_ts=base, end_ts=base + timedelta(minutes=5), label="coding", bucket_count=5),
-        Segment(start_ts=base + timedelta(minutes=5), end_ts=base + timedelta(minutes=10), label="break_idle", bucket_count=5),
+        Segment(start_ts=base, end_ts=base + timedelta(minutes=5), label="Build", bucket_count=5),
+        Segment(start_ts=base + timedelta(minutes=5), end_ts=base + timedelta(minutes=10), label="BreakIdle", bucket_count=5),
     ]
 
     report = build_daily_report(segments)

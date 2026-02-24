@@ -11,7 +11,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from taskclf.core.types import FeatureRow, LabelSpan
+from taskclf.core.types import CoreLabel, FeatureRow, LabelSpan
 
 
 class TestFeatureRowValidation:
@@ -108,24 +108,24 @@ class TestLabelSpanValidation:
         span = LabelSpan(
             start_ts=dt.datetime(2025, 6, 15, 10, 0),
             end_ts=dt.datetime(2025, 6, 15, 10, 5),
-            label="coding",
+            label="Build",
             provenance="manual",
         )
-        assert span.label == "coding"
+        assert span.label == "Build"
 
     def test_rejects_end_before_start(self) -> None:
         with pytest.raises(ValidationError, match="end_ts"):
             LabelSpan(
                 start_ts=dt.datetime(2025, 6, 15, 10, 5),
                 end_ts=dt.datetime(2025, 6, 15, 10, 0),
-                label="coding",
+                label="Build",
                 provenance="manual",
             )
 
     def test_rejects_end_equal_to_start(self) -> None:
         ts = dt.datetime(2025, 6, 15, 10, 0)
         with pytest.raises(ValidationError, match="end_ts"):
-            LabelSpan(start_ts=ts, end_ts=ts, label="coding", provenance="manual")
+            LabelSpan(start_ts=ts, end_ts=ts, label="Build", provenance="manual")
 
     def test_rejects_unknown_label(self) -> None:
         with pytest.raises(ValidationError, match="Unknown label"):
@@ -135,3 +135,39 @@ class TestLabelSpanValidation:
                 label="playing_games",
                 provenance="manual",
             )
+
+
+class TestCoreLabelMatchesSchema:
+    """Ensure CoreLabel enum stays in sync with schema/labels_v1.json."""
+
+    def test_labels_match_json_schema(self) -> None:
+        import json
+        from pathlib import Path
+
+        schema_path = Path(__file__).resolve().parents[1] / "schema" / "labels_v1.json"
+        schema = json.loads(schema_path.read_text())
+
+        json_labels = [entry["name"] for entry in schema["labels"]]
+        enum_labels = [member.value for member in CoreLabel]
+
+        assert enum_labels == json_labels
+
+    def test_label_ids_match_enum_order(self) -> None:
+        import json
+        from pathlib import Path
+
+        schema_path = Path(__file__).resolve().parents[1] / "schema" / "labels_v1.json"
+        schema = json.loads(schema_path.read_text())
+
+        for idx, member in enumerate(CoreLabel):
+            assert schema["labels"][idx]["id"] == idx
+            assert schema["labels"][idx]["name"] == member.value
+
+    def test_num_classes_matches(self) -> None:
+        import json
+        from pathlib import Path
+
+        schema_path = Path(__file__).resolve().parents[1] / "schema" / "labels_v1.json"
+        schema = json.loads(schema_path.read_text())
+
+        assert schema["num_classes"] == len(CoreLabel)

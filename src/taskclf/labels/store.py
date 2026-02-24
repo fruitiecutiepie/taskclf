@@ -14,16 +14,16 @@ from taskclf.core.types import LabelSpan
 
 # Deterministic app_id -> label mapping aligned with features/build._DUMMY_APPS.
 _APP_LABEL_MAP: Final[dict[str, str]] = {
-    "com.apple.Terminal": "coding",
-    "org.mozilla.firefox": "browsing_research",
-    "com.microsoft.VSCode": "coding",
-    "com.apple.mail": "messaging_email",
-    "us.zoom.xos": "meetings_calls",
-    "com.tinyspeck.slackmacgap": "messaging_email",
-    "com.google.Chrome": "browsing_research",
-    "com.jetbrains.intellij": "coding",
-    "com.apple.finder": "break_idle",
-    "com.apple.Notes": "writing_docs",
+    "com.apple.Terminal": "Build",
+    "org.mozilla.firefox": "ReadResearch",
+    "com.microsoft.VSCode": "Build",
+    "com.apple.mail": "Communicate",
+    "us.zoom.xos": "Meet",
+    "com.tinyspeck.slackmacgap": "Communicate",
+    "com.google.Chrome": "ReadResearch",
+    "com.jetbrains.intellij": "Build",
+    "com.apple.finder": "BreakIdle",
+    "com.apple.Notes": "Write",
 }
 
 _DUMMY_APPS_ORDER: Final[list[str]] = [

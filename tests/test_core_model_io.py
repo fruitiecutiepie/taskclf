@@ -40,13 +40,13 @@ def _build_labeled_df() -> pd.DataFrame:
         base = dt.datetime(d.year, d.month, d.day)
         spans.extend([
             LabelSpan(start_ts=base.replace(hour=9), end_ts=base.replace(hour=12),
-                       label="coding", provenance="test"),
+                       label="Build", provenance="test"),
             LabelSpan(start_ts=base.replace(hour=12), end_ts=base.replace(hour=14),
-                       label="writing_docs", provenance="test"),
+                       label="Write", provenance="test"),
             LabelSpan(start_ts=base.replace(hour=14), end_ts=base.replace(hour=16),
-                       label="messaging_email", provenance="test"),
+                       label="Communicate", provenance="test"),
             LabelSpan(start_ts=base.replace(hour=16), end_ts=base.replace(hour=17),
-                       label="break_idle", provenance="test"),
+                       label="BreakIdle", provenance="test"),
         ])
 
     return assign_labels_to_buckets(features_df, spans)
@@ -126,7 +126,7 @@ class TestLoadModelBundleMissingMetadata:
 
         bad_meta = {
             "schema_version": "v1",
-            "label_set": ["coding"],
+            "label_set": ["Build"],
             "train_date_from": "2025-06-14",
             "train_date_to": "2025-06-15",
             "params": {},
@@ -180,7 +180,7 @@ class TestLoadModelBundleLabelSetMismatch:
         shutil.copy(trained_bundle["run_dir"] / "model.txt", run_dir / "model.txt")
 
         meta_dict = trained_bundle["metadata"].model_dump()
-        meta_dict["label_set"] = ["coding", "sleeping", "gaming"]
+        meta_dict["label_set"] = ["Build", "sleeping", "gaming"]
         (run_dir / "metadata.json").write_text(json.dumps(meta_dict))
 
         with pytest.raises(ValueError, match="Label set mismatch"):
@@ -192,13 +192,13 @@ class TestLoadModelBundleLabelSetMismatch:
         shutil.copy(trained_bundle["run_dir"] / "model.txt", run_dir / "model.txt")
 
         meta_dict = trained_bundle["metadata"].model_dump()
-        meta_dict["label_set"] = ["coding", "sleeping"]
+        meta_dict["label_set"] = ["Build", "sleeping"]
         (run_dir / "metadata.json").write_text(json.dumps(meta_dict))
 
         model, loaded_meta, _ = load_model_bundle(
             run_dir, validate_schema=False, validate_labels=False,
         )
-        assert sorted(loaded_meta.label_set) == ["coding", "sleeping"]
+        assert sorted(loaded_meta.label_set) == ["Build", "sleeping"]
 
     def test_valid_label_set_loads_successfully(self, trained_bundle) -> None:
         model, metadata, _ = load_model_bundle(trained_bundle["run_dir"])

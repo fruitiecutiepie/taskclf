@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from enum import StrEnum
 from typing import Final, Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field, model_validator
@@ -36,14 +37,24 @@ class Event(Protocol):
     def app_category(self) -> str: ...
 
 
-LABEL_SET_V1: Final[frozenset[str]] = frozenset({
-    "coding",
-    "writing_docs",
-    "messaging_email",
-    "browsing_research",
-    "meetings_calls",
-    "break_idle",
-})
+class CoreLabel(StrEnum):
+    """Canonical task-type labels (v1).
+
+    Member ordering matches ``schema/labels_v1.json`` label IDs.
+    Do NOT reorder or remove members without a version bump.
+    """
+
+    Build = "Build"
+    Debug = "Debug"
+    Review = "Review"
+    Write = "Write"
+    ReadResearch = "ReadResearch"
+    Communicate = "Communicate"
+    Meet = "Meet"
+    BreakIdle = "BreakIdle"
+
+
+LABEL_SET_V1: Final[frozenset[str]] = frozenset(CoreLabel)
 
 _PROHIBITED_FIELD_PREFIXES = ("raw_",)
 

@@ -1,10 +1,10 @@
 ## TODOs (ordered)
 
-### 0) Lock the contract
+### 0) Lock the contract ✔
 
-1. Define **core label set v1** (8 labels): `Build, Debug, Review, Write, ReadResearch, Communicate, Meet, BreakIdle`.
-2. Write a **labeling guide** (1–3 bullets per label; observable rules; include “Mixed/Unknown” rule via reject threshold).
-3. Define **windowing spec**: bucket size (e.g., 30s/60s), session definition (idle gap minutes), and how labels attach to windows vs blocks.
+1. ~~Define **core label set v1** (8 labels): `Build, Debug, Review, Write, ReadResearch, Communicate, Meet, BreakIdle`.~~ — `CoreLabel` StrEnum in `src/taskclf/core/types.py`; synced with `schema/labels_v1.json`.
+2. ~~Write a **labeling guide** (1–3 bullets per label; observable rules; include “Mixed/Unknown” rule via reject threshold).~~ — `docs/guide/labels_v1.md`.
+3. ~~Define **windowing spec**: bucket size (e.g., 30s/60s), session definition (idle gap minutes), and how labels attach to windows vs blocks.~~ — `docs/guide/time_spec.md` (60s buckets, 5min idle gap, block→window projection rules).
 
 ### 1) Data + schemas
 
