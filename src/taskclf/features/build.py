@@ -76,12 +76,19 @@ def generate_dummy_features(
                 is_editor=is_editor,
                 is_terminal=is_terminal,
                 app_switch_count_last_5m=i % 5,
+                app_foreground_time_ratio=round(0.5 + (i % 5) * 0.1, 2),
+                app_change_count=i % 4,
                 keys_per_min=float(40 + i * 10),
                 backspace_ratio=round(0.05 + (i % 5) * 0.02, 2),
                 shortcut_rate=round(0.1 + (i % 3) * 0.05, 2),
                 clicks_per_min=float(3 + i % 8),
                 scroll_events_per_min=float(i % 6),
                 mouse_distance=float(200 + i * 50),
+                active_seconds_keyboard=float(20 + (i % 8) * 5),
+                active_seconds_mouse=float(15 + (i % 9) * 5),
+                active_seconds_any=float(30 + (i % 6) * 5),
+                max_idle_run_seconds=float(5 + (i % 4) * 5),
+                event_density=round(1.5 + (i % 5) * 0.3, 2),
                 hour_of_day=hour,
                 day_of_week=day_of_week,
                 session_length_so_far=float(i * 5),
@@ -91,6 +98,19 @@ def generate_dummy_features(
     return rows
 
 
+_INPUT_NULL_FIELDS: dict[str, None] = {
+    "keys_per_min": None,
+    "clicks_per_min": None,
+    "scroll_events_per_min": None,
+    "mouse_distance": None,
+    "active_seconds_keyboard": None,
+    "active_seconds_mouse": None,
+    "active_seconds_any": None,
+    "max_idle_run_seconds": None,
+    "event_density": None,
+}
+
+
 def _aggregate_input_for_bucket(
     bucket_ts: dt.datetime,
     bucket_input: list[AWInputEvent],
@@ -98,16 +118,12 @@ def _aggregate_input_for_bucket(
 ) -> dict[str, float | None]:
     """Aggregate input events within a single time bucket into feature values.
 
-    Returns a dict with keys matching the keyboard/mouse ``FeatureRow``
-    fields.  If *bucket_input* is empty every value is ``None``.
+    Computes per-minute rates, total mouse distance, and activity
+    occupancy metrics.  If *bucket_input* is empty every value is
+    ``None``.
     """
     if not bucket_input:
-        return {
-            "keys_per_min": None,
-            "clicks_per_min": None,
-            "scroll_events_per_min": None,
-            "mouse_distance": None,
-        }
+        return dict(_INPUT_NULL_FIELDS)
 
     total_presses = sum(e.presses for e in bucket_input)
     total_clicks = sum(e.clicks for e in bucket_input)
@@ -115,11 +131,51 @@ def _aggregate_input_for_bucket(
     total_distance = sum(e.delta_x + e.delta_y for e in bucket_input)
 
     minutes = bucket_seconds / 60.0
+
+    # Activity occupancy
+    kb_seconds = 0.0
+    mouse_seconds = 0.0
+    any_seconds = 0.0
+    active_event_count = 0
+
+    sorted_input = sorted(bucket_input, key=lambda e: e.timestamp)
+    idle_run = 0.0
+    max_idle = 0.0
+
+    for ev in sorted_input:
+        has_kb = ev.presses > 0
+        has_mouse = (ev.clicks > 0 or ev.delta_x + ev.delta_y > 0
+                     or ev.scroll_x + ev.scroll_y > 0)
+        has_any = has_kb or has_mouse
+
+        if has_kb:
+            kb_seconds += ev.duration_seconds
+        if has_mouse:
+            mouse_seconds += ev.duration_seconds
+        if has_any:
+            any_seconds += ev.duration_seconds
+            active_event_count += 1
+            if idle_run > max_idle:
+                max_idle = idle_run
+            idle_run = 0.0
+        else:
+            idle_run += ev.duration_seconds
+
+    if idle_run > max_idle:
+        max_idle = idle_run
+
+    density = (active_event_count / any_seconds) if any_seconds > 0 else 0.0
+
     return {
         "keys_per_min": round(total_presses / minutes, 2),
         "clicks_per_min": round(total_clicks / minutes, 2),
         "scroll_events_per_min": round(total_scroll / minutes, 2),
         "mouse_distance": float(total_distance),
+        "active_seconds_keyboard": round(kb_seconds, 2),
+        "active_seconds_mouse": round(mouse_seconds, 2),
+        "active_seconds_any": round(any_seconds, 2),
+        "max_idle_run_seconds": round(max_idle, 2),
+        "event_density": round(density, 4),
     }
 
 
@@ -210,6 +266,14 @@ def build_features_from_aw_events(
 
         dominant_ev = next(ev for ev in evs if ev.app_id == dominant_app_id)
 
+        foreground_ratio = min(app_durations[dominant_app_id] / bucket_seconds, 1.0)
+
+        sorted_evs = sorted(evs, key=lambda e: e.timestamp)
+        change_count = sum(
+            1 for a, b in zip(sorted_evs, sorted_evs[1:])
+            if a.app_id != b.app_id
+        )
+
         # App switches in the preceding 5 minutes
         window_start = bucket_ts - dt.timedelta(minutes=DEFAULT_APP_SWITCH_WINDOW_MINUTES)
         apps_in_window: set[str] = set()
@@ -245,12 +309,19 @@ def build_features_from_aw_events(
                 is_editor=dominant_ev.is_editor,
                 is_terminal=dominant_ev.is_terminal,
                 app_switch_count_last_5m=switch_count,
+                app_foreground_time_ratio=round(foreground_ratio, 4),
+                app_change_count=change_count,
                 keys_per_min=input_agg["keys_per_min"],
                 backspace_ratio=None,
                 shortcut_rate=None,
                 clicks_per_min=input_agg["clicks_per_min"],
                 scroll_events_per_min=input_agg["scroll_events_per_min"],
                 mouse_distance=input_agg["mouse_distance"],
+                active_seconds_keyboard=input_agg["active_seconds_keyboard"],
+                active_seconds_mouse=input_agg["active_seconds_mouse"],
+                active_seconds_any=input_agg["active_seconds_any"],
+                max_idle_run_seconds=input_agg["max_idle_run_seconds"],
+                event_density=input_agg["event_density"],
                 hour_of_day=bucket_ts.hour,
                 day_of_week=bucket_ts.weekday(),
                 session_length_so_far=round(elapsed_minutes, 2),

@@ -65,6 +65,9 @@ class FeatureRow(BaseModel, frozen=True):
     - **keyboard / mouse** — nullable until the corresponding collector is
       wired (``keys_per_min``, ``backspace_ratio``, ``shortcut_rate``,
       ``clicks_per_min``, ``scroll_events_per_min``, ``mouse_distance``).
+    - **activity occupancy** — nullable; derived from ``aw-watcher-input``
+      (``active_seconds_keyboard``, ``active_seconds_mouse``,
+      ``active_seconds_any``, ``max_idle_run_seconds``, ``event_density``).
     - **temporal** — ``hour_of_day``, ``day_of_week``, ``session_length_so_far``.
 
     A pre-validator rejects any field whose name starts with ``raw_`` to
@@ -97,6 +100,13 @@ class FeatureRow(BaseModel, frozen=True):
     clicks_per_min: float | None = Field(default=None, ge=0.0, description="Mouse clicks per minute.")
     scroll_events_per_min: float | None = Field(default=None, ge=0.0, description="Scroll events per minute.")
     mouse_distance: float | None = Field(default=None, ge=0.0, description="Mouse distance in pixels.")
+
+    # -- activity occupancy (nullable until input collector is wired) --
+    active_seconds_keyboard: float | None = Field(default=None, ge=0.0, description="Seconds with keyboard activity within this bucket.")
+    active_seconds_mouse: float | None = Field(default=None, ge=0.0, description="Seconds with mouse activity within this bucket.")
+    active_seconds_any: float | None = Field(default=None, ge=0.0, description="Seconds with any input activity within this bucket.")
+    max_idle_run_seconds: float | None = Field(default=None, ge=0.0, description="Longest consecutive idle run (seconds) within this bucket.")
+    event_density: float | None = Field(default=None, ge=0.0, description="Input events per active second within this bucket.")
 
     # -- temporal --
     hour_of_day: int = Field(ge=0, le=23, description="Hour component of bucket_start_ts (0-23).")
