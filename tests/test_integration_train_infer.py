@@ -68,6 +68,7 @@ def pipeline_artifacts(tmp_path_factory: pytest.TempPathFactory):
         train_date_from=dt.date(2025, 6, 14),
         train_date_to=dt.date(2025, 6, 15),
         params=params,
+        data_provenance="synthetic",
     )
     run_dir = save_model_bundle(model, metadata, metrics, cm_df, base_dir, cat_encoders=cat_encoders)
 
@@ -101,6 +102,10 @@ class TestTrainProducesBundle:
     def test_metadata_label_set_matches_current(self, pipeline_artifacts) -> None:
         raw = json.loads((pipeline_artifacts["run_dir"] / "metadata.json").read_text())
         assert sorted(raw["label_set"]) == sorted(LABEL_SET_V1)
+
+    def test_metadata_data_provenance(self, pipeline_artifacts) -> None:
+        raw = json.loads((pipeline_artifacts["run_dir"] / "metadata.json").read_text())
+        assert raw["data_provenance"] == "synthetic"
 
     def test_metrics_contain_expected_keys(self, pipeline_artifacts) -> None:
         raw = json.loads((pipeline_artifacts["run_dir"] / "metrics.json").read_text())

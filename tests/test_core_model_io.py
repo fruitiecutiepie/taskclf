@@ -71,6 +71,7 @@ def trained_bundle(tmp_path_factory: pytest.TempPathFactory):
         train_date_from=dt.date(2025, 6, 14),
         train_date_to=dt.date(2025, 6, 15),
         params=params,
+        data_provenance="synthetic",
     )
     run_dir = save_model_bundle(model, metadata, metrics, cm_df, base_dir, cat_encoders=cat_encoders)
 
@@ -95,7 +96,8 @@ class TestSaveModelBundle:
     def test_writes_metadata_json_with_required_keys(self, trained_bundle) -> None:
         raw = json.loads((trained_bundle["run_dir"] / "metadata.json").read_text())
         for key in ("schema_version", "schema_hash", "label_set",
-                     "train_date_from", "train_date_to", "params", "git_commit"):
+                     "train_date_from", "train_date_to", "params", "git_commit",
+                     "data_provenance"):
             assert key in raw, f"metadata.json missing required key: {key}"
 
     def test_metadata_schema_hash_matches_current(self, trained_bundle) -> None:
@@ -207,3 +209,38 @@ class TestLoadModelBundleLabelSetMismatch:
         model, metadata, _ = load_model_bundle(trained_bundle["run_dir"])
         from taskclf.core.types import LABEL_SET_V1
         assert sorted(metadata.label_set) == sorted(LABEL_SET_V1)
+
+
+class TestDataProvenance:
+    """TC-MODEL-005: data_provenance field round-trips and defaults correctly."""
+
+    def test_synthetic_provenance_round_trips(self, trained_bundle) -> None:
+        """Bundle built with data_provenance='synthetic' preserves the value."""
+        raw = json.loads((trained_bundle["run_dir"] / "metadata.json").read_text())
+        assert raw["data_provenance"] == "synthetic"
+
+        _, metadata, _ = load_model_bundle(trained_bundle["run_dir"])
+        assert metadata.data_provenance == "synthetic"
+
+    def test_missing_provenance_defaults_to_real(self, tmp_path, trained_bundle) -> None:
+        """Old metadata.json without data_provenance deserializes as 'real'."""
+        run_dir = tmp_path / "no_provenance_run"
+        run_dir.mkdir()
+        shutil.copy(trained_bundle["run_dir"] / "model.txt", run_dir / "model.txt")
+
+        meta_dict = trained_bundle["metadata"].model_dump()
+        del meta_dict["data_provenance"]
+        (run_dir / "metadata.json").write_text(json.dumps(meta_dict))
+
+        _, metadata, _ = load_model_bundle(run_dir)
+        assert metadata.data_provenance == "real"
+
+    def test_build_metadata_defaults_to_real(self) -> None:
+        """build_metadata() without explicit provenance defaults to 'real'."""
+        metadata = build_metadata(
+            label_set=["Build"],
+            train_date_from=dt.date(2025, 6, 14),
+            train_date_to=dt.date(2025, 6, 15),
+            params={},
+        )
+        assert metadata.data_provenance == "real"

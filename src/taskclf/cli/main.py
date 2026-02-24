@@ -481,6 +481,7 @@ def train_lgbm_cmd(
         train_date_from=start,
         train_date_to=end,
         params=params,
+        data_provenance="synthetic" if synthetic else "real",
     )
 
     run_dir = save_model_bundle(

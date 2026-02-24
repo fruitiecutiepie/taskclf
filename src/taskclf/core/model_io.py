@@ -7,7 +7,7 @@ import random
 import subprocess
 from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import lightgbm as lgb
 import pandas as pd
@@ -34,6 +34,7 @@ class ModelMetadata(BaseModel, frozen=True):
     params: dict[str, Any]
     git_commit: str
     reject_threshold: float | None = None
+    data_provenance: Literal["real", "synthetic", "mixed"] = "real"
     created_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
 
 
@@ -185,6 +186,7 @@ def build_metadata(
     params: dict[str, Any],
     *,
     reject_threshold: float | None = None,
+    data_provenance: Literal["real", "synthetic", "mixed"] = "real",
 ) -> ModelMetadata:
     """Convenience builder that fills in schema info and git commit.
 
@@ -194,6 +196,8 @@ def build_metadata(
         train_date_to: Last date (inclusive) of the training range.
         params: LightGBM (or other model) hyperparameters dict.
         reject_threshold: Reject threshold used during evaluation.
+        data_provenance: Origin of the training data
+            (``"real"``, ``"synthetic"``, or ``"mixed"``).
 
     Returns:
         A populated ``ModelMetadata`` instance.
@@ -207,4 +211,5 @@ def build_metadata(
         params=params,
         git_commit=_current_git_commit(),
         reject_threshold=reject_threshold,
+        data_provenance=data_provenance,
     )
