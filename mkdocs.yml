@@ -40,6 +40,7 @@ nav:
   - Home: index.md
   - Guide:
       - Usage: guide/usage.md
+      - Taxonomy Mapping: guide/taxonomy.md
   - API Reference:
       - core/defaults: api/core/defaults.md
       - core/store: api/core/store.md
@@ -60,6 +61,7 @@ nav:
       - infer/batch: api/infer/batch.md
       - infer/smooth: api/infer/smooth.md
       - infer/online: api/infer/online.md
+      - infer/taxonomy: api/infer/taxonomy.md
       - report/daily: api/report/daily.md
       - report/export: api/report/export.md
       - cli: api/cli/main.md

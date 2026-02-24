@@ -33,6 +33,7 @@ from taskclf.core.model_io import ModelMetadata, load_model_bundle
 from taskclf.core.types import LABEL_SET_V1, FeatureRow
 from taskclf.infer.batch import write_segments_json
 from taskclf.infer.smooth import Segment, rolling_majority, segmentize
+from taskclf.infer.taxonomy import TaxonomyConfig, TaxonomyResolver
 from taskclf.train.lgbm import CATEGORICAL_COLUMNS, FEATURE_COLUMNS
 
 logger = logging.getLogger(__name__)
@@ -55,6 +56,7 @@ class OnlinePredictor:
         smooth_window: int = DEFAULT_SMOOTH_WINDOW,
         bucket_seconds: int = DEFAULT_BUCKET_SECONDS,
         reject_threshold: float | None = DEFAULT_REJECT_THRESHOLD,
+        taxonomy: TaxonomyConfig | None = None,
     ) -> None:
         self._model = model
         self._metadata = metadata
@@ -65,6 +67,10 @@ class OnlinePredictor:
 
         self._le = LabelEncoder()
         self._le.fit(sorted(LABEL_SET_V1))
+
+        self._resolver: TaxonomyResolver | None = None
+        if taxonomy is not None:
+            self._resolver = TaxonomyResolver(taxonomy)
 
         self._raw_buffer: deque[str] = deque(maxlen=max(smooth_window, 1))
         self._bucket_ts_buffer: deque[datetime] = deque(maxlen=max(smooth_window, 1))
@@ -86,15 +92,17 @@ class OnlinePredictor:
         """Predict a single bucket and return the smoothed label.
 
         The raw prediction is appended to an internal rolling buffer.
-        Smoothing is applied over the buffer contents, and the smoothed
-        label for the *latest* position is returned.  Internal segment
-        state is updated accordingly.
+        Smoothing is applied over the buffer contents (using core labels),
+        and the smoothed label for the *latest* position is returned.
+        When a taxonomy is configured, the returned label is the
+        taxonomy-mapped label; core labels are still used for smoothing.
 
         Args:
             row: A validated :class:`FeatureRow` for one time bucket.
 
         Returns:
-            The smoothed predicted label string.
+            The smoothed predicted label string (mapped if taxonomy is
+            set, otherwise core).
         """
         x = np.array(
             [[self._encode_value(c, getattr(row, c)) for c in FEATURE_COLUMNS]],
@@ -105,7 +113,11 @@ class OnlinePredictor:
         pred_idx = int(proba.argmax(axis=1)[0])
         raw_label: str = self._le.inverse_transform([pred_idx])[0]
 
-        if self._reject_threshold is not None and confidence < self._reject_threshold:
+        is_rejected = (
+            self._reject_threshold is not None
+            and confidence < self._reject_threshold
+        )
+        if is_rejected:
             raw_label = MIXED_UNKNOWN
 
         self._raw_buffer.append(raw_label)
@@ -116,6 +128,12 @@ class OnlinePredictor:
 
         self._all_bucket_ts.append(row.bucket_start_ts)
         self._all_smoothed.append(smoothed_label)
+
+        if self._resolver is not None:
+            result = self._resolver.resolve(
+                pred_idx, proba[0], is_rejected=is_rejected,
+            )
+            return result.mapped_label
 
         return smoothed_label
 
@@ -152,6 +170,7 @@ def run_online_loop(
     bucket_seconds: int = DEFAULT_BUCKET_SECONDS,
     idle_gap_seconds: float = DEFAULT_IDLE_GAP_SECONDS,
     reject_threshold: float | None = DEFAULT_REJECT_THRESHOLD,
+    taxonomy_path: Path | None = None,
 ) -> None:
     """Poll ActivityWatch, predict, smooth, and write results continuously.
 
@@ -173,6 +192,8 @@ def run_online_loop(
         idle_gap_seconds: Minimum gap (seconds) that starts a new session.
         reject_threshold: If given, predictions with
             ``max(proba) < reject_threshold`` become ``Mixed/Unknown``.
+        taxonomy_path: Optional path to a taxonomy YAML file.  When
+            provided, output labels are mapped to user-defined buckets.
     """
     from taskclf.adapters.activitywatch.client import (
         fetch_aw_events,
@@ -181,6 +202,12 @@ def run_online_loop(
         find_window_bucket_id,
     )
     from taskclf.features.build import build_features_from_aw_events
+    from taskclf.infer.taxonomy import load_taxonomy
+
+    taxonomy: TaxonomyConfig | None = None
+    if taxonomy_path is not None:
+        taxonomy = load_taxonomy(taxonomy_path)
+        logger.info("Loaded taxonomy from %s (user=%s)", taxonomy_path, taxonomy.user_id)
 
     model, metadata, cat_encoders = load_model_bundle(Path(model_dir))
     logger.info("Loaded model from %s (schema=%s)", model_dir, metadata.schema_hash)
@@ -201,6 +228,7 @@ def run_online_loop(
         smooth_window=smooth_window,
         bucket_seconds=bucket_seconds,
         reject_threshold=reject_threshold,
+        taxonomy=taxonomy,
     )
 
     pred_path = out_dir / "predictions.csv"

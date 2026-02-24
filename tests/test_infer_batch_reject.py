@@ -121,8 +121,8 @@ class TestPredictLabelsBackwardCompat:
 # ---------------------------------------------------------------------------
 
 class TestRunBatchInferenceReject:
-    def test_returns_four_tuple(self, artifacts) -> None:
-        from taskclf.infer.batch import run_batch_inference
+    def test_returns_result_object(self, artifacts) -> None:
+        from taskclf.infer.batch import BatchInferenceResult, run_batch_inference
 
         model, cat_encoders, labeled_df = artifacts
 
@@ -131,35 +131,34 @@ class TestRunBatchInferenceReject:
             cat_encoders=cat_encoders,
             reject_threshold=0.55,
         )
-        assert len(result) == 4
-        smoothed, segments, confidences, is_rejected = result
+        assert isinstance(result, BatchInferenceResult)
 
-        assert len(smoothed) == len(labeled_df)
-        assert confidences.shape == (len(labeled_df),)
-        assert is_rejected.shape == (len(labeled_df),)
-        assert is_rejected.dtype == bool
+        assert len(result.smoothed_labels) == len(labeled_df)
+        assert result.confidences.shape == (len(labeled_df),)
+        assert result.is_rejected.shape == (len(labeled_df),)
+        assert result.is_rejected.dtype == bool
 
     def test_high_threshold_flags_rejections(self, artifacts) -> None:
         from taskclf.infer.batch import run_batch_inference
 
         model, cat_encoders, labeled_df = artifacts
-        _, _, _, is_rejected = run_batch_inference(
+        result = run_batch_inference(
             model, labeled_df,
             cat_encoders=cat_encoders,
             reject_threshold=0.99,
         )
-        assert is_rejected.any()
+        assert result.is_rejected.any()
 
     def test_no_threshold_means_no_rejections(self, artifacts) -> None:
         from taskclf.infer.batch import run_batch_inference
 
         model, cat_encoders, labeled_df = artifacts
-        _, _, _, is_rejected = run_batch_inference(
+        result = run_batch_inference(
             model, labeled_df,
             cat_encoders=cat_encoders,
             reject_threshold=None,
         )
-        assert not is_rejected.any()
+        assert not result.is_rejected.any()
 
 
 # ---------------------------------------------------------------------------
@@ -171,15 +170,15 @@ class TestWritePredictionsCsvReject:
         from taskclf.infer.batch import run_batch_inference, write_predictions_csv
 
         model, cat_encoders, labeled_df = artifacts
-        smoothed, _, confidences, is_rejected = run_batch_inference(
+        result = run_batch_inference(
             model, labeled_df,
             cat_encoders=cat_encoders,
             reject_threshold=0.55,
         )
 
         csv_path = write_predictions_csv(
-            labeled_df, smoothed, tmp_path / "preds.csv",
-            confidences=confidences, is_rejected=is_rejected,
+            labeled_df, result.smoothed_labels, tmp_path / "preds.csv",
+            confidences=result.confidences, is_rejected=result.is_rejected,
         )
         out = pd.read_csv(csv_path)
         assert "confidence" in out.columns
@@ -190,12 +189,12 @@ class TestWritePredictionsCsvReject:
         from taskclf.infer.batch import run_batch_inference, write_predictions_csv
 
         model, cat_encoders, labeled_df = artifacts
-        smoothed, _, _, _ = run_batch_inference(
+        result = run_batch_inference(
             model, labeled_df, cat_encoders=cat_encoders,
         )
 
         csv_path = write_predictions_csv(
-            labeled_df, smoothed, tmp_path / "preds_basic.csv",
+            labeled_df, result.smoothed_labels, tmp_path / "preds_basic.csv",
         )
         out = pd.read_csv(csv_path)
         assert "confidence" not in out.columns

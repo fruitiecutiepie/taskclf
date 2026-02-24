@@ -740,6 +740,103 @@ def train_tune_reject_cmd(
     typer.echo(f"Tuning report: {report_path}")
 
 
+# -- taxonomy -----------------------------------------------------------------
+taxonomy_app = typer.Typer()
+app.add_typer(taxonomy_app, name="taxonomy")
+
+
+@taxonomy_app.command("validate")
+def taxonomy_validate_cmd(
+    config: str = typer.Option(..., "--config", help="Path to a taxonomy YAML file"),
+) -> None:
+    """Validate a user taxonomy YAML file and report errors."""
+    from pydantic import ValidationError
+
+    from taskclf.infer.taxonomy import load_taxonomy
+
+    config_path = Path(config)
+    if not config_path.exists():
+        typer.echo(f"File not found: {config_path}", err=True)
+        raise typer.Exit(code=1)
+
+    try:
+        tax = load_taxonomy(config_path)
+    except (ValidationError, ValueError) as exc:
+        typer.echo(f"Validation failed:\n{exc}", err=True)
+        raise typer.Exit(code=1)
+
+    typer.echo(f"Taxonomy valid: {len(tax.buckets)} buckets, version={tax.version}")
+    for bucket in tax.buckets:
+        typer.echo(f"  {bucket.name}: {', '.join(bucket.core_labels)}")
+
+
+@taxonomy_app.command("show")
+def taxonomy_show_cmd(
+    config: str = typer.Option(..., "--config", help="Path to a taxonomy YAML file"),
+) -> None:
+    """Display a taxonomy mapping as a Rich table."""
+    from pydantic import ValidationError
+    from rich.console import Console
+    from rich.table import Table
+
+    from taskclf.infer.taxonomy import load_taxonomy
+
+    console = Console()
+    config_path = Path(config)
+    if not config_path.exists():
+        typer.echo(f"File not found: {config_path}", err=True)
+        raise typer.Exit(code=1)
+
+    try:
+        tax = load_taxonomy(config_path)
+    except (ValidationError, ValueError) as exc:
+        typer.echo(f"Validation failed:\n{exc}", err=True)
+        raise typer.Exit(code=1)
+
+    table = Table(title=f"Taxonomy Mapping (v{tax.version})")
+    table.add_column("Bucket", style="bold")
+    table.add_column("Core Labels")
+    table.add_column("Color")
+    table.add_column("Description")
+
+    for bucket in tax.buckets:
+        table.add_row(
+            bucket.name,
+            ", ".join(bucket.core_labels),
+            bucket.color,
+            bucket.description,
+        )
+
+    console.print(table)
+
+    info = Table(title="Advanced Settings")
+    info.add_column("Setting", style="bold")
+    info.add_column("Value")
+    info.add_row("Aggregation", tax.advanced.probability_aggregation)
+    info.add_row("Min confidence", str(tax.advanced.min_confidence_for_mapping))
+    info.add_row("Reject label", tax.reject.mixed_label_name)
+    if tax.user_id:
+        info.add_row("User ID", tax.user_id)
+    console.print(info)
+
+
+@taxonomy_app.command("init")
+def taxonomy_init_cmd(
+    out: str = typer.Option("configs/user_taxonomy.yaml", "--out", help="Output path for the generated taxonomy YAML"),
+) -> None:
+    """Generate a default taxonomy YAML (identity mapping: one bucket per core label)."""
+    from taskclf.infer.taxonomy import default_taxonomy, save_taxonomy
+
+    out_path = Path(out)
+    if out_path.exists():
+        typer.echo(f"File already exists: {out_path}", err=True)
+        raise typer.Exit(code=1)
+
+    config = default_taxonomy()
+    save_taxonomy(config, out_path)
+    typer.echo(f"Default taxonomy written to {out_path} ({len(config.buckets)} buckets)")
+
+
 # -- infer --------------------------------------------------------------------
 infer_app = typer.Typer()
 app.add_typer(infer_app, name="infer")
@@ -755,6 +852,7 @@ def infer_batch_cmd(
     out_dir: str = typer.Option(DEFAULT_OUT_DIR, help="Output directory for predictions and segments"),
     smooth_window: int = typer.Option(DEFAULT_SMOOTH_WINDOW, help="Rolling majority smoothing window size"),
     reject_threshold: float = typer.Option(DEFAULT_REJECT_THRESHOLD, "--reject-threshold", help="Max-probability below which prediction is rejected as Mixed/Unknown"),
+    taxonomy_config: str | None = typer.Option(None, "--taxonomy", help="Path to a taxonomy YAML file for user-specific label mapping"),
 ) -> None:
     """Run batch inference: predict, smooth, and segmentize."""
     import pandas as pd
@@ -769,6 +867,13 @@ def infer_batch_cmd(
         write_predictions_csv,
         write_segments_json,
     )
+
+    taxonomy = None
+    if taxonomy_config is not None:
+        from taskclf.infer.taxonomy import load_taxonomy
+
+        taxonomy = load_taxonomy(Path(taxonomy_config))
+        typer.echo(f"Loaded taxonomy from {taxonomy_config}")
 
     model, metadata, cat_encoders = load_model_bundle(Path(model_dir))
     typer.echo(f"Loaded model from {model_dir} (schema={metadata.schema_hash})")
@@ -800,27 +905,31 @@ def infer_batch_cmd(
     features_df = features_df.sort_values("bucket_start_ts").reset_index(drop=True)
     typer.echo(f"Loaded {len(features_df)} feature rows")
 
-    smoothed_labels, segments, confidences, is_rejected = run_batch_inference(
+    result = run_batch_inference(
         model, features_df,
         cat_encoders=cat_encoders,
         smooth_window=smooth_window,
         reject_threshold=reject_threshold,
+        taxonomy=taxonomy,
     )
-    rr = reject_rate(smoothed_labels, MIXED_UNKNOWN)
+    rr = reject_rate(result.smoothed_labels, MIXED_UNKNOWN)
     typer.echo(
-        f"Predicted {len(smoothed_labels)} buckets -> {len(segments)} segments "
+        f"Predicted {len(result.smoothed_labels)} buckets -> {len(result.segments)} segments "
         f"(reject rate: {rr:.1%})"
     )
 
     out = Path(out_dir)
     pred_path = write_predictions_csv(
-        features_df, smoothed_labels, out / "predictions.csv",
-        confidences=confidences, is_rejected=is_rejected,
+        features_df, result.smoothed_labels, out / "predictions.csv",
+        confidences=result.confidences, is_rejected=result.is_rejected,
+        mapped_labels=result.mapped_labels,
     )
-    seg_path = write_segments_json(segments, out / "segments.json")
+    seg_path = write_segments_json(result.segments, out / "segments.json")
 
     typer.echo(f"Predictions: {pred_path}")
     typer.echo(f"Segments:    {seg_path}")
+    if result.mapped_labels is not None:
+        typer.echo("Taxonomy mapping applied: mapped_label column included in predictions")
 
 
 @infer_app.command("online")
@@ -832,6 +941,7 @@ def infer_online_cmd(
     title_salt: str = typer.Option(DEFAULT_TITLE_SALT, "--title-salt", help="Salt for hashing window titles"),
     out_dir: str = typer.Option(DEFAULT_OUT_DIR, help="Output directory for predictions and segments"),
     reject_threshold: float = typer.Option(DEFAULT_REJECT_THRESHOLD, "--reject-threshold", help="Max-probability below which prediction is rejected as Mixed/Unknown"),
+    taxonomy_config: str | None = typer.Option(None, "--taxonomy", help="Path to a taxonomy YAML file for user-specific label mapping"),
 ) -> None:
     """Run online inference: poll ActivityWatch, predict, smooth, and report."""
     from taskclf.infer.online import run_online_loop
@@ -844,6 +954,7 @@ def infer_online_cmd(
         title_salt=title_salt,
         out_dir=Path(out_dir),
         reject_threshold=reject_threshold,
+        taxonomy_path=Path(taxonomy_config) if taxonomy_config else None,
     )
 
 

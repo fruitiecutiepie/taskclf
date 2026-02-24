@@ -14,10 +14,13 @@ Typer CLI entrypoint and commands.
 | `taskclf labels project` | Project label blocks onto feature windows |
 | `taskclf train build-dataset` | Build training dataset (X/y/splits artifacts) |
 | `taskclf train lgbm` | Train a LightGBM multiclass model |
-| `taskclf infer batch` | Run batch inference |
+| `taskclf taxonomy validate` | Validate a user taxonomy YAML file |
+| `taskclf taxonomy show` | Display taxonomy mapping as a table |
+| `taskclf taxonomy init` | Generate a default taxonomy YAML |
+| `taskclf infer batch` | Run batch inference (supports `--taxonomy`) |
 | `taskclf infer baseline` | Run rule-based baseline inference (no ML) |
 | `taskclf infer compare` | Compare baseline vs ML model on labeled data |
-| `taskclf infer online` | Run online inference loop |
+| `taskclf infer online` | Run online inference loop (supports `--taxonomy`) |
 | `taskclf report daily` | Generate a daily report |
 
 ### labels add-block
@@ -59,6 +62,54 @@ taskclf train build-dataset \
   --from 2025-06-10 --to 2025-06-15 \
   --synthetic \
   --holdout-fraction 0.1
+```
+
+### taxonomy validate
+
+Validate a user taxonomy YAML file and report any errors.
+
+```bash
+taskclf taxonomy validate --config configs/user_taxonomy.yaml
+```
+
+### taxonomy show
+
+Display the taxonomy mapping as a Rich table showing bucket names,
+core labels, colors, and advanced settings.
+
+```bash
+taskclf taxonomy show --config configs/user_taxonomy.yaml
+```
+
+### taxonomy init
+
+Generate a default taxonomy YAML with one bucket per core label
+(identity mapping) as a starting point for customisation.
+
+```bash
+taskclf taxonomy init --out configs/user_taxonomy.yaml
+```
+
+### infer batch (with taxonomy)
+
+Run batch inference with optional taxonomy mapping.  When `--taxonomy`
+is provided, a `mapped_label` column is added to `predictions.csv`.
+
+```bash
+taskclf infer batch \
+  --model-dir models/run_20250615_120000 \
+  --from 2025-06-10 --to 2025-06-15 --synthetic \
+  --taxonomy configs/user_taxonomy.yaml
+```
+
+### infer online (with taxonomy)
+
+Run online inference with optional taxonomy mapping.
+
+```bash
+taskclf infer online \
+  --model-dir models/run_20250615_120000 \
+  --taxonomy configs/user_taxonomy.yaml
 ```
 
 ### infer baseline

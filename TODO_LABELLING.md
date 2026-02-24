@@ -109,19 +109,25 @@
 
 * e.g., enable per-user calibrator after ≥200 labeled windows across ≥3 days.
 
-### 7) User-specific taxonomy mapping layer
+### 7) User-specific taxonomy mapping layer ✔
 
-22. Design mapping config format:
+22. ~~Design mapping config format:~~
 
-* core → user buckets (many-to-one)
-* optional weights / priorities
+~~* core → user buckets (many-to-one)~~
+~~* optional weights / priorities~~
 
-23. Implement mapping resolver:
+   — `TaxonomyConfig`, `TaxonomyBucket`, `TaxonomyAdvanced` Pydantic models in `src/taskclf/infer/taxonomy.py`; YAML format matching `configs/user_taxonomy_example.yaml`. Supports sum/max probability aggregation, per-label reweighting, hex colors, and user-specific reject label. Validation: unique bucket names, valid `CoreLabel` members, valid hex colors, positive reweights.
 
-* predicted core label + probs → mapped label + aggregated probs
-* handle unmapped core labels (fallback bucket)
+23. ~~Implement mapping resolver:~~
 
-24. Add UI for users to edit mappings (and version them).
+~~* predicted core label + probs → mapped label + aggregated probs~~
+~~* handle unmapped core labels (fallback bucket)~~
+
+   — `TaxonomyResolver` class in `src/taskclf/infer/taxonomy.py` with `resolve()` (single row) and `resolve_batch()` (vectorised). Produces `TaxonomyResult` (mapped_label + mapped_probs summing to 1.0). Unmapped core labels assigned to automatic "Other" fallback bucket. Integrated into `run_batch_inference()` (optional `taxonomy` param) and `OnlinePredictor` (optional `taxonomy` param). CLI: `taskclf infer batch --taxonomy`, `taskclf infer online --taxonomy`.
+
+24. ~~Add UI for users to edit mappings (and version them).~~
+
+   — CLI taxonomy management: `taskclf taxonomy validate` (validates YAML), `taskclf taxonomy show` (Rich table display), `taskclf taxonomy init` (generates default identity-mapping YAML). YAML I/O via `load_taxonomy()` / `save_taxonomy()`. Versioned via `version` field in config. Streamlit UI deferred to future iteration.
 
 ### 8) Online inference pipeline
 

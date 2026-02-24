@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Sequence
@@ -20,7 +20,25 @@ from taskclf.core.defaults import (
 )
 from taskclf.core.types import LABEL_SET_V1
 from taskclf.infer.smooth import Segment, rolling_majority, segmentize
+from taskclf.infer.taxonomy import TaxonomyConfig, TaxonomyResolver
 from taskclf.train.lgbm import FEATURE_COLUMNS, encode_categoricals
+
+
+@dataclass(frozen=True)
+class BatchInferenceResult:
+    """Container for batch inference outputs.
+
+    Always contains core prediction fields.  Taxonomy-mapped fields
+    (``mapped_labels``, ``mapped_probs``) are ``None`` when no taxonomy
+    config was provided.
+    """
+
+    smoothed_labels: list[str]
+    segments: list[Segment]
+    confidences: np.ndarray
+    is_rejected: np.ndarray
+    mapped_labels: list[str] | None = field(default=None)
+    mapped_probs: list[dict[str, float]] | None = field(default=None)
 
 
 def predict_proba(
@@ -91,7 +109,8 @@ def run_batch_inference(
     smooth_window: int = DEFAULT_SMOOTH_WINDOW,
     bucket_seconds: int = DEFAULT_BUCKET_SECONDS,
     reject_threshold: float | None = None,
-) -> tuple[list[str], list[Segment], np.ndarray, np.ndarray]:
+    taxonomy: TaxonomyConfig | None = None,
+) -> BatchInferenceResult:
     """Predict, smooth, and segmentize a batch of feature rows.
 
     Args:
@@ -104,12 +123,13 @@ def run_batch_inference(
         reject_threshold: If given, predictions with
             ``max(proba) < reject_threshold`` become ``Mixed/Unknown``
             before smoothing.
+        taxonomy: Optional taxonomy config.  When provided, core labels
+            are mapped to user-defined buckets and ``mapped_labels`` /
+            ``mapped_probs`` are populated on the result.
 
     Returns:
-        A ``(smoothed_labels, segments, confidences, is_rejected)`` tuple.
-        *confidences* is ``max(proba)`` per row and *is_rejected* is a
-        boolean array indicating which rows fell below the threshold
-        (all ``False`` when *reject_threshold* is ``None``).
+        A :class:`BatchInferenceResult` with core predictions, segments,
+        and optional taxonomy-mapped outputs.
     """
     le = LabelEncoder()
     le.fit(sorted(LABEL_SET_V1))
@@ -137,7 +157,22 @@ def run_batch_inference(
     ]
     segments = segmentize(bucket_starts, smoothed, bucket_seconds=bucket_seconds)
 
-    return smoothed, segments, confidences, is_rejected
+    mapped_labels: list[str] | None = None
+    mapped_probs_list: list[dict[str, float]] | None = None
+    if taxonomy is not None:
+        resolver = TaxonomyResolver(taxonomy)
+        results = resolver.resolve_batch(pred_indices, proba, is_rejected=is_rejected)
+        mapped_labels = [r.mapped_label for r in results]
+        mapped_probs_list = [r.mapped_probs for r in results]
+
+    return BatchInferenceResult(
+        smoothed_labels=smoothed,
+        segments=segments,
+        confidences=confidences,
+        is_rejected=is_rejected,
+        mapped_labels=mapped_labels,
+        mapped_probs=mapped_probs_list,
+    )
 
 
 def write_predictions_csv(
@@ -147,6 +182,7 @@ def write_predictions_csv(
     *,
     confidences: np.ndarray | None = None,
     is_rejected: np.ndarray | None = None,
+    mapped_labels: Sequence[str] | None = None,
 ) -> Path:
     """Write per-bucket predictions to a CSV file.
 
@@ -156,6 +192,7 @@ def write_predictions_csv(
         path: Destination CSV path.
         confidences: Optional max-probability per row.
         is_rejected: Optional boolean rejection flag per row.
+        mapped_labels: Optional taxonomy-mapped label per row.
 
     Returns:
         The *path* that was written.
@@ -168,6 +205,8 @@ def write_predictions_csv(
         data["confidence"] = np.round(confidences, 4)
     if is_rejected is not None:
         data["is_rejected"] = is_rejected
+    if mapped_labels is not None:
+        data["mapped_label"] = list(mapped_labels)
 
     out = pd.DataFrame(data)
     path.parent.mkdir(parents=True, exist_ok=True)
