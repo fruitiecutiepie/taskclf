@@ -139,6 +139,196 @@ def labels_import_cmd(
     typer.echo(f"Wrote labels to {out_path}")
 
 
+@labels_app.command("add-block")
+def labels_add_block_cmd(
+    start: str = typer.Option(..., "--start", help="Block start timestamp (ISO-8601 UTC)"),
+    end: str = typer.Option(..., "--end", help="Block end timestamp (ISO-8601 UTC)"),
+    label: str = typer.Option(..., "--label", help="Core label (Build, Debug, Review, Write, ReadResearch, Communicate, Meet, BreakIdle)"),
+    user_id: str = typer.Option("default-user", "--user-id", help="User ID for this label"),
+    confidence: float | None = typer.Option(None, "--confidence", min=0.0, max=1.0, help="Labeler confidence (0-1)"),
+    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory"),
+    model_dir: str | None = typer.Option(None, "--model-dir", help="Model bundle directory (for predicted label display)"),
+) -> None:
+    """Create a manual label block for a time range."""
+    import pandas as pd
+    from rich.console import Console
+    from rich.table import Table
+
+    from taskclf.core.store import read_parquet
+    from taskclf.core.types import LabelSpan
+    from taskclf.labels.store import append_label_span, generate_label_summary
+
+    console = Console()
+
+    start_ts = dt.datetime.fromisoformat(start)
+    end_ts = dt.datetime.fromisoformat(end)
+
+    span = LabelSpan(
+        start_ts=start_ts,
+        end_ts=end_ts,
+        label=label,
+        provenance="manual",
+        user_id=user_id,
+        confidence=confidence,
+    )
+
+    features_dfs: list[pd.DataFrame] = []
+    data_path = Path(data_dir)
+    current_date = start_ts.date()
+    while current_date <= end_ts.date():
+        fp = data_path / f"features_v1/date={current_date.isoformat()}" / "features.parquet"
+        if fp.exists():
+            features_dfs.append(read_parquet(fp))
+        current_date += dt.timedelta(days=1)
+
+    if features_dfs:
+        feat_df = pd.concat(features_dfs, ignore_index=True)
+        summary = generate_label_summary(feat_df, start_ts, end_ts)
+
+        table = Table(title="Block Summary")
+        table.add_column("Metric", style="bold")
+        table.add_column("Value")
+        table.add_row("Time range", f"{start_ts} → {end_ts}")
+        table.add_row("Buckets", str(summary["total_buckets"]))
+        table.add_row("Sessions", str(summary["session_count"]))
+        if summary["mean_keys_per_min"] is not None:
+            table.add_row("Avg keys/min", str(summary["mean_keys_per_min"]))
+        if summary["mean_clicks_per_min"] is not None:
+            table.add_row("Avg clicks/min", str(summary["mean_clicks_per_min"]))
+        for app_info in summary["top_apps"][:3]:
+            table.add_row(f"App: {app_info['app_id']}", f"{app_info['buckets']} buckets")
+        console.print(table)
+
+    if model_dir is not None and features_dfs:
+        try:
+            from taskclf.core.model_io import load_model_bundle
+            from taskclf.infer.batch import predict_labels
+
+            model, _meta, cat_encoders = load_model_bundle(Path(model_dir))
+            from sklearn.preprocessing import LabelEncoder
+
+            from taskclf.core.types import LABEL_SET_V1
+
+            le = LabelEncoder()
+            le.fit(sorted(LABEL_SET_V1))
+            preds = predict_labels(model, feat_df, le, cat_encoders=cat_encoders)
+            from collections import Counter
+
+            top_pred = Counter(preds).most_common(1)[0][0]
+            console.print(f"[bold]Top predicted label:[/bold] {top_pred}")
+        except Exception as exc:
+            console.print(f"[dim]Could not predict: {exc}[/dim]")
+
+    labels_path = Path(data_dir) / "labels_v1" / "labels.parquet"
+    try:
+        append_label_span(span, labels_path)
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1)
+
+    typer.echo(
+        f"Added label block: {label} [{start_ts} → {end_ts}] "
+        f"user={user_id} confidence={confidence}"
+    )
+
+
+@labels_app.command("show-queue")
+def labels_show_queue_cmd(
+    user_id: str | None = typer.Option(None, "--user-id", help="Filter to a specific user"),
+    limit: int = typer.Option(10, "--limit", help="Maximum items to show"),
+    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory"),
+) -> None:
+    """Show pending items in the active labeling queue."""
+    from rich.console import Console
+    from rich.table import Table
+
+    from taskclf.labels.queue import ActiveLabelingQueue
+
+    console = Console()
+    queue_path = Path(data_dir) / "labels_v1" / "queue.json"
+
+    if not queue_path.exists():
+        console.print("[dim]No labeling queue found.[/dim]")
+        return
+
+    queue = ActiveLabelingQueue(queue_path)
+    pending = queue.get_pending(user_id=user_id, limit=limit)
+
+    if not pending:
+        console.print("[dim]No pending labeling requests.[/dim]")
+        return
+
+    table = Table(title=f"Pending Labeling Requests ({len(pending)})")
+    table.add_column("ID", style="dim", max_width=8)
+    table.add_column("User")
+    table.add_column("Time Range")
+    table.add_column("Reason")
+    table.add_column("Predicted")
+    table.add_column("Confidence", justify="right")
+
+    for req in pending:
+        table.add_row(
+            req.request_id[:8],
+            req.user_id,
+            f"{req.bucket_start_ts:%H:%M} → {req.bucket_end_ts:%H:%M}",
+            req.reason,
+            req.predicted_label or "—",
+            f"{req.confidence:.2f}" if req.confidence is not None else "—",
+        )
+
+    console.print(table)
+
+
+@labels_app.command("project")
+def labels_project_cmd(
+    date_from: str = typer.Option(..., "--from", help="Start date (YYYY-MM-DD)"),
+    date_to: str = typer.Option(..., "--to", help="End date (YYYY-MM-DD, inclusive)"),
+    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory"),
+    out_dir: str = typer.Option(DEFAULT_DATA_DIR, "--out-dir", help="Output directory for projected labels"),
+) -> None:
+    """Project label blocks onto feature windows using strict containment rules."""
+    import pandas as pd
+
+    from taskclf.core.store import read_parquet, write_parquet
+    from taskclf.labels.projection import project_blocks_to_windows
+    from taskclf.labels.store import read_label_spans
+
+    labels_path = Path(data_dir) / "labels_v1" / "labels.parquet"
+    if not labels_path.exists():
+        typer.echo(f"Labels file not found: {labels_path}", err=True)
+        raise typer.Exit(code=1)
+
+    spans = read_label_spans(labels_path)
+    typer.echo(f"Loaded {len(spans)} label spans")
+
+    start = dt.date.fromisoformat(date_from)
+    end = dt.date.fromisoformat(date_to)
+
+    all_features: list[pd.DataFrame] = []
+    current = start
+    while current <= end:
+        fp = Path(data_dir) / f"features_v1/date={current.isoformat()}" / "features.parquet"
+        if fp.exists():
+            all_features.append(read_parquet(fp))
+        else:
+            typer.echo(f"  skipping {current} (no features file)")
+        current += dt.timedelta(days=1)
+
+    if not all_features:
+        typer.echo("No feature data found for the given date range.", err=True)
+        raise typer.Exit(code=1)
+
+    features_df = pd.concat(all_features, ignore_index=True)
+    projected = project_blocks_to_windows(features_df, spans)
+
+    out_path = Path(out_dir) / "labels_v1" / "projected_labels.parquet"
+    write_parquet(projected, out_path)
+    typer.echo(
+        f"Projected {len(projected)} labeled windows "
+        f"(from {len(features_df)} total) -> {out_path}"
+    )
+
+
 # -- train --------------------------------------------------------------------
 train_app = typer.Typer()
 app.add_typer(train_app, name="train")
@@ -226,8 +416,9 @@ def train_lgbm_cmd(
     from taskclf.core.model_io import build_metadata, save_model_bundle
     from taskclf.core.store import read_parquet
     from taskclf.features.build import generate_dummy_features
+    from taskclf.labels.projection import project_blocks_to_windows
     from taskclf.labels.store import generate_dummy_labels
-    from taskclf.train.dataset import assign_labels_to_buckets, split_by_day
+    from taskclf.train.dataset import split_by_time
     from taskclf.train.lgbm import train_lgbm
 
     start = dt.date.fromisoformat(date_from)
@@ -262,15 +453,20 @@ def train_lgbm_cmd(
     features_df = pd.concat(all_features, ignore_index=True)
     typer.echo(f"Loaded {len(features_df)} feature rows across {len(all_features)} day(s)")
 
-    labeled_df = assign_labels_to_buckets(features_df, all_labels)
+    labeled_df = project_blocks_to_windows(features_df, all_labels)
     typer.echo(f"Labeled {len(labeled_df)} / {len(features_df)} rows")
 
     if labeled_df.empty:
         typer.echo("No labeled rows — cannot train.", err=True)
         raise typer.Exit(code=1)
 
-    train_df, val_df = split_by_day(labeled_df)
-    typer.echo(f"Train: {len(train_df)} rows, Val: {len(val_df)} rows")
+    splits = split_by_time(labeled_df)
+    train_df = labeled_df.iloc[splits["train"]].reset_index(drop=True)
+    val_df = labeled_df.iloc[splits["val"]].reset_index(drop=True)
+    typer.echo(
+        f"Train: {len(train_df)} rows, Val: {len(val_df)} rows, "
+        f"Test: {len(splits['test'])} rows (held out)"
+    )
 
     model, metrics, cm_df, params, cat_encoders = train_lgbm(
         train_df, val_df, num_boost_round=num_boost_round,

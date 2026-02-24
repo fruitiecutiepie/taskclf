@@ -19,21 +19,27 @@
    — `build_training_dataset()` in `src/taskclf/train/build_dataset.py`; `split_by_time()` in `src/taskclf/train/dataset.py` (3-way per-user chronological 70/15/15 + cross-user holdout). CLI: `taskclf train build-dataset`.
 7. ~~Add **data validation** (hard checks): ranges, missing rates, monotonic timestamps, session boundaries, feature distributions.~~ — `validate_feature_dataframe()` in `src/taskclf/core/validation.py`; hard checks (ranges, nulls, monotonic ts, bucket_end consistency) + soft checks (distributions, class balance).
 
-### 2) Ground-truth collection (blocks, not windows)
+### 2) Ground-truth collection (blocks, not windows) ✔
 
-8. Build labeling UI/CLI for **time blocks**:
+8. ~~Build labeling UI/CLI for **time blocks**:~~
 
-   * show last N minutes summary + top predicted label
-   * user selects label + optional confidence
-   * store as `label_block(start_ts, end_ts, label, user_id, source="manual")`
-9. Implement **block → window label projection**:
+   * ~~show last N minutes summary + top predicted label~~
+   * ~~user selects label + optional confidence~~
+   * ~~store as `label_block(start_ts, end_ts, label, user_id, source="manual")`~~
 
-   * for each window, assign label if fully inside a labeled block
-   * if overlapping multiple labels → `Mixed/Unknown` (or drop)
-10. Implement **active labeling queue**:
+   — CLI: `taskclf labels add-block` (Rich summary table + optional model prediction). Streamlit UI: `src/taskclf/ui/labeling.py` (queue panel, summary panel, label form, history). `LabelSpan` extended with `user_id` and `confidence` fields. `append_label_span()` in `labels/store.py` with overlap validation.
+9. ~~Implement **block → window label projection**:~~
 
-* enqueue windows/blocks when model confidence low or drift detected
-* limit asks per day
+   * ~~for each window, assign label if fully inside a labeled block~~
+   * ~~if overlapping multiple labels → `Mixed/Unknown` (or drop)~~
+
+   — `project_blocks_to_windows()` in `src/taskclf/labels/projection.py`; strict containment per `time_spec.md` Section 6. `build_training_dataset()` uses strict projection. CLI: `taskclf labels project`.
+10. ~~Implement **active labeling queue**:~~
+
+* ~~enqueue windows/blocks when model confidence low or drift detected~~
+* ~~limit asks per day~~
+
+   — `ActiveLabelingQueue` in `src/taskclf/labels/queue.py`; `LabelRequest` model, `enqueue_low_confidence()`, `enqueue_drift()`, `get_pending()` (sorted by confidence, daily cap), `mark_done()`. JSON persistence at `data/processed/labels_v1/queue.json`. CLI: `taskclf labels show-queue`.
 
 ### 3) Baseline system (cold start)
 

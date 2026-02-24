@@ -71,7 +71,9 @@ def read_label_spans(path: Path) -> list[LabelSpan]:
 def import_labels_from_csv(path: Path) -> list[LabelSpan]:
     """Read label spans from a CSV file and validate each row.
 
-    Expected columns: ``start_ts``, ``end_ts``, ``label``, ``provenance``.
+    Required columns: ``start_ts``, ``end_ts``, ``label``, ``provenance``.
+    Optional columns: ``user_id``, ``confidence``.
+
     Timestamps are parsed via ``pd.to_datetime`` so ISO-8601 and common
     date-time formats are accepted.
 
@@ -95,17 +97,126 @@ def import_labels_from_csv(path: Path) -> list[LabelSpan]:
     df["start_ts"] = pd.to_datetime(df["start_ts"])
     df["end_ts"] = pd.to_datetime(df["end_ts"])
 
+    has_user_id = "user_id" in df.columns
+    has_confidence = "confidence" in df.columns
+
     spans: list[LabelSpan] = []
-    for i, row in df.iterrows():
-        spans.append(
-            LabelSpan(
-                start_ts=row["start_ts"].to_pydatetime(),
-                end_ts=row["end_ts"].to_pydatetime(),
-                label=row["label"],
-                provenance=row["provenance"],
-            )
-        )
+    for _i, row in df.iterrows():
+        kwargs: dict = {
+            "start_ts": row["start_ts"].to_pydatetime(),
+            "end_ts": row["end_ts"].to_pydatetime(),
+            "label": row["label"],
+            "provenance": row["provenance"],
+        }
+        if has_user_id and pd.notna(row["user_id"]):
+            kwargs["user_id"] = str(row["user_id"])
+        if has_confidence and pd.notna(row["confidence"]):
+            kwargs["confidence"] = float(row["confidence"])
+        spans.append(LabelSpan(**kwargs))
     return spans
+
+
+def append_label_span(span: LabelSpan, path: Path) -> Path:
+    """Append a single label span to an existing (or new) parquet file.
+
+    Validates that the new span does not overlap any existing span
+    belonging to the same user.
+
+    Args:
+        span: The label span to append.
+        path: Parquet file to read-append-write.
+
+    Returns:
+        The *path* that was written.
+
+    Raises:
+        ValueError: If the span overlaps an existing span for the
+            same user.
+    """
+    existing: list[LabelSpan] = []
+    if path.exists():
+        existing = read_label_spans(path)
+
+    for ex in existing:
+        if span.user_id is not None and ex.user_id is not None and span.user_id != ex.user_id:
+            continue
+        if span.user_id is None and ex.user_id is not None:
+            continue
+        if span.user_id is not None and ex.user_id is None:
+            continue
+        if span.start_ts < ex.end_ts and ex.start_ts < span.end_ts:
+            raise ValueError(
+                f"New span [{span.start_ts}, {span.end_ts}) overlaps "
+                f"existing span [{ex.start_ts}, {ex.end_ts}) "
+                f"for user {span.user_id!r}"
+            )
+
+    existing.append(span)
+    return write_label_spans(existing, path)
+
+
+def generate_label_summary(
+    features_df: pd.DataFrame,
+    start_ts: dt.datetime,
+    end_ts: dt.datetime,
+) -> dict:
+    """Summarise feature rows within a time range for display in CLI / UI.
+
+    Returns a dict with top apps, aggregated interaction stats, and
+    session count.  Respects privacy: no raw titles.
+
+    Args:
+        features_df: Feature DataFrame with ``bucket_start_ts`` column.
+        start_ts: Start of summary window (inclusive).
+        end_ts: End of summary window (exclusive).
+
+    Returns:
+        Dict with keys ``top_apps``, ``mean_keys_per_min``,
+        ``mean_clicks_per_min``, ``mean_scroll_per_min``,
+        ``total_buckets``, ``session_count``.
+    """
+    mask = (features_df["bucket_start_ts"] >= start_ts) & (
+        features_df["bucket_start_ts"] < end_ts
+    )
+    window = features_df.loc[mask]
+
+    if window.empty:
+        return {
+            "top_apps": [],
+            "mean_keys_per_min": None,
+            "mean_clicks_per_min": None,
+            "mean_scroll_per_min": None,
+            "total_buckets": 0,
+            "session_count": 0,
+        }
+
+    top_apps: list[dict] = []
+    if "app_id" in window.columns:
+        counts = window["app_id"].value_counts().head(5)
+        top_apps = [
+            {"app_id": app, "buckets": int(cnt)}
+            for app, cnt in counts.items()
+        ]
+
+    def _safe_mean(col: str) -> float | None:
+        if col in window.columns:
+            vals = window[col].dropna()
+            if not vals.empty:
+                return round(float(vals.mean()), 2)
+        return None
+
+    session_count = 0
+    if "session_id" in window.columns:
+        session_count = int(window["session_id"].nunique())
+
+    return {
+        "top_apps": top_apps,
+        "mean_keys_per_min": _safe_mean("keys_per_min"),
+        "mean_clicks_per_min": _safe_mean("clicks_per_min"),
+        "mean_scroll_per_min": _safe_mean("scroll_events_per_min"),
+        "total_buckets": len(window),
+        "session_count": session_count,
+    }
 
 
 def generate_dummy_labels(date: dt.date, n_rows: int = DEFAULT_DUMMY_ROWS) -> list[LabelSpan]:

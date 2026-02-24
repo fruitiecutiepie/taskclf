@@ -10,13 +10,12 @@ import datetime as dt
 from pathlib import Path
 
 import pandas as pd
-import pytest
 
 from taskclf.core.schema import FeatureSchemaV1
 from taskclf.core.store import read_parquet
 from taskclf.features.build import build_features_for_date, generate_dummy_features
+from taskclf.labels.projection import project_blocks_to_windows
 from taskclf.labels.store import generate_dummy_labels
-from taskclf.train.dataset import assign_labels_to_buckets
 
 
 class TestFeatureBuildProducesParquet:
@@ -63,7 +62,7 @@ class TestFeaturesLabelsJoin:
         features_df = pd.DataFrame([r.model_dump() for r in rows])
         labels = generate_dummy_labels(self.DATE, n_rows=self.N_ROWS)
 
-        labeled = assign_labels_to_buckets(features_df, labels)
+        labeled = project_blocks_to_windows(features_df, labels)
         assert len(labeled) == self.N_ROWS
 
     def test_labeled_df_has_label_column(self) -> None:
@@ -71,7 +70,7 @@ class TestFeaturesLabelsJoin:
         features_df = pd.DataFrame([r.model_dump() for r in rows])
         labels = generate_dummy_labels(self.DATE, n_rows=self.N_ROWS)
 
-        labeled = assign_labels_to_buckets(features_df, labels)
+        labeled = project_blocks_to_windows(features_df, labels)
         assert "label" in labeled.columns
         assert labeled["label"].notna().all()
 
@@ -82,7 +81,7 @@ class TestFeaturesLabelsJoin:
         features_df = pd.DataFrame([r.model_dump() for r in rows])
         labels = generate_dummy_labels(self.DATE, n_rows=self.N_ROWS)
 
-        labeled = assign_labels_to_buckets(features_df, labels)
+        labeled = project_blocks_to_windows(features_df, labels)
         invalid = set(labeled["label"].unique()) - set(LABEL_SET_V1)
         assert not invalid, f"Labels not in LABEL_SET_V1: {invalid}"
 
@@ -91,6 +90,6 @@ class TestFeaturesLabelsJoin:
         features_df = pd.DataFrame([r.model_dump() for r in rows])
         labels = generate_dummy_labels(self.DATE, n_rows=self.N_ROWS)
 
-        labeled = assign_labels_to_buckets(features_df, labels)
+        labeled = project_blocks_to_windows(features_df, labels)
         for col in FeatureSchemaV1.COLUMNS:
             assert col in labeled.columns, f"Feature column {col!r} lost after join"

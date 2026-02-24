@@ -188,12 +188,22 @@ class LabelSpan(BaseModel, frozen=True):
 
     Gold labels and weak labels share this structure; ``provenance``
     distinguishes them (e.g. ``"manual"`` vs ``"weak:app_rule"``).
+
+    Optional ``user_id`` ties the span to a specific user (required for
+    multi-user datasets and block-to-window projection).  Optional
+    ``confidence`` records the labeler's self-assessed certainty.
+    Both default to ``None`` for backward compatibility with existing
+    label CSV imports.
     """
 
     start_ts: datetime = Field(description="Span start (UTC, inclusive).")
     end_ts: datetime = Field(description="Span end (UTC, exclusive).")
     label: str = Field(description="Task-type label from LABEL_SET_V1.")
     provenance: str = Field(description="Origin tag, e.g. 'manual' or 'weak:app_rule'.")
+    user_id: str | None = Field(default=None, description="User who created this label.")
+    confidence: float | None = Field(
+        default=None, ge=0.0, le=1.0, description="Labeler confidence (0-1)."
+    )
 
     @model_validator(mode="after")
     def _check_invariants(self) -> LabelSpan:

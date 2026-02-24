@@ -17,6 +17,20 @@ metadata and feature values:
 
 The primary key is `(user_id, bucket_start_ts)`.
 
+## LabelSpan fields
+
+`LabelSpan` represents a contiguous time span carrying a single task-type
+label.  Gold labels and weak labels share this structure.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `start_ts` | `datetime` | Span start (UTC, inclusive). |
+| `end_ts` | `datetime` | Span end (UTC, exclusive). |
+| `label` | `str` | Task-type label from `LABEL_SET_V1`. |
+| `provenance` | `str` | Origin tag, e.g. `"manual"` or `"weak:app_rule"`. |
+| `user_id` | `str \| None` | User who created this label (optional, default `None`). |
+| `confidence` | `float \| None` | Labeler confidence 0-1 (optional, default `None`). |
+
 ## TitlePolicy
 
 `TitlePolicy` controls whether raw window titles may appear in a

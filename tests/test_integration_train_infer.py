@@ -19,7 +19,8 @@ from taskclf.core.model_io import build_metadata, load_model_bundle, save_model_
 from taskclf.core.schema import FeatureSchemaV1
 from taskclf.core.types import LABEL_SET_V1, LabelSpan
 from taskclf.features.build import generate_dummy_features
-from taskclf.train.dataset import assign_labels_to_buckets, split_by_day
+from taskclf.labels.projection import project_blocks_to_windows
+from taskclf.train.dataset import split_by_time
 from taskclf.train.lgbm import FEATURE_COLUMNS, train_lgbm
 
 
@@ -46,14 +47,16 @@ def _build_labeled_df() -> pd.DataFrame:
                        label="BreakIdle", provenance="test"),
         ])
 
-    return assign_labels_to_buckets(features_df, spans)
+    return project_blocks_to_windows(features_df, spans)
 
 
 @pytest.fixture(scope="module")
 def pipeline_artifacts(tmp_path_factory: pytest.TempPathFactory):
     """Run the full train -> save pipeline once and return all artifacts."""
     labeled = _build_labeled_df()
-    train_df, val_df = split_by_day(labeled)
+    splits = split_by_time(labeled)
+    train_df = labeled.iloc[splits["train"]].reset_index(drop=True)
+    val_df = labeled.iloc[splits["val"]].reset_index(drop=True)
 
     model, metrics, cm_df, params, cat_encoders = train_lgbm(
         train_df, val_df, num_boost_round=5,

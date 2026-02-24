@@ -13,7 +13,8 @@ from taskclf.core.defaults import DEFAULT_BUCKET_SECONDS, MIN_BLOCK_DURATION_SEC
 from taskclf.core.schema import FeatureSchemaV1
 from taskclf.core.store import write_parquet
 from taskclf.core.types import LabelSpan
-from taskclf.train.dataset import assign_labels_to_buckets, split_by_time
+from taskclf.labels.projection import project_blocks_to_windows
+from taskclf.train.dataset import split_by_time
 from taskclf.train.lgbm import FEATURE_COLUMNS
 
 _ID_COLUMNS = ["user_id", "bucket_start_ts", "session_id"]
@@ -71,6 +72,10 @@ def build_training_dataset(
 ) -> DatasetManifest:
     """Join features with labels, apply exclusions, split, and write artifacts.
 
+    Label projection uses strict block-to-window containment rules from
+    ``time_spec.md`` Section 6 (full window must fall inside a single
+    block; conflicting multi-block overlaps are dropped).
+
     Outputs:
         ``output_dir/X.parquet`` -- feature matrix with ID columns and
         ``schema_version``.
@@ -92,7 +97,9 @@ def build_training_dataset(
     Returns:
         A :class:`DatasetManifest` with paths and summary statistics.
     """
-    labeled = assign_labels_to_buckets(features_df, label_spans)
+    labeled = project_blocks_to_windows(
+        features_df, label_spans, bucket_seconds=bucket_seconds
+    )
     pre_exclusion = len(labeled)
 
     labeled = _exclude_short_sessions(labeled, bucket_seconds=bucket_seconds)

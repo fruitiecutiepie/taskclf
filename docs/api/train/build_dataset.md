@@ -21,6 +21,10 @@ manifest = build_training_dataset(
 print(manifest.total_rows, manifest.train_rows)
 ```
 
+Label projection uses `project_blocks_to_windows()` with strict
+containment rules per `time_spec.md` Section 6: full window must fall
+inside a single block, conflicting multi-block overlaps are dropped.
+
 ## Output artifacts
 
 | File | Contents |
@@ -33,7 +37,7 @@ print(manifest.total_rows, manifest.train_rows)
 
 Windows are dropped from the dataset if:
 
-- They overlap multiple label blocks or have no covering label (handled by `assign_labels_to_buckets`).
+- They overlap multiple label blocks with conflicting labels or have no covering label.
 - All numeric features are null (no useful signal).
 - They belong to sessions shorter than `MIN_BLOCK_DURATION_SECONDS` (180s = 3 buckets).
 

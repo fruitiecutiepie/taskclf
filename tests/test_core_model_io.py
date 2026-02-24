@@ -22,7 +22,8 @@ from taskclf.core.model_io import (
 from taskclf.core.schema import FeatureSchemaV1
 from taskclf.core.types import LabelSpan
 from taskclf.features.build import generate_dummy_features
-from taskclf.train.dataset import assign_labels_to_buckets, split_by_day
+from taskclf.labels.projection import project_blocks_to_windows
+from taskclf.train.dataset import split_by_time
 from taskclf.train.lgbm import train_lgbm
 
 
@@ -49,14 +50,16 @@ def _build_labeled_df() -> pd.DataFrame:
                        label="BreakIdle", provenance="test"),
         ])
 
-    return assign_labels_to_buckets(features_df, spans)
+    return project_blocks_to_windows(features_df, spans)
 
 
 @pytest.fixture(scope="module")
 def trained_bundle(tmp_path_factory: pytest.TempPathFactory):
     """Train a tiny LightGBM model, save as a bundle, return artifacts."""
     labeled = _build_labeled_df()
-    train_df, val_df = split_by_day(labeled)
+    splits = split_by_time(labeled)
+    train_df = labeled.iloc[splits["train"]].reset_index(drop=True)
+    val_df = labeled.iloc[splits["val"]].reset_index(drop=True)
 
     model, metrics, cm_df, params, cat_encoders = train_lgbm(
         train_df, val_df, num_boost_round=5,

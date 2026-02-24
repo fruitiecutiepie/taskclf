@@ -32,9 +32,13 @@ DEFAULT_TITLE_POLICY: Final[str] = "hash_only"
 # ── Aggregation ──
 MIN_BLOCK_DURATION_SECONDS: Final[int] = 180
 
+# ── Labeling ──
+DEFAULT_LABEL_MAX_ASKS_PER_DAY: Final[int] = 20
+DEFAULT_LABEL_CONFIDENCE_THRESHOLD: Final[float] = 0.55
+DEFAULT_LABEL_SUMMARY_MINUTES: Final[int] = 30
+
 # ── Training ──
 DEFAULT_NUM_BOOST_ROUND: Final[int] = 100
-DEFAULT_TRAIN_SPLIT_RATIO: Final[float] = 0.8
 
 # ── Misc ──
 DEFAULT_GIT_TIMEOUT_SECONDS: Final[int] = 5

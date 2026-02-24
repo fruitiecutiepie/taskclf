@@ -1,20 +1,8 @@
 # train.dataset
 
-Join features with label spans and split by time.
+Time-based dataset splitting utilities.
 
 ## Functions
-
-### assign_labels_to_buckets
-
-Joins feature rows with label spans. Each feature row is assigned the
-label of the first span whose `[start_ts, end_ts)` interval covers the
-row's `bucket_start_ts`. Rows with no covering span are dropped.
-
-### split_by_day
-
-Two-way split (train / val) by calendar day. The last unique day
-becomes validation. Falls back to 80/20 chronological split if only
-one day is present.
 
 ### split_by_time
 
