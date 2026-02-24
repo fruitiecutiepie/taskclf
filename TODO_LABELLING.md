@@ -129,18 +129,25 @@
 
    — CLI taxonomy management: `taskclf taxonomy validate` (validates YAML), `taskclf taxonomy show` (Rich table display), `taskclf taxonomy init` (generates default identity-mapping YAML). YAML I/O via `load_taxonomy()` / `save_taxonomy()`. Versioned via `version` field in config. Streamlit UI deferred to future iteration.
 
-### 8) Online inference pipeline
+### 8) Online inference pipeline ✔
 
-25. Implement feature extraction pipeline (stream → window rows) with stable ordering.
-26. Implement inference service/module:
+25. ~~Implement feature extraction pipeline (stream → window rows) with stable ordering.~~
 
-* loads global model + user calibrator + user mapping
-* outputs: `core_label`, `core_probs`, `mapped_label`, `mapped_probs`, `is_rejected`, `confidence`
+   — `build_features_from_aw_events()` in `src/taskclf/features/build.py` converts normalised events to per-bucket `FeatureRow` instances with deterministic ordering. Online loop in `run_online_loop()` passes `session_start` across poll cycles for session continuity.
 
-27. Persist predictions for time tracking:
+26. ~~Implement inference service/module:~~
 
-* write per-window predictions
-* aggregate to blocks (merge adjacent same-label windows with hysteresis)
+~~* loads global model + user calibrator + user mapping~~
+~~* outputs: `core_label`, `core_probs`, `mapped_label`, `mapped_probs`, `is_rejected`, `confidence`~~
+
+   — `OnlinePredictor.predict_bucket()` returns `WindowPrediction` (Pydantic model in `src/taskclf/infer/prediction.py`) matching model_io section 6: `user_id`, `bucket_start_ts`, `core_label_id`, `core_label_name`, `core_probs`, `confidence`, `is_rejected`, `mapped_label_name`, `mapped_probs`, `model_version`, `schema_version`, `label_version`. Accepts optional `Calibrator` (protocol in `src/taskclf/infer/calibration.py`; identity + temperature scaling implementations) and `TaxonomyConfig`. Calibrator hook applied between raw proba and reject decision. CLI: `--calibrator` flag on `taskclf infer online`.
+
+27. ~~Persist predictions for time tracking:~~
+
+~~* write per-window predictions~~
+~~* aggregate to blocks (merge adjacent same-label windows with hysteresis)~~
+
+   — `_append_prediction_csv()` writes full `WindowPrediction` fields (core_label, core_probs, confidence, is_rejected, mapped_label, mapped_probs, model_version). `write_predictions_csv()` in batch.py also accepts `core_probs`. `merge_short_segments()` in `src/taskclf/infer/smooth.py` absorbs segments shorter than `MIN_BLOCK_DURATION_SECONDS` (180s) into neighbours. Integrated into `OnlinePredictor.get_segments()` and `run_batch_inference()`.
 
 ### 9) Aggregation for time tracking (the "product" output)
 

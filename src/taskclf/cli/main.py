@@ -924,6 +924,7 @@ def infer_batch_cmd(
         features_df, result.smoothed_labels, out / "predictions.csv",
         confidences=result.confidences, is_rejected=result.is_rejected,
         mapped_labels=result.mapped_labels,
+        core_probs=result.core_probs,
     )
     seg_path = write_segments_json(result.segments, out / "segments.json")
 
@@ -943,6 +944,7 @@ def infer_online_cmd(
     out_dir: str = typer.Option(DEFAULT_OUT_DIR, help="Output directory for predictions and segments"),
     reject_threshold: float = typer.Option(DEFAULT_REJECT_THRESHOLD, "--reject-threshold", help="Max-probability below which prediction is rejected as Mixed/Unknown"),
     taxonomy_config: str | None = typer.Option(None, "--taxonomy", help="Path to a taxonomy YAML file for user-specific label mapping"),
+    calibrator_config: str | None = typer.Option(None, "--calibrator", help="Path to a calibrator JSON file for probability calibration"),
 ) -> None:
     """Run online inference: poll ActivityWatch, predict, smooth, and report."""
     from taskclf.infer.online import run_online_loop
@@ -956,6 +958,7 @@ def infer_online_cmd(
         out_dir=Path(out_dir),
         reject_threshold=reject_threshold,
         taxonomy_path=Path(taxonomy_config) if taxonomy_config else None,
+        calibrator_path=Path(calibrator_config) if calibrator_config else None,
     )
 
 

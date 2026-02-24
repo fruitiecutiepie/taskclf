@@ -11,7 +11,11 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Sequence
 
-from taskclf.core.defaults import DEFAULT_BUCKET_SECONDS, DEFAULT_SMOOTH_WINDOW
+from taskclf.core.defaults import (
+    DEFAULT_BUCKET_SECONDS,
+    DEFAULT_SMOOTH_WINDOW,
+    MIN_BLOCK_DURATION_SECONDS,
+)
 
 
 @dataclass(frozen=True)
@@ -112,3 +116,120 @@ def segmentize(
     ))
 
     return segments
+
+
+def merge_short_segments(
+    segments: Sequence[Segment],
+    *,
+    min_duration_seconds: int = MIN_BLOCK_DURATION_SECONDS,
+    bucket_seconds: int = DEFAULT_BUCKET_SECONDS,
+) -> list[Segment]:
+    """Absorb segments shorter than *min_duration_seconds* into neighbours.
+
+    Implements the hysteresis rule from the time spec: label changes
+    lasting less than ``MIN_BLOCK_DURATION_SECONDS`` (default 180 s /
+    3 minutes) are smoothed into the surrounding label.
+
+    Strategy for each short segment:
+
+    1. If either neighbour has the same label, merge into that neighbour.
+    2. Otherwise merge into the *longer* neighbour (prefer the
+       preceding one on ties).
+    3. First and last segments are never removed (but may absorb
+       neighbours).
+
+    The function iterates until no more short segments can be merged,
+    guaranteeing convergence because total segment count strictly
+    decreases each pass.
+
+    Args:
+        segments: Ordered, non-overlapping segments (as from
+            :func:`segmentize`).
+        min_duration_seconds: Minimum block duration in seconds.
+        bucket_seconds: Width of each time bucket in seconds.
+
+    Returns:
+        A new list of segments with short blocks absorbed.
+    """
+    if len(segments) <= 1:
+        return list(segments)
+
+    min_buckets = max(1, min_duration_seconds // bucket_seconds)
+    result = list(segments)
+
+    changed = True
+    while changed:
+        changed = False
+        i = 0
+        merged: list[Segment] = []
+
+        while i < len(result):
+            seg = result[i]
+            if seg.bucket_count >= min_buckets or len(result) <= 1:
+                merged.append(seg)
+                i += 1
+                continue
+
+            prev = merged[-1] if merged else None
+            nxt = result[i + 1] if i + 1 < len(result) else None
+
+            if prev is not None and prev.label == seg.label:
+                merged[-1] = Segment(
+                    start_ts=prev.start_ts,
+                    end_ts=seg.end_ts,
+                    label=prev.label,
+                    bucket_count=prev.bucket_count + seg.bucket_count,
+                )
+                changed = True
+                i += 1
+                continue
+
+            if nxt is not None and nxt.label == seg.label:
+                merged.append(Segment(
+                    start_ts=seg.start_ts,
+                    end_ts=nxt.end_ts,
+                    label=seg.label,
+                    bucket_count=seg.bucket_count + nxt.bucket_count,
+                ))
+                changed = True
+                i += 2
+                continue
+
+            if prev is None:
+                merged.append(seg)
+                i += 1
+                continue
+            if nxt is None:
+                merged[-1] = Segment(
+                    start_ts=prev.start_ts,
+                    end_ts=seg.end_ts,
+                    label=prev.label,
+                    bucket_count=prev.bucket_count + seg.bucket_count,
+                )
+                changed = True
+                i += 1
+                continue
+
+            prev_count = prev.bucket_count
+            nxt_count = nxt.bucket_count
+            if prev_count >= nxt_count:
+                merged[-1] = Segment(
+                    start_ts=prev.start_ts,
+                    end_ts=seg.end_ts,
+                    label=prev.label,
+                    bucket_count=prev.bucket_count + seg.bucket_count,
+                )
+            else:
+                merged.append(Segment(
+                    start_ts=seg.start_ts,
+                    end_ts=nxt.end_ts,
+                    label=nxt.label,
+                    bucket_count=seg.bucket_count + nxt.bucket_count,
+                ))
+                i += 1
+            changed = True
+            i += 1
+
+        result = merged
+
+    return result

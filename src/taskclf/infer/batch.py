@@ -19,7 +19,8 @@ from taskclf.core.defaults import (
     MIXED_UNKNOWN,
 )
 from taskclf.core.types import LABEL_SET_V1
-from taskclf.infer.smooth import Segment, rolling_majority, segmentize
+from taskclf.infer.calibration import Calibrator, IdentityCalibrator
+from taskclf.infer.smooth import Segment, merge_short_segments, rolling_majority, segmentize
 from taskclf.infer.taxonomy import TaxonomyConfig, TaxonomyResolver
 from taskclf.train.lgbm import FEATURE_COLUMNS, encode_categoricals
 
@@ -37,6 +38,7 @@ class BatchInferenceResult:
     segments: list[Segment]
     confidences: np.ndarray
     is_rejected: np.ndarray
+    core_probs: np.ndarray
     mapped_labels: list[str] | None = field(default=None)
     mapped_probs: list[dict[str, float]] | None = field(default=None)
 
@@ -110,8 +112,9 @@ def run_batch_inference(
     bucket_seconds: int = DEFAULT_BUCKET_SECONDS,
     reject_threshold: float | None = None,
     taxonomy: TaxonomyConfig | None = None,
+    calibrator: Calibrator | None = None,
 ) -> BatchInferenceResult:
-    """Predict, smooth, and segmentize a batch of feature rows.
+    """Predict, smooth, segmentize, and apply hysteresis merging.
 
     Args:
         model: Trained LightGBM booster.
@@ -126,15 +129,21 @@ def run_batch_inference(
         taxonomy: Optional taxonomy config.  When provided, core labels
             are mapped to user-defined buckets and ``mapped_labels`` /
             ``mapped_probs`` are populated on the result.
+        calibrator: Optional probability calibrator.  When provided,
+            raw model probabilities are calibrated before the reject
+            decision.
 
     Returns:
-        A :class:`BatchInferenceResult` with core predictions, segments,
-        and optional taxonomy-mapped outputs.
+        A :class:`BatchInferenceResult` with core predictions, segments
+        (hysteresis-merged), and optional taxonomy-mapped outputs.
     """
     le = LabelEncoder()
     le.fit(sorted(LABEL_SET_V1))
 
+    cal = calibrator or IdentityCalibrator()
+
     proba = predict_proba(model, features_df, cat_encoders)
+    proba = cal.calibrate(proba)
     confidences = proba.max(axis=1)
     is_rejected = (
         confidences < reject_threshold
@@ -156,6 +165,7 @@ def run_batch_inference(
         for ts in features_df["bucket_start_ts"].values
     ]
     segments = segmentize(bucket_starts, smoothed, bucket_seconds=bucket_seconds)
+    segments = merge_short_segments(segments, bucket_seconds=bucket_seconds)
 
     mapped_labels: list[str] | None = None
     mapped_probs_list: list[dict[str, float]] | None = None
@@ -170,6 +180,7 @@ def run_batch_inference(
         segments=segments,
         confidences=confidences,
         is_rejected=is_rejected,
+        core_probs=proba,
         mapped_labels=mapped_labels,
         mapped_probs=mapped_probs_list,
     )
@@ -183,6 +194,7 @@ def write_predictions_csv(
     confidences: np.ndarray | None = None,
     is_rejected: np.ndarray | None = None,
     mapped_labels: Sequence[str] | None = None,
+    core_probs: np.ndarray | None = None,
 ) -> Path:
     """Write per-bucket predictions to a CSV file.
 
@@ -193,6 +205,7 @@ def write_predictions_csv(
         confidences: Optional max-probability per row.
         is_rejected: Optional boolean rejection flag per row.
         mapped_labels: Optional taxonomy-mapped label per row.
+        core_probs: Optional probability matrix ``(n_rows, n_classes)``.
 
     Returns:
         The *path* that was written.
@@ -207,6 +220,13 @@ def write_predictions_csv(
         data["is_rejected"] = is_rejected
     if mapped_labels is not None:
         data["mapped_label"] = list(mapped_labels)
+    if core_probs is not None:
+        import json as _json
+
+        data["core_probs"] = [
+            _json.dumps([round(float(p), 4) for p in row])
+            for row in core_probs
+        ]
 
     out = pd.DataFrame(data)
     path.parent.mkdir(parents=True, exist_ok=True)

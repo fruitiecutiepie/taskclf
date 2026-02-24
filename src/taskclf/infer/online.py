@@ -7,6 +7,7 @@ applies it to live data from a running ActivityWatch server instance.
 from __future__ import annotations
 
 import csv
+import json
 import logging
 import time
 from collections import deque
@@ -32,11 +33,15 @@ from taskclf.core.defaults import (
 from taskclf.core.model_io import ModelMetadata, load_model_bundle
 from taskclf.core.types import LABEL_SET_V1, FeatureRow
 from taskclf.infer.batch import write_segments_json
-from taskclf.infer.smooth import Segment, rolling_majority, segmentize
+from taskclf.infer.calibration import Calibrator, IdentityCalibrator
+from taskclf.infer.prediction import WindowPrediction
+from taskclf.infer.smooth import Segment, merge_short_segments, rolling_majority, segmentize
 from taskclf.infer.taxonomy import TaxonomyConfig, TaxonomyResolver
 from taskclf.train.lgbm import CATEGORICAL_COLUMNS, FEATURE_COLUMNS
 
 logger = logging.getLogger(__name__)
+
+_SORTED_LABELS = sorted(LABEL_SET_V1)
 
 
 class OnlinePredictor:
@@ -57,6 +62,7 @@ class OnlinePredictor:
         bucket_seconds: int = DEFAULT_BUCKET_SECONDS,
         reject_threshold: float | None = DEFAULT_REJECT_THRESHOLD,
         taxonomy: TaxonomyConfig | None = None,
+        calibrator: Calibrator | None = None,
     ) -> None:
         self._model = model
         self._metadata = metadata
@@ -66,11 +72,13 @@ class OnlinePredictor:
         self._reject_threshold = reject_threshold
 
         self._le = LabelEncoder()
-        self._le.fit(sorted(LABEL_SET_V1))
+        self._le.fit(_SORTED_LABELS)
 
         self._resolver: TaxonomyResolver | None = None
         if taxonomy is not None:
             self._resolver = TaxonomyResolver(taxonomy)
+
+        self._calibrator: Calibrator = calibrator or IdentityCalibrator()
 
         self._raw_buffer: deque[str] = deque(maxlen=max(smooth_window, 1))
         self._bucket_ts_buffer: deque[datetime] = deque(maxlen=max(smooth_window, 1))
@@ -88,39 +96,39 @@ class OnlinePredictor:
             return -1.0
         return float(value) if value is not None else 0.0
 
-    def predict_bucket(self, row: FeatureRow) -> str:
-        """Predict a single bucket and return the smoothed label.
+    def predict_bucket(self, row: FeatureRow) -> WindowPrediction:
+        """Predict a single bucket and return a full :class:`WindowPrediction`.
 
-        The raw prediction is appended to an internal rolling buffer.
-        Smoothing is applied over the buffer contents (using core labels),
-        and the smoothed label for the *latest* position is returned.
-        When a taxonomy is configured, the returned label is the
-        taxonomy-mapped label; core labels are still used for smoothing.
+        Pipeline: raw model proba -> calibrate -> reject check ->
+        rolling majority smoothing (on core labels) -> taxonomy resolve
+        -> assemble ``WindowPrediction``.
 
         Args:
             row: A validated :class:`FeatureRow` for one time bucket.
 
         Returns:
-            The smoothed predicted label string (mapped if taxonomy is
-            set, otherwise core).
+            A :class:`WindowPrediction` containing core and mapped
+            predictions, confidence, and rejection status.
         """
         x = np.array(
             [[self._encode_value(c, getattr(row, c)) for c in FEATURE_COLUMNS]],
             dtype=np.float64,
         )
-        proba = self._model.predict(x)
-        confidence = float(proba.max(axis=1)[0])
-        pred_idx = int(proba.argmax(axis=1)[0])
-        raw_label: str = self._le.inverse_transform([pred_idx])[0]
+        raw_proba = self._model.predict(x)
+        calibrated = self._calibrator.calibrate(raw_proba)
+        proba_vec: np.ndarray = calibrated[0]
+
+        confidence = float(proba_vec.max())
+        pred_idx = int(proba_vec.argmax())
+        core_label_name: str = self._le.inverse_transform([pred_idx])[0]
 
         is_rejected = (
             self._reject_threshold is not None
             and confidence < self._reject_threshold
         )
-        if is_rejected:
-            raw_label = MIXED_UNKNOWN
 
-        self._raw_buffer.append(raw_label)
+        smoothing_label = MIXED_UNKNOWN if is_rejected else core_label_name
+        self._raw_buffer.append(smoothing_label)
         self._bucket_ts_buffer.append(row.bucket_start_ts)
 
         smoothed = rolling_majority(list(self._raw_buffer), window=self._smooth_window)
@@ -130,33 +138,78 @@ class OnlinePredictor:
         self._all_smoothed.append(smoothed_label)
 
         if self._resolver is not None:
-            result = self._resolver.resolve(
-                pred_idx, proba[0], is_rejected=is_rejected,
+            tax_result = self._resolver.resolve(
+                pred_idx, proba_vec, is_rejected=is_rejected,
             )
-            return result.mapped_label
+            mapped_label_name = tax_result.mapped_label
+            mapped_probs = tax_result.mapped_probs
+        else:
+            mapped_label_name = smoothed_label
+            mapped_probs = {
+                lbl: float(proba_vec[i]) for i, lbl in enumerate(_SORTED_LABELS)
+            }
 
-        return smoothed_label
+        return WindowPrediction(
+            user_id=row.user_id,
+            bucket_start_ts=row.bucket_start_ts,
+            core_label_id=pred_idx,
+            core_label_name=core_label_name,
+            core_probs=[round(float(p), 6) for p in proba_vec],
+            confidence=round(confidence, 6),
+            is_rejected=is_rejected,
+            mapped_label_name=mapped_label_name,
+            mapped_probs=mapped_probs,
+            model_version=self._metadata.schema_hash,
+            schema_version="features_v1",
+            label_version="labels_v1",
+        )
 
     def get_segments(self) -> list[Segment]:
-        """Return the running segment list built from all predictions so far."""
+        """Return the running segment list built from all predictions so far.
+
+        Applies hysteresis merging so segments shorter than
+        ``MIN_BLOCK_DURATION_SECONDS`` are absorbed by their neighbours.
+        """
         if not self._all_bucket_ts:
             return []
-        return segmentize(
+        segments = segmentize(
             self._all_bucket_ts,
             self._all_smoothed,
             bucket_seconds=self._bucket_seconds,
         )
+        return merge_short_segments(segments, bucket_seconds=self._bucket_seconds)
 
 
-def _append_prediction_csv(path: Path, bucket_ts: datetime, label: str) -> None:
-    """Append a single prediction row to a CSV file (creating it if needed)."""
+_PREDICTION_CSV_COLUMNS = [
+    "bucket_start_ts",
+    "core_label",
+    "confidence",
+    "is_rejected",
+    "mapped_label",
+    "core_probs",
+    "mapped_probs",
+    "model_version",
+]
+
+
+def _append_prediction_csv(path: Path, prediction: WindowPrediction) -> None:
+    """Append a single :class:`WindowPrediction` row to a CSV file."""
     write_header = not path.exists()
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "a", newline="") as f:
         writer = csv.writer(f)
         if write_header:
-            writer.writerow(["bucket_start_ts", "predicted_label"])
-        writer.writerow([bucket_ts.isoformat(), label])
+            writer.writerow(_PREDICTION_CSV_COLUMNS)
+        writer.writerow([
+            prediction.bucket_start_ts.isoformat(),
+            prediction.core_label_name,
+            f"{prediction.confidence:.4f}",
+            prediction.is_rejected,
+            prediction.mapped_label_name,
+            json.dumps([round(p, 4) for p in prediction.core_probs]),
+            json.dumps({k: round(v, 4) for k, v in prediction.mapped_probs.items()}),
+            prediction.model_version,
+        ])
 
 
 def run_online_loop(
@@ -171,6 +224,7 @@ def run_online_loop(
     idle_gap_seconds: float = DEFAULT_IDLE_GAP_SECONDS,
     reject_threshold: float | None = DEFAULT_REJECT_THRESHOLD,
     taxonomy_path: Path | None = None,
+    calibrator_path: Path | None = None,
 ) -> None:
     """Poll ActivityWatch, predict, smooth, and write results continuously.
 
@@ -194,6 +248,9 @@ def run_online_loop(
             ``max(proba) < reject_threshold`` become ``Mixed/Unknown``.
         taxonomy_path: Optional path to a taxonomy YAML file.  When
             provided, output labels are mapped to user-defined buckets.
+        calibrator_path: Optional path to a calibrator JSON file.  When
+            provided, raw model probabilities are calibrated before the
+            reject decision.
     """
     from taskclf.adapters.activitywatch.client import (
         fetch_aw_events,
@@ -202,12 +259,18 @@ def run_online_loop(
         find_window_bucket_id,
     )
     from taskclf.features.build import build_features_from_aw_events
+    from taskclf.infer.calibration import load_calibrator
     from taskclf.infer.taxonomy import load_taxonomy
 
     taxonomy: TaxonomyConfig | None = None
     if taxonomy_path is not None:
         taxonomy = load_taxonomy(taxonomy_path)
         logger.info("Loaded taxonomy from %s (user=%s)", taxonomy_path, taxonomy.user_id)
+
+    calibrator: Calibrator | None = None
+    if calibrator_path is not None:
+        calibrator = load_calibrator(calibrator_path)
+        logger.info("Loaded calibrator from %s", calibrator_path)
 
     model, metadata, cat_encoders = load_model_bundle(Path(model_dir))
     logger.info("Loaded model from %s (schema=%s)", model_dir, metadata.schema_hash)
@@ -229,6 +292,7 @@ def run_online_loop(
         bucket_seconds=bucket_seconds,
         reject_threshold=reject_threshold,
         taxonomy=taxonomy,
+        calibrator=calibrator,
     )
 
     pred_path = out_dir / "predictions.csv"
@@ -292,10 +356,11 @@ def run_online_loop(
             last_event_ts = max(ev.timestamp for ev in events)
 
             for row in rows:
-                label = predictor.predict_bucket(row)
+                prediction = predictor.predict_bucket(row)
                 ts_str = row.bucket_start_ts.strftime("%H:%M")
-                print(f"[{ts_str}] {label}")
-                _append_prediction_csv(pred_path, row.bucket_start_ts, label)
+                conf_str = f"{prediction.confidence:.2f}"
+                print(f"[{ts_str}] {prediction.mapped_label_name} (confidence: {conf_str})")
+                _append_prediction_csv(pred_path, prediction)
 
             segments = predictor.get_segments()
             write_segments_json(segments, seg_path)

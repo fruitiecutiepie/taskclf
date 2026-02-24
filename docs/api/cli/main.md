@@ -102,14 +102,19 @@ taskclf infer batch \
   --taxonomy configs/user_taxonomy.yaml
 ```
 
-### infer online (with taxonomy)
+### infer online (with taxonomy and calibrator)
 
-Run online inference with optional taxonomy mapping.
+Run online inference with optional taxonomy mapping and probability
+calibration.  Each prediction is written as a full `WindowPrediction`
+row (core label, core probs, confidence, rejection status, mapped
+label, mapped probs).  Segments are hysteresis-merged so blocks shorter
+than `MIN_BLOCK_DURATION_SECONDS` (3 min) are absorbed by neighbours.
 
 ```bash
 taskclf infer online \
   --model-dir models/run_20250615_120000 \
-  --taxonomy configs/user_taxonomy.yaml
+  --taxonomy configs/user_taxonomy.yaml \
+  --calibrator calibrators/user_cal.json
 ```
 
 ### infer baseline

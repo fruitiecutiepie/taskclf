@@ -1,7 +1,7 @@
 """Tests for the online inference predictor.
 
 Covers:
-- OnlinePredictor single-bucket prediction
+- OnlinePredictor single-bucket prediction (returns WindowPrediction)
 - Rolling smoothing buffer behavior
 - Segment accumulation over multiple predictions
 - No retraining (model is used read-only)
@@ -27,6 +27,7 @@ from taskclf.core.types import LABEL_SET_V1, FeatureRow
 _VALID_LABELS = LABEL_SET_V1 | {MIXED_UNKNOWN}
 from taskclf.features.build import build_features_from_aw_events, generate_dummy_features
 from taskclf.infer.online import OnlinePredictor
+from taskclf.infer.prediction import WindowPrediction
 
 runner = CliRunner()
 
@@ -56,16 +57,16 @@ def predictor(trained_model_dir: Path) -> OnlinePredictor:
 class TestOnlinePredictor:
     def test_predict_single_bucket(self, predictor: OnlinePredictor) -> None:
         rows = generate_dummy_features(dt.date(2025, 6, 15), n_rows=1)
-        label = predictor.predict_bucket(rows[0])
-        assert label in _VALID_LABELS
+        pred = predictor.predict_bucket(rows[0])
+        assert isinstance(pred, WindowPrediction)
+        assert pred.mapped_label_name in _VALID_LABELS
 
     def test_predict_multiple_buckets(self, predictor: OnlinePredictor) -> None:
         rows = generate_dummy_features(dt.date(2025, 6, 15), n_rows=5)
-        labels = []
-        for row in rows:
-            labels.append(predictor.predict_bucket(row))
-        assert len(labels) == 5
-        assert all(lbl in _VALID_LABELS for lbl in labels)
+        preds = [predictor.predict_bucket(row) for row in rows]
+        assert len(preds) == 5
+        assert all(isinstance(p, WindowPrediction) for p in preds)
+        assert all(p.mapped_label_name in _VALID_LABELS for p in preds)
 
     def test_segments_accumulate(self, predictor: OnlinePredictor) -> None:
         rows = generate_dummy_features(dt.date(2025, 6, 15), n_rows=10)
@@ -95,11 +96,11 @@ class TestOnlinePredictor:
         pred_w5 = OnlinePredictor(model, metadata, cat_encoders=cat_encoders, smooth_window=5)
 
         rows = generate_dummy_features(dt.date(2025, 6, 15), n_rows=10)
-        labels_w1 = [pred_w1.predict_bucket(r) for r in rows]
-        labels_w5 = [pred_w5.predict_bucket(r) for r in rows]
+        preds_w1 = [pred_w1.predict_bucket(r) for r in rows]
+        preds_w5 = [pred_w5.predict_bucket(r) for r in rows]
 
-        assert all(lbl in _VALID_LABELS for lbl in labels_w1)
-        assert all(lbl in _VALID_LABELS for lbl in labels_w5)
+        assert all(p.mapped_label_name in _VALID_LABELS for p in preds_w1)
+        assert all(p.mapped_label_name in _VALID_LABELS for p in preds_w5)
 
     def test_segment_labels_are_valid(self, predictor: OnlinePredictor) -> None:
         rows = generate_dummy_features(dt.date(2025, 6, 15), n_rows=10)

@@ -61,6 +61,8 @@ nav:
       - infer/batch: api/infer/batch.md
       - infer/smooth: api/infer/smooth.md
       - infer/online: api/infer/online.md
+      - infer/prediction: api/infer/prediction.md
+      - infer/calibration: api/infer/calibration.md
       - infer/taxonomy: api/infer/taxonomy.md
       - report/daily: api/report/daily.md
       - report/export: api/report/export.md
