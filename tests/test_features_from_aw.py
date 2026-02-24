@@ -267,3 +267,29 @@ class TestBuildFeaturesWithInputEvents:
         assert row.clicks_per_min == 0.0
         assert row.scroll_events_per_min == 0.0
         assert row.mouse_distance == 0.0
+
+
+class TestIdleSegmentFeatures:
+    def test_idle_segments_produce_zero_active(self) -> None:
+        """TC-FEAT-003: idle segments produce active_seconds=0 and correct idle flags."""
+        base = dt.datetime(2026, 2, 23, 10, 0, 0)
+        window_events = [
+            _make_event(base, duration=60.0),
+        ]
+        input_events = [
+            _make_input_event(base, presses=0, clicks=0, delta_x=0, delta_y=0,
+                              scroll_x=0, scroll_y=0),
+            _make_input_event(base + dt.timedelta(seconds=5), presses=0, clicks=0,
+                              delta_x=0, delta_y=0, scroll_x=0, scroll_y=0),
+        ]
+
+        rows = build_features_from_aw_events(window_events, input_events=input_events)
+        assert len(rows) == 1
+        row = rows[0]
+
+        assert row.active_seconds_any == 0.0
+        assert row.active_seconds_keyboard == 0.0
+        assert row.active_seconds_mouse == 0.0
+        assert row.max_idle_run_seconds == 10.0
+        assert row.keys_per_min == 0.0
+        assert row.clicks_per_min == 0.0

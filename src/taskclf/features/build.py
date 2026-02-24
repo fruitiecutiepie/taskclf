@@ -11,7 +11,6 @@ import pandas as pd
 
 from taskclf.adapters.activitywatch.types import AWInputEvent
 from taskclf.core.defaults import (
-    DEFAULT_APP_SWITCH_WINDOW_MINUTES,
     DEFAULT_BUCKET_SECONDS,
     DEFAULT_DUMMY_ROWS,
     DEFAULT_IDLE_GAP_SECONDS,
@@ -22,6 +21,7 @@ from taskclf.core.store import write_parquet
 from taskclf.core.time import align_to_bucket
 from taskclf.core.types import Event, FeatureRow
 from taskclf.features.sessions import detect_session_boundaries, session_start_for_bucket
+from taskclf.features.windows import app_switch_count_in_window
 
 _DUMMY_APPS: list[tuple[str, bool, bool, bool, str]] = [
     # (app_id, is_browser, is_editor, is_terminal, app_category)
@@ -274,16 +274,9 @@ def build_features_from_aw_events(
             if a.app_id != b.app_id
         )
 
-        # App switches in the preceding 5 minutes
-        window_start = bucket_ts - dt.timedelta(minutes=DEFAULT_APP_SWITCH_WINDOW_MINUTES)
-        apps_in_window: set[str] = set()
-        for ev in all_events_sorted:
-            if ev.timestamp < window_start:
-                continue
-            if ev.timestamp >= bucket_ts + dt.timedelta(seconds=bucket_seconds):
-                break
-            apps_in_window.add(ev.app_id)
-        switch_count = max(0, len(apps_in_window) - 1)
+        switch_count = app_switch_count_in_window(
+            all_events_sorted, bucket_ts, bucket_seconds=bucket_seconds,
+        )
 
         cur_session = session_start_for_bucket(bucket_ts, session_starts)
         elapsed_minutes = (bucket_ts - cur_session).total_seconds() / 60.0

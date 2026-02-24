@@ -303,3 +303,98 @@ class TestParseAWExport:
 
         events = parse_aw_export(f, title_salt=SALT)
         assert len(events) == 2
+
+
+# ---------------------------------------------------------------------------
+# Integration: ingest end-to-end
+# ---------------------------------------------------------------------------
+
+
+class TestIngestIntegration:
+    def test_ingest_produces_normalized_events(self, tmp_path: Path) -> None:
+        """TC-INT-001: ingest fixture AW export produces normalized events with expected fields."""
+        export = _make_export([
+            {"timestamp": "2026-02-23T10:00:00Z", "duration": 30.0,
+             "data": {"app": "Firefox", "title": "GitHub - repo"}},
+            {"timestamp": "2026-02-23T10:01:00Z", "duration": 45.0,
+             "data": {"app": "Code", "title": "main.py"}},
+            {"timestamp": "2026-02-23T10:02:00Z", "duration": 20.0,
+             "data": {"app": "Terminal", "title": "bash"}},
+        ])
+        f = tmp_path / "export.json"
+        f.write_text(json.dumps(export))
+
+        events = parse_aw_export(f, title_salt=SALT)
+
+        assert len(events) == 3
+        for ev in events:
+            assert isinstance(ev, AWEvent)
+            assert isinstance(ev, Event)
+
+        assert events[0].timestamp < events[1].timestamp < events[2].timestamp
+
+        assert events[0].app_id == "org.mozilla.firefox"
+        assert events[0].is_browser is True
+        assert events[0].app_category == "browser"
+
+        assert events[1].app_id == "com.microsoft.VSCode"
+        assert events[1].is_editor is True
+        assert events[1].app_category == "editor"
+
+        assert events[2].app_id == "com.apple.Terminal"
+        assert events[2].is_terminal is True
+        assert events[2].app_category == "terminal"
+
+        for ev in events:
+            assert ev.duration_seconds > 0
+            assert len(ev.window_title_hash) == 12
+
+    def test_unknown_app_ids_normalized(self, tmp_path: Path) -> None:
+        """TC-INT-002: unknown app ids are normalized to app_id='unknown' with provenance retained."""
+        export = _make_export([
+            {"timestamp": "2026-02-23T10:00:00Z", "duration": 10.0,
+             "data": {"app": "SomeObscureApp", "title": "window"}},
+            {"timestamp": "2026-02-23T10:01:00Z", "duration": 5.0,
+             "data": {"app": "My Custom Tool", "title": "view"}},
+        ])
+        f = tmp_path / "export.json"
+        f.write_text(json.dumps(export))
+
+        events = parse_aw_export(f, title_salt=SALT)
+
+        assert len(events) == 2
+        for ev in events:
+            assert ev.app_id.startswith("unknown.")
+            assert ev.is_browser is False
+            assert ev.is_editor is False
+            assert ev.is_terminal is False
+            assert ev.app_category == "other"
+
+        assert events[0].app_id == "unknown.someobscureapp"
+        assert events[1].app_id == "unknown.my_custom_tool"
+
+    def test_titles_hashed_during_normalization(self, tmp_path: Path) -> None:
+        """TC-INT-003: window titles are hashed/tokenized during normalization."""
+        raw_title_a = "Super Secret Project - Confidential Report"
+        raw_title_b = "Another Completely Different Title"
+
+        export = _make_export([
+            {"timestamp": "2026-02-23T10:00:00Z", "duration": 10.0,
+             "data": {"app": "Firefox", "title": raw_title_a}},
+            {"timestamp": "2026-02-23T10:01:00Z", "duration": 10.0,
+             "data": {"app": "Firefox", "title": raw_title_b}},
+        ])
+        f = tmp_path / "export.json"
+        f.write_text(json.dumps(export))
+
+        events = parse_aw_export(f, title_salt=SALT)
+
+        for word in ("Super", "Secret", "Confidential", "Report", "Another", "Different"):
+            assert word not in events[0].window_title_hash
+            assert word not in events[1].window_title_hash
+
+        for ev in events:
+            assert len(ev.window_title_hash) == 12
+            assert all(c in "0123456789abcdef" for c in ev.window_title_hash)
+
+        assert events[0].window_title_hash != events[1].window_title_hash
