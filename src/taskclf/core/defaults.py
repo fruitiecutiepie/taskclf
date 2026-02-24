@@ -27,6 +27,7 @@ DEFAULT_AW_TIMEOUT_SECONDS: Final[int] = 10
 
 # ── Privacy / hashing ──
 DEFAULT_TITLE_SALT: Final[str] = "taskclf-default-salt"
+DEFAULT_TITLE_POLICY: Final[str] = "hash_only"
 
 # ── Training ──
 DEFAULT_NUM_BOOST_ROUND: Final[int] = 100

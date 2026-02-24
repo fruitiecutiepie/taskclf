@@ -1,6 +1,6 @@
 """Tests for core data contracts: FeatureRow privacy/validation and LabelSpan invariants.
 
-Covers: TC-CORE-001 through TC-CORE-004, TC-LABEL-004.
+Covers: TC-CORE-001 through TC-CORE-005, TC-LABEL-004.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from taskclf.core.types import CoreLabel, FeatureRow, LabelSpan
+from taskclf.core.types import CoreLabel, FeatureRow, LabelSpan, TitlePolicy
 
 
 class TestFeatureRowValidation:
@@ -99,6 +99,56 @@ class TestFeatureRowPrivacy:
         data = {**valid_feature_row_data, "raw_clipboard": "paste data"}
         with pytest.raises(ValidationError, match="raw_clipboard"):
             FeatureRow.model_validate(data)
+
+
+class TestTitlePolicyGating:
+    """TC-CORE-005: raw_window_title is allowed only with RAW_WINDOW_TITLE_OPT_IN context."""
+
+    def test_rejects_raw_title_no_context(
+        self, valid_feature_row_data: dict[str, Any]
+    ) -> None:
+        data = {**valid_feature_row_data, "raw_window_title": "Secret Doc"}
+        with pytest.raises(ValidationError, match="raw_window_title"):
+            FeatureRow.model_validate(data)
+
+    def test_rejects_raw_title_hash_only(
+        self, valid_feature_row_data: dict[str, Any]
+    ) -> None:
+        data = {**valid_feature_row_data, "raw_window_title": "Secret Doc"}
+        ctx = {"title_policy": TitlePolicy.HASH_ONLY}
+        with pytest.raises(ValidationError, match="raw_window_title"):
+            FeatureRow.model_validate(data, context=ctx)
+
+    def test_accepts_raw_title_raw_window_title_opt_in(
+        self, valid_feature_row_data: dict[str, Any]
+    ) -> None:
+        data = {**valid_feature_row_data, "raw_window_title": "My Document.docx"}
+        ctx = {"title_policy": TitlePolicy.RAW_WINDOW_TITLE_OPT_IN}
+        row = FeatureRow.model_validate(data, context=ctx)
+        assert row.raw_window_title == "My Document.docx"
+
+    def test_still_rejects_other_raw_fields_with_opt_in(
+        self, valid_feature_row_data: dict[str, Any]
+    ) -> None:
+        data = {**valid_feature_row_data, "raw_keystrokes": "secret typing"}
+        ctx = {"title_policy": TitlePolicy.RAW_WINDOW_TITLE_OPT_IN}
+        with pytest.raises(ValidationError, match="raw_keystrokes"):
+            FeatureRow.model_validate(data, context=ctx)
+
+    def test_model_dump_excludes_raw_title(
+        self, valid_feature_row_data: dict[str, Any]
+    ) -> None:
+        data = {**valid_feature_row_data, "raw_window_title": "My Document.docx"}
+        ctx = {"title_policy": TitlePolicy.RAW_WINDOW_TITLE_OPT_IN}
+        row = FeatureRow.model_validate(data, context=ctx)
+        dumped = row.model_dump()
+        assert "raw_window_title" not in dumped
+
+    def test_raw_title_defaults_to_none(
+        self, valid_feature_row_data: dict[str, Any]
+    ) -> None:
+        row = FeatureRow.model_validate(valid_feature_row_data)
+        assert row.raw_window_title is None
 
 
 class TestLabelSpanValidation:

@@ -6,7 +6,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Final, Protocol, runtime_checkable
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, ValidationInfo, model_validator
 
 
 @runtime_checkable
@@ -56,6 +56,27 @@ class CoreLabel(StrEnum):
 
 LABEL_SET_V1: Final[frozenset[str]] = frozenset(CoreLabel)
 
+
+class TitlePolicy(StrEnum):
+    """Controls whether raw window titles may appear in a :class:`FeatureRow`.
+
+    ``HASH_ONLY`` (default)
+        All ``raw_*`` fields are rejected — the standard privacy mode.
+
+    ``RAW_WINDOW_TITLE_OPT_IN``
+        ``raw_window_title`` is accepted (but still excluded from
+        ``model_dump()`` so it can never leak into ``data/processed/``).
+        All other ``raw_*`` fields remain prohibited.
+
+    Pass the policy via Pydantic validation context::
+
+        FeatureRow.model_validate(data, context={"title_policy": TitlePolicy.RAW_WINDOW_TITLE_OPT_IN})
+    """
+
+    HASH_ONLY = "hash_only"
+    RAW_WINDOW_TITLE_OPT_IN = "raw_window_title_opt_in"
+
+
 _PROHIBITED_FIELD_PREFIXES = ("raw_",)
 
 
@@ -82,7 +103,11 @@ class FeatureRow(BaseModel, frozen=True):
     - **temporal** — ``hour_of_day``, ``day_of_week``, ``session_length_so_far``.
 
     A pre-validator rejects any field whose name starts with ``raw_`` to
-    enforce the privacy invariant (no raw keystrokes / titles).
+    enforce the privacy invariant (no raw keystrokes / titles).  The
+    single exception is ``raw_window_title``, which is accepted when
+    validation context carries ``title_policy=TitlePolicy.RAW_WINDOW_TITLE_OPT_IN``.
+    Even then, the field is excluded from ``model_dump()`` so it cannot
+    leak into persisted datasets.
     """
 
     # -- meta --
@@ -124,13 +149,27 @@ class FeatureRow(BaseModel, frozen=True):
     day_of_week: int = Field(ge=0, le=6, description="Day of week (0=Monday, 6=Sunday).")
     session_length_so_far: float = Field(ge=0.0, description="Minutes since session start.")
 
+    # -- opt-in raw title (excluded from serialization) --
+    raw_window_title: str | None = Field(
+        default=None,
+        exclude=True,
+        description="Raw window title; only accepted when title_policy=RAW_WINDOW_TITLE_OPT_IN.",
+    )
+
     @model_validator(mode="before")
     @classmethod
-    def reject_prohibited_fields(cls, values: dict) -> dict:  # type: ignore[override]
+    def reject_prohibited_fields(cls, values: dict, info: ValidationInfo) -> dict:  # type: ignore[override]
         if isinstance(values, dict):
+            ctx = info.context or {}
+            title_policy = ctx.get("title_policy", TitlePolicy.HASH_ONLY)
             for key in values:
                 for prefix in _PROHIBITED_FIELD_PREFIXES:
                     if key.startswith(prefix):
+                        if (
+                            key == "raw_window_title"
+                            and title_policy == TitlePolicy.RAW_WINDOW_TITLE_OPT_IN
+                        ):
+                            continue
                         raise ValueError(
                             f"Prohibited field '{key}': fields starting with "
                             f"'{prefix}' must not appear in a FeatureRow"

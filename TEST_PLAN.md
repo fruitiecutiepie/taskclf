@@ -25,7 +25,7 @@ This plan prioritizes: correctness, privacy invariants, schema stability, reprod
 | Model IO bundle (TC-MODEL-001..004) | **Done** | `tests/test_core_model_io.py` |
 | Security / privacy (TC-SEC-001..003) | **Done** | `tests/test_security_privacy.py` |
 | Train -> infer integration (TC-INT-020..022) | **Done** | `tests/test_integration_train_infer.py` |
-| Title opt-in policy (TC-CORE-005) | Blocked | `tests/test_not_yet_implemented.py` |
+| Title opt-in policy (TC-CORE-005) | **Done** | `tests/test_core_types.py` |
 | Advanced features (TC-FEAT-002..005) | Blocked | `tests/test_not_yet_implemented.py` |
 | Adapter ingest integration (TC-INT-001..003) | Blocked | `tests/test_not_yet_implemented.py` |
 | Features -> labels pipeline (TC-INT-010..011) | **Done** | `tests/test_integration_features_labels.py` |
@@ -143,7 +143,7 @@ R3. Reports are derived artifacts and should be regenerable.
 - **TC-CORE-002**: FeatureRowV1 rejects unknown fields (strict mode). **[DONE]** `tests/test_core_types.py`
 - **TC-CORE-003**: Reject any persisted row containing `raw_keystrokes` field. **[DONE]** `tests/test_core_types.py`
 - **TC-CORE-004**: Reject any persisted row containing `window_title_raw` by default policy. **[DONE]** `tests/test_core_types.py`
-- **TC-CORE-005**: Allow raw title only when config `title_policy=raw_opt_in` and ensure it is never written to `data/processed/` (only `data/interim/` if allowed). **[BLOCKED: title_policy config not implemented]** `tests/test_not_yet_implemented.py`
+- **TC-CORE-005**: Allow raw title only when config `title_policy=raw_window_title_opt_in` and ensure it is never written to `data/processed/` (only `data/interim/` if allowed). **[DONE]** `tests/test_core_types.py`
 
 ### 5.2 `core/hashing`
 - **TC-CORE-010**: Hashing is deterministic given fixed salt and input. **[DONE]** `tests/test_core_hashing.py`
