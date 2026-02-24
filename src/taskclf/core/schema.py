@@ -25,6 +25,8 @@ _COLUMNS_V1: Final[dict[str, type]] = {
     "is_editor": bool,
     "is_terminal": bool,
     "app_switch_count_last_5m": int,
+    "app_foreground_time_ratio": float,
+    "app_change_count": int,
     "keys_per_min": float,
     "backspace_ratio": float,
     "shortcut_rate": float,

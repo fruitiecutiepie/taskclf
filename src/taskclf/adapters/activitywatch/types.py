@@ -32,9 +32,7 @@ class AWInputEvent(BaseModel, frozen=True):
 
     Each event covers a short polling interval (typically 5 s) and
     carries only aggregate counts -- never individual key identities.
-    This makes the type privacy-safe by construction.
-
-    The upstream AW fields ``deltaX``/``deltaY`` and ``scrollX``/``scrollY``
+    This makes the type privacy-safe by construction.    The upstream AW fields ``deltaX``/``deltaY`` and ``scrollX``/``scrollY``
     are mapped to snake_case for consistency with project conventions.
     """
 

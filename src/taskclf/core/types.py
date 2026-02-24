@@ -60,7 +60,8 @@ class FeatureRow(BaseModel, frozen=True):
       ``source_ids``.
     - **context** — ``app_id``, ``app_category``, ``window_title_hash``,
       ``is_browser``, ``is_editor``, ``is_terminal``,
-      ``app_switch_count_last_5m``.
+      ``app_switch_count_last_5m``, ``app_foreground_time_ratio``,
+      ``app_change_count``.
     - **keyboard / mouse** — nullable until the corresponding collector is
       wired (``keys_per_min``, ``backspace_ratio``, ``shortcut_rate``,
       ``clicks_per_min``, ``scroll_events_per_min``, ``mouse_distance``).
@@ -83,7 +84,9 @@ class FeatureRow(BaseModel, frozen=True):
     is_browser: bool = Field(description="True if the foreground app is a web browser.")
     is_editor: bool = Field(description="True if the foreground app is a code editor.")
     is_terminal: bool = Field(description="True if the foreground app is a terminal emulator.")
-    app_switch_count_last_5m: int = Field(ge=0, description="Number of app switches in the last 5 minutes.")
+    app_switch_count_last_5m: int = Field(ge=0, description="Number of unique app switches in the last 5 minutes.")
+    app_foreground_time_ratio: float = Field(ge=0.0, le=1.0, description="Fraction of the bucket the dominant app was foreground.")
+    app_change_count: int = Field(ge=0, description="Number of app transitions within this bucket.")
 
     # -- keyboard (nullable until collector is wired) --
     keys_per_min: float | None = Field(default=None, description="Keystrokes per minute.")
