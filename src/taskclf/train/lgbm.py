@@ -1,8 +1,8 @@
-"""LightGBM multiclass baseline trainer with evaluation."""
+"""LightGBM multiclass trainer with class-weight support and evaluation."""
 
 from __future__ import annotations
 
-from typing import Any, Final
+from typing import Any, Final, Literal
 
 import lightgbm as lgb
 import numpy as np
@@ -126,12 +126,38 @@ def _categorical_feature_indices() -> list[int]:
     return [FEATURE_COLUMNS.index(c) for c in CATEGORICAL_COLUMNS]
 
 
+def compute_sample_weights(
+    y: np.ndarray,
+    method: Literal["balanced", "none"] = "balanced",
+) -> np.ndarray | None:
+    """Map encoded labels to per-sample weights using inverse class frequency.
+
+    Args:
+        y: Integer-encoded label array (output of ``LabelEncoder.transform``).
+        method: ``"balanced"`` computes ``n_samples / (n_classes * count_per_class)``
+            and maps each sample to its class weight.  ``"none"`` returns ``None``.
+
+    Returns:
+        Per-sample weight array with the same length as *y*, or ``None``
+        when *method* is ``"none"``.
+    """
+    if method == "none":
+        return None
+    n_samples = len(y)
+    n_classes = int(y.max()) + 1
+    counts = np.bincount(y, minlength=n_classes).astype(np.float64)
+    counts[counts == 0] = 1.0
+    class_weights = n_samples / (n_classes * counts)
+    return class_weights[y]
+
+
 def train_lgbm(
     train_df: pd.DataFrame,
     val_df: pd.DataFrame,
     *,
     num_boost_round: int = DEFAULT_NUM_BOOST_ROUND,
     extra_params: dict[str, Any] | None = None,
+    class_weight: Literal["balanced", "none"] = "balanced",
 ) -> tuple[lgb.Booster, dict, pd.DataFrame, dict[str, Any], dict[str, LabelEncoder]]:
     """Train a LightGBM multiclass model and evaluate on the val set.
 
@@ -142,6 +168,9 @@ def train_lgbm(
         num_boost_round: Number of boosting iterations.
         extra_params: Additional LightGBM parameters merged on top of the
             built-in defaults.
+        class_weight: Strategy for handling class imbalance.
+            ``"balanced"`` uses inverse-frequency sample weights;
+            ``"none"`` disables weighting.
 
     Returns:
         A ``(model, metrics, confusion_df, params, cat_encoders)`` tuple
@@ -156,9 +185,11 @@ def train_lgbm(
         params.update(extra_params)
 
     cat_indices = _categorical_feature_indices()
+    sample_weights = compute_sample_weights(y_train, method=class_weight)
 
     train_ds = lgb.Dataset(
-        x_train, label=y_train, feature_name=FEATURE_COLUMNS,
+        x_train, label=y_train, weight=sample_weights,
+        feature_name=FEATURE_COLUMNS,
         categorical_feature=cat_indices, free_raw_data=False,
     )
     val_ds = lgb.Dataset(x_val, label=y_val, reference=train_ds, free_raw_data=False)
@@ -179,4 +210,5 @@ def train_lgbm(
     metrics = compute_metrics(y_true_labels, y_pred_labels, label_names)
     cm_df = confusion_matrix_df(y_true_labels, y_pred_labels, label_names)
 
+    params["class_weight_method"] = class_weight
     return model, metrics, cm_df, params, cat_encoders

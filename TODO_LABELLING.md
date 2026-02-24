@@ -3,7 +3,7 @@
 ### 0) Lock the contract ✔
 
 1. ~~Define **core label set v1** (8 labels): `Build, Debug, Review, Write, ReadResearch, Communicate, Meet, BreakIdle`.~~ — `CoreLabel` StrEnum in `src/taskclf/core/types.py`; synced with `schema/labels_v1.json`.
-2. ~~Write a **labeling guide** (1–3 bullets per label; observable rules; include “Mixed/Unknown” rule via reject threshold).~~ — `docs/guide/labels_v1.md`.
+2. ~~Write a **labeling guide** (1–3 bullets per label; observable rules; include "Mixed/Unknown" rule via reject threshold).~~ — `docs/guide/labels_v1.md`.
 3. ~~Define **windowing spec**: bucket size (e.g., 30s/60s), session definition (idle gap minutes), and how labels attach to windows vs blocks.~~ — `docs/guide/time_spec.md` (60s buckets, 5min idle gap, block→window projection rules).
 
 ### 1) Data + schemas ✔
@@ -56,24 +56,30 @@
 
    — `reject_rate()`, `per_class_metrics()`, `compare_baselines()` in `src/taskclf/core/metrics.py`. CLI: `taskclf infer compare` (Rich side-by-side table + JSON report).
 
-### 4) Global model (core labels)
+### 4) Global model (core labels) ✔
 
-13. Train LightGBM multiclass on core labels:
+13. ~~Train LightGBM multiclass on core labels:~~
 
-* time-based split (avoid leakage): train on earlier days, validate on later days
-* per-user stratification check (don’t let one user dominate)
+~~* time-based split (avoid leakage): train on earlier days, validate on later days~~
+~~* per-user stratification check (don't let one user dominate)~~
 
-14. Add class-imbalance handling:
+   — `train_lgbm()` in `src/taskclf/train/lgbm.py` with `class_weight` param; `split_by_time()` in `train/dataset.py` (chronological per-user 70/15/15); `user_stratification_report()` in `core/metrics.py` flags dominant users. CLI: `taskclf train lgbm --class-weight balanced`.
 
-* class weights or focal-ish sampling (simpler: weights)
+14. ~~Add class-imbalance handling:~~
 
-15. Implement evaluation:
+~~* class weights or focal-ish sampling (simpler: weights)~~
 
-* overall macro-F1
-* per-class precision/recall
-* confusion matrix
-* per-user metrics
-* calibration curves (reliability)
+   — `compute_sample_weights()` in `src/taskclf/train/lgbm.py`; inverse-frequency per-sample weights passed to `lgb.Dataset`. Method recorded in `metadata.json` as `class_weight_method`.
+
+15. ~~Implement evaluation:~~
+
+~~* overall macro-F1~~
+~~* per-class precision/recall~~
+~~* confusion matrix~~
+~~* per-user metrics~~
+~~* calibration curves (reliability)~~
+
+   — `evaluate_model()` in `src/taskclf/train/evaluate.py` returns `EvaluationReport` (macro-F1, weighted-F1, per-class P/R/F1, confusion matrix, per-user macro-F1, calibration curves, seen/unseen user splits, acceptance checks). `write_evaluation_artifacts()` writes `evaluation.json`, `calibration.json`, `confusion_matrix.csv`, `calibration.png`. CLI: `taskclf train evaluate`.
 
 ### 5) Reject option (Mixed/Unknown by threshold)
 
@@ -82,7 +88,7 @@
 * if `max_proba < p_reject` → `Mixed/Unknown`
 
 17. Tune `p_reject` on validation set to trade off coverage vs accuracy.
-18. Log “rejected” rate per user/day; treat spikes as drift signals.
+18. Log "rejected" rate per user/day; treat spikes as drift signals.
 
 ### 6) Personalization (without label explosion)
 
@@ -92,7 +98,7 @@
 * store calibrator per user (start with global calibrator until enough labels)
 * choose method: temperature scaling (simple) or isotonic (more flexible)
 
-21. Define “enough data” thresholds:
+21. Define "enough data" thresholds:
 
 * e.g., enable per-user calibrator after ≥200 labeled windows across ≥3 days.
 
@@ -123,7 +129,7 @@
 * write per-window predictions
 * aggregate to blocks (merge adjacent same-label windows with hysteresis)
 
-### 9) Aggregation for time tracking (the “product” output)
+### 9) Aggregation for time tracking (the "product" output)
 
 28. Implement smoothing / hysteresis:
 
@@ -168,7 +174,7 @@
 36. Add regression tests:
 
 * schema compat
-* “no worse than baseline” gates
+* "no worse than baseline" gates
 * invariant checks (e.g., BreakIdle precision >= X)
 
 ### 12) Feature upgrades (optional but high leverage)

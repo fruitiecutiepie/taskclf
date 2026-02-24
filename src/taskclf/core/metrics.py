@@ -1,12 +1,13 @@
-"""Evaluation metrics: macro-F1, confusion matrices, and related helpers."""
+"""Evaluation metrics: macro-F1, confusion matrices, calibration, and per-user helpers."""
 
 from __future__ import annotations
 
-from collections import Counter
+from collections import Counter, defaultdict
 from typing import Mapping, Sequence
 
 import numpy as np
 import pandas as pd
+from sklearn.calibration import calibration_curve as sk_calibration_curve
 from sklearn.metrics import confusion_matrix, f1_score, precision_recall_fscore_support
 
 from taskclf.core.defaults import MIXED_UNKNOWN
@@ -17,7 +18,7 @@ def compute_metrics(
     y_pred: Sequence[str],
     label_names: Sequence[str],
 ) -> dict:
-    """Return macro-F1 and a nested confusion matrix.
+    """Return macro-F1, weighted-F1, and a nested confusion matrix.
 
     Args:
         y_true: Ground-truth label strings.
@@ -26,17 +27,23 @@ def compute_metrics(
             of the matrix).
 
     Returns:
-        Dict with keys ``macro_f1`` (float), ``confusion_matrix``
-        (list of lists), and ``label_names`` (list of str).
+        Dict with keys ``macro_f1``, ``weighted_f1`` (floats),
+        ``confusion_matrix`` (list of lists), and ``label_names``
+        (list of str).
     """
+    labels_list = list(label_names)
     macro_f1: float = float(
-        f1_score(y_true, y_pred, labels=list(label_names), average="macro", zero_division=0)
+        f1_score(y_true, y_pred, labels=labels_list, average="macro", zero_division=0)
     )
-    cm: np.ndarray = confusion_matrix(y_true, y_pred, labels=list(label_names))
+    weighted_f1: float = float(
+        f1_score(y_true, y_pred, labels=labels_list, average="weighted", zero_division=0)
+    )
+    cm: np.ndarray = confusion_matrix(y_true, y_pred, labels=labels_list)
     return {
         "macro_f1": round(macro_f1, 4),
+        "weighted_f1": round(weighted_f1, 4),
         "confusion_matrix": cm.tolist(),
-        "label_names": list(label_names),
+        "label_names": labels_list,
     }
 
 
@@ -177,3 +184,150 @@ def compare_baselines(
         }
 
     return results
+
+
+# ---------------------------------------------------------------------------
+# Per-user metrics
+# ---------------------------------------------------------------------------
+
+
+def per_user_metrics(
+    y_true: Sequence[str],
+    y_pred: Sequence[str],
+    user_ids: Sequence[str],
+    label_names: Sequence[str],
+) -> dict[str, dict[str, float]]:
+    """Compute macro-F1 and per-class F1 grouped by user.
+
+    Args:
+        y_true: Ground-truth label strings (one per window).
+        y_pred: Predicted label strings (same length as *y_true*).
+        user_ids: User identifier per window (same length as *y_true*).
+        label_names: Ordered label vocabulary.
+
+    Returns:
+        Dict keyed by user_id, each containing ``macro_f1`` and a nested
+        ``per_class`` dict of precision / recall / F1 per label.
+    """
+    groups: dict[str, tuple[list[str], list[str]]] = defaultdict(lambda: ([], []))
+    for uid, yt, yp in zip(user_ids, y_true, y_pred):
+        groups[uid][0].append(yt)
+        groups[uid][1].append(yp)
+
+    results: dict[str, dict[str, float]] = {}
+    labels_list = list(label_names)
+    for uid, (true_list, pred_list) in sorted(groups.items()):
+        mf1 = float(
+            f1_score(true_list, pred_list, labels=labels_list, average="macro", zero_division=0)
+        )
+        results[uid] = {
+            "macro_f1": round(mf1, 4),
+            "count": len(true_list),
+            **{
+                f"{lbl}_f1": round(float(v), 4)
+                for lbl, v in zip(
+                    labels_list,
+                    precision_recall_fscore_support(
+                        true_list, pred_list, labels=labels_list, zero_division=0,
+                    )[2],
+                )
+            },
+        }
+    return results
+
+
+# ---------------------------------------------------------------------------
+# Calibration
+# ---------------------------------------------------------------------------
+
+
+def calibration_curve_data(
+    y_true_indices: np.ndarray,
+    y_proba: np.ndarray,
+    label_names: Sequence[str],
+    *,
+    n_bins: int = 10,
+) -> dict[str, dict[str, list[float]]]:
+    """Per-class calibration curve data for reliability diagrams.
+
+    Uses one-vs-rest binarization so each class gets its own curve.
+
+    Args:
+        y_true_indices: Integer-encoded true labels (shape ``(n,)``).
+        y_proba: Predicted probability matrix (shape ``(n, n_classes)``).
+        label_names: Ordered label vocabulary matching columns of *y_proba*.
+        n_bins: Number of probability bins.
+
+    Returns:
+        Dict keyed by label name, each containing ``fraction_of_positives``
+        and ``mean_predicted_value`` lists suitable for plotting.
+    """
+    result: dict[str, dict[str, list[float]]] = {}
+    for i, name in enumerate(label_names):
+        binary_true = (y_true_indices == i).astype(int)
+        proba_class = y_proba[:, i]
+        if binary_true.sum() == 0:
+            result[name] = {"fraction_of_positives": [], "mean_predicted_value": []}
+            continue
+        frac_pos, mean_pred = sk_calibration_curve(
+            binary_true, proba_class, n_bins=n_bins, strategy="uniform",
+        )
+        result[name] = {
+            "fraction_of_positives": [round(float(v), 6) for v in frac_pos],
+            "mean_predicted_value": [round(float(v), 6) for v in mean_pred],
+        }
+    return result
+
+
+# ---------------------------------------------------------------------------
+# User stratification
+# ---------------------------------------------------------------------------
+
+
+def user_stratification_report(
+    user_ids: Sequence[str],
+    labels: Sequence[str],
+    label_names: Sequence[str],
+    *,
+    dominance_threshold: float = 0.5,
+) -> dict:
+    """Analyse per-user contribution to the training set and flag imbalance.
+
+    Args:
+        user_ids: User identifier per row.
+        labels: Label per row.
+        label_names: Ordered label vocabulary.
+        dominance_threshold: Fraction above which a single user is
+            considered dominant and a warning is emitted.
+
+    Returns:
+        Dict with ``per_user`` (row count, fraction, label distribution),
+        ``total_rows``, and ``warnings`` (list of human-readable strings
+        for any user exceeding *dominance_threshold*).
+    """
+    total = len(user_ids)
+    user_counts: Counter[str] = Counter(user_ids)
+    user_labels: dict[str, Counter[str]] = defaultdict(Counter)
+    for uid, lbl in zip(user_ids, labels):
+        user_labels[uid][lbl] += 1
+
+    per_user: dict[str, dict] = {}
+    warnings: list[str] = []
+
+    for uid in sorted(user_counts):
+        count = user_counts[uid]
+        fraction = round(count / total, 4) if total > 0 else 0.0
+        dist = {lbl: user_labels[uid].get(lbl, 0) for lbl in label_names}
+        per_user[uid] = {"count": count, "fraction": fraction, "label_distribution": dist}
+        if fraction > dominance_threshold:
+            warnings.append(
+                f"User {uid!r} contributes {fraction:.0%} of rows "
+                f"({count}/{total}), exceeding threshold {dominance_threshold:.0%}"
+            )
+
+    return {
+        "per_user": per_user,
+        "total_rows": total,
+        "user_count": len(user_counts),
+        "warnings": warnings,
+    }

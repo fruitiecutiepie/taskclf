@@ -409,6 +409,7 @@ def train_lgbm_cmd(
     models_dir: str = typer.Option(DEFAULT_MODELS_DIR, help="Base directory for model bundles"),
     data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory"),
     num_boost_round: int = typer.Option(DEFAULT_NUM_BOOST_ROUND, help="Number of boosting rounds"),
+    class_weight: str = typer.Option("balanced", "--class-weight", help="Class-weight strategy: 'balanced' (inverse-frequency) or 'none'"),
 ) -> None:
     """Train a LightGBM multiclass model and save the model bundle."""
     import pandas as pd
@@ -468,10 +469,11 @@ def train_lgbm_cmd(
         f"Test: {len(splits['test'])} rows (held out)"
     )
 
+    cw = class_weight if class_weight in ("balanced", "none") else "balanced"
     model, metrics, cm_df, params, cat_encoders = train_lgbm(
-        train_df, val_df, num_boost_round=num_boost_round,
+        train_df, val_df, num_boost_round=num_boost_round, class_weight=cw,
     )
-    typer.echo(f"Macro F1: {metrics['macro_f1']}")
+    typer.echo(f"Macro F1: {metrics['macro_f1']}  Weighted F1: {metrics['weighted_f1']}")
 
     metadata = build_metadata(
         label_set=metrics["label_names"],
@@ -489,6 +491,152 @@ def train_lgbm_cmd(
         cat_encoders=cat_encoders,
     )
     typer.echo(f"Model bundle saved to {run_dir}")
+
+
+@train_app.command("evaluate")
+def train_evaluate_cmd(
+    model_dir: str = typer.Option(..., "--model-dir", help="Path to a model run directory"),
+    date_from: str = typer.Option(..., "--from", help="Start date (YYYY-MM-DD)"),
+    date_to: str = typer.Option(..., "--to", help="End date (YYYY-MM-DD, inclusive)"),
+    synthetic: bool = typer.Option(False, "--synthetic", help="Generate dummy features + labels"),
+    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory"),
+    out_dir: str = typer.Option(DEFAULT_OUT_DIR, help="Output directory for evaluation artifacts"),
+    holdout_fraction: float = typer.Option(0.0, "--holdout-fraction", help="Fraction of users held out for unseen-user evaluation"),
+    reject_threshold: float = typer.Option(0.55, "--reject-threshold", help="Max-probability below which prediction is rejected"),
+) -> None:
+    """Run full evaluation of a trained model: metrics, calibration, acceptance checks."""
+    import pandas as pd
+    from rich.console import Console
+    from rich.table import Table
+
+    from taskclf.core.model_io import load_model_bundle
+    from taskclf.core.store import read_parquet
+    from taskclf.features.build import generate_dummy_features
+    from taskclf.labels.projection import project_blocks_to_windows
+    from taskclf.labels.store import generate_dummy_labels
+    from taskclf.train.dataset import split_by_time
+    from taskclf.train.evaluate import evaluate_model, write_evaluation_artifacts
+
+    console = Console()
+
+    model, metadata, cat_encoders = load_model_bundle(Path(model_dir))
+    typer.echo(f"Loaded model from {model_dir} (schema={metadata.schema_hash})")
+
+    start = dt.date.fromisoformat(date_from)
+    end = dt.date.fromisoformat(date_to)
+
+    all_features: list[pd.DataFrame] = []
+    all_labels: list = []
+    current = start
+    while current <= end:
+        if synthetic:
+            rows = generate_dummy_features(current, n_rows=60)
+            df = pd.DataFrame([r.model_dump() for r in rows])
+            labels = generate_dummy_labels(current, n_rows=60)
+        else:
+            parquet_path = Path(data_dir) / f"features_v1/date={current.isoformat()}" / "features.parquet"
+            if not parquet_path.exists():
+                typer.echo(f"  skipping {current} (no features file)")
+                current += dt.timedelta(days=1)
+                continue
+            df = read_parquet(parquet_path)
+            labels = generate_dummy_labels(current, n_rows=len(df))
+        all_features.append(df)
+        all_labels.extend(labels)
+        current += dt.timedelta(days=1)
+
+    if not all_features:
+        typer.echo("No feature data found for the given date range.", err=True)
+        raise typer.Exit(code=1)
+
+    features_df = pd.concat(all_features, ignore_index=True)
+    labeled_df = project_blocks_to_windows(features_df, all_labels)
+
+    if labeled_df.empty:
+        typer.echo("No labeled rows — cannot evaluate.", err=True)
+        raise typer.Exit(code=1)
+
+    splits = split_by_time(labeled_df, holdout_user_fraction=holdout_fraction)
+    test_df = labeled_df.iloc[splits["test"]].reset_index(drop=True)
+    holdout_users = splits.get("holdout_users", [])
+
+    if test_df.empty:
+        typer.echo("Test set is empty — cannot evaluate.", err=True)
+        raise typer.Exit(code=1)
+
+    typer.echo(f"Evaluating on {len(test_df)} test rows ({len(holdout_users)} holdout users)")
+
+    report = evaluate_model(
+        model, test_df,
+        cat_encoders=cat_encoders,
+        holdout_users=holdout_users,
+        reject_threshold=reject_threshold,
+    )
+
+    # -- Overall metrics table --
+    overall = Table(title="Overall Metrics")
+    overall.add_column("Metric", style="bold")
+    overall.add_column("Value", justify="right")
+    overall.add_row("Macro F1", f"{report.macro_f1:.4f}")
+    overall.add_row("Weighted F1", f"{report.weighted_f1:.4f}")
+    overall.add_row("Reject Rate", f"{report.reject_rate:.4f}")
+    if report.seen_user_f1 is not None:
+        overall.add_row("Seen-User F1", f"{report.seen_user_f1:.4f}")
+    if report.unseen_user_f1 is not None:
+        overall.add_row("Unseen-User F1", f"{report.unseen_user_f1:.4f}")
+    console.print(overall)
+
+    # -- Per-class table --
+    pc_table = Table(title="Per-Class Metrics")
+    pc_table.add_column("Class", style="bold")
+    pc_table.add_column("Precision", justify="right")
+    pc_table.add_column("Recall", justify="right")
+    pc_table.add_column("F1", justify="right")
+    for cls in report.label_names:
+        m = report.per_class.get(cls, {})
+        pc_table.add_row(
+            cls,
+            f"{m.get('precision', 0):.4f}",
+            f"{m.get('recall', 0):.4f}",
+            f"{m.get('f1', 0):.4f}",
+        )
+    console.print(pc_table)
+
+    # -- Per-user table --
+    pu_table = Table(title="Per-User Macro F1")
+    pu_table.add_column("User", style="bold")
+    pu_table.add_column("Rows", justify="right")
+    pu_table.add_column("Macro F1", justify="right")
+    for uid, um in report.per_user.items():
+        pu_table.add_row(uid, str(int(um.get("count", 0))), f"{um.get('macro_f1', 0):.4f}")
+    console.print(pu_table)
+
+    # -- Acceptance checks table --
+    acc_table = Table(title="Acceptance Checks")
+    acc_table.add_column("Check", style="bold")
+    acc_table.add_column("Result")
+    acc_table.add_column("Detail")
+    for check_name, passed in report.acceptance_checks.items():
+        status = "[green]PASS[/green]" if passed else "[red]FAIL[/red]"
+        acc_table.add_row(check_name, status, report.acceptance_details.get(check_name, ""))
+    console.print(acc_table)
+
+    # -- Stratification warnings --
+    if report.stratification.get("warnings"):
+        for w in report.stratification["warnings"]:
+            console.print(f"[yellow]WARNING:[/yellow] {w}")
+
+    # -- Write artifacts --
+    out = Path(out_dir)
+    paths = write_evaluation_artifacts(report, out)
+    for name, p in paths.items():
+        typer.echo(f"  {name}: {p}")
+
+    all_pass = all(report.acceptance_checks.values())
+    if all_pass:
+        console.print("[bold green]All acceptance checks passed.[/bold green]")
+    else:
+        console.print("[bold red]Some acceptance checks failed.[/bold red]")
 
 
 # -- infer --------------------------------------------------------------------

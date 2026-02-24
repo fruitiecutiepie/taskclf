@@ -1,5 +1,5 @@
 # train.lgbm
 
-LightGBM multiclass baseline trainer with evaluation.
+LightGBM multiclass trainer with class-weight support and evaluation.
 
 ::: taskclf.train.lgbm
