@@ -118,6 +118,24 @@ def segmentize(
     return segments
 
 
+def flap_rate(labels: Sequence[str]) -> float:
+    """Compute label flap rate: label changes / total windows.
+
+    As defined in ``docs/guide/acceptance.md`` section 5.
+    Acceptance thresholds: raw <= 0.25, smoothed <= 0.15.
+
+    Args:
+        labels: Ordered sequence of predicted labels (one per bucket).
+
+    Returns:
+        Flap rate in [0, 1].  Returns 0.0 for sequences of length <= 1.
+    """
+    if len(labels) <= 1:
+        return 0.0
+    changes = sum(1 for i in range(1, len(labels)) if labels[i] != labels[i - 1])
+    return changes / len(labels)
+
+
 def merge_short_segments(
     segments: Sequence[Segment],
     *,

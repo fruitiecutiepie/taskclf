@@ -483,9 +483,9 @@ class TestReportDaily:
 
         assert "date" in report
         assert "total_minutes" in report
-        assert "breakdown" in report
+        assert "core_breakdown" in report
         assert "segments_count" in report
-        assert isinstance(report["breakdown"], dict)
+        assert isinstance(report["core_breakdown"], dict)
 
     def test_breakdown_sums_to_total(self, tmp_path: Path, segments_file: Path) -> None:
         out_dir = tmp_path / "reports"
@@ -497,7 +497,7 @@ class TestReportDaily:
         report_file = next(out_dir.glob("report_*.json"))
         report = json.loads(report_file.read_text())
 
-        breakdown_sum = sum(report["breakdown"].values())
+        breakdown_sum = sum(report["core_breakdown"].values())
         assert abs(breakdown_sum - report["total_minutes"]) < 0.01
 
     def test_no_sensitive_fields_in_report(self, tmp_path: Path, segments_file: Path) -> None:

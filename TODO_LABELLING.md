@@ -149,21 +149,27 @@
 
    — `_append_prediction_csv()` writes full `WindowPrediction` fields (core_label, core_probs, confidence, is_rejected, mapped_label, mapped_probs, model_version). `write_predictions_csv()` in batch.py also accepts `core_probs`. `merge_short_segments()` in `src/taskclf/infer/smooth.py` absorbs segments shorter than `MIN_BLOCK_DURATION_SECONDS` (180s) into neighbours. Integrated into `OnlinePredictor.get_segments()` and `run_batch_inference()`.
 
-### 9) Aggregation for time tracking (the "product" output)
+### 9) Aggregation for time tracking (the "product" output) ✔
 
-28. Implement smoothing / hysteresis:
+28. ~~Implement smoothing / hysteresis:~~
 
-* prevent label flapping (minimum block length, majority vote over k windows)
+~~* prevent label flapping (minimum block length, majority vote over k windows)~~
 
-29. Implement daily summaries:
+   — `rolling_majority()` + `merge_short_segments()` in `src/taskclf/infer/smooth.py`; `flap_rate()` metric (label changes / total windows) for acceptance verification (raw ≤ 0.25, smoothed ≤ 0.15). Integrated into batch (`infer batch` prints flap rates) and online (on shutdown report).
 
-* totals by mapped label
-* totals by core label
-* context switching stats (from `app_switch_count_last_5m`)
+29. ~~Implement daily summaries:~~
 
-30. Export formats:
+~~* totals by mapped label~~
+~~* totals by core label~~
+~~* context switching stats (from `app_switch_count_last_5m`)~~
 
-* CSV/Parquet + JSON summary (stable schema)
+   — `DailyReport` in `src/taskclf/report/daily.py` with `core_breakdown` (minutes per core label), `mapped_breakdown` (minutes per taxonomy bucket), `ContextSwitchStats` (mean/median/max/total from `app_switch_count_last_5m`), `flap_rate_raw`, `flap_rate_smoothed`. `build_daily_report()` accepts segments + optional per-bucket predictions and feature data. CLI: `taskclf report daily` with `--predictions-file`, `--features-dir`, `--format` flags.
+
+30. ~~Export formats:~~
+
+~~* CSV/Parquet + JSON summary (stable schema)~~
+
+   — `export_report_json()`, `export_report_csv()`, `export_report_parquet()` in `src/taskclf/report/export.py`. CSV/Parquet use flat schema: one row per label (`date`, `label_type`, `label`, `minutes`). All formats pass sensitive-field blocklist. CLI: `taskclf report daily --format json|csv|parquet|all`.
 
 ### 10) Drift + quality monitoring
 

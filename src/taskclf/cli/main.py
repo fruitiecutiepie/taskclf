@@ -933,6 +933,29 @@ def infer_batch_cmd(
     if result.mapped_labels is not None:
         typer.echo("Taxonomy mapping applied: mapped_label column included in predictions")
 
+    # -- Daily report with full data --
+    from taskclf.infer.smooth import flap_rate
+    from taskclf.report.daily import build_daily_report
+    from taskclf.report.export import export_report_json
+
+    app_switch_counts: list[float | int | None] | None = None
+    if "app_switch_count_last_5m" in features_df.columns:
+        app_switch_counts = list(features_df["app_switch_count_last_5m"].values)
+
+    if result.segments:
+        report = build_daily_report(
+            result.segments,
+            raw_labels=result.raw_labels,
+            smoothed_labels=result.smoothed_labels,
+            mapped_labels=result.mapped_labels,
+            app_switch_counts=app_switch_counts,
+        )
+        report_path = export_report_json(report, out / f"report_{report.date}.json")
+        typer.echo(f"Report:      {report_path}")
+        fr_raw = flap_rate(result.raw_labels)
+        fr_smooth = flap_rate(result.smoothed_labels)
+        typer.echo(f"Flap rate: raw={fr_raw:.4f}  smoothed={fr_smooth:.4f}")
+
 
 @infer_app.command("online")
 def infer_online_cmd(
@@ -1152,12 +1175,27 @@ app.add_typer(report_app, name="report")
 @report_app.command("daily")
 def report_daily_cmd(
     segments_file: str = typer.Option(..., "--segments-file", help="Path to segments.json"),
+    predictions_file: str | None = typer.Option(None, "--predictions-file", help="Path to predictions CSV (for flap rates and mapped breakdown)"),
+    features_dir: str | None = typer.Option(None, "--features-dir", help="Path to features data dir (for context-switching stats)"),
     out_dir: str = typer.Option(DEFAULT_OUT_DIR, help="Output directory for report files"),
+    fmt: str = typer.Option("json", "--format", help="Output format: json, csv, parquet, or all"),
 ) -> None:
-    """Generate a daily report from a segments JSON file."""
+    """Generate a daily report from a segments JSON file.
+
+    When --predictions-file is provided, flap rates and mapped-label
+    breakdown are included.  When --features-dir is provided,
+    context-switching statistics are computed from app_switch_count_last_5m.
+    """
+    import pandas as pd
+    from rich.console import Console
+    from rich.table import Table
+
+    from taskclf.core.store import read_parquet
     from taskclf.infer.batch import read_segments_json
     from taskclf.report.daily import build_daily_report
-    from taskclf.report.export import export_report_json
+    from taskclf.report.export import export_report_csv, export_report_json, export_report_parquet
+
+    console = Console()
 
     seg_path = Path(segments_file)
     if not seg_path.exists():
@@ -1167,12 +1205,100 @@ def report_daily_cmd(
     segments = read_segments_json(seg_path)
     typer.echo(f"Loaded {len(segments)} segments")
 
-    report = build_daily_report(segments)
-    typer.echo(f"Report for {report.date}: {report.total_minutes} minutes across {report.segments_count} segments")
+    raw_labels: list[str] | None = None
+    smoothed_labels: list[str] | None = None
+    mapped_labels: list[str] | None = None
 
+    if predictions_file is not None:
+        pred_path = Path(predictions_file)
+        if not pred_path.exists():
+            typer.echo(f"Predictions file not found: {pred_path}", err=True)
+            raise typer.Exit(code=1)
+        pred_df = pd.read_csv(pred_path)
+        if "predicted_label" in pred_df.columns:
+            smoothed_labels = list(pred_df["predicted_label"].values)
+        if "core_label" in pred_df.columns:
+            raw_labels = list(pred_df["core_label"].values)
+            if smoothed_labels is None:
+                smoothed_labels = raw_labels
+        if "mapped_label" in pred_df.columns:
+            mapped_labels = list(pred_df["mapped_label"].dropna().values)
+            if len(mapped_labels) == 0:
+                mapped_labels = None
+
+    app_switch_counts: list[float | int | None] | None = None
+    if features_dir is not None:
+        feat_base = Path(features_dir)
+        if segments:
+            report_date = segments[0].start_ts.date()
+            feat_path = feat_base / f"features_v1/date={report_date.isoformat()}" / "features.parquet"
+            if feat_path.exists():
+                feat_df = read_parquet(feat_path)
+                if "app_switch_count_last_5m" in feat_df.columns:
+                    app_switch_counts = list(feat_df["app_switch_count_last_5m"].values)
+
+    report = build_daily_report(
+        segments,
+        raw_labels=raw_labels,
+        smoothed_labels=smoothed_labels,
+        mapped_labels=mapped_labels,
+        app_switch_counts=app_switch_counts,
+    )
+
+    # -- Display --
+    summary = Table(title=f"Daily Report: {report.date}")
+    summary.add_column("Metric", style="bold")
+    summary.add_column("Value", justify="right")
+    summary.add_row("Total minutes", f"{report.total_minutes:.1f}")
+    summary.add_row("Segments", str(report.segments_count))
+    if report.flap_rate_raw is not None:
+        summary.add_row("Flap rate (raw)", f"{report.flap_rate_raw:.4f}")
+    if report.flap_rate_smoothed is not None:
+        summary.add_row("Flap rate (smoothed)", f"{report.flap_rate_smoothed:.4f}")
+    console.print(summary)
+
+    breakdown_table = Table(title="Core Label Breakdown")
+    breakdown_table.add_column("Label", style="bold")
+    breakdown_table.add_column("Minutes", justify="right")
+    for label, minutes in sorted(report.core_breakdown.items()):
+        breakdown_table.add_row(label, f"{minutes:.1f}")
+    console.print(breakdown_table)
+
+    if report.mapped_breakdown is not None:
+        mapped_table = Table(title="Mapped Label Breakdown")
+        mapped_table.add_column("Label", style="bold")
+        mapped_table.add_column("Minutes", justify="right")
+        for label, minutes in sorted(report.mapped_breakdown.items()):
+            mapped_table.add_row(label, f"{minutes:.1f}")
+        console.print(mapped_table)
+
+    if report.context_switch_stats is not None:
+        ctx = report.context_switch_stats
+        ctx_table = Table(title="Context Switching")
+        ctx_table.add_column("Metric", style="bold")
+        ctx_table.add_column("Value", justify="right")
+        ctx_table.add_row("Mean switches/bucket", f"{ctx.mean:.1f}")
+        ctx_table.add_row("Median switches/bucket", f"{ctx.median:.1f}")
+        ctx_table.add_row("Max switches", str(ctx.max_value))
+        ctx_table.add_row("Total switches", str(ctx.total_switches))
+        ctx_table.add_row("Buckets counted", str(ctx.buckets_counted))
+        console.print(ctx_table)
+
+    # -- Export --
     out = Path(out_dir)
-    report_path = export_report_json(report, out / f"report_{report.date}.json")
-    typer.echo(f"Report written to {report_path}")
+    formats = [fmt] if fmt != "all" else ["json", "csv", "parquet"]
+    for f in formats:
+        base = f"report_{report.date}"
+        if f == "json":
+            p = export_report_json(report, out / f"{base}.json")
+        elif f == "csv":
+            p = export_report_csv(report, out / f"{base}.csv")
+        elif f == "parquet":
+            p = export_report_parquet(report, out / f"{base}.parquet")
+        else:
+            typer.echo(f"Unknown format: {f}", err=True)
+            continue
+        typer.echo(f"Report written to {p}")
 
 
 if __name__ == "__main__":

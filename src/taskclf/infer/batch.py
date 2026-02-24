@@ -34,6 +34,7 @@ class BatchInferenceResult:
     config was provided.
     """
 
+    raw_labels: list[str]
     smoothed_labels: list[str]
     segments: list[Segment]
     confidences: np.ndarray
@@ -176,6 +177,7 @@ def run_batch_inference(
         mapped_probs_list = [r.mapped_probs for r in results]
 
     return BatchInferenceResult(
+        raw_labels=raw_labels,
         smoothed_labels=smoothed,
         segments=segments,
         confidences=confidences,

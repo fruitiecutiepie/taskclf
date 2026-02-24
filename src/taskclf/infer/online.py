@@ -83,6 +83,7 @@ class OnlinePredictor:
         self._raw_buffer: deque[str] = deque(maxlen=max(smooth_window, 1))
         self._bucket_ts_buffer: deque[datetime] = deque(maxlen=max(smooth_window, 1))
         self._all_bucket_ts: list[datetime] = []
+        self._all_raw: list[str] = []
         self._all_smoothed: list[str] = []
 
     def _encode_value(self, col: str, value: Any) -> float:
@@ -135,6 +136,7 @@ class OnlinePredictor:
         smoothed_label = smoothed[-1]
 
         self._all_bucket_ts.append(row.bucket_start_ts)
+        self._all_raw.append(smoothing_label)
         self._all_smoothed.append(smoothed_label)
 
         if self._resolver is not None:
@@ -379,9 +381,19 @@ def run_online_loop(
             from taskclf.report.daily import build_daily_report
             from taskclf.report.export import export_report_json
 
-            report = build_daily_report(segments, bucket_seconds=bucket_seconds)
+            report = build_daily_report(
+                segments,
+                bucket_seconds=bucket_seconds,
+                raw_labels=predictor._all_raw or None,
+                smoothed_labels=predictor._all_smoothed or None,
+            )
             report_path = export_report_json(report, out_dir / f"report_{report.date}.json")
             print(f"Daily report written to {report_path}")
+            if report.flap_rate_raw is not None:
+                print(
+                    f"Flap rate: raw={report.flap_rate_raw:.4f}  "
+                    f"smoothed={report.flap_rate_smoothed:.4f}"
+                )
         except Exception:
             logger.warning("Could not generate daily report", exc_info=True)
     else:
