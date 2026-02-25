@@ -8,7 +8,11 @@ import typer
 from taskclf.core.defaults import (
     DEFAULT_AW_HOST,
     DEFAULT_CALIBRATION_METHOD,
+    DEFAULT_CLASS_SHIFT_THRESHOLD,
     DEFAULT_DATA_DIR,
+    DEFAULT_DRIFT_AUTO_LABEL_LIMIT,
+    DEFAULT_ENTROPY_SPIKE_MULTIPLIER,
+    DEFAULT_KS_ALPHA,
     DEFAULT_MIN_DISTINCT_LABELS,
     DEFAULT_MIN_LABELED_DAYS,
     DEFAULT_MIN_LABELED_WINDOWS,
@@ -16,9 +20,12 @@ from taskclf.core.defaults import (
     DEFAULT_NUM_BOOST_ROUND,
     DEFAULT_OUT_DIR,
     DEFAULT_POLL_SECONDS,
+    DEFAULT_PSI_THRESHOLD,
     DEFAULT_RAW_AW_DIR,
+    DEFAULT_REJECT_RATE_INCREASE_THRESHOLD,
     DEFAULT_REJECT_THRESHOLD,
     DEFAULT_SMOOTH_WINDOW,
+    DEFAULT_TELEMETRY_DIR,
     DEFAULT_TITLE_SALT,
 )
 
@@ -1435,6 +1442,204 @@ def report_daily_cmd(
             typer.echo(f"Unknown format: {f}", err=True)
             continue
         typer.echo(f"Report written to {p}")
+
+
+# -- monitor ------------------------------------------------------------------
+monitor_app = typer.Typer()
+app.add_typer(monitor_app, name="monitor")
+
+
+@monitor_app.command("drift-check")
+def monitor_drift_check_cmd(
+    ref_features: str = typer.Option(..., "--ref-features", help="Path to reference features parquet"),
+    cur_features: str = typer.Option(..., "--cur-features", help="Path to current features parquet"),
+    ref_predictions: str = typer.Option(..., "--ref-predictions", help="Path to reference predictions CSV"),
+    cur_predictions: str = typer.Option(..., "--cur-predictions", help="Path to current predictions CSV"),
+    psi_threshold: float = typer.Option(DEFAULT_PSI_THRESHOLD, "--psi-threshold", help="PSI threshold for feature drift"),
+    ks_alpha: float = typer.Option(DEFAULT_KS_ALPHA, "--ks-alpha", help="KS significance level"),
+    reject_increase: float = typer.Option(DEFAULT_REJECT_RATE_INCREASE_THRESHOLD, "--reject-increase", help="Reject-rate increase threshold"),
+    entropy_multiplier: float = typer.Option(DEFAULT_ENTROPY_SPIKE_MULTIPLIER, "--entropy-multiplier", help="Entropy spike multiplier"),
+    class_shift: float = typer.Option(DEFAULT_CLASS_SHIFT_THRESHOLD, "--class-shift", help="Class distribution shift threshold"),
+    auto_label: bool = typer.Option(True, "--auto-label/--no-auto-label", help="Auto-create labeling tasks on drift"),
+    auto_label_limit: int = typer.Option(DEFAULT_DRIFT_AUTO_LABEL_LIMIT, "--auto-label-limit", help="Max buckets to auto-enqueue"),
+    queue_path: str = typer.Option("data/processed/labels_v1/queue.json", "--queue-path", help="Path to labeling queue JSON"),
+    out_dir: str = typer.Option(DEFAULT_OUT_DIR, help="Output directory for drift report"),
+) -> None:
+    """Run drift detection comparing reference vs current prediction windows."""
+    import json
+
+    import numpy as np
+    import pandas as pd
+    from rich.console import Console
+    from rich.table import Table
+
+    from taskclf.core.store import read_parquet
+    from taskclf.infer.monitor import (
+        auto_enqueue_drift_labels,
+        run_drift_check,
+        write_drift_report,
+    )
+
+    console = Console()
+
+    ref_df = read_parquet(Path(ref_features))
+    cur_df = read_parquet(Path(cur_features))
+    typer.echo(f"Reference: {len(ref_df)} rows  Current: {len(cur_df)} rows")
+
+    ref_pred = pd.read_csv(ref_predictions)
+    cur_pred = pd.read_csv(cur_predictions)
+
+    ref_labels = list(ref_pred["predicted_label"].values)
+    cur_labels = list(cur_pred["predicted_label"].values)
+
+    ref_probs: np.ndarray | None = None
+    cur_probs: np.ndarray | None = None
+    if "core_probs" in ref_pred.columns and "core_probs" in cur_pred.columns:
+        ref_probs = np.array([json.loads(p) for p in ref_pred["core_probs"]])
+        cur_probs = np.array([json.loads(p) for p in cur_pred["core_probs"]])
+
+    cur_confidences: np.ndarray | None = None
+    if "confidence" in cur_pred.columns:
+        cur_confidences = cur_pred["confidence"].to_numpy(dtype=np.float64)
+
+    report = run_drift_check(
+        ref_df, cur_df, ref_labels, cur_labels,
+        ref_probs=ref_probs,
+        cur_probs=cur_probs,
+        cur_confidences=cur_confidences,
+        psi_threshold=psi_threshold,
+        ks_alpha=ks_alpha,
+        reject_increase_threshold=reject_increase,
+        entropy_multiplier=entropy_multiplier,
+        class_shift_threshold=class_shift,
+    )
+
+    if not report.alerts:
+        console.print("[green]No drift detected.[/green]")
+    else:
+        table = Table(title=f"Drift Alerts ({len(report.alerts)})")
+        table.add_column("Trigger", style="bold")
+        table.add_column("Severity")
+        table.add_column("Details")
+        table.add_column("Features")
+
+        for alert in report.alerts:
+            sev = (
+                "[red]CRITICAL[/red]"
+                if alert.severity == "critical"
+                else "[yellow]WARNING[/yellow]"
+            )
+            details_str = ", ".join(f"{k}={v}" for k, v in alert.details.items())
+            table.add_row(
+                alert.trigger.value,
+                sev,
+                details_str,
+                ", ".join(alert.affected_features) or "-",
+            )
+        console.print(table)
+
+    out = Path(out_dir)
+    report_path = write_drift_report(report, out / "drift_report.json")
+    typer.echo(f"Drift report: {report_path}")
+
+    if auto_label and report.alerts:
+        enqueued = auto_enqueue_drift_labels(
+            report, cur_df, Path(queue_path),
+            cur_confidences=cur_confidences,
+            limit=auto_label_limit,
+        )
+        typer.echo(f"Auto-enqueued {enqueued} labeling tasks")
+
+    console.print(f"\n[bold]Summary:[/bold] {report.summary}")
+
+
+@monitor_app.command("telemetry")
+def monitor_telemetry_cmd(
+    features: str = typer.Option(..., "--features", help="Path to features parquet"),
+    predictions: str = typer.Option(..., "--predictions", help="Path to predictions CSV"),
+    user_id: str | None = typer.Option(None, "--user-id", help="Scope to a specific user"),
+    store_dir: str = typer.Option(DEFAULT_TELEMETRY_DIR, "--store-dir", help="Telemetry store directory"),
+) -> None:
+    """Compute a telemetry snapshot and append to the store."""
+    import json
+
+    import numpy as np
+    import pandas as pd
+
+    from taskclf.core.store import read_parquet
+    from taskclf.core.telemetry import TelemetryStore, compute_telemetry
+
+    feat_df = read_parquet(Path(features))
+    pred_df = pd.read_csv(predictions)
+
+    labels = list(pred_df["predicted_label"].values) if "predicted_label" in pred_df.columns else None
+    confidences: np.ndarray | None = None
+    if "confidence" in pred_df.columns:
+        confidences = pred_df["confidence"].to_numpy(dtype=np.float64)
+    core_probs: np.ndarray | None = None
+    if "core_probs" in pred_df.columns:
+        core_probs = np.array([json.loads(p) for p in pred_df["core_probs"]])
+
+    snapshot = compute_telemetry(
+        feat_df,
+        labels=labels,
+        confidences=confidences,
+        core_probs=core_probs,
+        user_id=user_id,
+    )
+
+    store = TelemetryStore(store_dir)
+    path = store.append(snapshot)
+    typer.echo(f"Telemetry snapshot appended to {path}")
+    typer.echo(f"  Windows: {snapshot.total_windows}  Reject rate: {snapshot.reject_rate:.2%}")
+    if snapshot.confidence_stats:
+        cs = snapshot.confidence_stats
+        typer.echo(f"  Confidence: mean={cs.mean:.3f}  median={cs.median:.3f}  p5={cs.p5:.3f}  p95={cs.p95:.3f}")
+    typer.echo(f"  Mean entropy: {snapshot.mean_entropy:.4f}")
+
+
+@monitor_app.command("show")
+def monitor_show_cmd(
+    store_dir: str = typer.Option(DEFAULT_TELEMETRY_DIR, "--store-dir", help="Telemetry store directory"),
+    user_id: str | None = typer.Option(None, "--user-id", help="Filter to a specific user"),
+    last: int = typer.Option(10, "--last", help="Number of recent snapshots to show"),
+) -> None:
+    """Display recent telemetry snapshots."""
+    from rich.console import Console
+    from rich.table import Table
+
+    from taskclf.core.telemetry import TelemetryStore
+
+    console = Console()
+    store = TelemetryStore(store_dir)
+    snapshots = store.read_recent(last, user_id=user_id)
+
+    if not snapshots:
+        console.print("[dim]No telemetry snapshots found.[/dim]")
+        return
+
+    table = Table(title=f"Recent Telemetry ({len(snapshots)} snapshots)")
+    table.add_column("Timestamp", style="dim")
+    table.add_column("User")
+    table.add_column("Windows", justify="right")
+    table.add_column("Reject Rate", justify="right")
+    table.add_column("Mean Conf", justify="right")
+    table.add_column("Mean Entropy", justify="right")
+    table.add_column("Missing Features", justify="right")
+
+    for snap in snapshots:
+        n_missing = sum(1 for v in snap.feature_missingness.values() if v > 0.0)
+        table.add_row(
+            snap.timestamp.strftime("%Y-%m-%d %H:%M"),
+            snap.user_id or "global",
+            str(snap.total_windows),
+            f"{snap.reject_rate:.2%}",
+            f"{snap.confidence_stats.mean:.3f}" if snap.confidence_stats else "-",
+            f"{snap.mean_entropy:.4f}",
+            str(n_missing),
+        )
+
+    console.print(table)
 
 
 if __name__ == "__main__":

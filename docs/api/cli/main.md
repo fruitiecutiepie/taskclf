@@ -22,6 +22,9 @@ Typer CLI entrypoint and commands.
 | `taskclf infer compare` | Compare baseline vs ML model on labeled data |
 | `taskclf infer online` | Run online inference loop (supports `--taxonomy`) |
 | `taskclf report daily` | Generate a daily report |
+| `taskclf monitor drift-check` | Run drift detection (reference vs current) |
+| `taskclf monitor telemetry` | Compute and store a telemetry snapshot |
+| `taskclf monitor show` | Display recent telemetry snapshots |
 
 ### labels add-block
 
@@ -136,6 +139,42 @@ Rich summary table and writes `baseline_vs_model.json`.
 taskclf infer compare \
   --model-dir models/run_20250615_120000 \
   --from 2025-06-10 --to 2025-06-15 --synthetic
+```
+
+### monitor drift-check
+
+Run drift detection comparing reference vs current prediction windows.
+Flags feature PSI/KS drift, reject-rate increases, entropy spikes, and
+class-distribution shifts.  Optionally auto-creates labeling tasks.
+
+```bash
+taskclf monitor drift-check \
+  --ref-features data/processed/features_ref.parquet \
+  --cur-features data/processed/features_cur.parquet \
+  --ref-predictions artifacts/predictions_ref.csv \
+  --cur-predictions artifacts/predictions_cur.csv \
+  --auto-label --auto-label-limit 50
+```
+
+### monitor telemetry
+
+Compute a telemetry snapshot (feature missingness, confidence stats,
+reject rate, entropy, class distribution) and append to the store.
+
+```bash
+taskclf monitor telemetry \
+  --features data/processed/features.parquet \
+  --predictions artifacts/predictions.csv \
+  --user-id user-1 \
+  --store-dir artifacts/telemetry
+```
+
+### monitor show
+
+Display recent telemetry snapshots as a Rich table.
+
+```bash
+taskclf monitor show --store-dir artifacts/telemetry --last 10
 ```
 
 ::: taskclf.cli.main

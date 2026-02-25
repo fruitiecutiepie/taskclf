@@ -416,5 +416,26 @@ def run_online_loop(
                 )
         except Exception:
             logger.warning("Could not generate daily report", exc_info=True)
+
+        try:
+            from taskclf.core.telemetry import TelemetryStore, compute_telemetry
+
+            import pandas as pd
+
+            ts_records = [
+                {"bucket_start_ts": ts} for ts in predictor._all_bucket_ts
+            ]
+            ts_df = pd.DataFrame(ts_records) if ts_records else pd.DataFrame()
+
+            if not ts_df.empty:
+                snapshot = compute_telemetry(
+                    ts_df,
+                    labels=predictor._all_smoothed or None,
+                )
+                store = TelemetryStore(out_dir / "telemetry")
+                store_path = store.append(snapshot)
+                print(f"Telemetry snapshot written to {store_path}")
+        except Exception:
+            logger.warning("Could not write telemetry snapshot", exc_info=True)
     else:
         print("No predictions were made.")

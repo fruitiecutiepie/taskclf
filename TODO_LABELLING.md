@@ -178,18 +178,24 @@
 
    — `export_report_json()`, `export_report_csv()`, `export_report_parquet()` in `src/taskclf/report/export.py`. CSV/Parquet use flat schema: one row per label (`date`, `label_type`, `label`, `minutes`). All formats pass sensitive-field blocklist. CLI: `taskclf report daily --format json|csv|parquet|all`.
 
-### 10) Drift + quality monitoring
+### 10) Drift + quality monitoring ✔
 
-31. Implement telemetry:
+31. ~~Implement telemetry:~~
 
-* feature missingness, distribution shifts, reject rate, confidence stats
+~~* feature missingness, distribution shifts, reject rate, confidence stats~~
 
-32. Drift detection triggers:
+   — `TelemetrySnapshot` and `compute_telemetry()` in `src/taskclf/core/telemetry.py`; `TelemetryStore` (append-only JSONL per user/global). Computes feature missingness rates, confidence stats (mean/median/p5/p95/std), reject rate, mean entropy, class distribution. CLI: `taskclf monitor telemetry`. Integrated into `run_online_loop()` shutdown path.
 
-* PSI/KS on features per user
-* sudden increase in reject rate or entropy
+32. ~~Drift detection triggers:~~
 
-33. Auto-create labeling tasks when drift triggers.
+~~* PSI/KS on features per user~~
+~~* sudden increase in reject rate or entropy~~
+
+   — `compute_psi()`, `compute_ks()`, `feature_drift_report()` in `src/taskclf/core/drift.py` (PSI with quantile binning, KS via `scipy.stats.ks_2samp`). `detect_reject_rate_increase()` flags absolute increase >= 10%. `detect_entropy_spike()` flags mean entropy > multiplier × reference. `detect_class_shift()` flags class proportion changes > 15%. `run_drift_check()` in `src/taskclf/infer/monitor.py` orchestrates all checks, returns `DriftReport` with `DriftAlert` list. CLI: `taskclf monitor drift-check`. Thresholds from `docs/guide/acceptance.md` §7.
+
+33. ~~Auto-create labeling tasks when drift triggers.~~
+
+   — `auto_enqueue_drift_labels()` in `src/taskclf/infer/monitor.py`; selects lowest-confidence buckets from current window and enqueues via `ActiveLabelingQueue.enqueue_drift()`. Configurable limit (default 50). Integrated into `taskclf monitor drift-check --auto-label`.
 
 ### 11) Retraining workflow
 

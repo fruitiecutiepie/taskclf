@@ -56,6 +56,18 @@ BASELINE_KEYS_LOW: Final[float] = 10.0
 BASELINE_KEYS_HIGH: Final[float] = 30.0
 BASELINE_SHORTCUT_HIGH: Final[float] = 1.0
 
+# ── Drift / telemetry ──
+DEFAULT_PSI_THRESHOLD: Final[float] = 0.2
+DEFAULT_KS_ALPHA: Final[float] = 0.05
+DEFAULT_REJECT_RATE_INCREASE_THRESHOLD: Final[float] = 0.10
+DEFAULT_ENTROPY_SPIKE_MULTIPLIER: Final[float] = 2.0
+DEFAULT_CLASS_SHIFT_THRESHOLD: Final[float] = 0.15
+DEFAULT_DRIFT_REFERENCE_DAYS: Final[int] = 7
+DEFAULT_DRIFT_WINDOW_DAYS: Final[int] = 7
+DEFAULT_DRIFT_AUTO_LABEL_LIMIT: Final[int] = 50
+DEFAULT_TELEMETRY_DIR: Final[str] = "artifacts/telemetry"
+DEFAULT_PSI_BINS: Final[int] = 10
+
 # ── Misc ──
 DEFAULT_GIT_TIMEOUT_SECONDS: Final[int] = 5
 DEFAULT_DUMMY_ROWS: Final[int] = 10
