@@ -26,9 +26,7 @@ class AWEvent(BaseModel, frozen=True):
     is_terminal: bool = Field(description="True if the app is a terminal emulator.")
     app_category: str = Field(description="Semantic app category (e.g. 'editor', 'chat').")
 class AWInputEvent(BaseModel, frozen=True):
-    """Aggregated keyboard/mouse activity from ``aw-watcher-input``.
-
-    Each event covers a short polling interval (typically 5 s) and
+    """Aggregated keyboard/mouse activity from ``aw-watcher-input``.    Each event covers a short polling interval (typically 5 s) and
     carries only aggregate counts -- never individual key identities.
     This makes the type privacy-safe by construction.    The upstream AW fields ``deltaX``/``deltaY`` and ``scrollX``/``scrollY``
     are mapped to snake_case for consistency with project conventions.

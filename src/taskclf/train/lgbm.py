@@ -36,9 +36,10 @@ FEATURE_COLUMNS: Final[list[str]] = [
     "hour_of_day",
     "day_of_week",
     "session_length_so_far",
+    "user_id",
 ]
 
-CATEGORICAL_COLUMNS: Final[list[str]] = ["app_id", "app_category"]
+CATEGORICAL_COLUMNS: Final[list[str]] = ["app_id", "app_category", "user_id"]
 
 _DEFAULT_PARAMS: Final[dict[str, Any]] = {
     "objective": "multiclass",

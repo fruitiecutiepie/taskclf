@@ -19,7 +19,7 @@ from taskclf.core.defaults import (
     MIXED_UNKNOWN,
 )
 from taskclf.core.types import LABEL_SET_V1
-from taskclf.infer.calibration import Calibrator, IdentityCalibrator
+from taskclf.infer.calibration import Calibrator, CalibratorStore, IdentityCalibrator
 from taskclf.infer.smooth import Segment, merge_short_segments, rolling_majority, segmentize
 from taskclf.infer.taxonomy import TaxonomyConfig, TaxonomyResolver
 from taskclf.train.lgbm import FEATURE_COLUMNS, encode_categoricals
@@ -114,6 +114,7 @@ def run_batch_inference(
     reject_threshold: float | None = None,
     taxonomy: TaxonomyConfig | None = None,
     calibrator: Calibrator | None = None,
+    calibrator_store: CalibratorStore | None = None,
 ) -> BatchInferenceResult:
     """Predict, smooth, segmentize, and apply hysteresis merging.
 
@@ -133,6 +134,10 @@ def run_batch_inference(
         calibrator: Optional probability calibrator.  When provided,
             raw model probabilities are calibrated before the reject
             decision.
+        calibrator_store: Optional per-user calibrator store.  When
+            provided, per-user calibration is applied using the
+            ``user_id`` column in *features_df*.  Takes precedence
+            over *calibrator*.
 
     Returns:
         A :class:`BatchInferenceResult` with core predictions, segments
@@ -141,10 +146,15 @@ def run_batch_inference(
     le = LabelEncoder()
     le.fit(sorted(LABEL_SET_V1))
 
-    cal = calibrator or IdentityCalibrator()
-
     proba = predict_proba(model, features_df, cat_encoders)
-    proba = cal.calibrate(proba)
+
+    if calibrator_store is not None and "user_id" in features_df.columns:
+        proba = calibrator_store.calibrate_batch(
+            proba, list(features_df["user_id"].values),
+        )
+    else:
+        cal = calibrator or IdentityCalibrator()
+        proba = cal.calibrate(proba)
     confidences = proba.max(axis=1)
     is_rejected = (
         confidences < reject_threshold

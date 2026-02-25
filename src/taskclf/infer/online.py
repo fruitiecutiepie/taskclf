@@ -33,7 +33,7 @@ from taskclf.core.defaults import (
 from taskclf.core.model_io import ModelMetadata, load_model_bundle
 from taskclf.core.types import LABEL_SET_V1, FeatureRow
 from taskclf.infer.batch import write_segments_json
-from taskclf.infer.calibration import Calibrator, IdentityCalibrator
+from taskclf.infer.calibration import Calibrator, CalibratorStore, IdentityCalibrator
 from taskclf.infer.prediction import WindowPrediction
 from taskclf.infer.smooth import Segment, merge_short_segments, rolling_majority, segmentize
 from taskclf.infer.taxonomy import TaxonomyConfig, TaxonomyResolver
@@ -63,6 +63,7 @@ class OnlinePredictor:
         reject_threshold: float | None = DEFAULT_REJECT_THRESHOLD,
         taxonomy: TaxonomyConfig | None = None,
         calibrator: Calibrator | None = None,
+        calibrator_store: CalibratorStore | None = None,
     ) -> None:
         self._model = model
         self._metadata = metadata
@@ -79,6 +80,7 @@ class OnlinePredictor:
             self._resolver = TaxonomyResolver(taxonomy)
 
         self._calibrator: Calibrator = calibrator or IdentityCalibrator()
+        self._calibrator_store: CalibratorStore | None = calibrator_store
 
         self._raw_buffer: deque[str] = deque(maxlen=max(smooth_window, 1))
         self._bucket_ts_buffer: deque[datetime] = deque(maxlen=max(smooth_window, 1))
@@ -116,7 +118,12 @@ class OnlinePredictor:
             dtype=np.float64,
         )
         raw_proba = self._model.predict(x)
-        calibrated = self._calibrator.calibrate(raw_proba)
+
+        if self._calibrator_store is not None:
+            cal = self._calibrator_store.get_calibrator(row.user_id)
+        else:
+            cal = self._calibrator
+        calibrated = cal.calibrate(raw_proba)
         proba_vec: np.ndarray = calibrated[0]
 
         confidence = float(proba_vec.max())
@@ -227,6 +234,7 @@ def run_online_loop(
     reject_threshold: float | None = DEFAULT_REJECT_THRESHOLD,
     taxonomy_path: Path | None = None,
     calibrator_path: Path | None = None,
+    calibrator_store_path: Path | None = None,
 ) -> None:
     """Poll ActivityWatch, predict, smooth, and write results continuously.
 
@@ -253,6 +261,9 @@ def run_online_loop(
         calibrator_path: Optional path to a calibrator JSON file.  When
             provided, raw model probabilities are calibrated before the
             reject decision.
+        calibrator_store_path: Optional path to a calibrator store
+            directory.  When provided, per-user calibration is applied.
+            Takes precedence over *calibrator_path*.
     """
     from taskclf.adapters.activitywatch.client import (
         fetch_aw_events,
@@ -261,7 +272,7 @@ def run_online_loop(
         find_window_bucket_id,
     )
     from taskclf.features.build import build_features_from_aw_events
-    from taskclf.infer.calibration import load_calibrator
+    from taskclf.infer.calibration import load_calibrator, load_calibrator_store
     from taskclf.infer.taxonomy import load_taxonomy
 
     taxonomy: TaxonomyConfig | None = None
@@ -273,6 +284,14 @@ def run_online_loop(
     if calibrator_path is not None:
         calibrator = load_calibrator(calibrator_path)
         logger.info("Loaded calibrator from %s", calibrator_path)
+
+    cal_store: CalibratorStore | None = None
+    if calibrator_store_path is not None:
+        cal_store = load_calibrator_store(calibrator_store_path)
+        logger.info(
+            "Loaded calibrator store from %s (%d per-user calibrators)",
+            calibrator_store_path, len(cal_store.user_calibrators),
+        )
 
     model, metadata, cat_encoders = load_model_bundle(Path(model_dir))
     logger.info("Loaded model from %s (schema=%s)", model_dir, metadata.schema_hash)
@@ -295,6 +314,7 @@ def run_online_loop(
         reject_threshold=reject_threshold,
         taxonomy=taxonomy,
         calibrator=calibrator,
+        calibrator_store=cal_store,
     )
 
     pred_path = out_dir / "predictions.csv"

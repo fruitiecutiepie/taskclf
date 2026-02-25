@@ -7,7 +7,11 @@ import typer
 
 from taskclf.core.defaults import (
     DEFAULT_AW_HOST,
+    DEFAULT_CALIBRATION_METHOD,
     DEFAULT_DATA_DIR,
+    DEFAULT_MIN_DISTINCT_LABELS,
+    DEFAULT_MIN_LABELED_DAYS,
+    DEFAULT_MIN_LABELED_WINDOWS,
     DEFAULT_MODELS_DIR,
     DEFAULT_NUM_BOOST_ROUND,
     DEFAULT_OUT_DIR,
@@ -741,6 +745,124 @@ def train_tune_reject_cmd(
     typer.echo(f"Tuning report: {report_path}")
 
 
+@train_app.command("calibrate")
+def train_calibrate_cmd(
+    model_dir: str = typer.Option(..., "--model-dir", help="Path to a model run directory"),
+    date_from: str = typer.Option(..., "--from", help="Start date (YYYY-MM-DD)"),
+    date_to: str = typer.Option(..., "--to", help="End date (YYYY-MM-DD, inclusive)"),
+    synthetic: bool = typer.Option(False, "--synthetic", help="Generate dummy features + labels"),
+    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory"),
+    out: str = typer.Option(DEFAULT_OUT_DIR + "/calibrator_store", "--out", help="Output directory for calibrator store"),
+    method: str = typer.Option(DEFAULT_CALIBRATION_METHOD, "--method", help="Calibration method: 'temperature' or 'isotonic'"),
+    min_windows: int = typer.Option(DEFAULT_MIN_LABELED_WINDOWS, "--min-windows", help="Minimum labeled windows for per-user calibration"),
+    min_days: int = typer.Option(DEFAULT_MIN_LABELED_DAYS, "--min-days", help="Minimum distinct days for per-user calibration"),
+    min_labels: int = typer.Option(DEFAULT_MIN_DISTINCT_LABELS, "--min-labels", help="Minimum distinct core labels for per-user calibration"),
+) -> None:
+    """Fit per-user probability calibrators and save a calibrator store."""
+    import pandas as pd
+    from rich.console import Console
+    from rich.table import Table
+
+    from taskclf.core.model_io import load_model_bundle
+    from taskclf.core.store import read_parquet
+    from taskclf.features.build import generate_dummy_features
+    from taskclf.infer.calibration import save_calibrator_store
+    from taskclf.labels.projection import project_blocks_to_windows
+    from taskclf.labels.store import generate_dummy_labels
+    from taskclf.train.calibrate import fit_calibrator_store
+    from taskclf.train.dataset import split_by_time
+
+    console = Console()
+
+    model, metadata, cat_encoders = load_model_bundle(Path(model_dir))
+    typer.echo(f"Loaded model from {model_dir} (schema={metadata.schema_hash})")
+
+    start = dt.date.fromisoformat(date_from)
+    end = dt.date.fromisoformat(date_to)
+
+    all_features: list[pd.DataFrame] = []
+    all_labels: list = []
+    current = start
+    while current <= end:
+        if synthetic:
+            from taskclf.features.build import generate_dummy_features
+            from taskclf.labels.store import generate_dummy_labels
+
+            rows = generate_dummy_features(current, n_rows=60)
+            df = pd.DataFrame([r.model_dump() for r in rows])
+            labels = generate_dummy_labels(current, n_rows=60)
+        else:
+            parquet_path = Path(data_dir) / f"features_v1/date={current.isoformat()}" / "features.parquet"
+            if not parquet_path.exists():
+                typer.echo(f"  skipping {current} (no features file)")
+                current += dt.timedelta(days=1)
+                continue
+            df = read_parquet(parquet_path)
+            labels = generate_dummy_labels(current, n_rows=len(df))
+
+        all_features.append(df)
+        all_labels.extend(labels)
+        current += dt.timedelta(days=1)
+
+    if not all_features:
+        typer.echo("No feature data found for the given date range.", err=True)
+        raise typer.Exit(code=1)
+
+    features_df = pd.concat(all_features, ignore_index=True)
+    labeled_df = project_blocks_to_windows(features_df, all_labels)
+
+    if labeled_df.empty:
+        typer.echo("No labeled rows — cannot calibrate.", err=True)
+        raise typer.Exit(code=1)
+
+    splits = split_by_time(labeled_df)
+    val_df = labeled_df.iloc[splits["val"]].reset_index(drop=True)
+
+    if val_df.empty:
+        typer.echo("Validation split is empty — using full dataset.", err=True)
+        val_df = labeled_df
+
+    typer.echo(f"Fitting {method} calibrators on {len(val_df)} validation rows")
+
+    cal_method = method if method in ("temperature", "isotonic") else "temperature"
+    store, eligibility = fit_calibrator_store(
+        model, val_df,
+        cat_encoders=cat_encoders,
+        method=cal_method,
+        min_windows=min_windows,
+        min_days=min_days,
+        min_labels=min_labels,
+    )
+
+    # Eligibility table
+    elig_table = Table(title="Per-User Calibration Eligibility")
+    elig_table.add_column("User", style="bold")
+    elig_table.add_column("Windows", justify="right")
+    elig_table.add_column("Days", justify="right")
+    elig_table.add_column("Labels", justify="right")
+    elig_table.add_column("Eligible")
+
+    for e in eligibility:
+        status = "[green]YES[/green]" if e.is_eligible else "[dim]no[/dim]"
+        elig_table.add_row(
+            e.user_id[:16],
+            str(e.labeled_windows),
+            str(e.labeled_days),
+            str(e.distinct_labels),
+            status,
+        )
+    console.print(elig_table)
+
+    out_path = Path(out)
+    save_calibrator_store(store, out_path)
+
+    n_per_user = len(store.user_calibrators)
+    typer.echo(
+        f"Calibrator store saved to {out_path} "
+        f"(global + {n_per_user} per-user calibrators, method={cal_method})"
+    )
+
+
 # -- taxonomy -----------------------------------------------------------------
 taxonomy_app = typer.Typer()
 app.add_typer(taxonomy_app, name="taxonomy")
@@ -854,6 +976,7 @@ def infer_batch_cmd(
     smooth_window: int = typer.Option(DEFAULT_SMOOTH_WINDOW, help="Rolling majority smoothing window size"),
     reject_threshold: float = typer.Option(DEFAULT_REJECT_THRESHOLD, "--reject-threshold", help="Max-probability below which prediction is rejected as Mixed/Unknown"),
     taxonomy_config: str | None = typer.Option(None, "--taxonomy", help="Path to a taxonomy YAML file for user-specific label mapping"),
+    calibrator_store_dir: str | None = typer.Option(None, "--calibrator-store", help="Path to a calibrator store directory for per-user calibration"),
 ) -> None:
     """Run batch inference: predict, smooth, and segmentize."""
     import pandas as pd
@@ -875,6 +998,16 @@ def infer_batch_cmd(
 
         taxonomy = load_taxonomy(Path(taxonomy_config))
         typer.echo(f"Loaded taxonomy from {taxonomy_config}")
+
+    cal_store = None
+    if calibrator_store_dir is not None:
+        from taskclf.infer.calibration import load_calibrator_store
+
+        cal_store = load_calibrator_store(Path(calibrator_store_dir))
+        typer.echo(
+            f"Loaded calibrator store from {calibrator_store_dir} "
+            f"({len(cal_store.user_calibrators)} per-user calibrators)"
+        )
 
     model, metadata, cat_encoders = load_model_bundle(Path(model_dir))
     typer.echo(f"Loaded model from {model_dir} (schema={metadata.schema_hash})")
@@ -912,6 +1045,7 @@ def infer_batch_cmd(
         smooth_window=smooth_window,
         reject_threshold=reject_threshold,
         taxonomy=taxonomy,
+        calibrator_store=cal_store,
     )
     rr = reject_rate(result.smoothed_labels, MIXED_UNKNOWN)
     typer.echo(
@@ -968,6 +1102,7 @@ def infer_online_cmd(
     reject_threshold: float = typer.Option(DEFAULT_REJECT_THRESHOLD, "--reject-threshold", help="Max-probability below which prediction is rejected as Mixed/Unknown"),
     taxonomy_config: str | None = typer.Option(None, "--taxonomy", help="Path to a taxonomy YAML file for user-specific label mapping"),
     calibrator_config: str | None = typer.Option(None, "--calibrator", help="Path to a calibrator JSON file for probability calibration"),
+    calibrator_store_dir: str | None = typer.Option(None, "--calibrator-store", help="Path to a calibrator store directory for per-user calibration"),
 ) -> None:
     """Run online inference: poll ActivityWatch, predict, smooth, and report."""
     from taskclf.infer.online import run_online_loop
@@ -982,6 +1117,7 @@ def infer_online_cmd(
         reject_threshold=reject_threshold,
         taxonomy_path=Path(taxonomy_config) if taxonomy_config else None,
         calibrator_path=Path(calibrator_config) if calibrator_config else None,
+        calibrator_store_path=Path(calibrator_store_dir) if calibrator_store_dir else None,
     )
 
 

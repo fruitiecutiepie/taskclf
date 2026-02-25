@@ -115,11 +115,11 @@ def build_training_dataset(
         holdout_user_fraction=holdout_user_fraction,
     )
 
-    x_cols = (
-        _ID_COLUMNS
-        + ["schema_version"]
-        + [c for c in FEATURE_COLUMNS if c in labeled.columns]
-    )
+    id_and_meta = _ID_COLUMNS + ["schema_version"]
+    seen = set(id_and_meta)
+    x_cols = id_and_meta + [
+        c for c in FEATURE_COLUMNS if c in labeled.columns and c not in seen
+    ]
     x_df = labeled[x_cols]
 
     provenance_col = "provenance"

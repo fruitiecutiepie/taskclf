@@ -97,17 +97,24 @@
 
    — `reject_rate_by_group()` in `src/taskclf/core/metrics.py` groups by `(user_id, date)`, flags groups exceeding `spike_multiplier × global_reject_rate` as drift signals. `reject_threshold` recorded in `ModelMetadata` for reproducibility.
 
-### 6) Personalization (without label explosion)
+### 6) Personalization (without label explosion) ✔
 
-19. Add `user_id` as categorical feature in LightGBM (or hashed categorical).
-20. Implement **per-user probability calibration**:
+19. ~~Add `user_id` as categorical feature in LightGBM (or hashed categorical).~~
 
-* store calibrator per user (start with global calibrator until enough labels)
-* choose method: temperature scaling (simple) or isotonic (more flexible)
+   — `user_id` appended to `FEATURE_COLUMNS` and `CATEGORICAL_COLUMNS` in `src/taskclf/train/lgbm.py`. LightGBM treats it as a native categorical; unknown users at inference time fall back to code `-1` via existing `encode_categoricals()`.
 
-21. Define "enough data" thresholds:
+20. ~~Implement **per-user probability calibration**:~~
 
-* e.g., enable per-user calibrator after ≥200 labeled windows across ≥3 days.
+~~* store calibrator per user (start with global calibrator until enough labels)~~
+~~* choose method: temperature scaling (simple) or isotonic (more flexible)~~
+
+   — `TemperatureCalibrator` and `IsotonicCalibrator` in `src/taskclf/infer/calibration.py`. `CalibratorStore` holds a global calibrator plus per-user calibrators, with `get_calibrator(user_id)` fallback. `fit_temperature_calibrator()` and `fit_isotonic_calibrator()` in `src/taskclf/train/calibrate.py`. `fit_calibrator_store()` orchestrates the full pipeline. CLI: `taskclf train calibrate --method temperature|isotonic`. Store serialized as directory (`store.json` + `global.json` + `users/<uid>.json`). Integrated into `run_batch_inference()` and `OnlinePredictor` via `calibrator_store` param. CLI: `taskclf infer batch --calibrator-store`, `taskclf infer online --calibrator-store`.
+
+21. ~~Define "enough data" thresholds:~~
+
+~~* e.g., enable per-user calibrator after ≥200 labeled windows across ≥3 days.~~
+
+   — `check_personalization_eligible()` in `src/taskclf/train/calibrate.py` gates per-user calibration. Thresholds from `docs/guide/acceptance.md` §8: ≥200 labeled windows, ≥3 distinct days, ≥3 distinct core labels. Constants in `src/taskclf/core/defaults.py` (`DEFAULT_MIN_LABELED_WINDOWS`, `DEFAULT_MIN_LABELED_DAYS`, `DEFAULT_MIN_DISTINCT_LABELS`). Overridable via CLI flags `--min-windows`, `--min-days`, `--min-labels`.
 
 ### 7) User-specific taxonomy mapping layer ✔
 

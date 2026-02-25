@@ -41,6 +41,12 @@ DEFAULT_LABEL_SUMMARY_MINUTES: Final[int] = 30
 DEFAULT_NUM_BOOST_ROUND: Final[int] = 100
 DEFAULT_REJECT_THRESHOLD: Final[float] = 0.55
 
+# ── Personalization / calibration ──
+DEFAULT_MIN_LABELED_WINDOWS: Final[int] = 200
+DEFAULT_MIN_LABELED_DAYS: Final[int] = 3
+DEFAULT_MIN_DISTINCT_LABELS: Final[int] = 3
+DEFAULT_CALIBRATION_METHOD: Final[str] = "temperature"
+
 # ── Baseline (rule-based) classifier ──
 MIXED_UNKNOWN: Final[str] = "Mixed/Unknown"
 BASELINE_IDLE_ACTIVE_THRESHOLD: Final[float] = 5.0
