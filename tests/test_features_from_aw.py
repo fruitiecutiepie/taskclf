@@ -269,6 +269,124 @@ class TestBuildFeaturesWithInputEvents:
         assert row.mouse_distance == 0.0
 
 
+class TestNewFeatureUpgrades:
+    """Tests for TODO 12 feature upgrades (items 37-40)."""
+
+    def test_domain_category_non_browser(self) -> None:
+        """Non-browser apps get domain_category='non_browser'."""
+        ts = dt.datetime(2026, 2, 23, 10, 0, 0)
+        events = [_make_event(ts, is_browser=False, app_category="editor")]
+        rows = build_features_from_aw_events(events)
+        assert rows[0].domain_category == "non_browser"
+
+    def test_domain_category_browser_unknown(self) -> None:
+        """Browser apps without URL info get domain_category='unknown'."""
+        ts = dt.datetime(2026, 2, 23, 10, 0, 0)
+        events = [_make_event(ts, is_browser=True, app_category="browser")]
+        rows = build_features_from_aw_events(events)
+        assert rows[0].domain_category == "unknown"
+
+    def test_window_title_bucket_range(self) -> None:
+        """window_title_bucket is in [0, 255]."""
+        ts = dt.datetime(2026, 2, 23, 10, 0, 0)
+        events = [_make_event(ts)]
+        rows = build_features_from_aw_events(events)
+        assert 0 <= rows[0].window_title_bucket <= 255
+
+    def test_window_title_bucket_deterministic(self) -> None:
+        """Same title hash -> same bucket."""
+        ts = dt.datetime(2026, 2, 23, 10, 0, 0)
+        events = [_make_event(ts, title_hash="abc123def456")]
+        rows1 = build_features_from_aw_events(events)
+        rows2 = build_features_from_aw_events(events)
+        assert rows1[0].window_title_bucket == rows2[0].window_title_bucket
+
+    def test_title_repeat_count_increments(self) -> None:
+        """title_repeat_count_session increments for same title hash in session."""
+        base = dt.datetime(2026, 2, 23, 10, 0, 0)
+        events = [
+            _make_event(base, title_hash="same_hash"),
+            _make_event(base + dt.timedelta(minutes=1), title_hash="same_hash"),
+            _make_event(base + dt.timedelta(minutes=2), title_hash="same_hash"),
+        ]
+        rows = build_features_from_aw_events(events)
+        assert rows[0].title_repeat_count_session == 1
+        assert rows[1].title_repeat_count_session == 2
+        assert rows[2].title_repeat_count_session == 3
+
+    def test_title_repeat_count_different_titles(self) -> None:
+        """Different title hashes each start at 1."""
+        base = dt.datetime(2026, 2, 23, 10, 0, 0)
+        events = [
+            _make_event(base, title_hash="hash_a"),
+            _make_event(base + dt.timedelta(minutes=1), title_hash="hash_b"),
+            _make_event(base + dt.timedelta(minutes=2), title_hash="hash_a"),
+        ]
+        rows = build_features_from_aw_events(events)
+        assert rows[0].title_repeat_count_session == 1
+        assert rows[1].title_repeat_count_session == 1
+        assert rows[2].title_repeat_count_session == 2
+
+    def test_rolling_means_none_without_input(self) -> None:
+        """Rolling means are None when no input events provided."""
+        ts = dt.datetime(2026, 2, 23, 10, 0, 0)
+        events = [_make_event(ts)]
+        rows = build_features_from_aw_events(events)
+        assert rows[0].keys_per_min_rolling_5 is None
+        assert rows[0].keys_per_min_rolling_15 is None
+        assert rows[0].mouse_distance_rolling_5 is None
+        assert rows[0].mouse_distance_rolling_15 is None
+
+    def test_rolling_means_populated_with_input(self) -> None:
+        """Rolling means computed when input events are provided."""
+        base = dt.datetime(2026, 2, 23, 10, 0, 0)
+        window_events = [_make_event(base)]
+        input_events = [_make_input_event(base, presses=60, delta_x=200, delta_y=100)]
+        rows = build_features_from_aw_events(window_events, input_events=input_events)
+        assert rows[0].keys_per_min_rolling_5 == rows[0].keys_per_min
+        assert rows[0].mouse_distance_rolling_5 == rows[0].mouse_distance
+
+    def test_deltas_none_for_first_bucket(self) -> None:
+        """Deltas are None for the very first bucket."""
+        ts = dt.datetime(2026, 2, 23, 10, 0, 0)
+        events = [_make_event(ts)]
+        input_events = [_make_input_event(ts)]
+        rows = build_features_from_aw_events(events, input_events=input_events)
+        assert rows[0].keys_per_min_delta is None
+        assert rows[0].clicks_per_min_delta is None
+        assert rows[0].mouse_distance_delta is None
+
+    def test_deltas_computed_for_second_bucket(self) -> None:
+        """Deltas are the difference from the previous bucket."""
+        base = dt.datetime(2026, 2, 23, 10, 0, 0)
+        window_events = [
+            _make_event(base),
+            _make_event(base + dt.timedelta(minutes=1)),
+        ]
+        input_events = [
+            _make_input_event(base, presses=30, clicks=2, delta_x=100, delta_y=50),
+            _make_input_event(base + dt.timedelta(minutes=1), presses=60, clicks=4,
+                              delta_x=200, delta_y=100),
+        ]
+        rows = build_features_from_aw_events(window_events, input_events=input_events)
+        assert rows[1].keys_per_min_delta is not None
+        assert rows[1].keys_per_min_delta == rows[1].keys_per_min - rows[0].keys_per_min
+
+    def test_app_switch_count_last_15m(self) -> None:
+        """app_switch_count_last_15m counts unique apps over 15 minutes."""
+        base = dt.datetime(2026, 2, 23, 10, 0, 0)
+        events = [
+            _make_event(base, app_id="app.one"),
+            _make_event(base + dt.timedelta(minutes=1), app_id="app.two"),
+            _make_event(base + dt.timedelta(minutes=6), app_id="app.three"),
+            _make_event(base + dt.timedelta(minutes=10), app_id="app.four"),
+        ]
+        rows = build_features_from_aw_events(events)
+        last = rows[-1]
+        assert last.app_switch_count_last_15m >= 3
+        assert last.app_switch_count_last_15m >= last.app_switch_count_last_5m
+
+
 class TestIdleSegmentFeatures:
     def test_idle_segments_produce_zero_active(self) -> None:
         """TC-FEAT-003: idle segments produce active_seconds=0 and correct idle flags."""

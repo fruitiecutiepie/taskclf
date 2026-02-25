@@ -186,11 +186,87 @@
       "nullable": true,
       "min": 0,
       "description": "Input events per active second within this bucket"
+    },
+    {
+      "name": "domain_category",
+      "type": "string",
+      "nullable": false,
+      "default": "unknown",
+      "description": "Privacy-preserving browser domain category (search, docs, social, video, code_hosting, news, email_web, productivity, non_browser, unknown)"
+    },
+    {
+      "name": "window_title_bucket",
+      "type": "integer",
+      "nullable": false,
+      "min": 0,
+      "max": 255,
+      "description": "Hash-trick bucket (0-255) derived from window_title_hash"
+    },
+    {
+      "name": "title_repeat_count_session",
+      "type": "integer",
+      "nullable": false,
+      "min": 0,
+      "description": "Number of times this window_title_hash appeared in the current session so far"
+    },
+    {
+      "name": "keys_per_min_rolling_5",
+      "type": "float",
+      "nullable": true,
+      "min": 0,
+      "description": "5-bucket (5 min) rolling mean of keys_per_min"
+    },
+    {
+      "name": "keys_per_min_rolling_15",
+      "type": "float",
+      "nullable": true,
+      "min": 0,
+      "description": "15-bucket (15 min) rolling mean of keys_per_min"
+    },
+    {
+      "name": "mouse_distance_rolling_5",
+      "type": "float",
+      "nullable": true,
+      "min": 0,
+      "description": "5-bucket (5 min) rolling mean of mouse_distance"
+    },
+    {
+      "name": "mouse_distance_rolling_15",
+      "type": "float",
+      "nullable": true,
+      "min": 0,
+      "description": "15-bucket (15 min) rolling mean of mouse_distance"
+    },
+    {
+      "name": "keys_per_min_delta",
+      "type": "float",
+      "nullable": true,
+      "description": "Change in keys_per_min from the previous bucket"
+    },
+    {
+      "name": "clicks_per_min_delta",
+      "type": "float",
+      "nullable": true,
+      "description": "Change in clicks_per_min from the previous bucket"
+    },
+    {
+      "name": "mouse_distance_delta",
+      "type": "float",
+      "nullable": true,
+      "description": "Change in mouse_distance from the previous bucket"
+    },
+    {
+      "name": "app_switch_count_last_15m",
+      "type": "integer",
+      "nullable": false,
+      "min": 0,
+      "description": "Unique app switches in the last 15 minutes"
     }
   ],
   "categorical_features": [
     "app_id",
     "app_category",
+    "domain_category",
     "is_browser",
     "is_editor",
     "is_terminal",
@@ -212,7 +288,17 @@
     "active_seconds_mouse",
     "active_seconds_any",
     "max_idle_run_seconds",
-    "event_density"
+    "event_density",
+    "window_title_bucket",
+    "title_repeat_count_session",
+    "keys_per_min_rolling_5",
+    "keys_per_min_rolling_15",
+    "mouse_distance_rolling_5",
+    "mouse_distance_rolling_15",
+    "keys_per_min_delta",
+    "clicks_per_min_delta",
+    "mouse_distance_delta",
+    "app_switch_count_last_15m"
   ],
   "determinism_requirement": true
 }

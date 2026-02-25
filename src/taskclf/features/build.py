@@ -11,16 +11,23 @@ import pandas as pd
 
 from taskclf.adapters.activitywatch.types import AWInputEvent
 from taskclf.core.defaults import (
+    DEFAULT_APP_SWITCH_WINDOW_15M,
     DEFAULT_BUCKET_SECONDS,
     DEFAULT_DUMMY_ROWS,
     DEFAULT_IDLE_GAP_SECONDS,
+    DEFAULT_ROLLING_WINDOW_5,
+    DEFAULT_ROLLING_WINDOW_15,
+    DEFAULT_TITLE_HASH_BUCKETS,
 )
 from taskclf.core.hashing import stable_hash
 from taskclf.core.schema import FeatureSchemaV1
 from taskclf.core.store import write_parquet
 from taskclf.core.time import align_to_bucket
 from taskclf.core.types import Event, FeatureRow
+from taskclf.features.domain import classify_domain
+from taskclf.features.dynamics import DynamicsTracker
 from taskclf.features.sessions import detect_session_boundaries, session_start_for_bucket
+from taskclf.features.text import title_hash_bucket
 from taskclf.features.windows import app_switch_count_in_window
 
 _DUMMY_APPS: list[tuple[str, bool, bool, bool, str]] = [
@@ -61,6 +68,9 @@ def generate_dummy_features(
     session_start = dt.datetime(date.year, date.month, date.day, 9, 0)
     sid = stable_hash(f"{user_id}:{session_start.isoformat()}")
 
+    tracker = DynamicsTracker()
+    title_counts: dict[str, int] = defaultdict(int)
+
     for i in range(n_rows):
         hour = 9 + (i * 8 // max(n_rows, 1))
         minute = (i * 7) % 60
@@ -71,6 +81,12 @@ def generate_dummy_features(
             i % len(_DUMMY_APPS)
         ]
         title_hash = stable_hash(f"window-title-{app_id}-{i}")
+        title_counts[title_hash] += 1
+
+        keys = float(40 + i * 10)
+        clicks = float(3 + i % 8)
+        mouse_dist = float(200 + i * 50)
+        dynamics = tracker.update(keys, clicks, mouse_dist)
 
         rows.append(
             FeatureRow(
@@ -91,17 +107,28 @@ def generate_dummy_features(
                 app_switch_count_last_5m=i % 5,
                 app_foreground_time_ratio=round(0.5 + (i % 5) * 0.1, 2),
                 app_change_count=i % 4,
-                keys_per_min=float(40 + i * 10),
+                keys_per_min=keys,
                 backspace_ratio=round(0.05 + (i % 5) * 0.02, 2),
                 shortcut_rate=round(0.1 + (i % 3) * 0.05, 2),
-                clicks_per_min=float(3 + i % 8),
+                clicks_per_min=clicks,
                 scroll_events_per_min=float(i % 6),
-                mouse_distance=float(200 + i * 50),
+                mouse_distance=mouse_dist,
                 active_seconds_keyboard=float(20 + (i % 8) * 5),
                 active_seconds_mouse=float(15 + (i % 9) * 5),
                 active_seconds_any=float(30 + (i % 6) * 5),
                 max_idle_run_seconds=float(5 + (i % 4) * 5),
                 event_density=round(1.5 + (i % 5) * 0.3, 2),
+                domain_category=classify_domain(None, is_browser=is_browser),
+                window_title_bucket=title_hash_bucket(title_hash, DEFAULT_TITLE_HASH_BUCKETS),
+                title_repeat_count_session=title_counts[title_hash],
+                keys_per_min_rolling_5=dynamics["keys_per_min_rolling_5"],
+                keys_per_min_rolling_15=dynamics["keys_per_min_rolling_15"],
+                mouse_distance_rolling_5=dynamics["mouse_distance_rolling_5"],
+                mouse_distance_rolling_15=dynamics["mouse_distance_rolling_15"],
+                keys_per_min_delta=dynamics["keys_per_min_delta"],
+                clicks_per_min_delta=dynamics["clicks_per_min_delta"],
+                mouse_distance_delta=dynamics["mouse_distance_delta"],
+                app_switch_count_last_15m=i % 8,
                 hour_of_day=hour,
                 day_of_week=day_of_week,
                 session_length_so_far=float(i * 5),
@@ -276,6 +303,12 @@ def build_features_from_aw_events(
         for ss in session_starts
     }
 
+    dynamics = DynamicsTracker(
+        rolling_5=DEFAULT_ROLLING_WINDOW_5,
+        rolling_15=DEFAULT_ROLLING_WINDOW_15,
+    )
+    title_counts: dict[str, int] = defaultdict(int)
+
     rows: list[FeatureRow] = []
     for bucket_ts in sorted_buckets:
         evs = bucket_events[bucket_ts]
@@ -298,6 +331,11 @@ def build_features_from_aw_events(
         switch_count = app_switch_count_in_window(
             all_events_sorted, bucket_ts, bucket_seconds=bucket_seconds,
         )
+        switch_count_15m = app_switch_count_in_window(
+            all_events_sorted, bucket_ts,
+            window_minutes=DEFAULT_APP_SWITCH_WINDOW_15M,
+            bucket_seconds=bucket_seconds,
+        )
 
         cur_session = session_start_for_bucket(bucket_ts, session_starts)
         elapsed_minutes = (bucket_ts - cur_session).total_seconds() / 60.0
@@ -305,6 +343,21 @@ def build_features_from_aw_events(
 
         input_agg = _aggregate_input_for_bucket(
             bucket_ts, bucket_input_events.get(bucket_ts, []), bucket_seconds,
+        )
+
+        # Title clustering (item 39)
+        title_hash = dominant_ev.window_title_hash
+        title_counts[title_hash] += 1
+        w_title_bucket = title_hash_bucket(title_hash, DEFAULT_TITLE_HASH_BUCKETS)
+
+        # Domain classification (item 38)
+        domain_cat = classify_domain(None, is_browser=dominant_ev.is_browser)
+
+        # Temporal dynamics (item 40)
+        dyn = dynamics.update(
+            input_agg["keys_per_min"],
+            input_agg["clicks_per_min"],
+            input_agg["mouse_distance"],
         )
 
         source_ids = ["aw-watcher-window"]
@@ -323,7 +376,7 @@ def build_features_from_aw_events(
                 source_ids=source_ids,
                 app_id=dominant_app_id,
                 app_category=dominant_ev.app_category,
-                window_title_hash=dominant_ev.window_title_hash,
+                window_title_hash=title_hash,
                 is_browser=dominant_ev.is_browser,
                 is_editor=dominant_ev.is_editor,
                 is_terminal=dominant_ev.is_terminal,
@@ -341,6 +394,17 @@ def build_features_from_aw_events(
                 active_seconds_any=input_agg["active_seconds_any"],
                 max_idle_run_seconds=input_agg["max_idle_run_seconds"],
                 event_density=input_agg["event_density"],
+                domain_category=domain_cat,
+                window_title_bucket=w_title_bucket,
+                title_repeat_count_session=title_counts[title_hash],
+                keys_per_min_rolling_5=dyn["keys_per_min_rolling_5"],
+                keys_per_min_rolling_15=dyn["keys_per_min_rolling_15"],
+                mouse_distance_rolling_5=dyn["mouse_distance_rolling_5"],
+                mouse_distance_rolling_15=dyn["mouse_distance_rolling_15"],
+                keys_per_min_delta=dyn["keys_per_min_delta"],
+                clicks_per_min_delta=dyn["clicks_per_min_delta"],
+                mouse_distance_delta=dyn["mouse_distance_delta"],
+                app_switch_count_last_15m=switch_count_15m,
                 hour_of_day=bucket_ts.hour,
                 day_of_week=bucket_ts.weekday(),
                 session_length_so_far=round(elapsed_minutes, 2),

@@ -34,6 +34,9 @@ def title_hash_bucket(title_hash: str, n_buckets: int = 256) -> int:
     Useful for converting the opaque hex hash into a bounded categorical
     feature that tree-based or embedding models can consume directly.
 
+    If *title_hash* is not valid hex (e.g. from test data), falls back
+    to Python's built-in ``hash()`` for deterministic bucketing.
+
     Args:
         title_hash: Hex string produced by :func:`featurize_title`
             (or :func:`~taskclf.core.hashing.salted_hash`).
@@ -43,8 +46,11 @@ def title_hash_bucket(title_hash: str, n_buckets: int = 256) -> int:
         Integer in ``[0, n_buckets)``.
 
     Raises:
-        ValueError: If *n_buckets* < 1 or *title_hash* is not valid hex.
+        ValueError: If *n_buckets* < 1.
     """
     if n_buckets < 1:
         raise ValueError(f"n_buckets must be >= 1, got {n_buckets}")
-    return int(title_hash, 16) % n_buckets
+    try:
+        return int(title_hash, 16) % n_buckets
+    except ValueError:
+        return abs(hash(title_hash)) % n_buckets

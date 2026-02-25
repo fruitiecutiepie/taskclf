@@ -150,6 +150,30 @@ class FeatureRow(BaseModel, frozen=True):
     max_idle_run_seconds: float | None = Field(default=None, ge=0.0, description="Longest consecutive idle run (seconds) within this bucket.")
     event_density: float | None = Field(default=None, ge=0.0, description="Input events per active second within this bucket.")
 
+    # -- browser domain (item 38) --
+    domain_category: str = Field(
+        default="unknown",
+        description="Privacy-preserving browser domain category (e.g. 'search', 'docs', 'social'); 'non_browser' for non-browser apps.",
+    )
+
+    # -- title clustering (item 39) --
+    window_title_bucket: int = Field(ge=0, le=255, description="Hash-trick bucket (0-255) of window_title_hash.")
+    title_repeat_count_session: int = Field(ge=0, description="Number of times this window_title_hash has appeared in the current session.")
+
+    # -- temporal dynamics: rolling means (item 40) --
+    keys_per_min_rolling_5: float | None = Field(default=None, ge=0.0, description="5-bucket rolling mean of keys_per_min.")
+    keys_per_min_rolling_15: float | None = Field(default=None, ge=0.0, description="15-bucket rolling mean of keys_per_min.")
+    mouse_distance_rolling_5: float | None = Field(default=None, ge=0.0, description="5-bucket rolling mean of mouse_distance.")
+    mouse_distance_rolling_15: float | None = Field(default=None, ge=0.0, description="15-bucket rolling mean of mouse_distance.")
+
+    # -- temporal dynamics: deltas (item 40) --
+    keys_per_min_delta: float | None = Field(default=None, description="Change in keys_per_min from previous bucket.")
+    clicks_per_min_delta: float | None = Field(default=None, description="Change in clicks_per_min from previous bucket.")
+    mouse_distance_delta: float | None = Field(default=None, description="Change in mouse_distance from previous bucket.")
+
+    # -- temporal dynamics: extended switch count (item 40) --
+    app_switch_count_last_15m: int = Field(ge=0, description="Unique app switches in the last 15 minutes.")
+
     # -- temporal --
     hour_of_day: int = Field(ge=0, le=23, description="Hour component of bucket_start_ts (0-23).")
     day_of_week: int = Field(ge=0, le=6, description="Day of week (0=Monday, 6=Sunday).")

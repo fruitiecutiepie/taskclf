@@ -33,13 +33,29 @@ FEATURE_COLUMNS: Final[list[str]] = [
     "active_seconds_any",
     "max_idle_run_seconds",
     "event_density",
+    "domain_category",
+    "window_title_bucket",
+    "title_repeat_count_session",
+    "keys_per_min_rolling_5",
+    "keys_per_min_rolling_15",
+    "mouse_distance_rolling_5",
+    "mouse_distance_rolling_15",
+    "keys_per_min_delta",
+    "clicks_per_min_delta",
+    "mouse_distance_delta",
+    "app_switch_count_last_15m",
     "hour_of_day",
     "day_of_week",
     "session_length_so_far",
     "user_id",
 ]
 
-CATEGORICAL_COLUMNS: Final[list[str]] = ["app_id", "app_category", "user_id"]
+CATEGORICAL_COLUMNS: Final[list[str]] = [
+    "app_id",
+    "app_category",
+    "domain_category",
+    "user_id",
+]
 
 _DEFAULT_PARAMS: Final[dict[str, Any]] = {
     "objective": "multiclass",

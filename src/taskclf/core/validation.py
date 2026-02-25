@@ -31,6 +31,13 @@ _RANGE_CONSTRAINTS: dict[str, dict[str, float]] = {
     "active_seconds_any": {"min": 0, "max": 60},
     "max_idle_run_seconds": {"min": 0},
     "event_density": {"min": 0},
+    "window_title_bucket": {"min": 0, "max": 255},
+    "title_repeat_count_session": {"min": 0},
+    "keys_per_min_rolling_5": {"min": 0},
+    "keys_per_min_rolling_15": {"min": 0},
+    "mouse_distance_rolling_5": {"min": 0},
+    "mouse_distance_rolling_15": {"min": 0},
+    "app_switch_count_last_15m": {"min": 0},
 }
 
 # Columns that must never contain nulls.
@@ -40,6 +47,8 @@ _NON_NULLABLE: frozenset[str] = frozenset([
     "app_id", "app_category",
     "is_browser", "is_editor", "is_terminal",
     "app_switch_count_last_5m", "app_foreground_time_ratio", "app_change_count",
+    "domain_category", "window_title_bucket", "title_repeat_count_session",
+    "app_switch_count_last_15m",
     "hour_of_day", "day_of_week", "session_length_so_far",
 ])
 

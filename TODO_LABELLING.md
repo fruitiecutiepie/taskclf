@@ -222,16 +222,21 @@
 
    — `check_regression_gates()` in `src/taskclf/train/retrain.py` runs four gates: (1) macro-F1 no regression within `regression_tolerance` (default 0.02), (2) BreakIdle precision >= 0.95, (3) no class precision < 0.50, (4) all acceptance checks pass. Schema compat enforced by existing `load_model_bundle()` validation. 15 tests in `tests/test_retrain.py` covering hash determinism, cadence checks, all gate pass/fail paths, config roundtrip, and full pipeline integration.
 
-### 12) Feature upgrades (optional but high leverage)
+### 12) Feature upgrades (optional but high leverage) ✔
 
-37. Add app identity features: `app_id` (bundle/process), not just boolean flags.
-38. Add browser URL/domain category (privacy-preserving: eTLD+1 or hashed category).
-39. Add window-title clustering (you already have `window_title_hash` concept): frequency stats, not raw titles.
-40. Add temporal dynamics features:
+37. ~~Add app identity features: `app_id` (bundle/process), not just boolean flags.~~ — `app_id` (reverse-domain identifier) and `app_category` (semantic category) already in `FeatureSchemaV1`, `FEATURE_COLUMNS`, and `CATEGORICAL_COLUMNS`. LightGBM treats both as native categoricals.
 
-* rolling means over 5m/15m
-* deltas vs last window
-* counts of switches in last N windows
+38. ~~Add browser URL/domain category (privacy-preserving: eTLD+1 or hashed category).~~ — `domain_category` field in `FeatureRow` and schema. `classify_domain()` in `src/taskclf/features/domain.py` maps eTLD+1 domains to privacy-safe categories (search, docs, social, video, code_hosting, news, email_web, productivity, chat, design, other, unknown, non_browser). Non-browser apps get `"non_browser"`. Added to `FEATURE_COLUMNS` and `CATEGORICAL_COLUMNS`.
+
+39. ~~Add window-title clustering (you already have `window_title_hash` concept): frequency stats, not raw titles.~~ — `window_title_bucket` (hash-trick bucket 0–255 via `title_hash_bucket()` in `features/text.py`) and `title_repeat_count_session` (cumulative count of each title hash within the current session). Both non-nullable, computed in `build_features_from_aw_events()`.
+
+40. ~~Add temporal dynamics features:~~
+
+~~* rolling means over 5m/15m~~
+~~* deltas vs last window~~
+~~* counts of switches in last N windows~~
+
+   — `DynamicsTracker` in `src/taskclf/features/dynamics.py`. Rolling means: `keys_per_min_rolling_5`, `keys_per_min_rolling_15`, `mouse_distance_rolling_5`, `mouse_distance_rolling_15`. Deltas: `keys_per_min_delta`, `clicks_per_min_delta`, `mouse_distance_delta`. Extended switch count: `app_switch_count_last_15m` (15-minute window via existing `app_switch_count_in_window()`). All 11 new features added to schema, FeatureRow, FEATURE_COLUMNS, and validation. 42 new tests across `test_features_domain.py`, `test_features_dynamics.py`, and `test_features_from_aw.py`.
 
 ---
 
