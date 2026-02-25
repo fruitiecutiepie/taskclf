@@ -33,6 +33,7 @@ class ModelMetadata(BaseModel, frozen=True):
     train_date_to: str
     params: dict[str, Any]
     git_commit: str
+    dataset_hash: str
     reject_threshold: float | None = None
     data_provenance: Literal["real", "synthetic", "mixed"] = "real"
     created_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
@@ -185,6 +186,7 @@ def build_metadata(
     train_date_to: date,
     params: dict[str, Any],
     *,
+    dataset_hash: str,
     reject_threshold: float | None = None,
     data_provenance: Literal["real", "synthetic", "mixed"] = "real",
 ) -> ModelMetadata:
@@ -195,6 +197,8 @@ def build_metadata(
         train_date_from: First date of the training range.
         train_date_to: Last date (inclusive) of the training range.
         params: LightGBM (or other model) hyperparameters dict.
+        dataset_hash: Deterministic SHA-256 hash of the training dataset
+            used for reproducibility auditing.
         reject_threshold: Reject threshold used during evaluation.
         data_provenance: Origin of the training data
             (``"real"``, ``"synthetic"``, or ``"mixed"``).
@@ -210,6 +214,7 @@ def build_metadata(
         train_date_to=train_date_to.isoformat(),
         params=params,
         git_commit=_current_git_commit(),
+        dataset_hash=dataset_hash,
         reject_threshold=reject_threshold,
         data_provenance=data_provenance,
     )

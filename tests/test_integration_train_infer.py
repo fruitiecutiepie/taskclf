@@ -68,6 +68,7 @@ def pipeline_artifacts(tmp_path_factory: pytest.TempPathFactory):
         train_date_from=dt.date(2025, 6, 14),
         train_date_to=dt.date(2025, 6, 15),
         params=params,
+        dataset_hash="integration_test_hash",
         data_provenance="synthetic",
     )
     run_dir = save_model_bundle(model, metadata, metrics, cm_df, base_dir, cat_encoders=cat_encoders)

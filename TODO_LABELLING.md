@@ -197,24 +197,30 @@
 
    — `auto_enqueue_drift_labels()` in `src/taskclf/infer/monitor.py`; selects lowest-confidence buckets from current window and enqueues via `ActiveLabelingQueue.enqueue_drift()`. Configurable limit (default 50). Integrated into `taskclf monitor drift-check --auto-label`.
 
-### 11) Retraining workflow
+### 11) Retraining workflow ✔
 
-34. Define retrain cadence:
+34. ~~Define retrain cadence:~~
 
-* global retrain weekly/monthly
-* per-user calibrator update daily/weekly
+~~* global retrain weekly/monthly~~
+~~* per-user calibrator update daily/weekly~~
 
-35. Build a reproducible training pipeline:
+   — `RetrainConfig` in `src/taskclf/train/retrain.py` with `global_retrain_cadence_days` (default 7) and `calibrator_update_cadence_days` (default 7). `check_retrain_due()` and `check_calibrator_update_due()` compare model/calibrator `created_at` against cadence. Config in `configs/retrain.yaml`. CLI: `taskclf train check-retrain`.
 
-* config in git
-* dataset snapshot hashes
-* model artifact versioning
+35. ~~Build a reproducible training pipeline:~~
 
-36. Add regression tests:
+~~* config in git~~
+~~* dataset snapshot hashes~~
+~~* model artifact versioning~~
 
-* schema compat
-* "no worse than baseline" gates
-* invariant checks (e.g., BreakIdle precision >= X)
+   — `run_retrain_pipeline()` in `src/taskclf/train/retrain.py` orchestrates: build dataset → compute `dataset_hash` (SHA-256) → train challenger → evaluate → regression gates → promote. `dataset_hash` is a required field on `ModelMetadata` in `src/taskclf/core/model_io.py`. Config versioned at `configs/retrain.yaml`. `DatasetSnapshot` records hash, row count, date range, user count, class distribution. CLI: `taskclf train retrain --config configs/retrain.yaml`.
+
+36. ~~Add regression tests:~~
+
+~~* schema compat~~
+~~* "no worse than baseline" gates~~
+~~* invariant checks (e.g., BreakIdle precision >= X)~~
+
+   — `check_regression_gates()` in `src/taskclf/train/retrain.py` runs four gates: (1) macro-F1 no regression within `regression_tolerance` (default 0.02), (2) BreakIdle precision >= 0.95, (3) no class precision < 0.50, (4) all acceptance checks pass. Schema compat enforced by existing `load_model_bundle()` validation. 15 tests in `tests/test_retrain.py` covering hash determinism, cadence checks, all gate pass/fail paths, config roundtrip, and full pipeline integration.
 
 ### 12) Feature upgrades (optional but high leverage)
 

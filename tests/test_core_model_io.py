@@ -71,6 +71,7 @@ def trained_bundle(tmp_path_factory: pytest.TempPathFactory):
         train_date_from=dt.date(2025, 6, 14),
         train_date_to=dt.date(2025, 6, 15),
         params=params,
+        dataset_hash="test_hash_abc123",
         data_provenance="synthetic",
     )
     run_dir = save_model_bundle(model, metadata, metrics, cm_df, base_dir, cat_encoders=cat_encoders)
@@ -97,7 +98,7 @@ class TestSaveModelBundle:
         raw = json.loads((trained_bundle["run_dir"] / "metadata.json").read_text())
         for key in ("schema_version", "schema_hash", "label_set",
                      "train_date_from", "train_date_to", "params", "git_commit",
-                     "data_provenance"):
+                     "dataset_hash", "data_provenance"):
             assert key in raw, f"metadata.json missing required key: {key}"
 
     def test_metadata_schema_hash_matches_current(self, trained_bundle) -> None:
@@ -242,5 +243,6 @@ class TestDataProvenance:
             train_date_from=dt.date(2025, 6, 14),
             train_date_to=dt.date(2025, 6, 15),
             params={},
+            dataset_hash="abc123",
         )
         assert metadata.data_provenance == "real"

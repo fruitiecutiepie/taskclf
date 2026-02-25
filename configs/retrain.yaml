@@ -1,0 +1,26 @@
+# Retraining workflow configuration
+# This file is versioned in git for reproducibility.
+
+# How often to retrain the global model (days)
+global_retrain_cadence_days: 7
+
+# How often to update per-user calibrators (days)
+calibrator_update_cadence_days: 7
+
+# How many days of data to include in each training run
+data_lookback_days: 30
+
+# Maximum allowed macro-F1 drop vs champion before rejecting challenger
+regression_tolerance: 0.02
+
+# Require challenger macro-F1 to exceed rule-based baseline
+require_baseline_improvement: true
+
+# If true, promote automatically when all gates pass; if false, save to
+# rejected_models and require manual promotion
+auto_promote: false
+
+# LightGBM training hyperparameters
+train_params:
+  num_boost_round: 100
+  class_weight: balanced

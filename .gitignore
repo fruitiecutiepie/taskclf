@@ -13,8 +13,7 @@ build/
 venv/
 env/
 
-# uv
-uv.lock
+# uv (uv.lock is tracked intentionally for reproducible builds)
 
 # IDE
 .vscode/
@@ -41,14 +40,20 @@ data/raw/
 data/interim/
 data/processed/
 
-# Models (large/generated artifacts)
-models/*.pkl
-models/*.joblib
-models/*.bin
-models/*.txt
+# Models (large/generated artifacts — one folder per run)
+models/*
+!models/README.md
+
+# Artifacts (derived outputs — safe to regenerate)
+artifacts/*
+!artifacts/README.md
 
 # Logs
+logs/
 *.log
+
+# Caches
+.cache/
 
 # Environment / Secrets
 .env

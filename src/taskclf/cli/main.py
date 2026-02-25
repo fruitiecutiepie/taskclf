@@ -27,6 +27,7 @@ from taskclf.core.defaults import (
     DEFAULT_SMOOTH_WINDOW,
     DEFAULT_TELEMETRY_DIR,
     DEFAULT_TITLE_SALT,
+    DEFAULT_RETRAIN_CADENCE_DAYS,
 )
 
 app = typer.Typer()
@@ -487,11 +488,17 @@ def train_lgbm_cmd(
     )
     typer.echo(f"Macro F1: {metrics['macro_f1']}  Weighted F1: {metrics['weighted_f1']}")
 
+    from taskclf.train.retrain import compute_dataset_hash
+
+    dataset_hash = compute_dataset_hash(features_df, all_labels)
+    typer.echo(f"Dataset hash: {dataset_hash}")
+
     metadata = build_metadata(
         label_set=metrics["label_names"],
         train_date_from=start,
         train_date_to=end,
         params=params,
+        dataset_hash=dataset_hash,
         data_provenance="synthetic" if synthetic else "real",
     )
 
@@ -868,6 +875,183 @@ def train_calibrate_cmd(
         f"Calibrator store saved to {out_path} "
         f"(global + {n_per_user} per-user calibrators, method={cal_method})"
     )
+
+
+@train_app.command("retrain")
+def train_retrain_cmd(
+    config: str | None = typer.Option(None, "--config", help="Path to retrain YAML config"),
+    date_from: str | None = typer.Option(None, "--from", help="Start date (YYYY-MM-DD); defaults to lookback from today"),
+    date_to: str | None = typer.Option(None, "--to", help="End date (YYYY-MM-DD, inclusive); defaults to today"),
+    synthetic: bool = typer.Option(False, "--synthetic", help="Generate dummy features + labels"),
+    models_dir: str = typer.Option(DEFAULT_MODELS_DIR, help="Base directory for model bundles"),
+    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory"),
+    out_dir: str = typer.Option(DEFAULT_OUT_DIR, help="Output directory for evaluation artifacts"),
+    force: bool = typer.Option(False, "--force", help="Skip cadence check and retrain immediately"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Evaluate but do not promote"),
+    holdout_fraction: float = typer.Option(0.0, "--holdout-fraction", help="Fraction of users held out for test"),
+    reject_threshold: float = typer.Option(DEFAULT_REJECT_THRESHOLD, "--reject-threshold", help="Reject threshold"),
+) -> None:
+    """Run the full retrain pipeline: train, evaluate, gate-check, promote."""
+    import pandas as pd
+    from rich.console import Console
+    from rich.table import Table
+
+    from taskclf.core.store import read_parquet
+    from taskclf.features.build import generate_dummy_features
+    from taskclf.labels.store import generate_dummy_labels
+    from taskclf.train.retrain import (
+        RetrainConfig,
+        load_retrain_config,
+        run_retrain_pipeline,
+    )
+
+    console = Console()
+
+    retrain_config = (
+        load_retrain_config(Path(config)) if config else RetrainConfig()
+    )
+
+    if date_to is not None:
+        end = dt.date.fromisoformat(date_to)
+    else:
+        end = dt.date.today()
+
+    if date_from is not None:
+        start = dt.date.fromisoformat(date_from)
+    else:
+        start = end - dt.timedelta(days=retrain_config.data_lookback_days)
+
+    all_features: list[pd.DataFrame] = []
+    all_labels: list = []
+    current = start
+    while current <= end:
+        if synthetic:
+            rows = generate_dummy_features(current, n_rows=60)
+            df = pd.DataFrame([r.model_dump() for r in rows])
+            labels = generate_dummy_labels(current, n_rows=60)
+        else:
+            parquet_path = Path(data_dir) / f"features_v1/date={current.isoformat()}" / "features.parquet"
+            if not parquet_path.exists():
+                typer.echo(f"  skipping {current} (no features file)")
+                current += dt.timedelta(days=1)
+                continue
+            df = read_parquet(parquet_path)
+            labels = generate_dummy_labels(current, n_rows=len(df))
+        all_features.append(df)
+        all_labels.extend(labels)
+        current += dt.timedelta(days=1)
+
+    if not all_features:
+        typer.echo("No feature data found for the given date range.", err=True)
+        raise typer.Exit(code=1)
+
+    features_df = pd.concat(all_features, ignore_index=True)
+    typer.echo(f"Loaded {len(features_df)} feature rows ({start} to {end})")
+
+    result = run_retrain_pipeline(
+        retrain_config, features_df, all_labels,
+        models_dir=Path(models_dir),
+        out_dir=Path(out_dir),
+        force=force,
+        dry_run=dry_run,
+        holdout_user_fraction=holdout_fraction,
+        reject_threshold=reject_threshold,
+        data_provenance="synthetic" if synthetic else "real",
+    )
+
+    # Display results
+    summary = Table(title="Retrain Result")
+    summary.add_column("Metric", style="bold")
+    summary.add_column("Value")
+    summary.add_row("Dataset hash", result.dataset_snapshot.dataset_hash)
+    summary.add_row("Dataset rows", str(result.dataset_snapshot.row_count))
+    if result.champion_macro_f1 is not None:
+        summary.add_row("Champion macro-F1", f"{result.champion_macro_f1:.4f}")
+    summary.add_row("Challenger macro-F1", f"{result.challenger_macro_f1:.4f}")
+    summary.add_row("Promoted", str(result.promoted))
+    summary.add_row("Reason", result.reason)
+    summary.add_row("Run dir", result.run_dir)
+    console.print(summary)
+
+    if result.regression is not None:
+        gate_table = Table(title="Regression Gates")
+        gate_table.add_column("Gate", style="bold")
+        gate_table.add_column("Result")
+        gate_table.add_column("Detail")
+        for gate in result.regression.gates:
+            status = "[green]PASS[/green]" if gate.passed else "[red]FAIL[/red]"
+            gate_table.add_row(gate.name, status, gate.detail)
+        console.print(gate_table)
+
+    if result.promoted:
+        console.print("[bold green]Model promoted successfully.[/bold green]")
+    else:
+        console.print(f"[bold yellow]Model not promoted: {result.reason}[/bold yellow]")
+
+
+@train_app.command("check-retrain")
+def train_check_retrain_cmd(
+    config: str | None = typer.Option(None, "--config", help="Path to retrain YAML config"),
+    models_dir: str = typer.Option(DEFAULT_MODELS_DIR, help="Base directory for model bundles"),
+    calibrator_store: str | None = typer.Option(None, "--calibrator-store", help="Path to calibrator store directory"),
+) -> None:
+    """Check whether retraining or calibrator update is due (read-only)."""
+    from rich.console import Console
+    from rich.table import Table
+
+    from taskclf.train.retrain import (
+        RetrainConfig,
+        check_calibrator_update_due,
+        check_retrain_due,
+        find_latest_model,
+        load_retrain_config,
+    )
+
+    console = Console()
+
+    retrain_config = (
+        load_retrain_config(Path(config)) if config else RetrainConfig()
+    )
+
+    table = Table(title="Retrain Status")
+    table.add_column("Check", style="bold")
+    table.add_column("Status")
+    table.add_column("Detail")
+
+    latest = find_latest_model(Path(models_dir))
+    retrain_due = check_retrain_due(
+        Path(models_dir), retrain_config.global_retrain_cadence_days,
+    )
+
+    if latest is not None:
+        import json
+
+        raw = json.loads((latest / "metadata.json").read_text())
+        created = raw.get("created_at", "unknown")
+        table.add_row("Latest model", str(latest.name), f"created {created}")
+    else:
+        table.add_row("Latest model", "none", "no models found")
+
+    status = "[red]DUE[/red]" if retrain_due else "[green]OK[/green]"
+    table.add_row(
+        "Global retrain",
+        status,
+        f"cadence={retrain_config.global_retrain_cadence_days}d",
+    )
+
+    if calibrator_store is not None:
+        cal_due = check_calibrator_update_due(
+            Path(calibrator_store),
+            retrain_config.calibrator_update_cadence_days,
+        )
+        cal_status = "[red]DUE[/red]" if cal_due else "[green]OK[/green]"
+        table.add_row(
+            "Calibrator update",
+            cal_status,
+            f"cadence={retrain_config.calibrator_update_cadence_days}d",
+        )
+
+    console.print(table)
 
 
 # -- taxonomy -----------------------------------------------------------------

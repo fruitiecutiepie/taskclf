@@ -14,6 +14,8 @@ Typer CLI entrypoint and commands.
 | `taskclf labels project` | Project label blocks onto feature windows |
 | `taskclf train build-dataset` | Build training dataset (X/y/splits artifacts) |
 | `taskclf train lgbm` | Train a LightGBM multiclass model |
+| `taskclf train retrain` | Run full retrain pipeline (train, evaluate, gate-check, promote) |
+| `taskclf train check-retrain` | Check whether retraining or calibrator update is due |
 | `taskclf taxonomy validate` | Validate a user taxonomy YAML file |
 | `taskclf taxonomy show` | Display taxonomy mapping as a table |
 | `taskclf taxonomy init` | Generate a default taxonomy YAML |
@@ -65,6 +67,36 @@ taskclf train build-dataset \
   --from 2025-06-10 --to 2025-06-15 \
   --synthetic \
   --holdout-fraction 0.1
+```
+
+### train retrain
+
+Run the full retrain pipeline: build dataset, train a challenger model,
+evaluate it, run regression gates against the current champion, and
+promote if all gates pass.  Uses `configs/retrain.yaml` for cadence,
+gate thresholds, and training parameters.
+
+```bash
+taskclf train retrain \
+  --config configs/retrain.yaml \
+  --from 2025-06-01 --to 2025-06-30 \
+  --force --synthetic
+```
+
+Use `--dry-run` to evaluate without promoting:
+
+```bash
+taskclf train retrain --config configs/retrain.yaml --dry-run --synthetic
+```
+
+### train check-retrain
+
+Check whether a global retrain or calibrator update is due (read-only).
+
+```bash
+taskclf train check-retrain \
+  --models-dir models/ \
+  --calibrator-store artifacts/calibrator_store
 ```
 
 ### taxonomy validate
