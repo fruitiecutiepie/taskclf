@@ -1,0 +1,26 @@
+{
+  "schema_version": "v1",
+  "schema_hash": "740b4db787e9",
+  "label_set": [
+    "BreakIdle",
+    "Build",
+    "Communicate",
+    "Debug",
+    "Meet",
+    "ReadResearch",
+    "Review",
+    "Write"
+  ],
+  "train_date_from": "2026-01-15",
+  "train_date_to": "2026-02-10",
+  "params": {
+    "num_leaves": 63,
+    "learning_rate": 0.03,
+    "n_estimators": 400
+  },
+  "git_commit": "fff000aaa111",
+  "dataset_hash": "cccc777788889999",
+  "reject_threshold": 0.3,
+  "data_provenance": "real",
+  "created_at": "2026-02-10T00:00:00+00:00"
+}

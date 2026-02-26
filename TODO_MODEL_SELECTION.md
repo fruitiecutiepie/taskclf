@@ -29,40 +29,40 @@
 
 ---
 
-### 1) Implement the model registry scanner (pure, testable)
+### ~~1) Implement the model registry scanner (pure, testable)~~
 
-4. **Add module `src/taskclf/model_registry.py`** with:
+4. ~~**Add module `src/taskclf/model_registry.py`** with:~~
 
-   * `list_bundles(models_dir) -> list[ModelBundle]` reading `metrics.json` + `metadata.json`.
-   * Strict validation: missing required keys => mark bundle invalid with reason (don’t crash whole scan).
-   * Deterministic ordering and stable parsing of timestamps (store raw + parsed).
-5. **Add `ModelBundle` dataclass** with:
+   * ~~`list_bundles(models_dir) -> list[ModelBundle]` reading `metrics.json` + `metadata.json`.~~
+   * ~~Strict validation: missing required keys => mark bundle invalid with reason (don’t crash whole scan).~~
+   * ~~Deterministic ordering and stable parsing of timestamps (store raw + parsed).~~
+5. ~~**Add `ModelBundle` dataclass** with:~~
 
-   * `model_id`, `path`, `created_at`, `schema_hash`, `metrics`, `metadata`.
-6. **Add `is_compatible(bundle, required_schema_hash)`**.
-7. **Add `passes_constraints(bundle, policy)`** implementing your regression gates as hard constraints (not “macro-f1 no regression” yet; that needs a baseline).
-8. **Add `score(bundle, policy)`** returning a sortable tuple for ranking.
+   * ~~`model_id`, `path`, `created_at`, `schema_hash`, `metrics`, `metadata`.~~
+6. ~~**Add `is_compatible(bundle, required_schema_hash)`**.~~
+7. ~~**Add `passes_constraints(bundle, policy)`** implementing your regression gates as hard constraints (not “macro-f1 no regression” yet; that needs a baseline).~~
+8. ~~**Add `score(bundle, policy)`** returning a sortable tuple for ranking.~~
 
-> Context needed: where “current schema hash” is sourced (CLI flag? config file? computed from feature schema). Document it in `docs/model_selection.md`.
+> ~~Context needed: where “current schema hash” is sourced (CLI flag? config file? computed from feature schema). Document it in `docs/model_selection.md`.~~
 
 ---
 
-### 2) Implement best-model selection (non-mutating)
+### ~~2) Implement best-model selection (non-mutating)~~
 
-9. **Implement `find_best_model(models_dir, policy, required_schema_hash=None)`**
+9. ~~**Implement `find_best_model(models_dir, policy, required_schema_hash=None)`**~~
 
-   * Scans `models/`
-   * Filters compatible + passes_constraints
-   * Ranks by score
-   * Returns best bundle + a structured `SelectionReport` (why others were excluded, ranking list).
-10. **Add unit tests** for:
+   * ~~Scans `models/`~~
+   * ~~Filters compatible + passes_constraints~~
+   * ~~Ranks by score~~
+   * ~~Returns best bundle + a structured `SelectionReport` (why others were excluded, ranking list).~~
+10. ~~**Add unit tests** for:~~
 
-* Missing files/keys handled gracefully
-* Schema mismatch excluded
-* Constraint failure excluded
-* Ranking/tie-breaks deterministic
+* ~~Missing files/keys handled gracefully~~
+* ~~Schema mismatch excluded~~
+* ~~Constraint failure excluded~~
+* ~~Ranking/tie-breaks deterministic~~
 
-> Agent injection: include a tiny fixture set of bundles under `tests/fixtures/models/` (3–6 bundles) with deliberate edge cases.
+> ~~Agent injection: include a tiny fixture set of bundles under `tests/fixtures/models/` (3–6 bundles) with deliberate edge cases.~~
 
 ---
 

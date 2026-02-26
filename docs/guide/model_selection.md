@@ -22,6 +22,10 @@ This matches the behavior of `load_model_bundle(..., validate_schema=True, valid
 
 If a bundle is not compatible, it MUST NOT be used as the default model (or auto-selected), and tooling should surface a clear reason.
 
+### Where the current schema hash is sourced
+
+The current schema hash is `FeatureSchemaV1.SCHEMA_HASH`, computed at import time from the canonical column registry in `src/taskclf/core/schema.py`. The current label set is `LABEL_SET_V1` from `src/taskclf/core/types.py`. These are the defaults used by `is_compatible()` in `model_registry.py`. CLI commands may accept `--schema-hash` overrides for testing, but production use should rely on the computed values.
+
 ## Current state (today)
 
 - Inference requires explicit `--model-dir` (no auto-selection).
