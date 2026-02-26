@@ -1,8 +1,9 @@
-"""Model registry: scan, validate, rank, and filter model bundles.
+"""Model registry: scan, validate, rank, filter, and activate model bundles.
 
 Provides a pure, testable API for discovering promoted model bundles
 under ``models/``, checking compatibility with the current schema and
-label set, and ranking candidates by the selection policy.
+label set, ranking candidates by the selection policy, and managing
+the active model pointer.
 
 Public surface:
 
@@ -11,18 +12,25 @@ Public surface:
 * :class:`SelectionPolicy` — ranking / constraint configuration
 * :class:`ExclusionRecord` — why a bundle was excluded from selection
 * :class:`SelectionReport` — full result of :func:`find_best_model`
+* :class:`ActivePointer` — persisted ``active.json`` pointer
+* :class:`ActiveHistoryEntry` — one line in ``active_history.jsonl``
 * :func:`list_bundles` — scan a directory for bundles
 * :func:`is_compatible` — schema hash + label set gate
 * :func:`passes_constraints` — hard constraint gate (policy v1: no-op)
 * :func:`score` — sortable ranking tuple
 * :func:`find_best_model` — scan, filter, rank, and select the best bundle
+* :func:`read_active` — read ``active.json`` pointer
+* :func:`write_active_atomic` — atomically update ``active.json``
+* :func:`append_active_history` — append to ``active_history.jsonl``
+* :func:`resolve_active_model` — resolve active bundle with fallback
 """
 
 from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
+import os
+from datetime import UTC, datetime
 from pathlib import Path
 
 from pydantic import BaseModel
@@ -99,6 +107,32 @@ class SelectionReport(BaseModel, frozen=True):
     excluded: list[ExclusionRecord]
     policy: SelectionPolicy
     required_schema_hash: str
+
+
+class ActivePointer(BaseModel, frozen=True):
+    """Persisted pointer to the currently active model bundle.
+
+    Stored as ``models/active.json``.  See
+    ``docs/guide/model_selection.md`` for the schema contract.
+    """
+
+    model_dir: str
+    selected_at: str
+    policy_version: int
+    model_id: str | None = None
+    reason: dict[str, object] | None = None
+
+
+class ActiveHistoryEntry(BaseModel, frozen=True):
+    """One line in ``models/active_history.jsonl``.
+
+    Records every change to ``active.json`` for auditability and
+    rollback.
+    """
+
+    at: str
+    old: ActivePointer | None
+    new: ActivePointer
 
 
 # ---------------------------------------------------------------------------
@@ -402,3 +436,168 @@ def find_best_model(
         policy=policy,
         required_schema_hash=required_schema_hash,
     )
+
+
+# ---------------------------------------------------------------------------
+# Active model pointer
+# ---------------------------------------------------------------------------
+
+_ACTIVE_FILE = "active.json"
+_ACTIVE_TMP = "active.json.tmp"
+_HISTORY_FILE = "active_history.jsonl"
+
+
+def read_active(models_dir: Path) -> ActivePointer | None:
+    """Read the active model pointer from ``models_dir/active.json``.
+
+    Returns ``None`` (without raising) when the file is missing,
+    contains invalid JSON, or fails :class:`ActivePointer` validation.
+    A warning is logged on parse/validation failures so operators can
+    notice stale pointer files.
+    """
+    active_path = models_dir / _ACTIVE_FILE
+    if not active_path.is_file():
+        return None
+
+    try:
+        raw = json.loads(active_path.read_text())
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.warning("active.json parse error: %s", exc)
+        return None
+
+    try:
+        return ActivePointer.model_validate(raw)
+    except Exception as exc:
+        logger.warning("active.json validation error: %s", exc)
+        return None
+
+
+def append_active_history(
+    models_dir: Path,
+    old: ActivePointer | None,
+    new: ActivePointer,
+) -> None:
+    """Append a transition record to ``models_dir/active_history.jsonl``.
+
+    Creates the file if it does not exist.  Each line is a
+    self-contained JSON object matching :class:`ActiveHistoryEntry`.
+    """
+    entry = ActiveHistoryEntry(at=new.selected_at, old=old, new=new)
+    history_path = models_dir / _HISTORY_FILE
+    with history_path.open("a") as fh:
+        fh.write(entry.model_dump_json() + "\n")
+
+
+def write_active_atomic(
+    models_dir: Path,
+    bundle: ModelBundle,
+    policy: SelectionPolicy,
+    reason: str | None = None,
+) -> ActivePointer:
+    """Atomically write ``models_dir/active.json`` for *bundle*.
+
+    The pointer is written to a temporary file first, then moved into
+    place with :func:`os.replace` to guarantee readers never see a
+    partial write.  The previous pointer (if any) is read before the
+    overwrite and both old and new are appended to the audit log via
+    :func:`append_active_history`.
+
+    Args:
+        models_dir: The ``models/`` directory.
+        bundle: The bundle to activate (must be valid with metrics).
+        policy: The selection policy used to choose this bundle.
+        reason: Optional human-readable reason string.
+
+    Returns:
+        The newly written :class:`ActivePointer`.
+    """
+    old = read_active(models_dir)
+
+    reason_dict: dict[str, object] | None = None
+    if bundle.metrics is not None:
+        reason_dict = {
+            "metric": "macro_f1",
+            "macro_f1": bundle.metrics.macro_f1,
+            "weighted_f1": bundle.metrics.weighted_f1,
+        }
+        if reason is not None:
+            reason_dict["note"] = reason
+
+    model_dir = str(bundle.path.relative_to(models_dir.parent))
+
+    pointer = ActivePointer(
+        model_dir=model_dir,
+        model_id=bundle.model_id,
+        selected_at=datetime.now(UTC).isoformat(),
+        policy_version=policy.version,
+        reason=reason_dict,
+    )
+
+    tmp_path = models_dir / _ACTIVE_TMP
+    final_path = models_dir / _ACTIVE_FILE
+
+    tmp_path.write_text(pointer.model_dump_json(indent=2) + "\n")
+    os.replace(tmp_path, final_path)
+
+    append_active_history(models_dir, old, pointer)
+
+    return pointer
+
+
+def resolve_active_model(
+    models_dir: Path,
+    policy: SelectionPolicy | None = None,
+    required_schema_hash: str | None = None,
+    required_label_set: frozenset[str] | None = None,
+) -> tuple[ModelBundle | None, SelectionReport | None]:
+    """Resolve the active model bundle, falling back to selection.
+
+    Resolution order:
+
+    1. Read ``active.json``.  If valid and the pointed-to bundle
+       exists, is parseable, and is compatible — return it immediately
+       (no full scan).
+    2. Otherwise fall back to :func:`find_best_model`.  If a best
+       bundle is found, atomically update ``active.json`` to self-heal
+       the pointer.
+
+    Returns:
+        A 2-tuple ``(bundle, report)``.  *report* is ``None`` when the
+        pointer was valid and no scan was needed.
+    """
+    if policy is None:
+        policy = SelectionPolicy()
+    if required_schema_hash is None:
+        required_schema_hash = FeatureSchemaV1.SCHEMA_HASH
+    if required_label_set is None:
+        required_label_set = LABEL_SET_V1
+
+    pointer = read_active(models_dir)
+    if pointer is not None:
+        bundle_path = models_dir.parent / pointer.model_dir
+        if bundle_path.is_dir():
+            bundle = _parse_bundle(bundle_path)
+            if bundle.valid and is_compatible(
+                bundle, required_schema_hash, required_label_set
+            ):
+                return bundle, None
+            logger.warning(
+                "active.json points to invalid/incompatible bundle %s; "
+                "falling back to selection",
+                pointer.model_dir,
+            )
+        else:
+            logger.warning(
+                "active.json points to missing directory %s; "
+                "falling back to selection",
+                pointer.model_dir,
+            )
+
+    report = find_best_model(
+        models_dir, policy, required_schema_hash, required_label_set,
+    )
+
+    if report.best is not None:
+        write_active_atomic(models_dir, report.best, policy, reason="auto-repair")
+
+    return report.best, report

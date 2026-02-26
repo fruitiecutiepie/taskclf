@@ -28,8 +28,11 @@ The current schema hash is `FeatureSchemaV1.SCHEMA_HASH`, computed at import tim
 
 ## Current state (today)
 
-- Inference requires explicit `--model-dir` (no auto-selection).
-- Retrain uses `find_latest_model()` *only* to pick a “champion” by recency for regression-gate comparison; it does not reflect quality.
+- The model registry (`model_registry.py`) scans, validates, ranks, and selects bundles.
+- The active model pointer (`active.json`) is implemented: `read_active`, `write_active_atomic`, `append_active_history`, and `resolve_active_model` are available.
+- `resolve_active_model` reads `active.json` if valid, otherwise falls back to `find_best_model` and self-heals the pointer.
+- Inference still requires explicit `--model-dir` (CLI wiring is not yet done; see TODO items 17-20).
+- Retrain uses `find_latest_model()` *only* to pick a “champion” by recency for regression-gate comparison; it does not reflect quality (see TODO items 14-16).
 - `metrics.json` inside the bundle contains only `macro_f1`, `weighted_f1`, `confusion_matrix`, `label_names`.
 
 Acceptance gates (BreakIdle precision, “no class below 0.50 precision”, etc.) are computed during evaluation and stored in `evaluation.json` written under `--out-dir` (not inside the bundle).

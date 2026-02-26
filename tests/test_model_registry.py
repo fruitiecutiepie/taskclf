@@ -20,16 +20,22 @@ from taskclf.core.model_io import ModelMetadata
 from taskclf.core.schema import FeatureSchemaV1
 from taskclf.core.types import LABEL_SET_V1
 from taskclf.model_registry import (
+    ActiveHistoryEntry,
+    ActivePointer,
     BundleMetrics,
     ExclusionRecord,
     ModelBundle,
     SelectionPolicy,
     SelectionReport,
+    append_active_history,
     find_best_model,
     is_compatible,
     list_bundles,
     passes_constraints,
+    read_active,
+    resolve_active_model,
     score,
+    write_active_atomic,
 )
 
 # ---------------------------------------------------------------------------
@@ -559,3 +565,322 @@ class TestFindBestModel:
         assert report.required_schema_hash == custom
         excluded_ids = {e.model_id for e in report.excluded}
         assert "default" in excluded_ids
+
+
+# ---------------------------------------------------------------------------
+# TC-ACT-001..016: Active model pointer
+# ---------------------------------------------------------------------------
+
+
+class TestReadActive:
+    """Tests for :func:`read_active`."""
+
+    def test_missing_file_returns_none(self, tmp_path: Path) -> None:
+        assert read_active(tmp_path) is None
+
+    def test_valid_file_round_trips(self, tmp_path: Path) -> None:
+        pointer = ActivePointer(
+            model_dir="models/my_bundle",
+            selected_at="2026-02-20T00:00:00+00:00",
+            policy_version=1,
+            model_id="my_bundle",
+        )
+        (tmp_path / "active.json").write_text(
+            pointer.model_dump_json(indent=2)
+        )
+        result = read_active(tmp_path)
+        assert result is not None
+        assert result.model_dir == "models/my_bundle"
+        assert result.policy_version == 1
+        assert result.model_id == "my_bundle"
+
+    def test_corrupt_json_returns_none(self, tmp_path: Path) -> None:
+        (tmp_path / "active.json").write_text("{not valid json!!!")
+        assert read_active(tmp_path) is None
+
+    def test_missing_required_key_returns_none(self, tmp_path: Path) -> None:
+        (tmp_path / "active.json").write_text(
+            json.dumps({"model_dir": "models/x"})
+        )
+        assert read_active(tmp_path) is None
+
+    def test_reason_and_optional_fields(self, tmp_path: Path) -> None:
+        pointer = ActivePointer(
+            model_dir="models/b",
+            selected_at="2026-02-20T00:00:00+00:00",
+            policy_version=1,
+            reason={"metric": "macro_f1", "macro_f1": 0.9},
+        )
+        (tmp_path / "active.json").write_text(
+            pointer.model_dump_json(indent=2)
+        )
+        result = read_active(tmp_path)
+        assert result is not None
+        assert result.reason is not None
+        assert result.reason["metric"] == "macro_f1"
+        assert result.model_id is None
+
+
+class TestWriteActiveAtomic:
+    """Tests for :func:`write_active_atomic`."""
+
+    def test_creates_active_json(self, tmp_path: Path) -> None:
+        models_dir = tmp_path / "models"
+        _write_bundle(models_dir / "run_001", _VALID_METADATA, _VALID_METRICS)
+        bundle = list_bundles(models_dir)[0]
+
+        pointer = write_active_atomic(models_dir, bundle, SelectionPolicy())
+
+        active_path = models_dir / "active.json"
+        assert active_path.is_file()
+        assert pointer.model_id == "run_001"
+        assert pointer.policy_version == 1
+        assert "models/run_001" in pointer.model_dir
+
+    def test_tmp_file_does_not_persist(self, tmp_path: Path) -> None:
+        models_dir = tmp_path / "models"
+        _write_bundle(models_dir / "run_001", _VALID_METADATA, _VALID_METRICS)
+        bundle = list_bundles(models_dir)[0]
+
+        write_active_atomic(models_dir, bundle, SelectionPolicy())
+
+        assert not (models_dir / "active.json.tmp").exists()
+
+    def test_overwrites_existing(self, tmp_path: Path) -> None:
+        models_dir = tmp_path / "models"
+        _write_bundle(models_dir / "run_a", _VALID_METADATA, _VALID_METRICS)
+        high_metrics = {**_VALID_METRICS, "macro_f1": 0.95}
+        _write_bundle(models_dir / "run_b", _VALID_METADATA, high_metrics)
+        bundles = list_bundles(models_dir)
+
+        write_active_atomic(models_dir, bundles[0], SelectionPolicy())
+        write_active_atomic(models_dir, bundles[1], SelectionPolicy())
+
+        result = read_active(models_dir)
+        assert result is not None
+        assert result.model_id == bundles[1].model_id
+
+    def test_includes_metrics_in_reason(self, tmp_path: Path) -> None:
+        models_dir = tmp_path / "models"
+        _write_bundle(models_dir / "run_001", _VALID_METADATA, _VALID_METRICS)
+        bundle = list_bundles(models_dir)[0]
+
+        pointer = write_active_atomic(models_dir, bundle, SelectionPolicy())
+
+        assert pointer.reason is not None
+        assert pointer.reason["macro_f1"] == 0.82
+        assert pointer.reason["weighted_f1"] == 0.85
+
+    def test_custom_reason_in_note(self, tmp_path: Path) -> None:
+        models_dir = tmp_path / "models"
+        _write_bundle(models_dir / "run_001", _VALID_METADATA, _VALID_METRICS)
+        bundle = list_bundles(models_dir)[0]
+
+        pointer = write_active_atomic(
+            models_dir, bundle, SelectionPolicy(), reason="manual override"
+        )
+        assert pointer.reason is not None
+        assert pointer.reason["note"] == "manual override"
+
+    def test_read_after_write_consistent(self, tmp_path: Path) -> None:
+        models_dir = tmp_path / "models"
+        _write_bundle(models_dir / "run_001", _VALID_METADATA, _VALID_METRICS)
+        bundle = list_bundles(models_dir)[0]
+
+        written = write_active_atomic(models_dir, bundle, SelectionPolicy())
+        read_back = read_active(models_dir)
+
+        assert read_back is not None
+        assert read_back.model_dir == written.model_dir
+        assert read_back.model_id == written.model_id
+        assert read_back.policy_version == written.policy_version
+
+
+class TestAppendActiveHistory:
+    """Tests for :func:`append_active_history`."""
+
+    def test_creates_file_on_first_call(self, tmp_path: Path) -> None:
+        new = ActivePointer(
+            model_dir="models/x",
+            selected_at="2026-02-20T00:00:00+00:00",
+            policy_version=1,
+        )
+        append_active_history(tmp_path, old=None, new=new)
+
+        history_path = tmp_path / "active_history.jsonl"
+        assert history_path.is_file()
+        lines = history_path.read_text().strip().splitlines()
+        assert len(lines) == 1
+
+    def test_appends_multiple_entries(self, tmp_path: Path) -> None:
+        p1 = ActivePointer(
+            model_dir="models/a",
+            selected_at="2026-02-20T00:00:00+00:00",
+            policy_version=1,
+        )
+        p2 = ActivePointer(
+            model_dir="models/b",
+            selected_at="2026-02-21T00:00:00+00:00",
+            policy_version=1,
+        )
+        append_active_history(tmp_path, old=None, new=p1)
+        append_active_history(tmp_path, old=p1, new=p2)
+
+        lines = (tmp_path / "active_history.jsonl").read_text().strip().splitlines()
+        assert len(lines) == 2
+
+    def test_entries_are_valid_jsonl(self, tmp_path: Path) -> None:
+        p1 = ActivePointer(
+            model_dir="models/a",
+            selected_at="2026-02-20T00:00:00+00:00",
+            policy_version=1,
+            model_id="a",
+        )
+        p2 = ActivePointer(
+            model_dir="models/b",
+            selected_at="2026-02-21T00:00:00+00:00",
+            policy_version=1,
+            model_id="b",
+        )
+        append_active_history(tmp_path, old=None, new=p1)
+        append_active_history(tmp_path, old=p1, new=p2)
+
+        lines = (tmp_path / "active_history.jsonl").read_text().strip().splitlines()
+        for line in lines:
+            entry = ActiveHistoryEntry.model_validate_json(line)
+            assert entry.new is not None
+
+        first = ActiveHistoryEntry.model_validate_json(lines[0])
+        assert first.old is None
+        assert first.new.model_id == "a"
+
+        second = ActiveHistoryEntry.model_validate_json(lines[1])
+        assert second.old is not None
+        assert second.old.model_id == "a"
+        assert second.new.model_id == "b"
+
+    def test_write_active_atomic_appends_history(self, tmp_path: Path) -> None:
+        models_dir = tmp_path / "models"
+        _write_bundle(models_dir / "run_a", _VALID_METADATA, _VALID_METRICS)
+        high = {**_VALID_METRICS, "macro_f1": 0.95}
+        _write_bundle(models_dir / "run_b", _VALID_METADATA, high)
+        bundles = list_bundles(models_dir)
+
+        write_active_atomic(models_dir, bundles[0], SelectionPolicy())
+        write_active_atomic(models_dir, bundles[1], SelectionPolicy())
+
+        lines = (
+            (models_dir / "active_history.jsonl").read_text().strip().splitlines()
+        )
+        assert len(lines) == 2
+
+        first = ActiveHistoryEntry.model_validate_json(lines[0])
+        assert first.old is None
+
+        second = ActiveHistoryEntry.model_validate_json(lines[1])
+        assert second.old is not None
+
+
+class TestResolveActiveModel:
+    """Tests for :func:`resolve_active_model`."""
+
+    def test_valid_pointer_returns_bundle_without_scan(self, tmp_path: Path) -> None:
+        models_dir = tmp_path / "models"
+        _write_bundle(models_dir / "run_001", _VALID_METADATA, _VALID_METRICS)
+        bundle = list_bundles(models_dir)[0]
+
+        write_active_atomic(models_dir, bundle, SelectionPolicy())
+
+        resolved, report = resolve_active_model(models_dir)
+
+        assert resolved is not None
+        assert resolved.model_id == "run_001"
+        assert report is None  # no scan needed
+
+    def test_missing_pointer_falls_back_to_selection(self, tmp_path: Path) -> None:
+        models_dir = tmp_path / "models"
+        _write_bundle(models_dir / "run_001", _VALID_METADATA, _VALID_METRICS)
+
+        resolved, report = resolve_active_model(models_dir)
+
+        assert resolved is not None
+        assert resolved.model_id == "run_001"
+        assert report is not None  # scan was needed
+
+    def test_missing_pointer_writes_active_json(self, tmp_path: Path) -> None:
+        models_dir = tmp_path / "models"
+        _write_bundle(models_dir / "run_001", _VALID_METADATA, _VALID_METRICS)
+
+        resolve_active_model(models_dir)
+
+        pointer = read_active(models_dir)
+        assert pointer is not None
+        assert "run_001" in pointer.model_dir
+
+    def test_stale_pointer_to_missing_dir_falls_back(self, tmp_path: Path) -> None:
+        models_dir = tmp_path / "models"
+        models_dir.mkdir(parents=True)
+        stale = ActivePointer(
+            model_dir="models/deleted_bundle",
+            selected_at="2026-01-01T00:00:00+00:00",
+            policy_version=1,
+        )
+        (models_dir / "active.json").write_text(stale.model_dump_json(indent=2))
+
+        _write_bundle(models_dir / "real_bundle", _VALID_METADATA, _VALID_METRICS)
+
+        resolved, report = resolve_active_model(models_dir)
+
+        assert resolved is not None
+        assert resolved.model_id == "real_bundle"
+        assert report is not None
+
+        repaired = read_active(models_dir)
+        assert repaired is not None
+        assert "real_bundle" in repaired.model_dir
+
+    def test_pointer_to_incompatible_bundle_falls_back(self, tmp_path: Path) -> None:
+        models_dir = tmp_path / "models"
+        bad_meta = _VALID_METADATA.model_copy(update={"schema_hash": "old_hash"})
+        _write_bundle(models_dir / "old_model", bad_meta, _VALID_METRICS)
+        _write_bundle(models_dir / "new_model", _VALID_METADATA, _VALID_METRICS)
+
+        stale = ActivePointer(
+            model_dir="models/old_model",
+            selected_at="2026-01-01T00:00:00+00:00",
+            policy_version=1,
+        )
+        (models_dir / "active.json").write_text(stale.model_dump_json(indent=2))
+
+        resolved, report = resolve_active_model(models_dir)
+
+        assert resolved is not None
+        assert resolved.model_id == "new_model"
+        assert report is not None
+
+    def test_no_pointer_no_bundles_returns_none(self, tmp_path: Path) -> None:
+        models_dir = tmp_path / "models"
+        models_dir.mkdir()
+
+        resolved, report = resolve_active_model(models_dir)
+
+        assert resolved is None
+        assert report is not None
+        assert report.best is None
+
+    def test_selects_best_among_multiple(self, tmp_path: Path) -> None:
+        models_dir = tmp_path / "models"
+        low = {**_VALID_METRICS, "macro_f1": 0.60}
+        high = {**_VALID_METRICS, "macro_f1": 0.95}
+        _write_bundle(models_dir / "low_model", _VALID_METADATA, low)
+        _write_bundle(models_dir / "high_model", _VALID_METADATA, high)
+
+        resolved, report = resolve_active_model(models_dir)
+
+        assert resolved is not None
+        assert resolved.model_id == "high_model"
+        assert report is not None
+
+        pointer = read_active(models_dir)
+        assert pointer is not None
+        assert "high_model" in pointer.model_dir

@@ -66,16 +66,16 @@
 
 ---
 
-### 3) Add “active model pointer” (recommended) + atomic writer
+### ~~3) Add “active model pointer” (recommended) + atomic writer~~
 
-11. **Add `models/active.json` concept** (even if you also support “best by scan”):
+11. ~~**Add `models/active.json` concept** (even if you also support “best by scan”):~~
 
-* `read_active(models_dir) -> ActivePointer|None`
-* `write_active_atomic(models_dir, bundle, policy, reason)`
-* `append_active_history(models_dir, old, new)`
+* ~~`read_active(models_dir) -> ActivePointer|None`~~
+* ~~`write_active_atomic(models_dir, bundle, policy, reason)`~~
+* ~~`append_active_history(models_dir, old, new)`~~
 
-12. **Define `ActivePointer` schema** in `docs/model_selection.md` and validate on read.
-13. **Add a guard**: if `active.json` points to missing path, fall back to selection and repair (optional).
+12. ~~**Define `ActivePointer` schema** in `docs/model_selection.md` and validate on read.~~
+13. ~~**Add a guard**: if `active.json` points to missing path, fall back to selection and repair (optional).~~
 
 > Why: “continuously” using best model is easier if training updates a pointer; inference shouldn’t rescan each time.
 
