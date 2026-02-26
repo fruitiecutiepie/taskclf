@@ -1,18 +1,29 @@
 # infer/
 
-Inference code for online and batch prediction.
+Inference code for online, batch, and baseline prediction.
 
 ## Modules
-- `batch.py` -- Batch inference: predict, smooth, and segmentize over a feature DataFrame
-- `smooth.py` -- Rolling majority smoothing and segmentization
-- `online.py` -- Real-time prediction loop: polls ActivityWatch, predicts, smooths, and reports
+- `batch.py` — Batch inference: predict, smooth, and segmentize over a feature DataFrame.
+  Writes predictions CSV and segments JSON.
+- `online.py` — Real-time prediction loop: polls ActivityWatch, predicts, smooths, and reports.
+- `smooth.py` — Rolling majority smoothing, segmentization, and flap-rate computation.
+- `baseline.py` — Rule-based inference using app categories (no ML model required).
+- `prediction.py` — Core predict logic shared by batch and online paths.
+- `calibration.py` — Calibrator store load/save and probability calibration at inference time.
+- `taxonomy.py` — User taxonomy mapping: remap core labels to personal buckets via YAML config.
+- `monitor.py` — Drift detection (PSI, KS, entropy, class shift, reject-rate),
+  auto-enqueue labeling tasks on drift.
 
 ## Responsibilities
 - Load model bundle + validate schema hash
-- Predict per bucket
+- Predict per bucket (ML or rule-based baseline)
+- Apply per-user probability calibration
 - Smooth predictions into stable labels
+- Map core labels to user taxonomy buckets
 - Emit minute-level predictions + merged segments
 - Online mode: poll AW REST API, build features, predict, write running outputs
+- Compare baseline vs ML model on labeled data
+- Detect feature and prediction drift, surface labeling tasks
 
 ## Session Tracking (online)
 The online loop tracks session state across poll cycles.  A new session

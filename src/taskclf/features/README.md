@@ -14,6 +14,11 @@ Feature computation: convert normalized events into bucketed feature rows.
   Also provides `generate_dummy_features()` for testing.
 - `sessions.py` — Session boundary detection via idle-gap analysis and binary
   search lookup for `session_length_so_far` computation.
+- `domain.py` — Reverse-domain app-id feature extraction and normalization.
+- `dynamics.py` — Temporal dynamics features: rate-of-change and acceleration
+  for input metrics across rolling windows.
+- `text.py` — Title-hash feature extraction (hash trick / local tokenization).
+- `windows.py` — Rolling window aggregations over feature columns.
 
 ## Responsibilities
 - Per-minute (or configurable bucket) feature generation
@@ -22,6 +27,7 @@ Feature computation: convert normalized events into bucketed feature rows.
 - Keyboard/mouse input aggregation from `aw-watcher-input` events
 - Activity occupancy (active seconds, idle runs, event density)
 - Session boundary detection (idle-gap based)
+- Temporal dynamics (rate-of-change, acceleration)
 - Title featurization (hash trick / local tokenization) per policy
 
 ## Invariants
