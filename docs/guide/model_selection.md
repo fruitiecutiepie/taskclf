@@ -34,7 +34,9 @@ The current schema hash is `FeatureSchemaV1.SCHEMA_HASH`, computed at import tim
 - Inference auto-resolves the model when `--model-dir` is omitted via `resolve_model_dir()` in `taskclf.infer.resolve`: reads `active.json` if valid, otherwise falls back to best-model selection. Both `infer batch` and `infer online` accept an optional `--models-dir` (default `models/`).
 - The online inference loop watches `active.json` mtime and hot-reloads the model when it changes (swap only after successful load).
 - Retrain resolves the champion via a priority chain: `read_active()` → `find_best_model()` → `find_latest_model()` (legacy fallback). See `_resolve_champion()` in `retrain.py`.
-- After a successful promotion to `models/`, retrain runs `find_best_model()` and atomically updates `active.json` if the best model has changed (the “overthrow” mechanism).
+- After a successful promotion to `models/`, retrain runs `find_best_model()`, writes `models/index.json` (cached ranking), and atomically updates `active.json` if the best model has changed and passes the hysteresis threshold (the “overthrow” mechanism).
+- Hysteresis: `SelectionPolicy.min_improvement` (default `0.0`) controls the macro-F1 improvement threshold for switching the active pointer. Configured via `min_improvement` in `configs/retrain.yaml`.
+- `taskclf model set-active --model-id ...` allows manual rollback by setting the active pointer to a specific bundle after validation.
 - Regression gates are split into candidate-only gates (`check_candidate_gates`) and comparative gates (`check_regression_gates`). Candidate gates evaluate the challenger in isolation (BreakIdle precision, per-class precision, acceptance checks); comparative gates add the macro-F1 no-regression check against the champion.
 - `RetrainResult` surfaces `candidate_gates`, `champion_source`, and `active_updated` for observability.
 - `metrics.json` inside the bundle contains only `macro_f1`, `weighted_f1`, `confusion_matrix`, `label_names`.
@@ -160,7 +162,9 @@ This enables rollback and debugging of “why did we switch models?”
 When a new model is promoted to `models/` by `run_retrain_pipeline()`:
 
 1. `find_best_model()` scans and ranks promoted compatible bundles using policy v1.
-2. If the best bundle differs from the currently active bundle:
+2. `write_index_cache()` writes `models/index.json` with the full ranking snapshot.
+3. `should_switch_active()` applies the hysteresis check (see below).
+4. If the best bundle differs from the currently active bundle and passes the hysteresis threshold:
    * `write_active_atomic()` atomically updates `models/active.json`
    * The transition is appended to `models/active_history.jsonl`
 
@@ -170,7 +174,30 @@ Champion resolution for regression gates uses a priority chain (`_resolve_champi
 2. `find_best_model()` — use the highest-ranked eligible bundle.
 3. `find_latest_model()` — legacy fallback for repos that predate the registry.
 
-## CLI expectations (recommended)
+## Index cache: `models/index.json` — implemented
+
+After every retrain promotion, `write_index_cache()` writes a snapshot of the current scan results to `models/index.json`.  The cache is **informational only** — `find_best_model()` and `resolve_active_model()` always do a live scan.  The cache is useful for:
+
+* `taskclf train list` speed (optional fast path)
+* Operators inspecting `models/index.json` directly to see the current ranking and why bundles were excluded
+
+The file is written atomically (temp + `os.replace`).  See `IndexCache` in the API reference for the schema.
+
+## Hysteresis (`min_improvement`) — implemented
+
+To avoid unnecessary model switches when the improvement is marginal, `SelectionPolicy` supports a `min_improvement` field (default `0.0`, meaning no hysteresis).
+
+When `min_improvement > 0`, the candidate model's `macro_f1` must exceed the current active model's `macro_f1` by at least `min_improvement` before the active pointer is updated.
+
+To enable hysteresis, set `min_improvement` in `configs/retrain.yaml`:
+
+```yaml
+min_improvement: 0.002
+```
+
+The `should_switch_active(current, candidate, policy)` function implements this check.  If the current pointer has no recorded `macro_f1` in its `reason` dict, the switch is always allowed (safe fallback).
+
+## CLI commands — implemented
 
 * `taskclf train list`:
 
@@ -179,7 +206,9 @@ Champion resolution for regression gates uses a priority chain (`_resolve_champi
   * highlights the active bundle (if pointer exists)
   * supports `--json`
 
-* `taskclf model set-active --model-dir <...>`:
+* `taskclf model set-active --model-id <...>`:
 
+  * validates the bundle exists, is valid, and is compatible
   * writes `active.json` atomically after validation
-  * logs to history
+  * appends to `active_history.jsonl`
+  * useful for rollback after a bad promotion

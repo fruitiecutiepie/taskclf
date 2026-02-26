@@ -17,6 +17,8 @@ Typer CLI entrypoint and commands.
 | `taskclf train lgbm` | Train a LightGBM multiclass model |
 | `taskclf train retrain` | Run full retrain pipeline (train, evaluate, gate-check, promote) |
 | `taskclf train check-retrain` | Check whether retraining or calibrator update is due |
+| `taskclf train list` | List model bundles with ranking metrics and status |
+| `taskclf model set-active` | Manually set the active model pointer (rollback / override) |
 | `taskclf taxonomy validate` | Validate a user taxonomy YAML file |
 | `taskclf taxonomy show` | Display taxonomy mapping as a table |
 | `taskclf taxonomy init` | Generate a default taxonomy YAML |
@@ -119,6 +121,71 @@ taskclf train check-retrain \
   --models-dir models/ \
   --calibrator-store artifacts/calibrator_store
 ```
+
+### train list
+
+List all model bundles under `models/` with ranking metrics, eligibility
+status, and active pointer.  Columns include macro F1, weighted F1,
+BreakIdle precision (derived from confusion matrix), and minimum
+per-class precision.
+
+```bash
+taskclf train list
+```
+
+Filter to eligible bundles only (compatible schema + label set):
+
+```bash
+taskclf train list --eligible
+```
+
+Sort by a different metric:
+
+```bash
+taskclf train list --sort weighted_f1
+```
+
+Output as JSON for automation:
+
+```bash
+taskclf train list --json
+```
+
+Filter to a specific schema hash:
+
+```bash
+taskclf train list --schema-hash 740b4db787e9 --eligible
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--models-dir` | `models` | Base directory for model bundles |
+| `--sort` | `macro_f1` | Sort column: `macro_f1`, `weighted_f1`, or `created_at` |
+| `--eligible` | off | Show only eligible bundles (compatible schema + label set) |
+| `--schema-hash` | *(current runtime)* | Filter to bundles matching this schema hash |
+| `--json` | off | Output as JSON instead of a table |
+
+### model set-active
+
+Manually set the active model pointer to a specific bundle.  Useful
+for rollback (reverting to a known-good model) or manual override
+after a bad promotion.  The bundle must be valid and compatible with
+the current schema and label set.
+
+```bash
+taskclf model set-active --model-id run_20260215_120000
+```
+
+With a custom models directory:
+
+```bash
+taskclf model set-active --model-id run_20260215_120000 --models-dir /data/models
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--model-id` | *(required)* | Bundle directory name under `models/` |
+| `--models-dir` | `models` | Base directory for model bundles |
 
 ### taxonomy validate
 

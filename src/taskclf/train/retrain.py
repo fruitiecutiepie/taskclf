@@ -48,7 +48,9 @@ from taskclf.model_registry import (
     SelectionPolicy,
     find_best_model,
     read_active,
+    should_switch_active,
     write_active_atomic,
+    write_index_cache,
 )
 from taskclf.train.evaluate import EvaluationReport, evaluate_model
 
@@ -75,6 +77,7 @@ class RetrainConfig(BaseModel):
     regression_tolerance: float = DEFAULT_REGRESSION_TOLERANCE
     require_baseline_improvement: bool = True
     auto_promote: bool = False
+    min_improvement: float = 0.0
     train_params: TrainParams = Field(default_factory=TrainParams)
 
 
@@ -596,10 +599,13 @@ def run_retrain_pipeline(
 
         # Update active pointer if the newly promoted model is the best
         try:
-            policy = SelectionPolicy()
+            policy = SelectionPolicy(min_improvement=config.min_improvement)
             report = find_best_model(models_dir, policy)
+            write_index_cache(models_dir, report)
             current = read_active(models_dir)
-            if report.best is not None:
+            if report.best is not None and should_switch_active(
+                current, report.best, policy,
+            ):
                 current_model_dir = current.model_dir if current else None
                 best_model_dir = str(
                     report.best.path.relative_to(models_dir.parent)

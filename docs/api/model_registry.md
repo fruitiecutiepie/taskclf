@@ -33,6 +33,7 @@ model pointer.
 | Field | Type | Description |
 |-------|------|-------------|
 | `version` | int | Policy version (default `1`) |
+| `min_improvement` | float | Hysteresis threshold: candidate must exceed current active macro_f1 by this amount to trigger a switch (default `0.0` — disabled) |
 
 ## ExclusionRecord Fields
 
@@ -70,6 +71,28 @@ model pointer.
 | `old` | ActivePointer or None | Previous pointer (`None` on first activation) |
 | `new` | ActivePointer | New pointer |
 
+## IndexCacheBundleSummary Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `model_id` | str | Bundle directory name |
+| `path` | str | Path to the bundle directory |
+| `macro_f1` | float or None | Macro-averaged F1 |
+| `weighted_f1` | float or None | Support-weighted F1 |
+| `created_at` | str or None | ISO8601 creation timestamp |
+| `eligible` | bool | Whether the bundle was eligible for selection |
+
+## IndexCache Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `generated_at` | str | ISO8601 timestamp when the cache was written |
+| `schema_hash` | str | Runtime schema hash used during the scan |
+| `policy_version` | int | Selection policy version |
+| `ranked` | list[IndexCacheBundleSummary] | Eligible bundles in score-descending order |
+| `excluded` | list[ExclusionRecord] | Every bundle that was filtered out, with reason |
+| `best_model_id` | str or None | Model ID of the highest-ranked bundle |
+
 ## Functions
 
 - `list_bundles(models_dir)` — scan a directory for bundle subdirectories; returns valid and invalid bundles sorted by `model_id`.
@@ -81,5 +104,8 @@ model pointer.
 - `write_active_atomic(models_dir, bundle, policy, reason)` — atomically write `active.json` and append to `active_history.jsonl`; returns the new `ActivePointer`.
 - `append_active_history(models_dir, old, new)` — append a transition record to `active_history.jsonl`.
 - `resolve_active_model(models_dir, policy, required_schema_hash, required_label_set)` — resolve the active bundle: uses the pointer if valid, falls back to `find_best_model` and self-heals the pointer; returns `(ModelBundle | None, SelectionReport | None)`.
+- `write_index_cache(models_dir, report)` — atomically write `models/index.json` from a `SelectionReport`; returns the `IndexCache`.
+- `read_index_cache(models_dir)` — read cached `index.json`; returns `IndexCache` or `None` if missing/invalid.
+- `should_switch_active(current, candidate, policy)` — hysteresis check: returns `True` if the candidate's `macro_f1` exceeds the current active model's `macro_f1` by at least `policy.min_improvement`.
 
 ::: taskclf.model_registry

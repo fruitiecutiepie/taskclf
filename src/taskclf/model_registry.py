@@ -14,6 +14,8 @@ Public surface:
 * :class:`SelectionReport` — full result of :func:`find_best_model`
 * :class:`ActivePointer` — persisted ``active.json`` pointer
 * :class:`ActiveHistoryEntry` — one line in ``active_history.jsonl``
+* :class:`IndexCacheBundleSummary` — one bundle row in ``index.json``
+* :class:`IndexCache` — cached scan/ranking snapshot
 * :func:`list_bundles` — scan a directory for bundles
 * :func:`is_compatible` — schema hash + label set gate
 * :func:`passes_constraints` — hard constraint gate (policy v1: no-op)
@@ -23,6 +25,9 @@ Public surface:
 * :func:`write_active_atomic` — atomically update ``active.json``
 * :func:`append_active_history` — append to ``active_history.jsonl``
 * :func:`resolve_active_model` — resolve active bundle with fallback
+* :func:`write_index_cache` — write ``index.json`` from a selection report
+* :func:`read_index_cache` — read cached ``index.json``
+* :func:`should_switch_active` — hysteresis check before switching active
 """
 
 from __future__ import annotations
@@ -80,9 +85,15 @@ class SelectionPolicy(BaseModel, frozen=True):
     Policy v1 ranks by ``macro_f1`` desc, ``weighted_f1`` desc,
     ``created_at`` desc and applies no additional hard constraints
     (acceptance gates are enforced at promotion time by retrain).
+
+    ``min_improvement`` controls hysteresis: the candidate must exceed
+    the current active model's ``macro_f1`` by at least this amount
+    before the active pointer is switched.  Set to ``0.0`` (default)
+    to disable hysteresis.
     """
 
     version: int = 1
+    min_improvement: float = 0.0
 
 
 class ExclusionRecord(BaseModel, frozen=True):
@@ -133,6 +144,33 @@ class ActiveHistoryEntry(BaseModel, frozen=True):
     at: str
     old: ActivePointer | None
     new: ActivePointer
+
+
+class IndexCacheBundleSummary(BaseModel, frozen=True):
+    """Summary of one bundle stored inside :class:`IndexCache`."""
+
+    model_id: str
+    path: str
+    macro_f1: float | None = None
+    weighted_f1: float | None = None
+    created_at: str | None = None
+    eligible: bool = False
+
+
+class IndexCache(BaseModel, frozen=True):
+    """Cached scan/ranking snapshot written to ``models/index.json``.
+
+    This is an informational cache — selection never reads it.
+    Operators and ``taskclf train list`` may consume it for fast
+    inspection without a full rescan.
+    """
+
+    generated_at: str
+    schema_hash: str
+    policy_version: int
+    ranked: list[IndexCacheBundleSummary]
+    excluded: list[ExclusionRecord]
+    best_model_id: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -445,6 +483,8 @@ def find_best_model(
 _ACTIVE_FILE = "active.json"
 _ACTIVE_TMP = "active.json.tmp"
 _HISTORY_FILE = "active_history.jsonl"
+_INDEX_FILE = "index.json"
+_INDEX_TMP = "index.json.tmp"
 
 
 def read_active(models_dir: Path) -> ActivePointer | None:
@@ -601,3 +641,120 @@ def resolve_active_model(
         write_active_atomic(models_dir, report.best, policy, reason="auto-repair")
 
     return report.best, report
+
+
+# ---------------------------------------------------------------------------
+# Index cache
+# ---------------------------------------------------------------------------
+
+
+def write_index_cache(
+    models_dir: Path,
+    report: SelectionReport,
+) -> IndexCache:
+    """Write ``models_dir/index.json`` from a :class:`SelectionReport`.
+
+    The cache is written atomically (temp + :func:`os.replace`).  It is
+    informational only — :func:`find_best_model` never reads it.
+
+    Args:
+        models_dir: The ``models/`` directory.
+        report: A completed selection report.
+
+    Returns:
+        The :class:`IndexCache` that was persisted.
+    """
+    ranked_summaries: list[IndexCacheBundleSummary] = []
+    for b in report.ranked:
+        ranked_summaries.append(IndexCacheBundleSummary(
+            model_id=b.model_id,
+            path=str(b.path),
+            macro_f1=b.metrics.macro_f1 if b.metrics else None,
+            weighted_f1=b.metrics.weighted_f1 if b.metrics else None,
+            created_at=b.metadata.created_at if b.metadata else None,
+            eligible=True,
+        ))
+
+    cache = IndexCache(
+        generated_at=datetime.now(UTC).isoformat(),
+        schema_hash=report.required_schema_hash,
+        policy_version=report.policy.version,
+        ranked=ranked_summaries,
+        excluded=report.excluded,
+        best_model_id=report.best.model_id if report.best else None,
+    )
+
+    tmp_path = models_dir / _INDEX_TMP
+    final_path = models_dir / _INDEX_FILE
+
+    tmp_path.write_text(cache.model_dump_json(indent=2) + "\n")
+    os.replace(tmp_path, final_path)
+
+    return cache
+
+
+def read_index_cache(models_dir: Path) -> IndexCache | None:
+    """Read the cached index from ``models_dir/index.json``.
+
+    Returns ``None`` (without raising) when the file is missing,
+    contains invalid JSON, or fails :class:`IndexCache` validation.
+    """
+    index_path = models_dir / _INDEX_FILE
+    if not index_path.is_file():
+        return None
+
+    try:
+        raw = json.loads(index_path.read_text())
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.warning("index.json parse error: %s", exc)
+        return None
+
+    try:
+        return IndexCache.model_validate(raw)
+    except Exception as exc:
+        logger.warning("index.json validation error: %s", exc)
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Hysteresis
+# ---------------------------------------------------------------------------
+
+
+def should_switch_active(
+    current: ActivePointer | None,
+    candidate: ModelBundle,
+    policy: SelectionPolicy,
+) -> bool:
+    """Decide whether *candidate* should replace *current* as active.
+
+    When ``policy.min_improvement`` is positive, the candidate's
+    ``macro_f1`` must exceed the current active model's ``macro_f1``
+    by at least that amount.  If ``current`` is ``None`` or has no
+    recorded ``macro_f1``, the switch is always allowed.
+
+    Args:
+        current: The current active pointer (may be ``None``).
+        candidate: The best-ranked bundle from selection.
+        policy: Selection policy with hysteresis threshold.
+
+    Returns:
+        ``True`` if the active pointer should be updated.
+    """
+    if current is None or policy.min_improvement <= 0.0:
+        return True
+
+    if candidate.metrics is None:
+        return False
+
+    current_f1: float | None = None
+    if current.reason and "macro_f1" in current.reason:
+        try:
+            current_f1 = float(current.reason["macro_f1"])  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            pass
+
+    if current_f1 is None:
+        return True
+
+    return candidate.metrics.macro_f1 >= current_f1 + policy.min_improvement

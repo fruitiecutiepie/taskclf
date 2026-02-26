@@ -1159,6 +1159,191 @@ def train_check_retrain_cmd(
     console.print(table)
 
 
+@train_app.command("list")
+def train_list_cmd(
+    models_dir: str = typer.Option(DEFAULT_MODELS_DIR, help="Base directory for model bundles"),
+    sort: str = typer.Option("macro_f1", "--sort", help="Sort column: macro_f1|weighted_f1|created_at"),
+    eligible_only: bool = typer.Option(False, "--eligible", help="Show only eligible bundles (compatible schema + label set)"),
+    schema_hash: str | None = typer.Option(None, "--schema-hash", help="Filter to bundles matching this schema hash (default: current runtime hash)"),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON instead of a table"),
+) -> None:
+    """List model bundles with ranking metrics and status."""
+    import json
+
+    from rich.console import Console
+    from rich.table import Table
+
+    from taskclf.core.schema import FeatureSchemaV1
+    from taskclf.core.types import LABEL_SET_V1
+    from taskclf.model_registry import (
+        SelectionPolicy,
+        is_compatible,
+        list_bundles,
+        passes_constraints,
+        read_active,
+    )
+
+    console = Console()
+    models_path = Path(models_dir)
+    policy = SelectionPolicy()
+    req_hash = schema_hash or FeatureSchemaV1.SCHEMA_HASH
+
+    bundles = list_bundles(models_path)
+    if not bundles:
+        console.print("[yellow]No model bundles found.[/yellow]")
+        raise typer.Exit()
+
+    pointer = read_active(models_path)
+    active_rel = pointer.model_dir if pointer else None
+
+    def _per_class_precision(
+        cm: list[list[int]], label_names: list[str],
+    ) -> dict[str, float]:
+        n = len(label_names)
+        result: dict[str, float] = {}
+        for j in range(n):
+            col_sum = sum(cm[i][j] for i in range(n))
+            result[label_names[j]] = cm[j][j] / col_sum if col_sum > 0 else 0.0
+        return result
+
+    rows: list[dict[str, object]] = []
+    for b in bundles:
+        elig = is_compatible(b, req_hash, LABEL_SET_V1) and passes_constraints(b, policy)
+        if eligible_only and not elig:
+            continue
+
+        is_active = False
+        if active_rel is not None:
+            active_path = (models_path / active_rel).resolve()
+            is_active = b.path.resolve() == active_path
+
+        row: dict[str, object] = {
+            "model_id": b.model_id,
+            "created_at": b.metadata.created_at if b.metadata else None,
+            "schema_hash": b.metadata.schema_hash if b.metadata else None,
+            "macro_f1": None,
+            "weighted_f1": None,
+            "bi_prec": None,
+            "min_prec": None,
+            "eligible": elig,
+            "active": is_active,
+            "notes": b.invalid_reason if not b.valid else None,
+        }
+        if b.metrics is not None:
+            row["macro_f1"] = b.metrics.macro_f1
+            row["weighted_f1"] = b.metrics.weighted_f1
+            precs = _per_class_precision(b.metrics.confusion_matrix, b.metrics.label_names)
+            row["bi_prec"] = precs.get("BreakIdle")
+            row["min_prec"] = min(precs.values()) if precs else None
+        rows.append(row)
+
+    sort_keys: dict[str, object] = {
+        "macro_f1": lambda r: (r["macro_f1"] is not None, r["macro_f1"] or 0),
+        "weighted_f1": lambda r: (r["weighted_f1"] is not None, r["weighted_f1"] or 0),
+        "created_at": lambda r: (r["created_at"] is not None, r["created_at"] or ""),
+    }
+    if sort not in sort_keys:
+        console.print(f"[red]Unknown --sort value {sort!r}; choose macro_f1|weighted_f1|created_at[/red]")
+        raise typer.Exit(code=1)
+    rows.sort(key=sort_keys[sort], reverse=True)  # type: ignore[arg-type]
+
+    if json_output:
+        console.print_json(json.dumps(rows, default=str))
+        raise typer.Exit()
+
+    table = Table(title="Model Bundles")
+    table.add_column("Model ID", style="bold")
+    table.add_column("Created", style="dim")
+    table.add_column("Schema Hash")
+    table.add_column("macro F1", justify="right")
+    table.add_column("wt F1", justify="right")
+    table.add_column("BI Prec", justify="right")
+    table.add_column("Min Prec", justify="right")
+    table.add_column("Eligible")
+    table.add_column("Active")
+    table.add_column("Notes")
+
+    def _fmt(v: object, decimals: int = 4) -> str:
+        if v is None:
+            return "--"
+        if isinstance(v, float):
+            return f"{v:.{decimals}f}"
+        return str(v)
+
+    for r in rows:
+        active_marker = "*" if r["active"] else ""
+        elig_marker = "yes" if r["eligible"] else "no"
+        table.add_row(
+            str(r["model_id"]),
+            _fmt(r["created_at"]),
+            _fmt(r["schema_hash"]),
+            _fmt(r["macro_f1"]),
+            _fmt(r["weighted_f1"]),
+            _fmt(r["bi_prec"]),
+            _fmt(r["min_prec"]),
+            elig_marker,
+            active_marker,
+            _fmt(r["notes"]),
+        )
+
+    console.print(table)
+
+
+# -- model --------------------------------------------------------------------
+model_app = typer.Typer()
+app.add_typer(model_app, name="model")
+
+
+@model_app.command("set-active")
+def model_set_active_cmd(
+    model_id: str = typer.Option(..., "--model-id", help="Model bundle directory name (under models/)"),
+    models_dir: str = typer.Option(DEFAULT_MODELS_DIR, "--models-dir", help="Base directory for model bundles"),
+) -> None:
+    """Manually set the active model pointer (rollback / override)."""
+    from rich.console import Console
+
+    from taskclf.core.schema import FeatureSchemaV1
+    from taskclf.core.types import LABEL_SET_V1
+    from taskclf.model_registry import (
+        SelectionPolicy,
+        is_compatible,
+        list_bundles,
+        write_active_atomic,
+    )
+
+    console = Console()
+    models_path = Path(models_dir)
+    bundle_path = models_path / model_id
+
+    if not bundle_path.is_dir():
+        console.print(f"[red]Bundle directory not found: {bundle_path}[/red]")
+        raise typer.Exit(code=1)
+
+    bundles = list_bundles(models_path)
+    bundle = next((b for b in bundles if b.model_id == model_id), None)
+
+    if bundle is None:
+        console.print(f"[red]Could not parse bundle: {model_id}[/red]")
+        raise typer.Exit(code=1)
+
+    if not bundle.valid:
+        console.print(f"[red]Bundle is invalid: {bundle.invalid_reason}[/red]")
+        raise typer.Exit(code=1)
+
+    if not is_compatible(bundle, FeatureSchemaV1.SCHEMA_HASH, LABEL_SET_V1):
+        console.print("[red]Bundle is incompatible with current schema/labels[/red]")
+        raise typer.Exit(code=1)
+
+    policy = SelectionPolicy()
+    pointer = write_active_atomic(models_path, bundle, policy, reason="manual set-active")
+
+    macro_f1 = bundle.metrics.macro_f1 if bundle.metrics else "N/A"
+    console.print(
+        f"[green]Active model set to {model_id} "
+        f"(macro_f1={macro_f1}, at={pointer.selected_at})[/green]"
+    )
+
+
 # -- taxonomy -----------------------------------------------------------------
 taxonomy_app = typer.Typer()
 app.add_typer(taxonomy_app, name="taxonomy")

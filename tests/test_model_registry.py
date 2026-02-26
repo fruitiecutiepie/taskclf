@@ -7,6 +7,8 @@ Covers:
 - TC-REG-004: passes_constraints (v1 baseline)
 - TC-REG-005: score produces deterministic ranking
 - TC-SEL-001..010: find_best_model end-to-end selection
+- TC-IDX-001..004: write_index_cache / read_index_cache
+- TC-HYS-001..005: should_switch_active hysteresis logic
 """
 
 from __future__ import annotations
@@ -24,6 +26,7 @@ from taskclf.model_registry import (
     ActivePointer,
     BundleMetrics,
     ExclusionRecord,
+    IndexCache,
     ModelBundle,
     SelectionPolicy,
     SelectionReport,
@@ -33,9 +36,12 @@ from taskclf.model_registry import (
     list_bundles,
     passes_constraints,
     read_active,
+    read_index_cache,
     resolve_active_model,
     score,
+    should_switch_active,
     write_active_atomic,
+    write_index_cache,
 )
 
 # ---------------------------------------------------------------------------
@@ -884,3 +890,139 @@ class TestResolveActiveModel:
         pointer = read_active(models_dir)
         assert pointer is not None
         assert "high_model" in pointer.model_dir
+
+
+# ---------------------------------------------------------------------------
+# TC-IDX-001..004: write_index_cache / read_index_cache
+# ---------------------------------------------------------------------------
+
+
+class TestWriteIndexCache:
+    def test_round_trip(self, tmp_path: Path) -> None:
+        models_dir = tmp_path / "models"
+        _write_bundle(models_dir / "run_a", _VALID_METADATA, _VALID_METRICS)
+        report = find_best_model(models_dir)
+        cache = write_index_cache(models_dir, report)
+
+        assert cache.best_model_id == "run_a"
+        assert cache.schema_hash == FeatureSchemaV1.SCHEMA_HASH
+        assert len(cache.ranked) == 1
+        assert cache.ranked[0].model_id == "run_a"
+        assert cache.ranked[0].eligible is True
+
+        loaded = read_index_cache(models_dir)
+        assert loaded is not None
+        assert loaded.best_model_id == cache.best_model_id
+        assert loaded.schema_hash == cache.schema_hash
+        assert len(loaded.ranked) == len(cache.ranked)
+
+    def test_no_tmp_file_left(self, tmp_path: Path) -> None:
+        models_dir = tmp_path / "models"
+        _write_bundle(models_dir / "run_a", _VALID_METADATA, _VALID_METRICS)
+        report = find_best_model(models_dir)
+        write_index_cache(models_dir, report)
+
+        assert not (models_dir / "index.json.tmp").exists()
+        assert (models_dir / "index.json").is_file()
+
+    def test_empty_report(self, tmp_path: Path) -> None:
+        models_dir = tmp_path / "models"
+        models_dir.mkdir()
+        report = find_best_model(models_dir)
+        cache = write_index_cache(models_dir, report)
+
+        assert cache.best_model_id is None
+        assert cache.ranked == []
+
+    def test_excluded_bundles_recorded(self, tmp_path: Path) -> None:
+        models_dir = tmp_path / "models"
+        bad_meta = _VALID_METADATA.model_copy(update={"schema_hash": "wrong"})
+        _write_bundle(models_dir / "bad", bad_meta, _VALID_METRICS)
+        _write_bundle(models_dir / "good", _VALID_METADATA, _VALID_METRICS)
+
+        report = find_best_model(models_dir)
+        cache = write_index_cache(models_dir, report)
+
+        assert cache.best_model_id == "good"
+        assert len(cache.excluded) == 1
+        assert cache.excluded[0].model_id == "bad"
+
+
+class TestReadIndexCache:
+    def test_missing_file_returns_none(self, tmp_path: Path) -> None:
+        assert read_index_cache(tmp_path) is None
+
+    def test_corrupt_json_returns_none(self, tmp_path: Path) -> None:
+        (tmp_path / "index.json").write_text("not json {{{")
+        assert read_index_cache(tmp_path) is None
+
+    def test_invalid_schema_returns_none(self, tmp_path: Path) -> None:
+        (tmp_path / "index.json").write_text('{"bad_key": true}')
+        assert read_index_cache(tmp_path) is None
+
+
+# ---------------------------------------------------------------------------
+# TC-HYS-001..005: should_switch_active hysteresis logic
+# ---------------------------------------------------------------------------
+
+
+def _make_bundle(macro_f1: float) -> ModelBundle:
+    metrics = BundleMetrics(
+        macro_f1=macro_f1,
+        weighted_f1=0.90,
+        confusion_matrix=_VALID_METRICS["confusion_matrix"],
+        label_names=sorted(LABEL_SET_V1),
+    )
+    return ModelBundle(
+        model_id="candidate",
+        path=Path("/tmp/candidate"),
+        valid=True,
+        metadata=_VALID_METADATA,
+        metrics=metrics,
+    )
+
+
+class TestShouldSwitchActive:
+    def test_no_current_always_switches(self) -> None:
+        policy = SelectionPolicy(min_improvement=0.01)
+        assert should_switch_active(None, _make_bundle(0.80), policy) is True
+
+    def test_no_hysteresis_always_switches(self) -> None:
+        current = ActivePointer(
+            model_dir="models/old",
+            selected_at="2026-01-01T00:00:00+00:00",
+            policy_version=1,
+            reason={"metric": "macro_f1", "macro_f1": 0.80, "weighted_f1": 0.90},
+        )
+        policy = SelectionPolicy(min_improvement=0.0)
+        assert should_switch_active(current, _make_bundle(0.80), policy) is True
+
+    def test_below_threshold_blocks_switch(self) -> None:
+        current = ActivePointer(
+            model_dir="models/old",
+            selected_at="2026-01-01T00:00:00+00:00",
+            policy_version=1,
+            reason={"metric": "macro_f1", "macro_f1": 0.80, "weighted_f1": 0.90},
+        )
+        policy = SelectionPolicy(min_improvement=0.01)
+        assert should_switch_active(current, _make_bundle(0.805), policy) is False
+
+    def test_at_threshold_allows_switch(self) -> None:
+        current = ActivePointer(
+            model_dir="models/old",
+            selected_at="2026-01-01T00:00:00+00:00",
+            policy_version=1,
+            reason={"metric": "macro_f1", "macro_f1": 0.80, "weighted_f1": 0.90},
+        )
+        policy = SelectionPolicy(min_improvement=0.01)
+        assert should_switch_active(current, _make_bundle(0.81), policy) is True
+
+    def test_missing_reason_macro_f1_allows_switch(self) -> None:
+        current = ActivePointer(
+            model_dir="models/old",
+            selected_at="2026-01-01T00:00:00+00:00",
+            policy_version=1,
+            reason={"metric": "macro_f1"},
+        )
+        policy = SelectionPolicy(min_improvement=0.05)
+        assert should_switch_active(current, _make_bundle(0.80), policy) is True

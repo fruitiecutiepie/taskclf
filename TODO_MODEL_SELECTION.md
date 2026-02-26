@@ -129,30 +129,30 @@
 
 ---
 
-### 6) Add `taskclf train list` (ranked view)
+### ~~6) Add `taskclf train list` (ranked view)~~
 
-21. **Implement CLI command** `taskclf train list`:
+21. ~~**Implement CLI command** `taskclf train list`:~~
 
-* Outputs table: model_id, created_at, schema_hash, macro_f1, weighted_f1, breakidle_precision, min_class_precision, acceptance_pass, promoted(bool), active(bool)
-* Supports `--sort macro_f1|weighted_f1|created_at`, `--all/--eligible`, `--schema-hash <...>`
+* ~~Outputs table: model_id, created_at, schema_hash, macro_f1, weighted_f1, breakidle_precision, min_class_precision, acceptance_pass, promoted(bool), active(bool)~~
+* ~~Supports `--sort macro_f1|weighted_f1|created_at`, `--all/--eligible`, `--schema-hash <...>`~~
 
-22. **Add output formats**:
+22. ~~**Add output formats**:~~
 
-* default pretty table
-* `--json` for automation
+* ~~default pretty table~~
+* ~~`--json` for automation~~
 
 ---
 
-### 7) Performance + operational hardening (optional but sensible)
+### ~~7) Performance + operational hardening (optional but sensible)~~
 
-23. **Cache scan results** (optional):
+23. ~~**Cache scan results** (optional):~~
 
-* Write `models/index.json` with computed ranking + invalid reasons; refresh on retrain/promotion.
+* ~~Write `models/index.json` with computed ranking + invalid reasons; refresh on retrain/promotion.~~
 
-24. **Add hysteresis** (optional):
+24. ~~**Add hysteresis** (optional):~~
 
-* `--min-improvement 0.002` macro-F1 improvement needed to switch active.
+* ~~`--min-improvement 0.002` macro-F1 improvement needed to switch active.~~
 
-25. **Add rollback command**:
+25. ~~**Add rollback command**:~~
 
-* `taskclf model set-active --model-id ...` (writes `active.json` atomically + logs)
+* ~~`taskclf model set-active --model-id ...` (writes `active.json` atomically + logs)~~
