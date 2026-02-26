@@ -305,6 +305,36 @@ uv run taskclf report daily --segments-file artifacts/segments.json
 
 ---
 
+## Use case 5 — Continuous labeling with the system tray app
+
+For hands-free labeling as you work, run the system tray app.  It sits
+in your taskbar/menubar, polls ActivityWatch, and prompts you to label
+when it detects a significant change in your foreground application.
+
+```bash
+uv run taskclf tray
+```
+
+Without a model, all 8 core labels are shown when a transition is
+detected.  With a trained model, the app suggests the most likely label:
+
+```bash
+uv run taskclf tray --model-dir models/<run_id>
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--model-dir` | *(none)* | Model bundle for label suggestions |
+| `--aw-host` | `http://localhost:5600` | ActivityWatch server URL |
+| `--poll-seconds` | `60` | Seconds between polls |
+| `--transition-minutes` | `3` | Minutes a new app must persist before prompting |
+| `--data-dir` | `data/processed` | Processed data directory |
+
+You can also label at any time by right-clicking the tray icon and
+choosing "Label Last N min" with a label from the submenu.
+
+---
+
 ## Command reference
 
 | Command | Purpose |
@@ -319,6 +349,7 @@ uv run taskclf report daily --segments-file artifacts/segments.json
 | `taskclf infer batch` | Batch predict, smooth, and segmentize |
 | `taskclf infer online` | Real-time poll-predict loop (supports `--label-queue`) |
 | `taskclf report daily` | Generate a daily summary from segments |
+| `taskclf tray` | System tray labeling app with activity transition detection |
 
 ---
 

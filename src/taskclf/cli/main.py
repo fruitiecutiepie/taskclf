@@ -28,6 +28,7 @@ from taskclf.core.defaults import (
     DEFAULT_SMOOTH_WINDOW,
     DEFAULT_TELEMETRY_DIR,
     DEFAULT_TITLE_SALT,
+    DEFAULT_TRANSITION_MINUTES,
     DEFAULT_RETRAIN_CADENCE_DAYS,
 )
 
@@ -1935,6 +1936,31 @@ def monitor_show_cmd(
         )
 
     console.print(table)
+
+
+# -- tray ---------------------------------------------------------------------
+
+
+@app.command("tray")
+def tray_cmd(
+    model_dir: str | None = typer.Option(None, "--model-dir", help="Path to a model run directory (enables label suggestions)"),
+    aw_host: str = typer.Option(DEFAULT_AW_HOST, "--aw-host", help="ActivityWatch server URL"),
+    poll_seconds: int = typer.Option(DEFAULT_POLL_SECONDS, "--poll-seconds", help="Seconds between polling iterations"),
+    title_salt: str = typer.Option(DEFAULT_TITLE_SALT, "--title-salt", help="Salt for hashing window titles"),
+    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory"),
+    transition_minutes: int = typer.Option(DEFAULT_TRANSITION_MINUTES, "--transition-minutes", help="Minutes a new app must persist before prompting to label"),
+) -> None:
+    """Run a system tray labeling app with activity transition detection."""
+    from taskclf.ui.tray import run_tray
+
+    run_tray(
+        model_dir=Path(model_dir) if model_dir else None,
+        aw_host=aw_host,
+        poll_seconds=poll_seconds,
+        title_salt=title_salt,
+        data_dir=Path(data_dir),
+        transition_minutes=transition_minutes,
+    )
 
 
 if __name__ == "__main__":

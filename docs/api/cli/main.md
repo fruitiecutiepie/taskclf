@@ -28,6 +28,7 @@ Typer CLI entrypoint and commands.
 | `taskclf monitor drift-check` | Run drift detection (reference vs current) |
 | `taskclf monitor telemetry` | Compute and store a telemetry snapshot |
 | `taskclf monitor show` | Display recent telemetry snapshots |
+| `taskclf tray` | Run system tray labeling app with activity transition detection |
 
 ### labels add-block
 
@@ -242,5 +243,30 @@ Display recent telemetry snapshots as a Rich table.
 ```bash
 taskclf monitor show --store-dir artifacts/telemetry --last 10
 ```
+
+### tray
+
+Run a persistent system tray app that polls ActivityWatch, detects
+activity transitions, and prompts for labels.  When `--model-dir` is
+provided, the app suggests labels using the trained model.  Without a
+model, all 8 core labels are presented for manual selection.
+
+```bash
+taskclf tray
+```
+
+With a model for label suggestions:
+
+```bash
+taskclf tray --model-dir models/run_20260226
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--model-dir` | *(none)* | Model bundle for label suggestions |
+| `--aw-host` | `http://localhost:5600` | ActivityWatch server URL |
+| `--poll-seconds` | `60` | Seconds between AW polls |
+| `--transition-minutes` | `3` | Minutes a new app must persist before prompting |
+| `--data-dir` | `data/processed` | Processed data directory |
 
 ::: taskclf.cli.main

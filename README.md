@@ -196,6 +196,7 @@ All commands: `uv run taskclf --help`
 | `infer` | `batch`, `online`, `baseline`, `compare` | Prediction (ML, rule-based, comparison) |
 | `report` | `daily` | Daily summaries (JSON/CSV/Parquet) |
 | `monitor` | `drift-check`, `telemetry`, `show` | Feature drift and telemetry tracking |
+| *(top-level)* | `tray` | System tray labeling app with activity transition detection |
 
 Full CLI docs: `docs/api/cli/main.md`
 
