@@ -10,6 +10,7 @@ Typer CLI entrypoint and commands.
 | `taskclf features build` | Build per-minute feature rows for a date |
 | `taskclf labels import` | Import label spans from CSV |
 | `taskclf labels add-block` | Create a manual label block for a time range |
+| `taskclf labels label-now` | Label the last N minutes (no timestamps needed) |
 | `taskclf labels show-queue` | Show pending items in the active labeling queue |
 | `taskclf labels project` | Project label blocks onto feature windows |
 | `taskclf train build-dataset` | Build training dataset (X/y/splits artifacts) |
@@ -22,7 +23,7 @@ Typer CLI entrypoint and commands.
 | `taskclf infer batch` | Run batch inference (supports `--taxonomy`) |
 | `taskclf infer baseline` | Run rule-based baseline inference (no ML) |
 | `taskclf infer compare` | Compare baseline vs ML model on labeled data |
-| `taskclf infer online` | Run online inference loop (supports `--taxonomy`) |
+| `taskclf infer online` | Run online inference loop (supports `--taxonomy`, `--label-queue`) |
 | `taskclf report daily` | Generate a daily report |
 | `taskclf monitor drift-check` | Run drift detection (reference vs current) |
 | `taskclf monitor telemetry` | Compute and store a telemetry snapshot |
@@ -37,6 +38,25 @@ label display.
 taskclf labels add-block \
   --start 2025-06-15T10:00:00 --end 2025-06-15T11:00:00 \
   --label Build --user-id my-user --confidence 0.9
+```
+
+### labels label-now
+
+Label the last N minutes without typing timestamps.  Queries a running
+ActivityWatch server for a live summary of apps used in the window.
+Falls back gracefully if AW is unreachable.
+
+```bash
+taskclf labels label-now --minutes 10 --label Build
+```
+
+With options:
+
+```bash
+taskclf labels label-now \
+  --minutes 15 --label Debug \
+  --user-id my-user --confidence 0.9 \
+  --aw-host http://localhost:5600
 ```
 
 ### labels show-queue
@@ -137,7 +157,7 @@ taskclf infer batch \
   --taxonomy configs/user_taxonomy.yaml
 ```
 
-### infer online (with taxonomy and calibrator)
+### infer online (with taxonomy, calibrator, and label queue)
 
 Run online inference with optional taxonomy mapping and probability
 calibration.  Each prediction is written as a full `WindowPrediction`
@@ -145,11 +165,25 @@ row (core label, core probs, confidence, rejection status, mapped
 label, mapped probs).  Segments are hysteresis-merged so blocks shorter
 than `MIN_BLOCK_DURATION_SECONDS` (3 min) are absorbed by neighbours.
 
+When `--label-queue` is enabled, predictions with confidence below
+`--label-confidence` (default 0.55) are auto-enqueued to the labeling
+queue for manual review.  Enqueued items appear in `labels show-queue`
+and the Streamlit labeling UI.
+
 ```bash
 taskclf infer online \
   --model-dir models/run_20250615_120000 \
   --taxonomy configs/user_taxonomy.yaml \
   --calibrator calibrators/user_cal.json
+```
+
+With label queue integration:
+
+```bash
+taskclf infer online \
+  --model-dir models/run_20250615_120000 \
+  --label-queue \
+  --label-confidence 0.50
 ```
 
 ### infer baseline

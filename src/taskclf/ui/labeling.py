@@ -4,25 +4,27 @@ Launch with::
 
     streamlit run src/taskclf/ui/labeling.py -- --data-dir data/processed
 
-Provides four panels:
+Provides five panels:
 
 1. **Queue** -- pending ``LabelRequest`` items, sorted by confidence.
 2. **Summary** -- aggregated feature stats for the selected block
    (privacy-safe: no raw titles).
 3. **Label form** -- dropdown for ``CoreLabel``, confidence slider, submit.
-4. **History** -- recently created labels with edit capability.
+4. **Label Recent** -- quick-label the last N minutes with live AW summary.
+5. **History** -- recently created labels with edit capability.
 """
 
 from __future__ import annotations
 
 import datetime as dt
 import sys
+from collections import Counter
 from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 
-from taskclf.core.defaults import DEFAULT_DATA_DIR
+from taskclf.core.defaults import DEFAULT_AW_HOST, DEFAULT_DATA_DIR, DEFAULT_TITLE_SALT
 from taskclf.core.store import read_parquet
 from taskclf.core.types import CoreLabel, LabelSpan
 from taskclf.labels.queue import ActiveLabelingQueue
@@ -33,13 +35,19 @@ from taskclf.labels.store import (
 )
 
 
-def _parse_args() -> Path:
+def _parse_args() -> tuple[Path, str, str]:
     data_dir = DEFAULT_DATA_DIR
+    aw_host = DEFAULT_AW_HOST
+    title_salt = DEFAULT_TITLE_SALT
     args = sys.argv[1:]
     for i, arg in enumerate(args):
         if arg == "--data-dir" and i + 1 < len(args):
             data_dir = args[i + 1]
-    return Path(data_dir)
+        elif arg == "--aw-host" and i + 1 < len(args):
+            aw_host = args[i + 1]
+        elif arg == "--title-salt" and i + 1 < len(args):
+            title_salt = args[i + 1]
+    return Path(data_dir), aw_host, title_salt
 
 
 def _load_features(data_dir: Path, start: dt.datetime, end: dt.datetime) -> pd.DataFrame:
@@ -55,8 +63,28 @@ def _load_features(data_dir: Path, start: dt.datetime, end: dt.datetime) -> pd.D
     return pd.DataFrame()
 
 
+def _fetch_aw_live_summary(
+    aw_host: str, title_salt: str, start: dt.datetime, end: dt.datetime,
+) -> list[tuple[str, int]] | None:
+    """Return top-(app, event_count) pairs from a live AW server, or None on failure."""
+    try:
+        from taskclf.adapters.activitywatch.client import (
+            fetch_aw_events,
+            find_window_bucket_id,
+        )
+
+        bucket_id = find_window_bucket_id(aw_host)
+        events = fetch_aw_events(aw_host, bucket_id, start, end, title_salt=title_salt)
+        if not events:
+            return []
+        counts = Counter(ev.app_id for ev in events)
+        return counts.most_common(5)
+    except Exception:
+        return None
+
+
 def main() -> None:
-    data_dir = _parse_args()
+    data_dir, aw_host, title_salt = _parse_args()
     labels_path = data_dir / "labels_v1" / "labels.parquet"
     queue_path = data_dir / "labels_v1" / "queue.json"
 
@@ -96,7 +124,9 @@ def main() -> None:
 
     # --- Main panel ---
     with col_main:
-        tab_label, tab_history = st.tabs(["New Label", "History"])
+        tab_label, tab_recent, tab_history = st.tabs(
+            ["New Label", "Label Recent", "History"]
+        )
 
         # --- Labeling form ---
         with tab_label:
@@ -175,6 +205,82 @@ def main() -> None:
                                 )
                     except ValueError as exc:
                         st.error(str(exc))
+
+        # --- Label Recent panel ---
+        with tab_recent:
+            st.header("Label Recent Activity")
+            st.caption("Quickly label what you've been doing in the last few minutes.")
+
+            with st.form("recent_form"):
+                recent_minutes = st.slider(
+                    "Last N minutes", min_value=1, max_value=60, value=10, step=1,
+                )
+                recent_label = st.selectbox(
+                    "Label",
+                    [cl.value for cl in CoreLabel],
+                    key="recent_label_select",
+                )
+                recent_user_id = st.text_input(
+                    "User ID", value="default-user", key="recent_user_id",
+                )
+                recent_confidence = st.slider(
+                    "Confidence",
+                    min_value=0.0, max_value=1.0, value=0.8, step=0.05,
+                    key="recent_confidence",
+                )
+                recent_submitted = st.form_submit_button("Label Now")
+
+            if recent_submitted and recent_label is not None:
+                end_ts = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+                start_ts = end_ts - dt.timedelta(minutes=recent_minutes)
+
+                st.info(
+                    f"Labeling **{start_ts:%H:%M:%S}** → **{end_ts:%H:%M:%S}** UTC "
+                    f"({recent_minutes} min)"
+                )
+
+                # Live AW summary
+                aw_apps = _fetch_aw_live_summary(aw_host, title_salt, start_ts, end_ts)
+                if aw_apps is None:
+                    st.caption("ActivityWatch not reachable — skipping live summary.")
+                elif not aw_apps:
+                    st.caption("No ActivityWatch events in this window.")
+                else:
+                    st.subheader("Live Activity (ActivityWatch)")
+                    app_df = pd.DataFrame(aw_apps, columns=["App", "Events"])
+                    st.dataframe(app_df, use_container_width=True, hide_index=True)
+
+                # On-disk feature summary
+                feat_df = _load_features(data_dir, start_ts, end_ts)
+                if not feat_df.empty:
+                    summary = generate_label_summary(feat_df, start_ts, end_ts)
+                    if summary["total_buckets"] > 0:
+                        sc1, sc2, sc3 = st.columns(3)
+                        sc1.metric("Buckets", summary["total_buckets"])
+                        sc2.metric("Sessions", summary["session_count"])
+                        sc3.metric(
+                            "Avg keys/min",
+                            summary["mean_keys_per_min"]
+                            if summary["mean_keys_per_min"] is not None
+                            else "N/A",
+                        )
+
+                span = LabelSpan(
+                    start_ts=start_ts,
+                    end_ts=end_ts,
+                    label=recent_label,
+                    provenance="manual",
+                    user_id=recent_user_id,
+                    confidence=recent_confidence,
+                )
+                try:
+                    append_label_span(span, labels_path)
+                    st.success(
+                        f"Saved: **{recent_label}** "
+                        f"[{start_ts:%H:%M} → {end_ts:%H:%M} UTC]"
+                    )
+                except ValueError as exc:
+                    st.error(str(exc))
 
         # --- History panel ---
         with tab_history:

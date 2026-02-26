@@ -23,6 +23,7 @@ from taskclf.core.defaults import (
     DEFAULT_AW_HOST,
     DEFAULT_BUCKET_SECONDS,
     DEFAULT_IDLE_GAP_SECONDS,
+    DEFAULT_LABEL_CONFIDENCE_THRESHOLD,
     DEFAULT_OUT_DIR,
     DEFAULT_POLL_SECONDS,
     DEFAULT_REJECT_THRESHOLD,
@@ -235,6 +236,8 @@ def run_online_loop(
     taxonomy_path: Path | None = None,
     calibrator_path: Path | None = None,
     calibrator_store_path: Path | None = None,
+    label_queue_path: Path | None = None,
+    label_confidence_threshold: float = DEFAULT_LABEL_CONFIDENCE_THRESHOLD,
 ) -> None:
     """Poll ActivityWatch, predict, smooth, and write results continuously.
 
@@ -264,6 +267,11 @@ def run_online_loop(
         calibrator_store_path: Optional path to a calibrator store
             directory.  When provided, per-user calibration is applied.
             Takes precedence over *calibrator_path*.
+        label_queue_path: Optional path to the labeling queue JSON.
+            When provided, low-confidence predictions are auto-enqueued
+            for manual labeling.
+        label_confidence_threshold: Predictions with confidence below
+            this value are enqueued when *label_queue_path* is set.
     """
     from taskclf.adapters.activitywatch.client import (
         fetch_aw_events,
@@ -317,12 +325,23 @@ def run_online_loop(
         calibrator_store=cal_store,
     )
 
+    label_queue = None
+    if label_queue_path is not None:
+        from taskclf.labels.queue import ActiveLabelingQueue
+
+        label_queue = ActiveLabelingQueue(label_queue_path)
+        logger.info(
+            "Label queue active: %s (threshold=%.2f)",
+            label_queue_path, label_confidence_threshold,
+        )
+
     pred_path = out_dir / "predictions.csv"
     seg_path = out_dir / "segments.json"
 
     session_start: datetime | None = None
     last_event_ts: datetime | None = None
     idle_gap = timedelta(seconds=idle_gap_seconds)
+    total_enqueued = 0
 
     print(f"Online inference started (polling every {poll_seconds}s, bucket={bucket_id})")
     if input_bucket_id:
@@ -384,6 +403,26 @@ def run_online_loop(
                 print(f"[{ts_str}] {prediction.mapped_label_name} (confidence: {conf_str})")
                 _append_prediction_csv(pred_path, prediction)
 
+                if (
+                    label_queue is not None
+                    and prediction.confidence < label_confidence_threshold
+                ):
+                    import pandas as pd
+
+                    enqueue_df = pd.DataFrame([{
+                        "user_id": prediction.user_id or "default-user",
+                        "bucket_start_ts": prediction.bucket_start_ts,
+                        "bucket_end_ts": prediction.bucket_start_ts + timedelta(seconds=bucket_seconds),
+                        "confidence": prediction.confidence,
+                        "predicted_label": prediction.core_label_name,
+                    }])
+                    n = label_queue.enqueue_low_confidence(
+                        enqueue_df, threshold=label_confidence_threshold,
+                    )
+                    if n > 0:
+                        total_enqueued += n
+                        print(f"  → enqueued for labeling (conf={conf_str})")
+
             segments = predictor.get_segments()
             write_segments_json(segments, seg_path)
 
@@ -439,3 +478,6 @@ def run_online_loop(
             logger.warning("Could not write telemetry snapshot", exc_info=True)
     else:
         print("No predictions were made.")
+
+    if total_enqueued > 0:
+        print(f"Enqueued {total_enqueued} low-confidence bucket(s) for labeling.")

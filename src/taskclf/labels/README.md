@@ -16,6 +16,10 @@ Label handling using **time spans**.
 - Validate label set and time ranges
 - Project label blocks onto per-minute feature windows for training
 - Manage an active labeling queue for human-in-the-loop review
+- Support real-time labeling: the CLI `label-now` command and the Streamlit
+  "Label Recent" tab create spans from `now - N minutes` to `now`, with
+  optional live ActivityWatch summaries
+- Auto-enqueue low-confidence predictions from the online inference loop
 - Optional weak labeling rules (heuristics) that emit low-confidence spans
 
 ## Invariants

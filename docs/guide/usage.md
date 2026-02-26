@@ -135,6 +135,32 @@ Valid labels (v1) — see [Task Ontology](labels_v1.md) for full definitions:
 | `--file` | *(required)* | Path to labels CSV |
 | `--data-dir` | `data/processed` | Processed data directory |
 
+#### Real-time labeling
+
+If you have ActivityWatch running and want to label as you work, use
+`label-now` instead of writing timestamps by hand:
+
+```bash
+uv run taskclf labels label-now --minutes 10 --label Build
+```
+
+This labels the last 10 minutes, querying ActivityWatch for a live
+summary of which apps were active in that window.
+
+| Option | Default | Description |
+|---|---|---|
+| `--minutes` | `10` | How many minutes back to label |
+| `--label` | *(required)* | Core label |
+| `--user-id` | `default-user` | User identifier |
+| `--confidence` | *(none)* | Labeler confidence (0-1) |
+| `--aw-host` | `http://localhost:5600` | ActivityWatch server URL |
+
+You can also label in the **Streamlit UI** via the "Label Recent" tab:
+
+```bash
+uv run streamlit run src/taskclf/ui/labeling.py
+```
+
 ### Step 4: Train a model
 
 ```bash
@@ -244,6 +270,12 @@ Press **Ctrl+C** to stop; a final daily report is generated on shutdown.
 | `--smooth-window` | `3` | Rolling majority window size |
 | `--title-salt` | `taskclf-default-salt` | Salt for title hashing |
 | `--out-dir` | `artifacts` | Output directory |
+| `--label-queue` | off | Auto-enqueue low-confidence predictions for manual labeling |
+| `--label-confidence` | `0.55` | Confidence threshold for auto-enqueue |
+
+When `--label-queue` is enabled, uncertain predictions are added to the
+labeling queue (`data/processed/labels_v1/queue.json`) and surface in
+`taskclf labels show-queue` and the Streamlit labeling UI for review.
 
 Online mode **never retrains** — it only uses the pre-trained model.
 
@@ -280,9 +312,12 @@ uv run taskclf report daily --segments-file artifacts/segments.json
 | `taskclf ingest aw` | Import an ActivityWatch JSON export into normalized, privacy-safe events |
 | `taskclf features build` | Build per-minute feature rows for a single date |
 | `taskclf labels import` | Import label spans from a CSV file |
+| `taskclf labels add-block` | Create a manual label block for a time range |
+| `taskclf labels label-now` | Label the last N minutes (queries AW for live summary) |
+| `taskclf labels show-queue` | Show pending labeling requests |
 | `taskclf train lgbm` | Train a LightGBM multiclass classifier |
 | `taskclf infer batch` | Batch predict, smooth, and segmentize |
-| `taskclf infer online` | Real-time poll-predict loop (requires running ActivityWatch) |
+| `taskclf infer online` | Real-time poll-predict loop (supports `--label-queue`) |
 | `taskclf report daily` | Generate a daily summary from segments |
 
 ---

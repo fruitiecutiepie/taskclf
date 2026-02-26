@@ -125,6 +125,15 @@ uv run taskclf labels add-block \
   --start 2026-02-16T09:00:00 --end 2026-02-16T10:00:00 --label Build
 ```
 
+Or label what you're doing right now (no timestamps needed):
+
+```bash
+uv run taskclf labels label-now --minutes 10 --label Build
+```
+
+This queries ActivityWatch for a live summary of apps used in the last N minutes
+and creates the label span automatically.
+
 ### Train
 
 ```bash
@@ -154,6 +163,8 @@ Options:
 - `--smooth-window` — rolling majority window size (default: 3)
 - `--title-salt` — salt for hashing window titles (default: `taskclf-default-salt`)
 - `--out-dir` — output directory (default: `artifacts`)
+- `--label-queue` / `--no-label-queue` — auto-enqueue low-confidence predictions for manual labeling
+- `--label-confidence` — confidence threshold for auto-enqueue (default: 0.55)
 
 ### Run baseline (no model needed)
 
@@ -179,7 +190,7 @@ All commands: `uv run taskclf --help`
 |-------|----------|---------|
 | `ingest` | `aw` | Import ActivityWatch exports |
 | `features` | `build` | Build per-minute feature rows |
-| `labels` | `import`, `add-block`, `show-queue`, `project` | Manage label spans and labeling queue |
+| `labels` | `import`, `add-block`, `label-now`, `show-queue`, `project` | Manage label spans and labeling queue |
 | `train` | `build-dataset`, `lgbm`, `evaluate`, `tune-reject`, `calibrate`, `retrain`, `check-retrain` | Training, evaluation, and retraining pipeline |
 | `taxonomy` | `validate`, `show`, `init` | User-defined label groupings |
 | `infer` | `batch`, `online`, `baseline`, `compare` | Prediction (ML, rule-based, comparison) |

@@ -13,6 +13,7 @@ from taskclf.core.defaults import (
     DEFAULT_DRIFT_AUTO_LABEL_LIMIT,
     DEFAULT_ENTROPY_SPIKE_MULTIPLIER,
     DEFAULT_KS_ALPHA,
+    DEFAULT_LABEL_CONFIDENCE_THRESHOLD,
     DEFAULT_MIN_DISTINCT_LABELS,
     DEFAULT_MIN_LABELED_DAYS,
     DEFAULT_MIN_LABELED_WINDOWS,
@@ -241,6 +242,109 @@ def labels_add_block_cmd(
 
     typer.echo(
         f"Added label block: {label} [{start_ts} → {end_ts}] "
+        f"user={user_id} confidence={confidence}"
+    )
+
+
+@labels_app.command("label-now")
+def labels_label_now_cmd(
+    minutes: int = typer.Option(10, "--minutes", min=1, help="How many minutes back from now to label"),
+    label: str = typer.Option(..., "--label", help="Core label (Build, Debug, Review, Write, ReadResearch, Communicate, Meet, BreakIdle)"),
+    user_id: str = typer.Option("default-user", "--user-id", help="User ID for this label"),
+    confidence: float | None = typer.Option(None, "--confidence", min=0.0, max=1.0, help="Labeler confidence (0-1)"),
+    aw_host: str = typer.Option(DEFAULT_AW_HOST, "--aw-host", help="ActivityWatch server URL for live summary"),
+    title_salt: str = typer.Option(DEFAULT_TITLE_SALT, "--title-salt", help="Salt for hashing window titles"),
+    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory"),
+) -> None:
+    """Label the last N minutes with a single command (no timestamps needed)."""
+    from collections import Counter
+
+    import pandas as pd
+    from rich.console import Console
+    from rich.table import Table
+
+    from taskclf.core.store import read_parquet
+    from taskclf.core.types import LabelSpan
+    from taskclf.labels.store import append_label_span, generate_label_summary
+
+    console = Console()
+
+    end_ts = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+    start_ts = end_ts - dt.timedelta(minutes=minutes)
+
+    console.print(
+        f"[bold]Labeling last {minutes} minute(s):[/bold] "
+        f"{start_ts:%H:%M:%S} → {end_ts:%H:%M:%S} UTC"
+    )
+
+    # Live AW summary (best-effort)
+    try:
+        from taskclf.adapters.activitywatch.client import (
+            fetch_aw_events,
+            find_window_bucket_id,
+        )
+
+        bucket_id = find_window_bucket_id(aw_host)
+        events = fetch_aw_events(aw_host, bucket_id, start_ts, end_ts, title_salt=title_salt)
+        if events:
+            app_counts = Counter(ev.app_id for ev in events)
+            table = Table(title="Live Activity (from ActivityWatch)")
+            table.add_column("App", style="bold")
+            table.add_column("Events", justify="right")
+            for app, cnt in app_counts.most_common(5):
+                table.add_row(app, str(cnt))
+            table.add_row("Total events", str(len(events)), style="dim")
+            console.print(table)
+        else:
+            console.print("[dim]No ActivityWatch events in this window.[/dim]")
+    except Exception as exc:
+        console.print(f"[dim]ActivityWatch not reachable ({exc}); skipping live summary.[/dim]")
+
+    # On-disk feature summary (best-effort)
+    features_dfs: list[pd.DataFrame] = []
+    data_path = Path(data_dir)
+    current_date = start_ts.date()
+    while current_date <= end_ts.date():
+        fp = data_path / f"features_v1/date={current_date.isoformat()}" / "features.parquet"
+        if fp.exists():
+            features_dfs.append(read_parquet(fp))
+        current_date += dt.timedelta(days=1)
+
+    if features_dfs:
+        feat_df = pd.concat(features_dfs, ignore_index=True)
+        summary = generate_label_summary(feat_df, start_ts, end_ts)
+        if summary["total_buckets"] > 0:
+            table = Table(title="Feature Summary")
+            table.add_column("Metric", style="bold")
+            table.add_column("Value")
+            table.add_row("Buckets", str(summary["total_buckets"]))
+            table.add_row("Sessions", str(summary["session_count"]))
+            if summary["mean_keys_per_min"] is not None:
+                table.add_row("Avg keys/min", str(summary["mean_keys_per_min"]))
+            if summary["mean_clicks_per_min"] is not None:
+                table.add_row("Avg clicks/min", str(summary["mean_clicks_per_min"]))
+            for app_info in summary["top_apps"][:3]:
+                table.add_row(f"App: {app_info['app_id']}", f"{app_info['buckets']} buckets")
+            console.print(table)
+
+    span = LabelSpan(
+        start_ts=start_ts,
+        end_ts=end_ts,
+        label=label,
+        provenance="manual",
+        user_id=user_id,
+        confidence=confidence,
+    )
+
+    labels_path = Path(data_dir) / "labels_v1" / "labels.parquet"
+    try:
+        append_label_span(span, labels_path)
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1)
+
+    typer.echo(
+        f"Labeled: {label} [{start_ts:%H:%M} → {end_ts:%H:%M} UTC] "
         f"user={user_id} confidence={confidence}"
     )
 
@@ -1294,9 +1398,14 @@ def infer_online_cmd(
     taxonomy_config: str | None = typer.Option(None, "--taxonomy", help="Path to a taxonomy YAML file for user-specific label mapping"),
     calibrator_config: str | None = typer.Option(None, "--calibrator", help="Path to a calibrator JSON file for probability calibration"),
     calibrator_store_dir: str | None = typer.Option(None, "--calibrator-store", help="Path to a calibrator store directory for per-user calibration"),
+    label_queue: bool = typer.Option(False, "--label-queue/--no-label-queue", help="Auto-enqueue low-confidence buckets for manual labeling"),
+    label_confidence: float = typer.Option(DEFAULT_LABEL_CONFIDENCE_THRESHOLD, "--label-confidence", help="Confidence threshold below which buckets are enqueued for labeling"),
+    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory (used for label queue path)"),
 ) -> None:
     """Run online inference: poll ActivityWatch, predict, smooth, and report."""
     from taskclf.infer.online import run_online_loop
+
+    queue_path = Path(data_dir) / "labels_v1" / "queue.json" if label_queue else None
 
     run_online_loop(
         model_dir=Path(model_dir),
@@ -1309,6 +1418,8 @@ def infer_online_cmd(
         taxonomy_path=Path(taxonomy_config) if taxonomy_config else None,
         calibrator_path=Path(calibrator_config) if calibrator_config else None,
         calibrator_store_path=Path(calibrator_store_dir) if calibrator_store_dir else None,
+        label_queue_path=queue_path,
+        label_confidence_threshold=label_confidence,
     )
 
 
