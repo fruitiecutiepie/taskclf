@@ -101,9 +101,9 @@
 
 ---
 
-### 5) Inference defaulting (CLI + library API)
+### ~~5) Inference defaulting (CLI + library API)~~
 
-17. **Define a single resolver** `resolve_model_dir(args, models_dir, policy)`:
+17. ~~**Define a single resolver** `resolve_model_dir(args, models_dir, policy)`:~~
 
 * If `--model-dir` given → return it
 * Else:
@@ -111,15 +111,15 @@
   * If `active.json` exists and valid → return its path
   * Else → compute `best` and return its path (optionally write `active.json` if you want self-healing)
 
-18. **Update batch inference CLI** to make `--model-dir` optional.
-19. **Update online inference**:
+18. ~~**Update batch inference CLI** to make `--model-dir` optional.~~
+19. ~~**Update online inference**:~~
 
 * Add lightweight reload mechanism:
 
   * Poll `active.json` mtime every N seconds OR reload per request with caching.
   * Swap model only after new model loads successfully.
 
-20. **Add integration tests**:
+20. ~~**Add integration tests**:~~
 
 * “No model-dir and active exists” uses active
 * “No active and models exist” picks best

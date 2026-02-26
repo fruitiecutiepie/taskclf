@@ -146,17 +146,32 @@ Generate a default taxonomy YAML with one bucket per core label
 taskclf taxonomy init --out configs/user_taxonomy.yaml
 ```
 
-### infer batch (with taxonomy)
+### infer batch
 
 Run batch inference with optional taxonomy mapping.  When `--taxonomy`
 is provided, a `mapped_label` column is added to `predictions.csv`.
 
+`--model-dir` is optional.  When omitted, the model is auto-resolved:
+first from `models/active.json`, then by best-model selection from
+`--models-dir` (default `models/`).  See `docs/guide/model_selection.md`
+for the full resolution precedence.
+
 ```bash
+# With explicit model directory:
 taskclf infer batch \
   --model-dir models/run_20250615_120000 \
   --from 2025-06-10 --to 2025-06-15 --synthetic \
   --taxonomy configs/user_taxonomy.yaml
+
+# With auto-resolution (uses active.json or best model):
+taskclf infer batch \
+  --from 2025-06-10 --to 2025-06-15 --synthetic
 ```
+
+| Option | Default | Description |
+|---|---|---|
+| `--model-dir` | *(auto-resolved)* | Path to a model bundle directory |
+| `--models-dir` | `models` | Base directory for model bundles (used for auto-resolution) |
 
 ### infer online (with taxonomy, calibrator, and label queue)
 
@@ -166,12 +181,24 @@ row (core label, core probs, confidence, rejection status, mapped
 label, mapped probs).  Segments are hysteresis-merged so blocks shorter
 than `MIN_BLOCK_DURATION_SECONDS` (3 min) are absorbed by neighbours.
 
+`--model-dir` is optional (same auto-resolution as `infer batch`).
+When `--models-dir` is provided, the online loop watches
+`models/active.json` for changes and hot-reloads the model bundle
+without restarting.  The swap only occurs after the new bundle loads
+successfully; on failure the current model is kept.
+
 When `--label-queue` is enabled, predictions with confidence below
 `--label-confidence` (default 0.55) are auto-enqueued to the labeling
 queue for manual review.  Enqueued items appear in `labels show-queue`
 and the Streamlit labeling UI.
 
 ```bash
+# With auto-resolution and model reload:
+taskclf infer online \
+  --taxonomy configs/user_taxonomy.yaml \
+  --calibrator calibrators/user_cal.json
+
+# With explicit model directory:
 taskclf infer online \
   --model-dir models/run_20250615_120000 \
   --taxonomy configs/user_taxonomy.yaml \
@@ -182,10 +209,14 @@ With label queue integration:
 
 ```bash
 taskclf infer online \
-  --model-dir models/run_20250615_120000 \
   --label-queue \
   --label-confidence 0.50
 ```
+
+| Option | Default | Description |
+|---|---|---|
+| `--model-dir` | *(auto-resolved)* | Path to a model bundle directory |
+| `--models-dir` | `models` | Base directory for model bundles (used for auto-resolution and reload) |
 
 ### infer baseline
 

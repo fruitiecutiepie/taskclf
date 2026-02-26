@@ -31,7 +31,8 @@ The current schema hash is `FeatureSchemaV1.SCHEMA_HASH`, computed at import tim
 - The model registry (`model_registry.py`) scans, validates, ranks, and selects bundles.
 - The active model pointer (`active.json`) is implemented: `read_active`, `write_active_atomic`, `append_active_history`, and `resolve_active_model` are available.
 - `resolve_active_model` reads `active.json` if valid, otherwise falls back to `find_best_model` and self-heals the pointer.
-- Inference still requires explicit `--model-dir` (CLI wiring is not yet done; see TODO items 17-20).
+- Inference auto-resolves the model when `--model-dir` is omitted via `resolve_model_dir()` in `taskclf.infer.resolve`: reads `active.json` if valid, otherwise falls back to best-model selection. Both `infer batch` and `infer online` accept an optional `--models-dir` (default `models/`).
+- The online inference loop watches `active.json` mtime and hot-reloads the model when it changes (swap only after successful load).
 - Retrain resolves the champion via a priority chain: `read_active()` → `find_best_model()` → `find_latest_model()` (legacy fallback). See `_resolve_champion()` in `retrain.py`.
 - After a successful promotion to `models/`, retrain runs `find_best_model()` and atomically updates `active.json` if the best model has changed (the “overthrow” mechanism).
 - Regression gates are split into candidate-only gates (`check_candidate_gates`) and comparative gates (`check_regression_gates`). Candidate gates evaluate the challenger in isolation (BreakIdle precision, per-class precision, acceptance checks); comparative gates add the macro-F1 no-regression check against the champion.
@@ -40,11 +41,11 @@ The current schema hash is `FeatureSchemaV1.SCHEMA_HASH`, computed at import tim
 
 Acceptance gates (BreakIdle precision, “no class below 0.50 precision”, etc.) are computed during evaluation and stored in `evaluation.json` written under `--out-dir` (not inside the bundle).
 
-## Goal state (to implement)
+## Default resolution precedence (implemented)
 
 ### Default resolution precedence
 
-When `--model-dir` is omitted, inference resolves the model directory by the following precedence:
+When `--model-dir` is omitted, inference resolves the model directory by the following precedence (implemented in `taskclf.infer.resolve.resolve_model_dir`):
 
 1. If `models/active.json` exists and is valid: use the bundle it points to.
 2. Else: select the best bundle from `models/` by the selection policy (below).

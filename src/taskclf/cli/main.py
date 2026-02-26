@@ -1263,7 +1263,8 @@ app.add_typer(infer_app, name="infer")
 
 @infer_app.command("batch")
 def infer_batch_cmd(
-    model_dir: str = typer.Option(..., "--model-dir", help="Path to a model run directory"),
+    model_dir: str | None = typer.Option(None, "--model-dir", help="Path to a model run directory (auto-resolved from models/ if omitted)"),
+    models_dir: str = typer.Option(DEFAULT_MODELS_DIR, "--models-dir", help="Base directory for model bundles (used for auto-resolution)"),
     date_from: str = typer.Option(..., "--from", help="Start date (YYYY-MM-DD)"),
     date_to: str = typer.Option(..., "--to", help="End date (YYYY-MM-DD, inclusive)"),
     synthetic: bool = typer.Option(False, "--synthetic", help="Generate dummy features instead of reading from disk"),
@@ -1287,6 +1288,13 @@ def infer_batch_cmd(
         write_predictions_csv,
         write_segments_json,
     )
+    from taskclf.infer.resolve import ModelResolutionError, resolve_model_dir
+
+    try:
+        resolved_dir = resolve_model_dir(model_dir, Path(models_dir))
+    except ModelResolutionError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
 
     taxonomy = None
     if taxonomy_config is not None:
@@ -1305,8 +1313,8 @@ def infer_batch_cmd(
             f"({len(cal_store.user_calibrators)} per-user calibrators)"
         )
 
-    model, metadata, cat_encoders = load_model_bundle(Path(model_dir))
-    typer.echo(f"Loaded model from {model_dir} (schema={metadata.schema_hash})")
+    model, metadata, cat_encoders = load_model_bundle(resolved_dir)
+    typer.echo(f"Loaded model from {resolved_dir} (schema={metadata.schema_hash})")
 
     start = dt.date.fromisoformat(date_from)
     end = dt.date.fromisoformat(date_to)
@@ -1389,7 +1397,8 @@ def infer_batch_cmd(
 
 @infer_app.command("online")
 def infer_online_cmd(
-    model_dir: str = typer.Option(..., "--model-dir", help="Path to a model run directory"),
+    model_dir: str | None = typer.Option(None, "--model-dir", help="Path to a model run directory (auto-resolved from models/ if omitted)"),
+    models_dir: str = typer.Option(DEFAULT_MODELS_DIR, "--models-dir", help="Base directory for model bundles (used for auto-resolution and reload)"),
     poll_seconds: int = typer.Option(DEFAULT_POLL_SECONDS, "--poll-seconds", help="Seconds between polling iterations"),
     aw_host: str = typer.Option(DEFAULT_AW_HOST, "--aw-host", help="ActivityWatch server URL"),
     smooth_window: int = typer.Option(DEFAULT_SMOOTH_WINDOW, "--smooth-window", help="Rolling majority smoothing window size"),
@@ -1405,11 +1414,19 @@ def infer_online_cmd(
 ) -> None:
     """Run online inference: poll ActivityWatch, predict, smooth, and report."""
     from taskclf.infer.online import run_online_loop
+    from taskclf.infer.resolve import ModelResolutionError, resolve_model_dir
+
+    try:
+        resolved_dir = resolve_model_dir(model_dir, Path(models_dir))
+    except ModelResolutionError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
 
     queue_path = Path(data_dir) / "labels_v1" / "queue.json" if label_queue else None
 
     run_online_loop(
-        model_dir=Path(model_dir),
+        model_dir=resolved_dir,
+        models_dir=Path(models_dir),
         aw_host=aw_host,
         poll_seconds=poll_seconds,
         smooth_window=smooth_window,

@@ -225,6 +225,7 @@ def _append_prediction_csv(path: Path, prediction: WindowPrediction) -> None:
 def run_online_loop(
     *,
     model_dir: Path,
+    models_dir: Path | None = None,
     aw_host: str = DEFAULT_AW_HOST,
     poll_seconds: int = DEFAULT_POLL_SECONDS,
     smooth_window: int = DEFAULT_SMOOTH_WINDOW,
@@ -248,8 +249,15 @@ def run_online_loop(
     when the gap since the last observed event exceeds
     *idle_gap_seconds*.
 
+    When *models_dir* is provided, the loop watches
+    ``models/active.json`` for changes and hot-reloads the model bundle
+    without restarting.  The swap only occurs after the new bundle loads
+    successfully; on failure the current model is kept.
+
     Args:
         model_dir: Path to a trained model bundle directory.
+        models_dir: Base directory for model bundles.  When provided,
+            enables automatic model reload on ``active.json`` changes.
         aw_host: Base URL of the ActivityWatch server.
         poll_seconds: Seconds between polling iterations.
         smooth_window: Rolling majority window size.
@@ -281,6 +289,7 @@ def run_online_loop(
     )
     from taskclf.features.build import build_features_from_aw_events
     from taskclf.infer.calibration import load_calibrator, load_calibrator_store
+    from taskclf.infer.resolve import ActiveModelReloader
     from taskclf.infer.taxonomy import load_taxonomy
 
     taxonomy: TaxonomyConfig | None = None
@@ -325,6 +334,10 @@ def run_online_loop(
         calibrator_store=cal_store,
     )
 
+    reloader: ActiveModelReloader | None = None
+    if models_dir is not None:
+        reloader = ActiveModelReloader(models_dir)
+
     label_queue = None
     if label_queue_path is not None:
         from taskclf.labels.queue import ActiveLabelingQueue
@@ -346,10 +359,29 @@ def run_online_loop(
     print(f"Online inference started (polling every {poll_seconds}s, bucket={bucket_id})")
     if input_bucket_id:
         print(f"Input watcher active: {input_bucket_id}")
+    if reloader is not None:
+        print(f"Model reload enabled (watching {models_dir / 'active.json'})")
     print("Press Ctrl+C to stop.\n")
 
     try:
         while True:
+            if reloader is not None:
+                reload_result = reloader.check_reload()
+                if reload_result is not None:
+                    new_model, new_metadata, new_cat_encoders = reload_result
+                    predictor = OnlinePredictor(
+                        new_model,
+                        new_metadata,
+                        cat_encoders=new_cat_encoders,
+                        smooth_window=smooth_window,
+                        bucket_seconds=bucket_seconds,
+                        reject_threshold=reject_threshold,
+                        taxonomy=taxonomy,
+                        calibrator=calibrator,
+                        calibrator_store=cal_store,
+                    )
+                    print(f"Model reloaded (schema={new_metadata.schema_hash})")
+
             now = datetime.now(timezone.utc).replace(tzinfo=None)
             window_start = now - timedelta(seconds=poll_seconds)
 
