@@ -44,6 +44,12 @@ from taskclf.core.model_io import (
     save_model_bundle,
 )
 from taskclf.core.types import LabelSpan
+from taskclf.model_registry import (
+    SelectionPolicy,
+    find_best_model,
+    read_active,
+    write_active_atomic,
+)
 from taskclf.train.evaluate import EvaluationReport, evaluate_model
 
 logger = logging.getLogger(__name__)
@@ -257,46 +263,26 @@ class RegressionResult(BaseModel, frozen=True):
     gates: list[RegressionGate]
 
 
-def check_regression_gates(
-    champion_report: EvaluationReport,
+def check_candidate_gates(
     challenger_report: EvaluationReport,
-    config: RetrainConfig,
 ) -> RegressionResult:
-    """Compare challenger model against champion on key metrics.
+    """Check candidate-only hard gates (no champion needed).
 
-    Gates:
+    These gates evaluate the challenger model in isolation:
 
-    1. **macro_f1_no_regression** — challenger macro-F1 must be within
-       ``regression_tolerance`` of the champion.
-    2. **breakidle_precision** — challenger BreakIdle precision >= 0.95.
-    3. **no_class_below_50_precision** — no class may have precision < 0.50.
-    4. **challenger_acceptance** — all of the challenger's own acceptance
+    1. **breakidle_precision** — BreakIdle precision >= 0.95.
+    2. **no_class_below_50_precision** — no class may have precision < 0.50.
+    3. **challenger_acceptance** — all of the challenger's own acceptance
        checks must pass.
 
     Args:
-        champion_report: Evaluation report of the current deployed model.
         challenger_report: Evaluation report of the newly trained model.
-        config: Retrain configuration with tolerance settings.
 
     Returns:
         A :class:`RegressionResult` with per-gate pass/fail details.
     """
     gates: list[RegressionGate] = []
 
-    # Gate 1: macro-F1 no regression
-    delta = champion_report.macro_f1 - challenger_report.macro_f1
-    passed = delta <= config.regression_tolerance
-    gates.append(RegressionGate(
-        name="macro_f1_no_regression",
-        passed=passed,
-        detail=(
-            f"champion={champion_report.macro_f1:.4f} "
-            f"challenger={challenger_report.macro_f1:.4f} "
-            f"delta={delta:+.4f} tolerance={config.regression_tolerance}"
-        ),
-    ))
-
-    # Gate 2: BreakIdle precision invariant
     bi = challenger_report.per_class.get("BreakIdle", {})
     bi_prec = bi.get("precision", 0.0)
     gates.append(RegressionGate(
@@ -305,7 +291,6 @@ def check_regression_gates(
         detail=f"BreakIdle precision={bi_prec:.4f} (>= 0.95 required)",
     ))
 
-    # Gate 3: no class below 0.50 precision
     low_classes = [
         (name, m["precision"])
         for name, m in challenger_report.per_class.items()
@@ -321,7 +306,6 @@ def check_regression_gates(
         ),
     ))
 
-    # Gate 4: challenger passes its own acceptance checks
     all_acceptance = all(challenger_report.acceptance_checks.values())
     failed_checks = [
         k for k, v in challenger_report.acceptance_checks.items() if not v
@@ -342,9 +326,97 @@ def check_regression_gates(
     )
 
 
+def check_regression_gates(
+    champion_report: EvaluationReport,
+    challenger_report: EvaluationReport,
+    config: RetrainConfig,
+) -> RegressionResult:
+    """Comparative regression check: challenger vs champion on macro-F1.
+
+    This function is purely comparative — it checks only whether the
+    challenger regresses relative to the champion.  Candidate-only hard
+    gates (BreakIdle precision, per-class precision floor, acceptance
+    checks) are handled separately by :func:`check_candidate_gates`.
+
+    Gates:
+
+    1. **macro_f1_no_regression** — challenger macro-F1 must be within
+       ``regression_tolerance`` of the champion.
+
+    Args:
+        champion_report: Evaluation report of the current deployed model.
+        challenger_report: Evaluation report of the newly trained model.
+        config: Retrain configuration with tolerance settings.
+
+    Returns:
+        A :class:`RegressionResult` with per-gate pass/fail details.
+    """
+    gates: list[RegressionGate] = []
+
+    delta = champion_report.macro_f1 - challenger_report.macro_f1
+    passed = delta <= config.regression_tolerance
+    gates.append(RegressionGate(
+        name="macro_f1_no_regression",
+        passed=passed,
+        detail=(
+            f"champion={champion_report.macro_f1:.4f} "
+            f"challenger={challenger_report.macro_f1:.4f} "
+            f"delta={delta:+.4f} tolerance={config.regression_tolerance}"
+        ),
+    ))
+
+    return RegressionResult(
+        all_passed=all(g.passed for g in gates),
+        gates=gates,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Retrain pipeline
 # ---------------------------------------------------------------------------
+
+
+def _resolve_champion(models_dir: Path) -> Path | None:
+    """Resolve the champion model directory for regression-gate comparison.
+
+    Resolution order:
+
+    1. ``active.json`` pointer — if valid and points to an existing bundle.
+    2. Best model by selection policy (``find_best_model``).
+    3. Latest model by timestamp (``find_latest_model``) as last-resort
+       fallback for repos that predate the registry.
+
+    Returns:
+        Path to the champion bundle directory, or ``None`` if no champion
+        is available.
+    """
+    pointer = read_active(models_dir)
+    if pointer is not None:
+        bundle_path = models_dir.parent / pointer.model_dir
+        if bundle_path.is_dir() and (bundle_path / "metadata.json").is_file():
+            logger.info(
+                "Champion resolved from active.json: %s", pointer.model_dir,
+            )
+            return bundle_path
+        logger.warning(
+            "active.json points to missing/invalid bundle %s; trying selection",
+            pointer.model_dir,
+        )
+
+    report = find_best_model(models_dir)
+    if report.best is not None:
+        logger.info(
+            "Champion resolved via find_best_model: %s", report.best.model_id,
+        )
+        return report.best.path
+
+    latest = find_latest_model(models_dir)
+    if latest is not None:
+        logger.info(
+            "Champion resolved via find_latest_model (legacy fallback): %s",
+            latest.name,
+        )
+    return latest
 
 
 class RetrainResult(BaseModel):
@@ -354,9 +426,12 @@ class RetrainResult(BaseModel):
     champion_macro_f1: float | None = None
     challenger_macro_f1: float
     regression: RegressionResult | None = None
+    candidate_gates: RegressionResult | None = None
     dataset_snapshot: DatasetSnapshot
     run_dir: str
     reason: str
+    champion_source: str | None = None
+    active_updated: bool = False
 
 
 def run_retrain_pipeline(
@@ -482,12 +557,17 @@ def run_retrain_pipeline(
         data_provenance=data_provenance,
     )
 
+    # Candidate-only hard gates (no champion needed)
+    candidate_gates = check_candidate_gates(challenger_report)
+
     # Regression gates against champion
     regression: RegressionResult | None = None
     champion_macro_f1: float | None = None
-    champion_path = find_latest_model(models_dir)
+    champion_source: str | None = None
+    champion_path = _resolve_champion(models_dir)
 
     if champion_path is not None:
+        champion_source = champion_path.name
         try:
             champ_model, champ_meta, champ_encoders = load_model_bundle(champion_path)
             champion_report = evaluate_model(
@@ -502,23 +582,51 @@ def run_retrain_pipeline(
             logger.warning("Could not evaluate champion: %s — skipping regression gates", exc)
 
     # Promotion decision
-    gates_passed = regression is None or regression.all_passed
-    acceptance_passed = all(challenger_report.acceptance_checks.values())
-    should_promote = gates_passed and acceptance_passed and not dry_run
+    comparative_passed = regression is None or regression.all_passed
+    candidate_passed = candidate_gates.all_passed
+    should_promote = comparative_passed and candidate_passed and not dry_run
+
+    active_updated = False
 
     if should_promote:
         run_dir = save_model_bundle(
             model, metadata, metrics, cm_df, models_dir, cat_encoders=cat_encoders,
         )
         reason = "Promoted: all gates passed"
+
+        # Update active pointer if the newly promoted model is the best
+        try:
+            policy = SelectionPolicy()
+            report = find_best_model(models_dir, policy)
+            current = read_active(models_dir)
+            if report.best is not None:
+                current_model_dir = current.model_dir if current else None
+                best_model_dir = str(
+                    report.best.path.relative_to(models_dir.parent)
+                )
+                if current_model_dir != best_model_dir:
+                    write_active_atomic(
+                        models_dir,
+                        report.best,
+                        policy,
+                        reason="retrain promotion",
+                    )
+                    active_updated = True
+                    logger.info(
+                        "Active model updated: %s -> %s",
+                        current_model_dir,
+                        best_model_dir,
+                    )
+        except Exception as exc:
+            logger.warning("Failed to update active pointer: %s", exc)
     else:
         run_dir = save_model_bundle(
             model, metadata, metrics, cm_df, out_dir / "rejected_models", cat_encoders=cat_encoders,
         )
         if dry_run:
             reason = "Dry run: model saved to rejected_models"
-        elif not acceptance_passed:
-            reason = "Rejected: acceptance checks failed"
+        elif not candidate_passed:
+            reason = "Rejected: candidate gates failed"
         else:
             reason = "Rejected: regression gates failed"
 
@@ -527,7 +635,10 @@ def run_retrain_pipeline(
         champion_macro_f1=champion_macro_f1,
         challenger_macro_f1=challenger_report.macro_f1,
         regression=regression,
+        candidate_gates=candidate_gates,
         dataset_snapshot=snapshot,
         run_dir=str(run_dir),
         reason=reason,
+        champion_source=champion_source,
+        active_updated=active_updated,
     )

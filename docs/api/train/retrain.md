@@ -25,14 +25,25 @@ Retrain configuration lives in `configs/retrain.yaml` (versioned in git):
 | `train_params.num_boost_round` | int | 100 | LightGBM boosting rounds |
 | `train_params.class_weight` | str | balanced | Class weight strategy |
 
-## Regression Gates
+## Promotion Gates
 
-All gates must pass for promotion:
+Both candidate gates and comparative gates must pass for promotion.
+
+### Candidate Gates (`check_candidate_gates`)
+
+Hard gates evaluated on the challenger model in isolation (no champion needed):
+
+1. **breakidle_precision** — BreakIdle precision >= 0.95
+2. **no_class_below_50_precision** — every class precision >= 0.50
+3. **challenger_acceptance** — all acceptance checks from `docs/guide/acceptance.md` pass
+
+### Comparative Gates (`check_regression_gates`)
+
+Regression check comparing challenger against the champion:
 
 1. **macro_f1_no_regression** — challenger macro-F1 within `regression_tolerance` of champion
-2. **breakidle_precision** — BreakIdle precision >= 0.95
-3. **no_class_below_50_precision** — every class precision >= 0.50
-4. **challenger_acceptance** — all acceptance checks from `docs/guide/acceptance.md` pass
+
+Comparative gates are only evaluated when a champion exists. If no champion is available, only candidate gates apply.
 
 ## CLI
 

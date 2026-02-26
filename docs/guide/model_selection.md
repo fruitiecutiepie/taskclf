@@ -32,7 +32,10 @@ The current schema hash is `FeatureSchemaV1.SCHEMA_HASH`, computed at import tim
 - The active model pointer (`active.json`) is implemented: `read_active`, `write_active_atomic`, `append_active_history`, and `resolve_active_model` are available.
 - `resolve_active_model` reads `active.json` if valid, otherwise falls back to `find_best_model` and self-heals the pointer.
 - Inference still requires explicit `--model-dir` (CLI wiring is not yet done; see TODO items 17-20).
-- Retrain uses `find_latest_model()` *only* to pick a “champion” by recency for regression-gate comparison; it does not reflect quality (see TODO items 14-16).
+- Retrain resolves the champion via a priority chain: `read_active()` → `find_best_model()` → `find_latest_model()` (legacy fallback). See `_resolve_champion()` in `retrain.py`.
+- After a successful promotion to `models/`, retrain runs `find_best_model()` and atomically updates `active.json` if the best model has changed (the “overthrow” mechanism).
+- Regression gates are split into candidate-only gates (`check_candidate_gates`) and comparative gates (`check_regression_gates`). Candidate gates evaluate the challenger in isolation (BreakIdle precision, per-class precision, acceptance checks); comparative gates add the macro-F1 no-regression check against the champion.
+- `RetrainResult` surfaces `candidate_gates`, `champion_source`, and `active_updated` for observability.
 - `metrics.json` inside the bundle contains only `macro_f1`, `weighted_f1`, `confusion_matrix`, `label_names`.
 
 Acceptance gates (BreakIdle precision, “no class below 0.50 precision”, etc.) are computed during evaluation and stored in `evaluation.json` written under `--out-dir` (not inside the bundle).
@@ -151,17 +154,20 @@ Append a line to `models/active_history.jsonl` on every active change:
 
 This enables rollback and debugging of “why did we switch models?”
 
-## Overthrow flow (continuous best)
+## Overthrow flow (continuous best) — implemented
 
-When a new model is promoted to `models/`:
+When a new model is promoted to `models/` by `run_retrain_pipeline()`:
 
-1. Scan and rank promoted compatible bundles using policy v1.
+1. `find_best_model()` scans and ranks promoted compatible bundles using policy v1.
 2. If the best bundle differs from the currently active bundle:
+   * `write_active_atomic()` atomically updates `models/active.json`
+   * The transition is appended to `models/active_history.jsonl`
 
-   * atomically update `models/active.json`
-   * append to `models/active_history.jsonl`
+Champion resolution for regression gates uses a priority chain (`_resolve_champion()`):
 
-In retrain, prefer comparing candidates against the current `active.json` model (if present) rather than “latest by timestamp”.
+1. `read_active()` — use the active pointer if valid.
+2. `find_best_model()` — use the highest-ranked eligible bundle.
+3. `find_latest_model()` — legacy fallback for repos that predate the registry.
 
 ## CLI expectations (recommended)
 

@@ -6,14 +6,16 @@ Covers:
 - TC-RETRAIN-003: cadence check with fresh model
 - TC-RETRAIN-004: cadence check with stale model
 - TC-RETRAIN-005: cadence check with no model
-- TC-RETRAIN-006: regression gates pass (challenger >= champion)
-- TC-RETRAIN-007: regression gates fail on macro-F1 regression
-- TC-RETRAIN-008: regression gates fail on BreakIdle precision invariant
-- TC-RETRAIN-009: regression gates fail on class precision < 0.50
+- TC-RETRAIN-006: comparative regression gates pass (challenger >= champion)
+- TC-RETRAIN-007: comparative regression gates fail on macro-F1 regression
+- TC-RETRAIN-008: comparative regression gates exclude candidate gates
 - TC-RETRAIN-010: config roundtrip from YAML
 - TC-RETRAIN-011: full pipeline with synthetic data
 - TC-RETRAIN-012: pipeline does not promote on gate failure
 - TC-RETRAIN-013: promoted model metadata contains dataset_hash
+- TC-RETRAIN-014: check_candidate_gates standalone
+- TC-RETRAIN-015: champion resolved from active pointer
+- TC-RETRAIN-016: pipeline updates active pointer on promotion
 """
 
 from __future__ import annotations
@@ -30,9 +32,11 @@ from taskclf.core.types import LabelSpan
 from taskclf.features.build import generate_dummy_features
 from taskclf.labels.store import generate_dummy_labels
 from taskclf.train.evaluate import EvaluationReport
+from taskclf.model_registry import read_active
 from taskclf.train.retrain import (
     RetrainConfig,
     RegressionResult,
+    check_candidate_gates,
     check_regression_gates,
     check_retrain_due,
     compute_dataset_hash,
@@ -195,7 +199,7 @@ class TestCheckRetrainDue:
 
 
 # ---------------------------------------------------------------------------
-# TC-RETRAIN-006 / 007 / 008 / 009: regression gates
+# TC-RETRAIN-006 / 007 / 008: comparative regression gates
 # ---------------------------------------------------------------------------
 
 
@@ -229,25 +233,18 @@ class TestRegressionGates:
         macro_gate = next(g for g in result.gates if g.name == "macro_f1_no_regression")
         assert macro_gate.passed is True
 
-    def test_fail_breakidle_precision(self) -> None:
+    def test_does_not_include_candidate_gates(self) -> None:
+        """Regression gates must only contain comparative checks."""
         champion = _make_eval_report(macro_f1=0.70)
         challenger = _make_eval_report(macro_f1=0.75, breakidle_precision=0.80)
         config = RetrainConfig()
 
         result = check_regression_gates(champion, challenger, config)
-        assert result.all_passed is False
-        bi_gate = next(g for g in result.gates if g.name == "breakidle_precision")
-        assert bi_gate.passed is False
-
-    def test_fail_class_precision_below_50(self) -> None:
-        champion = _make_eval_report(macro_f1=0.70)
-        challenger = _make_eval_report(macro_f1=0.75, all_class_precision=0.40)
-        config = RetrainConfig()
-
-        result = check_regression_gates(champion, challenger, config)
-        assert result.all_passed is False
-        prec_gate = next(g for g in result.gates if g.name == "no_class_below_50_precision")
-        assert prec_gate.passed is False
+        gate_names = {g.name for g in result.gates}
+        assert gate_names == {"macro_f1_no_regression"}
+        assert "breakidle_precision" not in gate_names
+        assert "no_class_below_50_precision" not in gate_names
+        assert "challenger_acceptance" not in gate_names
 
 
 # ---------------------------------------------------------------------------
@@ -368,3 +365,141 @@ class TestRetrainPipeline:
             meta_path = latest / "metadata.json"
             raw = json.loads(meta_path.read_text())
             assert "dataset_hash" in raw
+
+    def test_result_contains_candidate_gates(self, tmp_path: Path) -> None:
+        """RetrainResult must include candidate_gates regardless of promotion."""
+        models_dir = tmp_path / "models"
+        models_dir.mkdir()
+        out_dir = tmp_path / "artifacts"
+        config = RetrainConfig()
+
+        dates = [dt.date(2025, 7, 1), dt.date(2025, 7, 2), dt.date(2025, 7, 3)]
+        features_df, labels = _make_features_and_labels(dates)
+
+        result = run_retrain_pipeline(
+            config, features_df, labels,
+            models_dir=models_dir,
+            out_dir=out_dir,
+            force=True,
+            data_provenance="synthetic",
+        )
+
+        assert result.candidate_gates is not None
+        gate_names = {g.name for g in result.candidate_gates.gates}
+        assert "breakidle_precision" in gate_names
+        assert "no_class_below_50_precision" in gate_names
+        assert "challenger_acceptance" in gate_names
+
+    def test_active_pointer_updated_on_promotion(self, tmp_path: Path) -> None:
+        """Promoted model should update active.json when it is the best."""
+        models_dir = tmp_path / "models"
+        models_dir.mkdir()
+        out_dir = tmp_path / "artifacts"
+        config = RetrainConfig()
+
+        dates = [dt.date(2025, 7, 1), dt.date(2025, 7, 2), dt.date(2025, 7, 3)]
+        features_df, labels = _make_features_and_labels(dates)
+
+        result = run_retrain_pipeline(
+            config, features_df, labels,
+            models_dir=models_dir,
+            out_dir=out_dir,
+            force=True,
+            data_provenance="synthetic",
+        )
+
+        if result.promoted:
+            assert result.active_updated is True
+            pointer = read_active(models_dir)
+            assert pointer is not None
+            bundle_dir = Path(result.run_dir)
+            assert bundle_dir.name in pointer.model_dir
+
+    def test_champion_source_reported(self, tmp_path: Path) -> None:
+        """When a champion exists, champion_source should name it."""
+        models_dir = tmp_path / "models"
+        models_dir.mkdir()
+        out_dir = tmp_path / "artifacts"
+        config = RetrainConfig()
+
+        # First run: no champion
+        dates = [dt.date(2025, 7, 1), dt.date(2025, 7, 2), dt.date(2025, 7, 3)]
+        features_df, labels = _make_features_and_labels(dates)
+
+        r1 = run_retrain_pipeline(
+            config, features_df, labels,
+            models_dir=models_dir,
+            out_dir=out_dir,
+            force=True,
+            data_provenance="synthetic",
+        )
+        assert r1.champion_source is None
+
+        # Second run: champion should be the first promoted model
+        r2 = run_retrain_pipeline(
+            config, features_df, labels,
+            models_dir=models_dir,
+            out_dir=out_dir,
+            force=True,
+            data_provenance="synthetic",
+        )
+        if r1.promoted:
+            assert r2.champion_source is not None
+
+
+# ---------------------------------------------------------------------------
+# TC-RETRAIN-014: check_candidate_gates standalone
+# ---------------------------------------------------------------------------
+
+
+class TestCandidateGates:
+    def test_all_pass(self) -> None:
+        report = _make_eval_report(
+            macro_f1=0.75, breakidle_precision=0.98, all_class_precision=0.70,
+        )
+        result = check_candidate_gates(report)
+        assert result.all_passed is True
+        assert len(result.gates) == 3
+
+    def test_fail_breakidle_precision(self) -> None:
+        report = _make_eval_report(breakidle_precision=0.80)
+        result = check_candidate_gates(report)
+        assert result.all_passed is False
+        bi_gate = next(g for g in result.gates if g.name == "breakidle_precision")
+        assert bi_gate.passed is False
+
+    def test_fail_class_precision_below_50(self) -> None:
+        report = _make_eval_report(all_class_precision=0.40)
+        result = check_candidate_gates(report)
+        assert result.all_passed is False
+        prec_gate = next(g for g in result.gates if g.name == "no_class_below_50_precision")
+        assert prec_gate.passed is False
+
+    def test_fail_acceptance(self) -> None:
+        report = _make_eval_report(reject_rate=0.50)
+        result = check_candidate_gates(report)
+        assert result.all_passed is False
+        acc_gate = next(g for g in result.gates if g.name == "challenger_acceptance")
+        assert acc_gate.passed is False
+
+    def test_does_not_include_comparative_gate(self) -> None:
+        """Candidate gates must not include macro_f1_no_regression."""
+        report = _make_eval_report()
+        result = check_candidate_gates(report)
+        gate_names = {g.name for g in result.gates}
+        assert "macro_f1_no_regression" not in gate_names
+
+    def test_regression_gates_excludes_candidate_gates(self) -> None:
+        """check_regression_gates must NOT include candidate gate names."""
+        champion = _make_eval_report(macro_f1=0.70)
+        challenger = _make_eval_report(macro_f1=0.75)
+        config = RetrainConfig()
+
+        comparative = check_regression_gates(champion, challenger, config)
+        candidate_only = check_candidate_gates(challenger)
+
+        comparative_names = {g.name for g in comparative.gates}
+        candidate_names = {g.name for g in candidate_only.gates}
+
+        assert comparative_names == {"macro_f1_no_regression"}
+        assert comparative_names.isdisjoint(candidate_names)

@@ -81,23 +81,23 @@
 
 ---
 
-### 4) Wire selection into retrain/promotion (the overthrow mechanism)
+### ~~4) Wire selection into retrain/promotion (the overthrow mechanism)~~
 
-14. **Replace/augment `find_latest_model()` usage** in retrain:
+14. ~~**Replace/augment `find_latest_model()` usage** in retrain:~~
 
-* Use `read_active()` as the champion baseline (if exists), else fallback to `find_best_model()` or latest promoted.
+* ~~Use `read_active()` as the champion baseline (if exists), else fallback to `find_best_model()` or latest promoted.~~
 
-15. **After promotion to `models/<id>/`**, run:
+15. ~~**After promotion to `models/<id>/`**, run:~~
 
-* `best = find_best_model(...)`
-* If `best != active` → `write_active_atomic(...)`
+* ~~`best = find_best_model(...)`~~
+* ~~If `best != active` → `write_active_atomic(...)`~~
 
-16. **Update `check_regression_gates()` inputs** to clearly distinguish:
+16. ~~**Update `check_regression_gates()` inputs** to clearly distinguish:~~
 
-* “Candidate passes hard gates” (candidate-only)
-* “Candidate beats champion” (comparative). Keep comparative logic in retrain only.
+* ~~“Candidate passes hard gates” (candidate-only)~~
+* ~~“Candidate beats champion” (comparative). Keep comparative logic in retrain only.~~
 
-> Context needed: where “promoted model bundles” live and how model IDs are formed.
+> ~~Context needed: where “promoted model bundles” live and how model IDs are formed.~~
 
 ---
 
