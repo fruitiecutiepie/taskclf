@@ -91,10 +91,10 @@ This repo enforces the following:
 ### Install
 
 ```bash
-pip install taskclf
+uv tool install taskclf   # or: pipx install taskclf
 ```
 
-Or for development (from source):
+For development (from source):
 
 ```bash
 uv sync
