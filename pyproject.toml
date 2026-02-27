@@ -1,12 +1,20 @@
 [project]
 name = "taskclf"
 version = "0.1.0"
-description = "Add your description here"
+description = "Local-first task classifier that infers your work type from computer activity signals"
 readme = "README.md"
+license = {text = "MIT"}
 authors = [
     { name = "fruitiecutiepie", email = "104437268+fruitiecutiepie@users.noreply.github.com" }
 ]
 requires-python = ">=3.14"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Office/Business",
+    "Topic :: System :: Monitoring",
+]
 dependencies = [
     "duckdb>=1.4.4",
     "lightgbm>=4.6.0",
@@ -24,6 +32,11 @@ dependencies = [
     "Pillow>=11.0.0",
     "plyer>=2.1.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/fruitiecutiepie/taskclf"
+Documentation = "https://fruitiecutiepie.github.io/taskclf"
+Repository = "https://github.com/fruitiecutiepie/taskclf"
 
 [project.scripts]
 taskclf = "taskclf.cli.main:app"
