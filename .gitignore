@@ -59,6 +59,10 @@ logs/
 .env
 .env.*
 
+# Frontend build artifacts
+src/taskclf/ui/frontend/node_modules/
+src/taskclf/ui/static/
+
 # Docs (MkDocs build output)
 site/
 

@@ -155,11 +155,15 @@ summary of which apps were active in that window.
 | `--confidence` | *(none)* | Labeler confidence (0-1) |
 | `--aw-host` | `http://localhost:5600` | ActivityWatch server URL |
 
-You can also label in the **Streamlit UI** via the "Label Recent" tab:
+You can also label in the **web UI** via the "Recent" tab:
 
 ```bash
-uv run streamlit run src/taskclf/ui/labeling.py
+uv run taskclf ui
 ```
+
+This launches a local web server at `http://127.0.0.1:8741` with a
+SolidJS frontend for labeling, queue management, and live prediction
+streaming.
 
 ### Step 4: Train a model
 
@@ -275,7 +279,7 @@ Press **Ctrl+C** to stop; a final daily report is generated on shutdown.
 
 When `--label-queue` is enabled, uncertain predictions are added to the
 labeling queue (`data/processed/labels_v1/queue.json`) and surface in
-`taskclf labels show-queue` and the Streamlit labeling UI for review.
+`taskclf labels show-queue` and the web UI for review.
 
 Online mode **never retrains** — it only uses the pre-trained model.
 

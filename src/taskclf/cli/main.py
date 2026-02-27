@@ -2165,5 +2165,92 @@ def tray_cmd(
     )
 
 
+# -- ui -----------------------------------------------------------------------
+
+
+@app.command("ui")
+def ui_serve_cmd(
+    port: int = typer.Option(8741, "--port", help="Port for the web UI server"),
+    model_dir: str | None = typer.Option(None, "--model-dir", help="Path to a model run directory (enables live predictions)"),
+    aw_host: str = typer.Option(DEFAULT_AW_HOST, "--aw-host", help="ActivityWatch server URL"),
+    poll_seconds: int = typer.Option(DEFAULT_POLL_SECONDS, "--poll-seconds", help="Seconds between AW polling iterations"),
+    title_salt: str = typer.Option(DEFAULT_TITLE_SALT, "--title-salt", help="Salt for hashing window titles"),
+    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory"),
+    transition_minutes: int = typer.Option(DEFAULT_TRANSITION_MINUTES, "--transition-minutes", help="Minutes a new app must persist before suggesting a label"),
+) -> None:
+    """Launch the labeling web UI with live prediction streaming."""
+    import threading
+
+    import uvicorn
+
+    from taskclf.ui.events import EventBus
+    from taskclf.ui.server import create_app
+    from taskclf.ui.tray import ActivityMonitor, _LabelSuggester
+
+    bus = EventBus()
+
+    suggester: _LabelSuggester | None = None
+    if model_dir is not None:
+        try:
+            suggester = _LabelSuggester(Path(model_dir))
+            suggester._aw_host = aw_host
+            suggester._title_salt = title_salt
+        except Exception as exc:
+            typer.echo(f"Warning: could not load model — {exc}", err=True)
+
+    def on_transition(prev: str, new: str, start: dt.datetime, end: dt.datetime) -> None:
+        if suggester is not None:
+            result = suggester.suggest(start, end)
+            if result is not None:
+                label, confidence = result
+                bus.publish_threadsafe({
+                    "type": "suggest_label",
+                    "reason": "app_switch",
+                    "old_label": prev,
+                    "suggested": label,
+                    "confidence": confidence,
+                    "block_start": start.isoformat(),
+                    "block_end": end.isoformat(),
+                })
+                return
+        bus.publish_threadsafe({
+            "type": "prediction",
+            "label": "unknown",
+            "confidence": 0.0,
+            "ts": end.isoformat(),
+            "mapped_label": "unknown",
+            "current_app": new,
+        })
+
+    def on_poll(dominant_app: str) -> None:
+        bus.publish_threadsafe({
+            "type": "status",
+            "state": "collecting",
+            "current_app": dominant_app,
+        })
+
+    monitor = ActivityMonitor(
+        aw_host=aw_host,
+        title_salt=title_salt,
+        poll_seconds=poll_seconds,
+        transition_minutes=transition_minutes,
+        on_transition=on_transition,
+        on_poll=on_poll,
+        event_bus=bus,
+    )
+    monitor_thread = threading.Thread(target=monitor.run, daemon=True)
+    monitor_thread.start()
+
+    fastapi_app = create_app(
+        data_dir=Path(data_dir),
+        aw_host=aw_host,
+        title_salt=title_salt,
+        event_bus=bus,
+    )
+
+    typer.echo(f"taskclf UI server starting on http://127.0.0.1:{port}")
+    uvicorn.run(fastapi_app, host="127.0.0.1", port=port, log_level="warning")
+
+
 if __name__ == "__main__":
     app()

@@ -257,7 +257,7 @@ successfully; on failure the current model is kept.
 When `--label-queue` is enabled, predictions with confidence below
 `--label-confidence` (default 0.55) are auto-enqueued to the labeling
 queue for manual review.  Enqueued items appear in `labels show-queue`
-and the Streamlit labeling UI.
+and the web UI.
 
 ```bash
 # With auto-resolution and model reload:

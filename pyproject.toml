@@ -17,6 +17,7 @@ classifiers = [
 ]
 dependencies = [
     "duckdb>=1.4.4",
+    "fastapi>=0.115.0",
     "lightgbm>=4.6.0",
     "matplotlib>=3.10.8",
     "pandas>=3.0.0",
@@ -25,8 +26,8 @@ dependencies = [
     "rich>=14.3.2",
     "scipy>=1.15.0",
     "scikit-learn>=1.8.0",
-    "streamlit>=1.54.0",
     "typer>=0.23.1",
+    "uvicorn[standard]>=0.34.0",
     "pyyaml>=6.0",
     "pystray>=0.19.5",
     "Pillow>=11.0.0",
@@ -41,10 +42,8 @@ Repository = "https://github.com/fruitiecutiepie/taskclf"
 [project.scripts]
 taskclf = "taskclf.cli.main:app"
 
-[tool.uv]
-override-dependencies = [
-    "pandas>=3.0.0",
-]
+[tool.uv_build]
+data-includes = ["src/taskclf/ui/static/**/*"]
 
 [build-system]
 requires = ["uv_build>=0.9.5,<0.10.0"]
@@ -53,6 +52,7 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "black>=26.1.0",
+    "httpx>=0.28.0",
     "mypy>=1.19.1",
     "pandas-stubs>=3.0.0.260204",
     "pre-commit>=4.5.1",

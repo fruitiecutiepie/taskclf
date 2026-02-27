@@ -17,4 +17,4 @@ Main package.
 - `infer/` — batch and online inference, rule-based baseline, smoothing, calibration, taxonomy mapping, drift monitoring
 - `report/` — daily summaries and exports (JSON/CSV/Parquet)
 - `cli/` — Typer entrypoint and commands
-- `ui/` — labeling UI (Streamlit)
+- `ui/` — labeling UI (SolidJS + FastAPI web UI)

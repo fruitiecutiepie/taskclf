@@ -12,6 +12,7 @@ Runs a pystray icon in the system tray that:
 - Sends desktop notifications prompting the user to label completed blocks
 - If a trained model is provided, suggests a label; otherwise shows all 8 core labels
 - Allows quick labeling from the tray menu at any time
+- Publishes prediction/suggestion events to a shared EventBus for the web UI
 """
 
 from __future__ import annotations
@@ -36,6 +37,7 @@ from taskclf.core.defaults import (
 )
 from taskclf.core.types import CoreLabel, LabelSpan
 from taskclf.labels.store import append_label_span
+from taskclf.ui.events import EventBus
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +67,7 @@ class ActivityMonitor:
             transition is confirmed.
         on_poll: Callback invoked with ``(dominant_app,)`` after every
             successful poll (for status display updates).
+        event_bus: Optional shared event bus for broadcasting events.
     """
 
     def __init__(
@@ -76,6 +79,7 @@ class ActivityMonitor:
         transition_minutes: int = DEFAULT_TRANSITION_MINUTES,
         on_transition: Callable[[str, str, dt.datetime, dt.datetime], Any] | None = None,
         on_poll: Callable[[str], Any] | None = None,
+        event_bus: EventBus | None = None,
     ) -> None:
         self._aw_host = aw_host
         self._title_salt = title_salt
@@ -83,6 +87,7 @@ class ActivityMonitor:
         self._transition_threshold = transition_minutes * 60
         self._on_transition = on_transition
         self._on_poll = on_poll
+        self._event_bus = event_bus
 
         self._current_app: str | None = None
         self._current_app_since: dt.datetime | None = None
@@ -169,6 +174,14 @@ class ActivityMonitor:
             self._candidate_app = None
             self._candidate_duration = 0
 
+    def _publish_status(self, dominant_app: str) -> None:
+        if self._event_bus is not None:
+            self._event_bus.publish_threadsafe({
+                "type": "status",
+                "state": "collecting",
+                "current_app": dominant_app,
+            })
+
     def run(self) -> None:
         """Blocking poll loop. Call from a daemon thread."""
         while not self._stop.is_set():
@@ -176,6 +189,7 @@ class ActivityMonitor:
             if dominant is not None:
                 if self._on_poll is not None:
                     self._on_poll(dominant)
+                self._publish_status(dominant)
                 self.check_transition(dominant)
             self._stop.wait(timeout=self._poll_seconds)
 
@@ -261,6 +275,7 @@ class TrayLabeler:
         title_salt: Salt for hashing window titles.
         poll_seconds: Seconds between AW polls.
         transition_minutes: Minutes for transition detection threshold.
+        event_bus: Optional shared event bus for broadcasting events.
     """
 
     def __init__(
@@ -272,12 +287,14 @@ class TrayLabeler:
         title_salt: str = DEFAULT_TITLE_SALT,
         poll_seconds: int = DEFAULT_POLL_SECONDS,
         transition_minutes: int = DEFAULT_TRANSITION_MINUTES,
+        event_bus: EventBus | None = None,
     ) -> None:
         self._data_dir = data_dir
         self._labels_path = data_dir / "labels_v1" / "labels.parquet"
         self._current_app: str = "unknown"
         self._suggested_label: str | None = None
         self._suggested_confidence: float | None = None
+        self._event_bus = event_bus
 
         self._suggester: _LabelSuggester | None = None
         if model_dir is not None:
@@ -296,6 +313,7 @@ class TrayLabeler:
             transition_minutes=transition_minutes,
             on_transition=self._handle_transition,
             on_poll=self._handle_poll,
+            event_bus=event_bus,
         )
         self._icon: Any = None
 
@@ -325,6 +343,27 @@ class TrayLabeler:
             self._icon.update_menu()
 
         self._send_notification(prev_app, new_app, block_start, block_end)
+
+        if self._event_bus is not None:
+            if self._suggested_label is not None and self._suggested_confidence is not None:
+                self._event_bus.publish_threadsafe({
+                    "type": "suggest_label",
+                    "reason": "app_switch",
+                    "old_label": prev_app,
+                    "suggested": self._suggested_label,
+                    "confidence": self._suggested_confidence,
+                    "block_start": block_start.isoformat(),
+                    "block_end": block_end.isoformat(),
+                })
+            else:
+                self._event_bus.publish_threadsafe({
+                    "type": "prediction",
+                    "label": "unknown",
+                    "confidence": 0.0,
+                    "ts": block_end.isoformat(),
+                    "mapped_label": "unknown",
+                    "current_app": new_app,
+                })
 
     def _send_notification(
         self,
@@ -418,28 +457,35 @@ class TrayLabeler:
         items.append(pystray.Menu.SEPARATOR)
 
         items.append(pystray.MenuItem(
-            "Open Streamlit UI",
-            self._open_streamlit,
+            "Open Web UI",
+            self._open_web_ui,
         ))
         items.append(pystray.MenuItem("Quit", self._quit))
 
         return pystray.Menu(*items)
 
-    def _open_streamlit(self, *_args: Any) -> None:
-        import subprocess
-        import sys
+    def _open_web_ui(self, *_args: Any) -> None:
+        import webbrowser
 
-        subprocess.Popen(
-            [sys.executable, "-m", "streamlit", "run",
-             "src/taskclf/ui/labeling.py", "--",
-             "--data-dir", str(self._data_dir)],
-            start_new_session=True,
-        )
+        webbrowser.open("http://127.0.0.1:8741")
 
     def _quit(self, *_args: Any) -> None:
         self._monitor.stop()
         if self._icon is not None:
             self._icon.stop()
+
+    def _notify(self, message: str) -> None:
+        try:
+            from plyer import notification
+
+            notification.notify(
+                title="taskclf",
+                message=message,
+                app_name="taskclf",
+                timeout=5,
+            )
+        except Exception:
+            logger.warning("Could not send notification", exc_info=True)
 
     def run(self) -> None:
         """Start the tray icon and background monitor. Blocks until quit."""
@@ -478,6 +524,7 @@ def run_tray(
     title_salt: str = DEFAULT_TITLE_SALT,
     data_dir: Path = Path(DEFAULT_DATA_DIR),
     transition_minutes: int = DEFAULT_TRANSITION_MINUTES,
+    event_bus: EventBus | None = None,
 ) -> None:
     """Launch the system tray labeling app.
 
@@ -491,6 +538,8 @@ def run_tray(
         data_dir: Processed data directory (labels stored here).
         transition_minutes: Minutes a new dominant app must persist
             before a transition notification fires.
+        event_bus: Optional shared event bus for broadcasting events
+            to connected WebSocket clients.
     """
     tray = TrayLabeler(
         data_dir=data_dir,
@@ -499,5 +548,6 @@ def run_tray(
         title_salt=title_salt,
         poll_seconds=poll_seconds,
         transition_minutes=transition_minutes,
+        event_bus=event_bus,
     )
     tray.run()

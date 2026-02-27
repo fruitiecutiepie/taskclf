@@ -31,7 +31,7 @@ running, without requiring a restart.
 When `label_queue_path` is provided, the online loop auto-enqueues
 predictions whose confidence falls below `label_confidence_threshold`
 (default 0.55) into the `ActiveLabelingQueue`.  Enqueued items surface
-in `taskclf labels show-queue` and the Streamlit labeling UI for
+in `taskclf labels show-queue` and the web UI for
 manual review.
 
 Enable via CLI:

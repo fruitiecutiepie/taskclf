@@ -91,7 +91,7 @@ This repo enforces the following:
 ### Install
 
 ```bash
-uv tool install taskclf   # or: pipx install taskclf
+uv tool install taskclf
 ```
 
 For development (from source):
@@ -207,6 +207,7 @@ All commands: `uv run taskclf --help`
 | `report` | `daily` | Daily summaries (JSON/CSV/Parquet) |
 | `monitor` | `drift-check`, `telemetry`, `show` | Feature drift and telemetry tracking |
 | *(top-level)* | `tray` | System tray labeling app with activity transition detection |
+| *(top-level)* | `ui` | Web UI for labeling, queue, and live prediction streaming |
 
 Full CLI docs: `docs/api/cli/main.md`
 

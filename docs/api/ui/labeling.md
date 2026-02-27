@@ -1,35 +1,51 @@
-# ui.labeling
+# ui.server
 
-Streamlit labeling UI for ground-truth collection.
+Web UI for ground-truth label collection and live prediction monitoring.
 
 ## Launch
 
 ```bash
-streamlit run src/taskclf/ui/labeling.py -- --data-dir data/processed
+taskclf ui
+taskclf ui --port 8741 --model-dir models/run_20260226
 ```
 
-Optional flags:
+Options:
 
-```bash
-streamlit run src/taskclf/ui/labeling.py -- \
-  --data-dir data/processed \
-  --aw-host http://localhost:5600 \
-  --title-salt my-salt
-```
+| Option | Default | Description |
+|---|---|---|
+| `--port` | `8741` | Port for the web server |
+| `--model-dir` | *(none)* | Model bundle for live predictions |
+| `--aw-host` | `http://localhost:5600` | ActivityWatch server URL |
+| `--poll-seconds` | `60` | Seconds between AW polling |
+| `--title-salt` | `taskclf-default-salt` | Salt for hashing window titles |
+| `--data-dir` | `data/processed` | Processed data directory |
+| `--transition-minutes` | `3` | Minutes before suggesting a label change |
 
 ## Panels
 
+- **Label** -- Form with date/time pickers, `CoreLabel` dropdown, confidence slider, and user ID input.
+- **Recent** -- Quick-label the last N minutes with a slider (1-60 min). Shows a live ActivityWatch summary when available.
 - **Queue** -- Pending `LabelRequest` items sorted by confidence (lowest first). Shows time range, predicted label, confidence, and reason.
-- **New Label** -- Form with date/time pickers, `CoreLabel` dropdown, confidence slider, and user ID input. Displays a feature summary (top apps, input rates) before submission.
-- **Label Recent** -- Quick-label the last N minutes. Includes a slider (1-60 min), live ActivityWatch summary (top apps in the window), on-disk feature summary when available, and a label dropdown. Designed for real-time labeling as you work.
 - **History** -- Recent labels in a sortable table.
+
+## Live Features
+
+- **Live badge** -- Header displays the current predicted label and confidence, updated via WebSocket.
+- **Suggestion banner** -- Appears when the ActivityMonitor detects a task change. Accept or dismiss with one click.
+
+## Architecture
+
+The UI is a SolidJS single-page application served by a FastAPI backend:
+
+- **REST endpoints** (`/api/labels`, `/api/queue`, `/api/features/summary`, `/api/aw/live`, `/api/config/labels`) handle label CRUD, queue management, and data queries.
+- **WebSocket** (`/ws/predictions`) streams live prediction, suggestion, and status events from the ActivityMonitor.
 
 ## Privacy
 
 The UI never displays raw window titles, keystrokes, or URLs.
 Only aggregated metrics and application identifiers are shown.
 
-::: taskclf.ui.labeling
+::: taskclf.ui.server
 
 ---
 
@@ -51,10 +67,11 @@ taskclf tray --model-dir models/run_20260226
 - **Desktop notifications** -- on each transition, a notification prompts the user to label the completed block.
 - **Label suggestions** -- when `--model-dir` is provided, the app predicts a label and includes it in the notification. Without a model, all 8 core labels are shown.
 - **Quick-label menus** -- right-click the tray icon to label the last 5/10/15/30 minutes with any core label.
-- **Open Streamlit UI** -- menu option to launch the full Streamlit labeling UI.
+- **Open Web UI** -- menu option to open the labeling web UI in the browser.
+- **Event broadcasting** -- publishes prediction and suggestion events to the shared EventBus for connected WebSocket clients.
 
 ## Privacy
 
-Same guarantees as the Streamlit UI: no raw window titles or keystrokes are displayed or stored.
+Same guarantees as the web UI: no raw window titles or keystrokes are displayed or stored.
 
 ::: taskclf.ui.tray
