@@ -28,6 +28,7 @@ function dotColor(status: ConnectionStatus): string {
 export const LiveBadge: Component<{
   prediction: Accessor<Prediction | StatusEvent | null>;
   status: Accessor<ConnectionStatus>;
+  compact?: boolean;
 }> = (props) => {
   const label = () => {
     const p = props.prediction();
@@ -53,17 +54,36 @@ export const LiveBadge: Component<{
         display: "flex",
         "align-items": "center",
         gap: "10px",
+        ...(props.compact
+          ? {
+              "justify-content": "center",
+              width: "100%",
+            }
+          : {}),
       }}
     >
-      <Show when={label()}>
+      <Show
+        when={label()}
+        fallback={
+          <span
+            style={{
+              "font-size": props.compact ? "0.85rem" : "0.8rem",
+              color: "var(--text-muted)",
+            }}
+          >
+            {props.compact ? "taskclf" : "waiting..."}
+          </span>
+        }
+      >
         <span
           style={{
-            padding: "4px 12px",
+            padding: props.compact ? "6px 16px" : "4px 12px",
             "border-radius": "20px",
-            "font-size": "0.8rem",
+            "font-size": props.compact ? "0.85rem" : "0.8rem",
             "font-weight": "600",
             color: "#fff",
             background: badgeColor(),
+            "white-space": "nowrap",
           }}
         >
           {label()}

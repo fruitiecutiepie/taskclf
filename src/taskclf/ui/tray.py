@@ -457,17 +457,24 @@ class TrayLabeler:
         items.append(pystray.Menu.SEPARATOR)
 
         items.append(pystray.MenuItem(
-            "Open Web UI",
-            self._open_web_ui,
+            "Show/Hide Window",
+            self._toggle_window,
         ))
         items.append(pystray.MenuItem("Quit", self._quit))
 
         return pystray.Menu(*items)
 
-    def _open_web_ui(self, *_args: Any) -> None:
-        import webbrowser
+    def _toggle_window(self, *_args: Any) -> None:
+        import urllib.request
 
-        webbrowser.open("http://127.0.0.1:8741")
+        try:
+            req = urllib.request.Request(
+                "http://127.0.0.1:8741/api/window/toggle",
+                method="POST",
+            )
+            urllib.request.urlopen(req, timeout=2)
+        except Exception:
+            self._notify("UI server not running. Start with: taskclf ui")
 
     def _quit(self, *_args: Any) -> None:
         self._monitor.stop()

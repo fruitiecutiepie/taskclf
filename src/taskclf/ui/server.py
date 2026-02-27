@@ -97,6 +97,7 @@ def create_app(
     aw_host: str = DEFAULT_AW_HOST,
     title_salt: str = DEFAULT_TITLE_SALT,
     event_bus: EventBus | None = None,
+    window_api: Any = None,
 ) -> FastAPI:
     """Build and return the FastAPI application.
 
@@ -105,6 +106,7 @@ def create_app(
         aw_host: ActivityWatch server URL.
         title_salt: Salt for hashing window titles.
         event_bus: Shared event bus for WebSocket broadcasting.
+        window_api: Optional ``WindowAPI`` for pywebview window control.
     """
     bus = event_bus or EventBus()
     labels_path = data_dir / "labels_v1" / "labels.parquet"
@@ -261,6 +263,21 @@ def create_app(
     @app.get("/api/config/labels")
     async def config_labels() -> list[str]:
         return [cl.value for cl in CoreLabel]
+
+    # -- REST: window control -------------------------------------------------
+
+    @app.post("/api/window/toggle")
+    async def window_toggle() -> dict[str, Any]:
+        if window_api is None:
+            return {"status": "no_window", "visible": False}
+        window_api.toggle_window()
+        return {"status": "ok", "visible": window_api.visible}
+
+    @app.get("/api/window/state")
+    async def window_state() -> dict[str, Any]:
+        if window_api is None:
+            return {"available": False, "visible": False}
+        return {"available": True, "visible": window_api.visible}
 
     # -- WebSocket ------------------------------------------------------------
 

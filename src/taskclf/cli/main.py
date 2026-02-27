@@ -2177,8 +2177,9 @@ def ui_serve_cmd(
     title_salt: str = typer.Option(DEFAULT_TITLE_SALT, "--title-salt", help="Salt for hashing window titles"),
     data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory"),
     transition_minutes: int = typer.Option(DEFAULT_TRANSITION_MINUTES, "--transition-minutes", help="Minutes a new app must persist before suggesting a label"),
+    browser: bool = typer.Option(False, "--browser", help="Open in browser instead of native window"),
 ) -> None:
-    """Launch the labeling web UI with live prediction streaming."""
+    """Launch the labeling UI as a native floating window with live prediction streaming."""
     import threading
 
     import uvicorn
@@ -2186,8 +2187,10 @@ def ui_serve_cmd(
     from taskclf.ui.events import EventBus
     from taskclf.ui.server import create_app
     from taskclf.ui.tray import ActivityMonitor, _LabelSuggester
+    from taskclf.ui.window import WindowAPI, run_window
 
     bus = EventBus()
+    win_api = WindowAPI()
 
     suggester: _LabelSuggester | None = None
     if model_dir is not None:
@@ -2246,10 +2249,28 @@ def ui_serve_cmd(
         aw_host=aw_host,
         title_salt=title_salt,
         event_bus=bus,
+        window_api=win_api,
     )
 
-    typer.echo(f"taskclf UI server starting on http://127.0.0.1:{port}")
-    uvicorn.run(fastapi_app, host="127.0.0.1", port=port, log_level="warning")
+    uvicorn_config = uvicorn.Config(
+        fastapi_app, host="127.0.0.1", port=port, log_level="warning",
+    )
+    server = uvicorn.Server(uvicorn_config)
+    server_thread = threading.Thread(target=server.run, daemon=True)
+    server_thread.start()
+
+    typer.echo(f"taskclf UI on http://127.0.0.1:{port}")
+
+    if browser:
+        import webbrowser
+
+        webbrowser.open(f"http://127.0.0.1:{port}")
+        try:
+            server_thread.join()
+        except KeyboardInterrupt:
+            pass
+    else:
+        run_window(port=port, window_api=win_api)
 
 
 if __name__ == "__main__":

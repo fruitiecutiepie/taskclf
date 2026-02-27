@@ -132,6 +132,37 @@ class TestAWLive:
         assert resp.json() == []
 
 
+class TestWindowControl:
+    def test_toggle_without_window_api(self, client: TestClient) -> None:
+        resp = client.post("/api/window/toggle")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "no_window"
+
+    def test_state_without_window_api(self, client: TestClient) -> None:
+        resp = client.get("/api/window/state")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["available"] is False
+
+    def test_toggle_with_window_api(self, data_dir: Path) -> None:
+        from taskclf.ui.window import WindowAPI
+
+        win_api = WindowAPI()
+        app = create_app(data_dir=data_dir, event_bus=EventBus(), window_api=win_api)
+        client = TestClient(app)
+
+        resp = client.get("/api/window/state")
+        assert resp.json()["available"] is True
+        assert resp.json()["visible"] is True
+
+        resp = client.post("/api/window/toggle")
+        assert resp.json()["status"] == "ok"
+        assert resp.json()["visible"] is False
+
+        resp = client.post("/api/window/toggle")
+        assert resp.json()["visible"] is True
+
+
 class TestWebSocket:
     def test_ws_connects(self, data_dir: Path) -> None:
         bus = EventBus()
@@ -142,6 +173,4 @@ class TestWebSocket:
             bus.publish_threadsafe({"type": "status", "state": "idle", "current_app": "test"})
             import time
             time.sleep(0.1)
-            # Connection established successfully; threadsafe publish without
-            # a bound loop is a no-op, so we just verify the handshake works.
             ws.close()
