@@ -1,5 +1,8 @@
 # taskclf — Task Type Classifier from Local Activity Signals
 
+[![PyPI version](https://img.shields.io/pypi/v/taskclf)](https://pypi.org/project/taskclf/)
+[![Python](https://img.shields.io/pypi/pyversions/taskclf)](https://pypi.org/project/taskclf/)
+
 Train and run a personal task-type classifier (e.g. coding / writing / meetings) using privacy-preserving computer activity signals such as foreground app/window metadata and aggregated input statistics (counts/rates only).
 
 This project is intentionally scoped as a **personalized classifier** (single-user first). The architecture keeps:
@@ -85,7 +88,14 @@ This repo enforces the following:
 - Python >= 3.14
 - `uv` installed
 
-### Setup
+### Install
+
+```bash
+pip install taskclf
+```
+
+Or for development (from source):
+
 ```bash
 uv sync
 uv run taskclf --help
