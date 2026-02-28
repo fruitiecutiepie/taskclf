@@ -1,14 +1,47 @@
-import { type Accessor, type Component, createResource, For, Show } from "solid-js";
+import { type Accessor, type Component, createResource, createMemo, For, Show } from "solid-js";
 import { fetchLabels } from "../lib/api";
 import { LABEL_COLORS } from "./StatePanel";
 
-function fmtTime(iso: string): string {
-  try {
-    const d = new Date(iso.includes("Z") || iso.includes("+") ? iso : iso + "Z");
-    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  } catch {
-    return iso;
+function parseDate(iso: string): Date {
+  return new Date(iso.includes("Z") || iso.includes("+") ? iso : iso + "Z");
+}
+
+function fmtDate(d: Date): string {
+  return d.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+function fmtTime(d: Date): string {
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function dateKey(iso: string): string {
+  const d = parseDate(iso);
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
+interface LabelEntry {
+  label: string;
+  start_ts: string;
+  end_ts: string;
+}
+
+interface DateGroup {
+  dateLabel: string;
+  entries: LabelEntry[];
+}
+
+function groupByDate(labels: LabelEntry[]): DateGroup[] {
+  const groups: DateGroup[] = [];
+  let currentKey = "";
+  for (const lbl of labels) {
+    const key = dateKey(lbl.start_ts);
+    if (key !== currentKey) {
+      currentKey = key;
+      groups.push({ dateLabel: fmtDate(parseDate(lbl.start_ts)), entries: [] });
+    }
+    groups[groups.length - 1].entries.push(lbl);
   }
+  return groups;
 }
 
 export const LabelHistory: Component<{
@@ -19,8 +52,13 @@ export const LabelHistory: Component<{
     return fetchLabels(10);
   });
 
+  const grouped = createMemo(() => {
+    const l = labels();
+    return l?.length ? groupByDate(l) : [];
+  });
+
   return (
-    <Show when={labels()?.length}>
+    <Show when={grouped().length}>
       <div
         style={{
           background: "var(--surface)",
@@ -46,71 +84,75 @@ export const LabelHistory: Component<{
         >
           Label History
         </div>
-        <div style={{ "margin-bottom": "5px" }}>
-          <div
-            style={{
-              "font-size": "0.6rem",
-              "font-weight": "700",
-              "text-transform": "uppercase",
-              "letter-spacing": "0.06em",
-              color: "#7a7a7a",
-              "margin-bottom": "1px",
-              "border-bottom": "1px solid #333",
-              "padding-bottom": "1px",
-            }}
-          >
-            Recent
-          </div>
-          <For each={labels()!}>
-          {(lbl) => (
-            <div
-              style={{
-                display: "flex",
-                "justify-content": "space-between",
-                "align-items": "baseline",
-                padding: "1px 0",
-                gap: "8px",
-              }}
-            >
-              <span
+        <For each={grouped()}>
+          {(group) => (
+            <div style={{ "margin-bottom": "5px" }}>
+              <div
                 style={{
-                  display: "flex",
-                  "align-items": "center",
-                  gap: "6px",
+                  "font-size": "0.6rem",
+                  "font-weight": "700",
+                  "text-transform": "uppercase",
+                  "letter-spacing": "0.06em",
+                  color: "#7a7a7a",
+                  "margin-bottom": "1px",
+                  "border-bottom": "1px solid #333",
+                  "padding-bottom": "1px",
                 }}
               >
-                <span
-                  style={{
-                    width: "6px",
-                    height: "6px",
-                    "border-radius": "50%",
-                    background: LABEL_COLORS[lbl.label] ?? "#8a8a8a",
-                    "flex-shrink": "0",
-                  }}
-                />
-                <span
-                  style={{
-                    color: LABEL_COLORS[lbl.label] ?? "#d0d0d0",
-                    "font-weight": "600",
-                    "font-size": "0.65rem",
-                  }}
-                >
-                  {lbl.label}
-                </span>
-              </span>
-              <span
-                style={{
-                  color: "#8a8a8a",
-                  "font-size": "0.65rem",
-                  "white-space": "nowrap",
-                }}
-              >
-                {fmtTime(lbl.start_ts)} – {fmtTime(lbl.end_ts)}
-              </span>
+                {group.dateLabel}
+              </div>
+              <For each={group.entries}>
+                {(lbl) => (
+                  <div
+                    style={{
+                      display: "flex",
+                      "justify-content": "space-between",
+                      "align-items": "baseline",
+                      padding: "1px 0",
+                      gap: "8px",
+                    }}
+                  >
+                    <span
+                      style={{
+                        display: "flex",
+                        "align-items": "center",
+                        gap: "6px",
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: "6px",
+                          height: "6px",
+                          "border-radius": "50%",
+                          background: LABEL_COLORS[lbl.label] ?? "#8a8a8a",
+                          "flex-shrink": "0",
+                        }}
+                      />
+                      <span
+                        style={{
+                          color: LABEL_COLORS[lbl.label] ?? "#d0d0d0",
+                          "font-weight": "600",
+                          "font-size": "0.65rem",
+                        }}
+                      >
+                        {lbl.label}
+                      </span>
+                    </span>
+                    <span
+                      style={{
+                        color: "#8a8a8a",
+                        "font-size": "0.65rem",
+                        "white-space": "nowrap",
+                      }}
+                    >
+                      {fmtTime(parseDate(lbl.start_ts))} – {fmtTime(parseDate(lbl.end_ts))}
+                    </span>
+                  </div>
+                )}
+              </For>
             </div>
           )}
         </For>
-        </div>
       </div>
     </Show>
   );

@@ -13,7 +13,8 @@ export type HostCommand =
   | { cmd: "setCompact" }
   | { cmd: "setExpanded" }
   | { cmd: "hideWindow" }
-  | { cmd: "toggleStatePanel" };
+  | { cmd: "toggleStatePanel" }
+  | { cmd: "toggleLabelHistory" };
 
 export interface Host {
   invoke(command: HostCommand): Promise<void>;
@@ -28,6 +29,7 @@ declare global {
         set_expanded(): Promise<void>;
         hide_window(): Promise<void>;
         toggle_state_panel(): Promise<void>;
+        toggle_label_history(): Promise<void>;
       };
     };
   }
@@ -64,6 +66,9 @@ class AdaptiveHost implements Host {
           break;
         case "toggleStatePanel":
           await api.toggle_state_panel();
+          break;
+        case "toggleLabelHistory":
+          await api.toggle_label_history();
           break;
       }
     } catch {
