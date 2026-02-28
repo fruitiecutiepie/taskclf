@@ -16,6 +16,12 @@ const MINUTE_OPTIONS = [0, 1, 5, 10, 15, 30, 60] as const;
 type TimeUnit = "s" | "m" | "h" | "d";
 const UNIT_TO_MINUTES: Record<TimeUnit, number> = { s: 1 / 60, m: 1, h: 60, d: 1440 };
 
+const EXTEND_PREV_KEY = "taskclf:extendPrevious";
+function loadExtendPrevious(): boolean {
+  try { return localStorage.getItem(EXTEND_PREV_KEY) !== "false"; }
+  catch { return true; }
+}
+
 interface LabelGridProps {
   maxHeight: number;
   onCollapse: () => void;
@@ -28,6 +34,13 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
   const [customActive, setCustomActive] = createSignal(false);
   const [customValue, setCustomValue] = createSignal("");
   const [customUnit, setCustomUnit] = createSignal<TimeUnit>("m");
+  const [extendPrev, setExtendPrev] = createSignal(loadExtendPrevious());
+
+  function toggleExtendPrev() {
+    const next = !extendPrev();
+    setExtendPrev(next);
+    try { localStorage.setItem(EXTEND_PREV_KEY, String(next)); } catch {}
+  }
 
   function selectPreset(m: number) {
     setSelectedMinutes(m);
@@ -52,7 +65,7 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
         start_ts: start.toISOString().slice(0, -1),
         end_ts: now.toISOString().slice(0, -1),
         label,
-        extend_previous: true,
+        extend_previous: extendPrev(),
       });
       setFlash(label);
       setTimeout(() => {
@@ -180,6 +193,28 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
           </select>
         </div>
       </div>
+
+      <label
+        style={{
+          display: "flex",
+          "align-items": "center",
+          "justify-content": "center",
+          gap: "4px",
+          "margin-bottom": "6px",
+          "font-size": "0.7rem",
+          color: "var(--text-muted)",
+          cursor: "pointer",
+          "user-select": "none",
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={extendPrev()}
+          onChange={toggleExtendPrev}
+          style={{ margin: "0", cursor: "pointer" }}
+        />
+        Fill gap since last label
+      </label>
 
       <Show when={flash()}>
         <div
