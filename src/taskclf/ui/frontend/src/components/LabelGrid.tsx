@@ -1,5 +1,7 @@
-import { createSignal, createResource, For, Show, type Component } from "solid-js";
+import { createSignal, createResource, For, Show, type Accessor, type Component } from "solid-js";
 import { createLabel, fetchCoreLabels } from "../lib/api";
+import type { Prediction } from "../lib/ws";
+import { ActivityContext } from "./ActivityContext";
 
 const LABEL_COLORS: Record<string, string> = {
   Build: "#6366f1",
@@ -28,6 +30,7 @@ function loadExtendForward(): boolean {
 interface LabelGridProps {
   maxHeight?: number;
   onCollapse: () => void;
+  prediction?: Accessor<Prediction | null>;
 }
 
 export const LabelGrid: Component<LabelGridProps> = (props) => {
@@ -332,6 +335,8 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
           Extend until next label
         </span>
       </div>
+
+      <ActivityContext minutes={selectedMinutes} prediction={props.prediction} />
 
       <Show when={flash()}>
         <div

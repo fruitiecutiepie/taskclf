@@ -192,7 +192,7 @@ const App: Component = () => {
             onMouseEnter={cancelLabelHide}
             onMouseLeave={scheduleLabelHide}
           >
-            <LabelGrid maxHeight={EXPANDED_CONTENT_MAX_H} onCollapse={collapse} />
+            <LabelGrid maxHeight={EXPANDED_CONTENT_MAX_H} onCollapse={collapse} prediction={ws.latestPrediction} />
           </div>
         </Show>
 
