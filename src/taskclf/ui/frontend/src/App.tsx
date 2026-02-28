@@ -95,6 +95,7 @@ const App: Component = () => {
         end_ts: now.toISOString().slice(0, -1),
         label,
         user_id: "default-user",
+        extend_previous: true,
       });
       setFlash(label);
       setTimeout(() => {

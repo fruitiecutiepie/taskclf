@@ -53,6 +53,7 @@ export async function createLabel(body: {
   label: string;
   user_id?: string;
   confidence?: number;
+  extend_previous?: boolean;
 }): Promise<LabelResponse> {
   return json(`${BASE}/labels`, {
     method: "POST",

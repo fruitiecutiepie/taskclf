@@ -163,6 +163,134 @@ class TestWindowControl:
         assert resp.json()["visible"] is True
 
 
+class TestExtendPreviousAPI:
+    """API-level tests for the extend_previous flag on POST /api/labels."""
+
+    def test_extend_previous_true_extends_gap(self, client: TestClient) -> None:
+        body1 = {
+            "start_ts": "2026-02-27T09:55:00",
+            "end_ts": "2026-02-27T10:00:00",
+            "label": "Build",
+            "extend_previous": True,
+        }
+        resp = client.post("/api/labels", json=body1)
+        assert resp.status_code == 201
+
+        body2 = {
+            "start_ts": "2026-02-27T10:29:00",
+            "end_ts": "2026-02-27T10:30:00",
+            "label": "ReadResearch",
+            "extend_previous": True,
+        }
+        resp = client.post("/api/labels", json=body2)
+        assert resp.status_code == 201
+
+        labels = client.get("/api/labels").json()
+        assert len(labels) == 2
+        build = [l for l in labels if l["label"] == "Build"][0]
+        assert build["end_ts"] == "2026-02-27T10:29:00"
+
+    def test_extend_previous_false_no_extension(self, client: TestClient) -> None:
+        body1 = {
+            "start_ts": "2026-02-27T09:55:00",
+            "end_ts": "2026-02-27T10:00:00",
+            "label": "Build",
+        }
+        resp = client.post("/api/labels", json=body1)
+        assert resp.status_code == 201
+
+        body2 = {
+            "start_ts": "2026-02-27T10:29:00",
+            "end_ts": "2026-02-27T10:30:00",
+            "label": "ReadResearch",
+            "extend_previous": False,
+        }
+        resp = client.post("/api/labels", json=body2)
+        assert resp.status_code == 201
+
+        labels = client.get("/api/labels").json()
+        build = [l for l in labels if l["label"] == "Build"][0]
+        assert build["end_ts"] == "2026-02-27T10:00:00"
+
+    def test_extend_previous_defaults_to_false(self, client: TestClient) -> None:
+        body1 = {
+            "start_ts": "2026-02-27T09:55:00",
+            "end_ts": "2026-02-27T10:00:00",
+            "label": "Build",
+        }
+        client.post("/api/labels", json=body1)
+
+        body2 = {
+            "start_ts": "2026-02-27T10:29:00",
+            "end_ts": "2026-02-27T10:30:00",
+            "label": "ReadResearch",
+        }
+        client.post("/api/labels", json=body2)
+
+        labels = client.get("/api/labels").json()
+        build = [l for l in labels if l["label"] == "Build"][0]
+        assert build["end_ts"] == "2026-02-27T10:00:00"
+
+    def test_extend_previous_201_response_correct(self, client: TestClient) -> None:
+        body1 = {
+            "start_ts": "2026-02-27T09:55:00",
+            "end_ts": "2026-02-27T10:00:00",
+            "label": "Build",
+            "extend_previous": True,
+        }
+        client.post("/api/labels", json=body1)
+
+        body2 = {
+            "start_ts": "2026-02-27T10:29:00",
+            "end_ts": "2026-02-27T10:30:00",
+            "label": "Debug",
+            "user_id": "default-user",
+            "confidence": 0.8,
+            "extend_previous": True,
+        }
+        resp = client.post("/api/labels", json=body2)
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["label"] == "Debug"
+        assert data["provenance"] == "manual"
+        assert data["start_ts"] == "2026-02-27T10:29:00"
+        assert data["end_ts"] == "2026-02-27T10:30:00"
+
+    def test_extend_previous_overlap_409(self, client: TestClient) -> None:
+        body1 = {
+            "start_ts": "2026-02-27T08:00:00",
+            "end_ts": "2026-02-27T08:30:00",
+            "label": "Build",
+        }
+        client.post("/api/labels", json=body1)
+
+        body2 = {
+            "start_ts": "2026-02-27T09:00:00",
+            "end_ts": "2026-02-27T09:10:00",
+            "label": "Write",
+        }
+        client.post("/api/labels", json=body2)
+
+        body3 = {
+            "start_ts": "2026-02-27T08:50:00",
+            "end_ts": "2026-02-27T09:05:00",
+            "label": "Debug",
+            "extend_previous": True,
+        }
+        resp = client.post("/api/labels", json=body3)
+        assert resp.status_code == 409
+
+    def test_invalid_label_still_422(self, client: TestClient) -> None:
+        body = {
+            "start_ts": "2026-02-27T09:00:00",
+            "end_ts": "2026-02-27T10:00:00",
+            "label": "NotALabel",
+            "extend_previous": True,
+        }
+        resp = client.post("/api/labels", json=body)
+        assert resp.status_code == 422
+
+
 class TestWebSocket:
     def test_ws_connects(self, data_dir: Path) -> None:
         bus = EventBus()

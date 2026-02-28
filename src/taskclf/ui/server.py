@@ -25,6 +25,7 @@ from taskclf.core.types import CoreLabel, LabelSpan
 from taskclf.labels.queue import ActiveLabelingQueue
 from taskclf.labels.store import (
     append_label_span,
+    extend_and_append_label_span,
     generate_label_summary,
     read_label_spans,
 )
@@ -46,6 +47,11 @@ class LabelCreateRequest(BaseModel):
     label: str
     user_id: str = "default-user"
     confidence: float | None = None
+    extend_previous: bool = Field(
+        default=False,
+        description="When true, extend the most recent label for this user "
+        "so it ends at start_ts, creating contiguous coverage.",
+    )
 
 
 class LabelResponse(BaseModel):
@@ -158,7 +164,10 @@ def create_app(
         except (ValueError, Exception) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         try:
-            append_label_span(span, labels_path)
+            if body.extend_previous:
+                extend_and_append_label_span(span, labels_path)
+            else:
+                append_label_span(span, labels_path)
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return LabelResponse(

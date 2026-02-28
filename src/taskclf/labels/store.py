@@ -155,6 +155,72 @@ def append_label_span(span: LabelSpan, path: Path) -> Path:
     return write_label_spans(existing, path)
 
 
+def _same_user(a: LabelSpan, b: LabelSpan) -> bool:
+    """True when both spans belong to the same user (or both have no user)."""
+    if a.user_id is None and b.user_id is None:
+        return True
+    if a.user_id is not None and b.user_id is not None:
+        return a.user_id == b.user_id
+    return False
+
+
+def extend_and_append_label_span(span: LabelSpan, path: Path) -> Path:
+    """Append *span* and extend the previous label to fill the gap.
+
+    Finds the most recent existing label for the same ``user_id`` (by
+    ``start_ts``) and sets its ``end_ts`` to ``span.start_ts``, creating
+    contiguous label coverage.  If the previous label would overlap the
+    new span it is truncated instead.
+
+    Falls back to :func:`append_label_span` when there is no previous
+    label to extend.
+
+    Args:
+        span: The new label span to append.
+        path: Parquet file to read-modify-write.
+
+    Returns:
+        The *path* that was written.
+
+    Raises:
+        ValueError: If any overlap remains after extension.
+    """
+    existing: list[LabelSpan] = []
+    if path.exists():
+        existing = read_label_spans(path)
+
+    prev: LabelSpan | None = None
+    prev_idx: int | None = None
+    for i, ex in enumerate(existing):
+        if not _same_user(ex, span):
+            continue
+        if ex.start_ts >= span.start_ts:
+            continue
+        if prev is None or ex.start_ts > prev.start_ts:
+            prev = ex
+            prev_idx = i
+
+    if prev is not None and prev_idx is not None:
+        updated = prev.model_copy(update={"end_ts": span.start_ts})
+        existing[prev_idx] = updated
+
+    existing.append(span)
+
+    for i, a in enumerate(existing):
+        for j, b in enumerate(existing):
+            if i >= j:
+                continue
+            if not _same_user(a, b):
+                continue
+            if a.start_ts < b.end_ts and b.start_ts < a.end_ts:
+                raise ValueError(
+                    f"Span [{a.start_ts}, {a.end_ts}) overlaps "
+                    f"[{b.start_ts}, {b.end_ts}) for user {a.user_id!r}"
+                )
+
+    return write_label_spans(existing, path)
+
+
 def generate_label_summary(
     features_df: pd.DataFrame,
     start_ts: dt.datetime,
