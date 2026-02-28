@@ -363,6 +363,7 @@ class TrayLabeler:
         event_bus: EventBus | None = None,
         ui_port: int = 8741,
         dev: bool = False,
+        browser: bool = False,
         username: str | None = None,
     ) -> None:
         self._data_dir = data_dir
@@ -380,6 +381,7 @@ class TrayLabeler:
         self._aw_host = aw_host
         self._title_salt = title_salt
         self._dev = dev
+        self._browser = browser
 
         self._transition_count: int = 0
         self._last_transition: dict[str, Any] | None = None
@@ -609,6 +611,8 @@ class TrayLabeler:
             ]
             if self._dev:
                 cmd.append("--dev")
+            if self._browser:
+                cmd.append("--browser")
             self._ui_proc = subprocess.Popen(cmd)
             self._ui_server_running = True
             mode = " (dev)" if self._dev else ""
@@ -674,6 +678,7 @@ def run_tray(
     event_bus: EventBus | None = None,
     ui_port: int = 8741,
     dev: bool = False,
+    browser: bool = False,
     username: str | None = None,
 ) -> None:
     """Launch the system tray labeling app.
@@ -696,6 +701,8 @@ def run_tray(
         ui_port: Port for the embedded web UI server.
         dev: When ``True``, the spawned UI subprocess starts a Vite
             dev server for frontend hot reload.
+        browser: When ``True``, the spawned UI subprocess opens in the
+            default browser instead of a native window.
         username: Display name to persist in ``config.json``.  Does not
             affect label identity (labels use the stable auto-generated
             UUID ``user_id``).
@@ -710,6 +717,7 @@ def run_tray(
         event_bus=event_bus,
         ui_port=ui_port,
         dev=dev,
+        browser=browser,
         username=username,
     )
     tray.run()

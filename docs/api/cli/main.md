@@ -367,6 +367,12 @@ With frontend hot reload for development:
 taskclf tray --dev
 ```
 
+Open in browser instead of native window (useful combined with `--dev`):
+
+```bash
+taskclf tray --dev --browser
+```
+
 | Option | Default | Description |
 |---|---|---|
 | `--model-dir` | *(none)* | Model bundle for label suggestions |
@@ -376,5 +382,6 @@ taskclf tray --dev
 | `--data-dir` | `data/processed` | Processed data directory |
 | `--port` | `8741` | Port for the embedded web UI server |
 | `--dev` | off | Pass `--dev` to the spawned `taskclf ui` subprocess for frontend hot reload |
+| `--browser` | off | Open UI in browser instead of native window |
 
 ::: taskclf.cli.main

@@ -11,6 +11,8 @@ export const LiveBadge: Component<{
   activeSuggestion: Accessor<LabelSuggestion | null>;
   wsStats: Accessor<WSStats>;
   compact?: boolean;
+  onShowPanel?: () => void;
+  onHidePanel?: () => void;
 }> = (props) => {
   const currentApp = () => props.latestStatus()?.current_app ?? null;
 
@@ -81,28 +83,26 @@ export const LiveBadge: Component<{
               {currentApp()}
             </span>
           </Show>
-          <Show when={predictionLabel()}>
-            <span
-              style={{
-                padding: "3px 12px",
-                "border-radius": "20px",
-                "font-size": "0.85rem",
-                "font-weight": "600",
-                color: "#fff",
-                background: predColor(),
-                "white-space": "nowrap",
-                cursor: "default",
-              }}
-            >
-              {predictionLabel()}
-              <Show when={displayConfidence() !== null}>
-                {" "}
-                <span style={{ opacity: 0.8 }}>
-                  {Math.round(displayConfidence()! * 100)}%
-                </span>
-              </Show>
-            </span>
-          </Show>
+          <span
+            style={{
+              padding: "3px 12px",
+              "border-radius": "20px",
+              "font-size": "0.85rem",
+              "font-weight": "600",
+              color: predictionLabel() ? "#fff" : "#888",
+              background: predColor(),
+              "white-space": "nowrap",
+              cursor: "default",
+            }}
+          >
+            {predictionLabel() ?? "Unknown"}
+            <Show when={displayConfidence() !== null}>
+              {" "}
+              <span style={{ opacity: 0.8 }}>
+                {Math.round(displayConfidence()! * 100)}%
+              </span>
+            </Show>
+          </span>
         </Show>
         <span
           style={{
@@ -114,8 +114,14 @@ export const LiveBadge: Component<{
             cursor: "pointer",
           }}
           title={props.status()}
-          onMouseEnter={() => host.invoke({ cmd: "showStatePanel" })}
-          onMouseLeave={() => host.invoke({ cmd: "hideStatePanel" })}
+          onMouseEnter={() => {
+            host.invoke({ cmd: "showStatePanel" });
+            props.onShowPanel?.();
+          }}
+          onMouseLeave={() => {
+            host.invoke({ cmd: "hideStatePanel" });
+            props.onHidePanel?.();
+          }}
         />
       </div>
     </div>
