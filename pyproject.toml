@@ -1,6 +1,6 @@
 [project]
 name = "taskclf"
-version = "0.1.0"
+version = "0.2.0"
 description = "Local-first task classifier that infers your work type from computer activity signals"
 readme = "README.md"
 license = {text = "MIT"}
