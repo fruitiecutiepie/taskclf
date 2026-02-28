@@ -90,7 +90,7 @@ const Row: Component<{
   >
     <span
       style={{
-        color: "#666",
+        color: "#8a8a8a",
         "font-size": "0.65rem",
         "flex-shrink": "0",
         "user-select": "none",
@@ -105,7 +105,7 @@ const Row: Component<{
         "font-family": props.mono
           ? "'SF Mono', 'Fira Code', monospace"
           : "inherit",
-        color: props.color ?? (props.dim ? "#555" : "#d0d0d0"),
+        color: props.color ?? (props.dim ? "#8a8a8a" : "#d0d0d0"),
         "text-align": "right",
         overflow: "hidden",
         "text-overflow": "ellipsis",
@@ -126,9 +126,9 @@ const Section: Component<{ title: string; children: any }> = (props) => (
         "font-weight": "700",
         "text-transform": "uppercase",
         "letter-spacing": "0.06em",
-        color: "#4a4a4a",
+        color: "#7a7a7a",
         "margin-bottom": "1px",
-        "border-bottom": "1px solid #2a2a2a",
+        "border-bottom": "1px solid #333",
         "padding-bottom": "1px",
       }}
     >
@@ -284,7 +284,7 @@ export const StatePanel: Component<{
           >
             <span
               style={{
-                color: "#4a4a4a",
+                color: "#7a7a7a",
                 "font-size": "0.58rem",
                 "text-transform": "uppercase",
               }}

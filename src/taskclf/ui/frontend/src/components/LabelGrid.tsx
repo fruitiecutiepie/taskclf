@@ -56,6 +56,14 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
     }
   }
 
+  function stepCustom(delta: number) {
+    const cur = parseFloat(customValue()) || 0;
+    const next = Math.max(0, cur + delta);
+    const v = String(next);
+    setCustomValue(v);
+    applyCustom(v, customUnit());
+  }
+
   async function labelNow(label: string) {
     const mins = selectedMinutes();
     const now = new Date();
@@ -142,59 +150,130 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
             "margin-left": "2px",
           }}
         >
-          <input
-            type="number"
-            min="0"
-            step="any"
-            placeholder="#"
-            value={customValue()}
-            onInput={(e) => {
-              const v = e.currentTarget.value;
-              setCustomValue(v);
-              applyCustom(v, customUnit());
-            }}
-            onFocus={() => {
-              if (customValue()) applyCustom(customValue(), customUnit());
-            }}
+          <div
             style={{
-              width: "36px",
-              padding: "2px 4px",
+              display: "flex",
+              "align-items": "center",
               "border-radius": "6px",
               border: `1px solid ${customActive() ? "var(--text-muted)" : "var(--border)"}`,
               background: "var(--surface)",
-              color: "var(--text-muted)",
-              "font-size": "0.7rem",
-              "text-align": "center",
-              outline: "none",
-            }}
-          />
-          <select
-            value={customUnit()}
-            onChange={(e) => {
-              const u = e.currentTarget.value as TimeUnit;
-              setCustomUnit(u);
-              if (customValue()) applyCustom(customValue(), u);
-            }}
-            style={{
-              padding: "2px 2px",
-              "border-radius": "6px",
-              border: `1px solid ${customActive() ? "var(--text-muted)" : "var(--border)"}`,
-              background: "var(--surface)",
-              color: "var(--text-muted)",
-              "font-size": "0.7rem",
-              cursor: "pointer",
-              outline: "none",
+              overflow: "hidden",
             }}
           >
-            <option value="s">s</option>
-            <option value="m">m</option>
-            <option value="h">h</option>
-            <option value="d">d</option>
-          </select>
+            <input
+              type="text"
+              inputmode="decimal"
+              placeholder="#"
+              value={customValue()}
+              onInput={(e) => {
+                const v = e.currentTarget.value;
+                if (v === "" || /^\d*\.?\d*$/.test(v)) {
+                  setCustomValue(v);
+                  applyCustom(v, customUnit());
+                } else {
+                  e.currentTarget.value = customValue();
+                }
+              }}
+              onFocus={() => {
+                if (customValue()) applyCustom(customValue(), customUnit());
+              }}
+              style={{
+                width: "28px",
+                padding: "2px 4px",
+                border: "none",
+                background: "transparent",
+                color: customActive() ? "var(--text)" : "var(--text-muted)",
+                "font-size": "0.7rem",
+                "text-align": "center",
+                outline: "none",
+              }}
+            />
+            <div
+              style={{
+                display: "flex",
+                "flex-direction": "column",
+                "border-left": `1px solid ${customActive() ? "var(--text-muted)" : "var(--border)"}`,
+              }}
+            >
+              <button
+                onClick={() => stepCustom(1)}
+                style={{
+                  display: "flex",
+                  "align-items": "center",
+                  "justify-content": "center",
+                  width: "14px",
+                  height: "10px",
+                  border: "none",
+                  "border-bottom": `0.5px solid ${customActive() ? "var(--text-muted)" : "var(--border)"}`,
+                  background: "transparent",
+                  color: "var(--text-muted)",
+                  cursor: "pointer",
+                  "font-size": "0.4rem",
+                  "line-height": "1",
+                  padding: "0",
+                }}
+              >
+                ▲
+              </button>
+              <button
+                onClick={() => stepCustom(-1)}
+                style={{
+                  display: "flex",
+                  "align-items": "center",
+                  "justify-content": "center",
+                  width: "14px",
+                  height: "10px",
+                  border: "none",
+                  background: "transparent",
+                  color: "var(--text-muted)",
+                  cursor: "pointer",
+                  "font-size": "0.4rem",
+                  "line-height": "1",
+                  padding: "0",
+                }}
+              >
+                ▼
+              </button>
+            </div>
+          </div>
+          <div
+            style={{
+              display: "flex",
+              "border-radius": "6px",
+              border: `1px solid ${customActive() ? "var(--text-muted)" : "var(--border)"}`,
+              overflow: "hidden",
+            }}
+          >
+            <For each={["s", "m", "h", "d"] as TimeUnit[]}>
+              {(u) => (
+                <button
+                  onClick={() => {
+                    setCustomUnit(u);
+                    if (customValue()) applyCustom(customValue(), u);
+                  }}
+                  style={{
+                    padding: "2px 5px",
+                    border: "none",
+                    "border-right": u !== "d" ? `1px solid ${customActive() ? "var(--text-muted)" : "var(--border)"}` : "none",
+                    background: customUnit() === u ? "var(--text-muted)" : "var(--surface)",
+                    color: customUnit() === u ? "var(--bg)" : "var(--text-muted)",
+                    cursor: "pointer",
+                    "font-size": "0.65rem",
+                    "font-weight": customUnit() === u ? "700" : "500",
+                    "line-height": "1.4",
+                    transition: "all 0.1s ease",
+                  }}
+                >
+                  {u}
+                </button>
+              )}
+            </For>
+          </div>
         </div>
       </div>
 
-      <label
+      <div
+        onClick={toggleExtendPrev}
         style={{
           display: "flex",
           "align-items": "center",
@@ -207,14 +286,48 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
           "user-select": "none",
         }}
       >
-        <input
-          type="checkbox"
-          checked={extendPrev()}
-          onChange={toggleExtendPrev}
-          style={{ margin: "0", cursor: "pointer" }}
-        />
-        Fill gap since last label
-      </label>
+        <div
+          style={{
+            width: "12px",
+            height: "12px",
+            "border-radius": "3px",
+            border: `1.5px solid ${extendPrev() ? "var(--accent)" : "var(--text-muted)"}`,
+            background: extendPrev() ? "var(--accent)" : "transparent",
+            display: "flex",
+            "align-items": "center",
+            "justify-content": "center",
+            cursor: "pointer",
+            "flex-shrink": "0",
+            transition: "all 0.15s ease",
+          }}
+        >
+          <Show when={extendPrev()}>
+            <svg
+              width="8"
+              height="8"
+              viewBox="0 0 12 12"
+              fill="none"
+              style={{ display: "block" }}
+            >
+              <path
+                d="M2.5 6L5 8.5L9.5 3.5"
+                stroke="var(--bg)"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </Show>
+        </div>
+        <span
+          style={{
+            "font-size": "0.7rem",
+            color: "var(--text-muted)",
+          }}
+        >
+          Fill gap since last label
+        </span>
+      </div>
 
       <Show when={flash()}>
         <div

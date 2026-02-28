@@ -13,12 +13,9 @@ from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
 
-_COMPACT_SIZE = (320, 44)
-_EXPANDED_SIZE = (320, 320)
-_PANEL_SIZE = (320, 720)
-_PANEL_HIDE_DELAY_S = 0.3
-
-
+_COMPACT_SIZE = (280, 44)
+_EXPANDED_SIZE = (280, 280)
+_PANEL_SIZE = (280, 750)
 class WindowAPI:
     """Python methods exposed to JS as ``window.pywebview.api.<method>()``.
 
@@ -32,10 +29,14 @@ class WindowAPI:
         self._window: Any = None
         self._panel_window: Any = None
         self._visible = True
-        self._panel_hide_timer: threading.Timer | None = None
+        self._panel_visible = False
 
     def bind(self, window: Any) -> None:
         self._window = window
+        try:
+            window.events.moved += self._on_main_window_moved
+        except Exception:
+            logger.debug("Could not bind moved event", exc_info=True)
 
     def bind_panel(self, panel: Any) -> None:
         self._panel_window = panel

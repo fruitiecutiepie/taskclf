@@ -9,9 +9,9 @@ const isPanelView = new URLSearchParams(window.location.search).has("view")
   && new URLSearchParams(window.location.search).get("view") === "panel";
 
 // Dimensions matching window.py (_COMPACT_SIZE, _EXPANDED_SIZE, _PANEL_SIZE)
-const WIDGET_W = 320;
+const WIDGET_W = 280;
 const EXPANDED_CONTENT_MAX_H = 268; // 320 (expanded height) - 44 (pill) - 8 (border/gap)
-const PANEL_MAX_H = 720;
+const PANEL_MAX_H = 750;
 
 // In pywebview the viewport width matches the window (260px).
 // A normal browser viewport is much wider.
@@ -30,7 +30,7 @@ const PanelApp: Component = () => {
               "justify-content": "center",
               "padding-top": "32px",
               "min-height": "100vh",
-              background: "#918d8c",
+              background: "url('/bliss.png') center/cover no-repeat fixed",
             }
           : {}),
       }}
@@ -116,17 +116,20 @@ const App: Component = () => {
           ? {
               display: "flex",
               "flex-direction": "column",
-              "align-items": "center",
-              "padding-top": "32px",
+              "align-items": "flex-end",
+              "padding-top": "16px",
+              "padding-right": "16px",
               "min-height": "100vh",
-              background: "#918d8c",
+              background: "url('/bliss.png') center/cover no-repeat fixed",
             }
           : {}),
       }}
     >
       <div
         style={{
-          background: "var(--bg)",
+          background: "rgba(15, 17, 23, 0.5)",
+          "backdrop-filter": "blur(20px)",
+          "-webkit-backdrop-filter": "blur(20px)",
           width: `${WIDGET_W}px`,
           ...(inBrowser
             ? { "box-shadow": "0 4px 24px rgba(0, 0, 0, 0.5)" }
@@ -184,6 +187,9 @@ const App: Component = () => {
 
         <Show when={expanded()}>
           <div
+            style={{
+              background: "var(--bg)",
+            }}
             onMouseEnter={cancelLabelHide}
             onMouseLeave={scheduleLabelHide}
           >
