@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import platform
+import subprocess
 import threading
 import time
 from collections import Counter
@@ -42,6 +44,36 @@ from taskclf.ui.events import EventBus
 logger = logging.getLogger(__name__)
 
 _ALL_LABELS = [cl.value for cl in CoreLabel]
+
+
+def _send_desktop_notification(title: str, message: str, timeout: int = 10) -> None:
+    """Best-effort desktop notification with platform-native fallbacks."""
+    if platform.system() == "Darwin":
+        script = (
+            f'display notification "{message}" '
+            f'with title "{title}"'
+        )
+        try:
+            subprocess.run(
+                ["osascript", "-e", script],
+                capture_output=True, timeout=5, check=False,
+            )
+            return
+        except Exception:
+            pass
+
+    try:
+        from plyer import notification
+
+        notification.notify(
+            title=title, message=message,
+            app_name="taskclf", timeout=timeout,
+        )
+        return
+    except Exception:
+        pass
+
+    print(f"[{title}] {message}")
 
 
 # ---------------------------------------------------------------------------
@@ -276,6 +308,7 @@ class TrayLabeler:
         poll_seconds: Seconds between AW polls.
         transition_minutes: Minutes for transition detection threshold.
         event_bus: Optional shared event bus for broadcasting events.
+        ui_port: Port for the embedded UI server.
     """
 
     def __init__(
@@ -288,13 +321,22 @@ class TrayLabeler:
         poll_seconds: int = DEFAULT_POLL_SECONDS,
         transition_minutes: int = DEFAULT_TRANSITION_MINUTES,
         event_bus: EventBus | None = None,
+        ui_port: int = 8741,
+        dev: bool = False,
     ) -> None:
         self._data_dir = data_dir
         self._labels_path = data_dir / "labels_v1" / "labels.parquet"
         self._current_app: str = "unknown"
         self._suggested_label: str | None = None
         self._suggested_confidence: float | None = None
-        self._event_bus = event_bus
+        self._ui_port = ui_port
+        self._ui_server_running = False
+        self._ui_proc: Any = None
+        self._aw_host = aw_host
+        self._title_salt = title_salt
+        self._dev = dev
+
+        self._event_bus = event_bus if event_bus is not None else EventBus()
 
         self._suggester: _LabelSuggester | None = None
         if model_dir is not None:
@@ -313,7 +355,7 @@ class TrayLabeler:
             transition_minutes=transition_minutes,
             on_transition=self._handle_transition,
             on_poll=self._handle_poll,
-            event_bus=event_bus,
+            event_bus=self._event_bus,
         )
         self._icon: Any = None
 
@@ -378,17 +420,7 @@ class TrayLabeler:
         if self._suggested_label is not None and self._suggested_confidence is not None:
             message += f"\nSuggested: {self._suggested_label} ({self._suggested_confidence:.0%})"
 
-        try:
-            from plyer import notification
-
-            notification.notify(
-                title=title,
-                message=message,
-                app_name="taskclf",
-                timeout=10,
-            )
-        except Exception:
-            logger.warning("Could not send notification", exc_info=True)
+        _send_desktop_notification(title, message, timeout=10)
 
     def _label_action(self, label: str, minutes: int) -> Callable[..., None]:
         """Return a callback that creates a label span for the last N minutes."""
@@ -406,17 +438,11 @@ class TrayLabeler:
             try:
                 append_label_span(span, self._labels_path)
                 logger.info("Labeled: %s [%s → %s]", label, start_ts, end_ts)
-                try:
-                    from plyer import notification
-
-                    notification.notify(
-                        title="taskclf — Label saved",
-                        message=f"{label} [{start_ts:%H:%M} → {end_ts:%H:%M} UTC]",
-                        app_name="taskclf",
-                        timeout=5,
-                    )
-                except Exception:
-                    pass
+                _send_desktop_notification(
+                    "taskclf — Label saved",
+                    f"{label} [{start_ts:%H:%M} → {end_ts:%H:%M} UTC]",
+                    timeout=5,
+                )
             except ValueError as exc:
                 logger.error("Label failed: %s", exc)
 
@@ -467,36 +493,71 @@ class TrayLabeler:
     def _toggle_window(self, *_args: Any) -> None:
         import urllib.request
 
+        if self._ui_proc is not None and self._ui_proc.poll() is not None:
+            self._ui_server_running = False
+
+        if not self._ui_server_running:
+            self._start_ui_subprocess()
+            return
+
         try:
             req = urllib.request.Request(
-                "http://127.0.0.1:8741/api/window/toggle",
+                f"http://127.0.0.1:{self._ui_port}/api/window/toggle",
                 method="POST",
             )
             urllib.request.urlopen(req, timeout=2)
         except Exception:
-            self._notify("UI server not running. Start with: taskclf ui")
+            self._start_ui_subprocess()
 
     def _quit(self, *_args: Any) -> None:
         self._monitor.stop()
+        self._cleanup_ui()
         if self._icon is not None:
             self._icon.stop()
 
     def _notify(self, message: str) -> None:
-        try:
-            from plyer import notification
+        _send_desktop_notification("taskclf", message, timeout=5)
 
-            notification.notify(
-                title="taskclf",
-                message=message,
-                app_name="taskclf",
-                timeout=5,
-            )
+    def _start_ui_subprocess(self) -> None:
+        """Spawn ``taskclf ui`` as a child process (pywebview + FastAPI server)."""
+        import subprocess
+        import sys
+
+        try:
+            cmd = [
+                sys.executable, "-m", "taskclf.cli.main", "ui",
+                "--port", str(self._ui_port),
+                "--data-dir", str(self._data_dir),
+                "--aw-host", self._aw_host,
+                "--title-salt", self._title_salt,
+            ]
+            if self._dev:
+                cmd.append("--dev")
+            self._ui_proc = subprocess.Popen(cmd)
+            self._ui_server_running = True
+            mode = " (dev)" if self._dev else ""
+            print(f"UI window launched{mode} (pid={self._ui_proc.pid}, port={self._ui_port})")
         except Exception:
-            logger.warning("Could not send notification", exc_info=True)
+            logger.warning("Could not start UI subprocess", exc_info=True)
+            print("Warning: UI window failed to start")
+
+    def _cleanup_ui(self) -> None:
+        """Terminate the UI subprocess tree if still running."""
+        if self._ui_proc is not None and self._ui_proc.poll() is None:
+            self._ui_proc.terminate()
+            try:
+                self._ui_proc.wait(timeout=5)
+            except Exception:
+                self._ui_proc.kill()
 
     def run(self) -> None:
         """Start the tray icon and background monitor. Blocks until quit."""
+        import atexit
+
         import pystray
+
+        self._start_ui_subprocess()
+        atexit.register(self._cleanup_ui)
 
         monitor_thread = threading.Thread(
             target=self._monitor.run, daemon=True,
@@ -513,9 +574,12 @@ class TrayLabeler:
 
         mode = "with model suggestions" if self._suggester else "label-only (no model)"
         print(f"taskclf tray started ({mode})")
-        print("Right-click the tray icon to label. Press Quit to exit.")
+        print("Right-click the tray icon to label. Press Ctrl+C or Quit to exit.")
 
-        self._icon.run()
+        try:
+            self._icon.run()
+        finally:
+            self._cleanup_ui()
 
 
 # ---------------------------------------------------------------------------
@@ -532,8 +596,13 @@ def run_tray(
     data_dir: Path = Path(DEFAULT_DATA_DIR),
     transition_minutes: int = DEFAULT_TRANSITION_MINUTES,
     event_bus: EventBus | None = None,
+    ui_port: int = 8741,
+    dev: bool = False,
 ) -> None:
     """Launch the system tray labeling app.
+
+    Spawns ``taskclf ui`` as a child process on startup so the
+    native floating window is available immediately.
 
     Args:
         model_dir: Optional path to a trained model bundle.  When
@@ -547,6 +616,9 @@ def run_tray(
             before a transition notification fires.
         event_bus: Optional shared event bus for broadcasting events
             to connected WebSocket clients.
+        ui_port: Port for the embedded web UI server.
+        dev: When ``True``, the spawned UI subprocess starts a Vite
+            dev server for frontend hot reload.
     """
     tray = TrayLabeler(
         data_dir=data_dir,
@@ -556,5 +628,7 @@ def run_tray(
         poll_seconds=poll_seconds,
         transition_minutes=transition_minutes,
         event_bus=event_bus,
+        ui_port=ui_port,
+        dev=dev,
     )
     tray.run()

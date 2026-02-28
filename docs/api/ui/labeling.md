@@ -9,6 +9,12 @@ taskclf ui
 taskclf ui --port 8741 --model-dir models/run_20260226
 ```
 
+For frontend development with hot reload:
+
+```bash
+taskclf ui --dev
+```
+
 Options:
 
 | Option | Default | Description |
@@ -20,6 +26,7 @@ Options:
 | `--title-salt` | `taskclf-default-salt` | Salt for hashing window titles |
 | `--data-dir` | `data/processed` | Processed data directory |
 | `--transition-minutes` | `3` | Minutes before suggesting a label change |
+| `--dev` | off | Start Vite dev server for frontend hot reload |
 
 ## Panels
 
@@ -58,11 +65,13 @@ System tray labeling app for continuous background labeling.
 ```bash
 taskclf tray
 taskclf tray --model-dir models/run_20260226
+taskclf tray --dev
 ```
 
 ## Features
 
 - **System tray icon** -- runs persistently in the background via pystray.
+- **Embedded web UI server** -- automatically starts the FastAPI server so "Show/Hide Window" opens the labeling dashboard in a browser without needing a separate `taskclf ui` process.
 - **Activity transition detection** -- polls ActivityWatch and detects when the dominant foreground app changes. A transition fires when the new app persists for >= `--transition-minutes` (default 3).
 - **Desktop notifications** -- on each transition, a notification prompts the user to label the completed block.
 - **Label suggestions** -- when `--model-dir` is provided, the app predicts a label and includes it in the notification. Without a model, all 8 core labels are shown.

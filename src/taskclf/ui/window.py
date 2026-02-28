@@ -13,8 +13,8 @@ from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
 
-_COMPACT_SIZE = (280, 52)
-_EXPANDED_SIZE = (420, 560)
+_COMPACT_SIZE = (260, 44)
+_EXPANDED_SIZE = (260, 320)
 
 
 class WindowAPI:
@@ -80,16 +80,22 @@ def run_window(
 
     api = window_api or WindowAPI()
 
+    screens = webview.screens
+    primary = screens[0] if screens else None
+    x = (primary.width - _COMPACT_SIZE[0] - 16) if primary else None
+    y = 16 if primary else None
+
     window = webview.create_window(
         "taskclf",
         url=f"http://127.0.0.1:{port}",
         width=_COMPACT_SIZE[0],
         height=_COMPACT_SIZE[1],
+        x=x,
+        y=y,
         frameless=True,
         on_top=True,
         easy_drag=True,
-        resizable=True,
-        min_size=(200, 48),
+        resizable=False,
         js_api=api,
         background_color="#0f1117",
     )

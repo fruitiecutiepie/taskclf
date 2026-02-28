@@ -1,6 +1,8 @@
 import { defineConfig } from "vite";
 import solidPlugin from "vite-plugin-solid";
 
+const apiPort = process.env.TASKCLF_PORT || "8741";
+
 export default defineConfig({
   plugins: [solidPlugin()],
   build: {
@@ -9,9 +11,10 @@ export default defineConfig({
     target: "esnext",
   },
   server: {
+    host: "127.0.0.1",
     proxy: {
-      "/api": "http://127.0.0.1:8741",
-      "/ws": { target: "ws://127.0.0.1:8741", ws: true },
+      "/api": `http://127.0.0.1:${apiPort}`,
+      "/ws": { target: `ws://127.0.0.1:${apiPort}`, ws: true },
     },
   },
 });

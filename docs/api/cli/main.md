@@ -345,9 +345,11 @@ taskclf monitor show --store-dir artifacts/telemetry --last 10
 ### tray
 
 Run a persistent system tray app that polls ActivityWatch, detects
-activity transitions, and prompts for labels.  When `--model-dir` is
-provided, the app suggests labels using the trained model.  Without a
-model, all 8 core labels are presented for manual selection.
+activity transitions, and prompts for labels.  Automatically starts the
+web UI server so the "Show/Hide Window" menu item opens the labeling
+dashboard in a browser.  When `--model-dir` is provided, the app
+suggests labels using the trained model.  Without a model, all 8 core
+labels are presented for manual selection.
 
 ```bash
 taskclf tray
@@ -359,6 +361,12 @@ With a model for label suggestions:
 taskclf tray --model-dir models/run_20260226
 ```
 
+With frontend hot reload for development:
+
+```bash
+taskclf tray --dev
+```
+
 | Option | Default | Description |
 |---|---|---|
 | `--model-dir` | *(none)* | Model bundle for label suggestions |
@@ -366,5 +374,7 @@ taskclf tray --model-dir models/run_20260226
 | `--poll-seconds` | `60` | Seconds between AW polls |
 | `--transition-minutes` | `3` | Minutes a new app must persist before prompting |
 | `--data-dir` | `data/processed` | Processed data directory |
+| `--port` | `8741` | Port for the embedded web UI server |
+| `--dev` | off | Pass `--dev` to the spawned `taskclf ui` subprocess for frontend hot reload |
 
 ::: taskclf.cli.main

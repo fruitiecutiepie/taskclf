@@ -31,36 +31,40 @@ declare global {
   }
 }
 
-class PyWebViewHost implements Host {
-  readonly isNativeWindow = true;
+function getPyWebViewApi() {
+  return window.pywebview?.api ?? null;
+}
+
+/**
+ * Lazy-detecting host that re-checks for pywebview on every invoke.
+ *
+ * pywebview injects `window.pywebview` after the page's initial JS runs,
+ * so a one-shot check at module load time would miss it.
+ */
+class AdaptiveHost implements Host {
+  get isNativeWindow(): boolean {
+    return getPyWebViewApi() !== null;
+  }
 
   async invoke(command: HostCommand): Promise<void> {
-    const api = window.pywebview?.api;
+    const api = getPyWebViewApi();
     if (!api) return;
-    switch (command.cmd) {
-      case "setCompact":
-        return api.set_compact();
-      case "setExpanded":
-        return api.set_expanded();
-      case "hideWindow":
-        return api.hide_window();
+    try {
+      switch (command.cmd) {
+        case "setCompact":
+          await api.set_compact();
+          break;
+        case "setExpanded":
+          await api.set_expanded();
+          break;
+        case "hideWindow":
+          await api.hide_window();
+          break;
+      }
+    } catch {
+      // Resize/hide may fail transiently; don't block the caller.
     }
   }
 }
 
-class BrowserHost implements Host {
-  readonly isNativeWindow = false;
-
-  async invoke(_command: HostCommand): Promise<void> {
-    // No-op in browser mode -- window control is not available.
-  }
-}
-
-function detectHost(): Host {
-  if (typeof window !== "undefined" && window.pywebview) {
-    return new PyWebViewHost();
-  }
-  return new BrowserHost();
-}
-
-export const host: Host = detectHost();
+export const host: Host = new AdaptiveHost();

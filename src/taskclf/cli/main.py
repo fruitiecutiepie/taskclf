@@ -2151,8 +2151,14 @@ def tray_cmd(
     title_salt: str = typer.Option(DEFAULT_TITLE_SALT, "--title-salt", help="Salt for hashing window titles"),
     data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory"),
     transition_minutes: int = typer.Option(DEFAULT_TRANSITION_MINUTES, "--transition-minutes", help="Minutes a new app must persist before prompting to label"),
+    port: int = typer.Option(8741, "--port", help="Port for the embedded web UI server"),
+    dev: bool = typer.Option(False, "--dev", help="Start Vite dev server for frontend hot reload"),
 ) -> None:
-    """Run a system tray labeling app with activity transition detection."""
+    """Run a system tray labeling app with activity transition detection.
+
+    Automatically starts the web UI server so the "Show/Hide Window"
+    menu item opens the labeling dashboard in a browser.
+    """
     from taskclf.ui.tray import run_tray
 
     run_tray(
@@ -2162,6 +2168,8 @@ def tray_cmd(
         title_salt=title_salt,
         data_dir=Path(data_dir),
         transition_minutes=transition_minutes,
+        ui_port=port,
+        dev=dev,
     )
 
 
@@ -2178,8 +2186,11 @@ def ui_serve_cmd(
     data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory"),
     transition_minutes: int = typer.Option(DEFAULT_TRANSITION_MINUTES, "--transition-minutes", help="Minutes a new app must persist before suggesting a label"),
     browser: bool = typer.Option(False, "--browser", help="Open in browser instead of native window"),
+    dev: bool = typer.Option(False, "--dev", help="Start Vite dev server for frontend hot reload"),
 ) -> None:
     """Launch the labeling UI as a native floating window with live prediction streaming."""
+    import os
+    import subprocess
     import threading
 
     import uvicorn
@@ -2259,18 +2270,64 @@ def ui_serve_cmd(
     server_thread = threading.Thread(target=server.run, daemon=True)
     server_thread.start()
 
-    typer.echo(f"taskclf UI on http://127.0.0.1:{port}")
+    typer.echo(f"taskclf API on http://127.0.0.1:{port}")
 
-    if browser:
-        import webbrowser
+    vite_proc: subprocess.Popen[bytes] | None = None
+    ui_port = port
 
-        webbrowser.open(f"http://127.0.0.1:{port}")
-        try:
+    if dev:
+        import taskclf.ui.server as _ui_srv
+
+        frontend_dir = Path(_ui_srv.__file__).resolve().parent / "frontend"
+        if not frontend_dir.is_dir():
+            typer.echo(
+                "Error: frontend source not found (--dev requires a repo checkout)",
+                err=True,
+            )
+            raise typer.Exit(1)
+
+        if not (frontend_dir / "node_modules").is_dir():
+            typer.echo("Installing frontend dependencies…")
+            subprocess.run(["npm", "install"], cwd=frontend_dir, check=True)
+
+        vite_env = {**os.environ, "TASKCLF_PORT": str(port)}
+        vite_proc = subprocess.Popen(
+            ["npm", "run", "dev"],
+            cwd=frontend_dir,
+            env=vite_env,
+        )
+        ui_port = 5173
+        typer.echo(f"Vite dev server → http://127.0.0.1:{ui_port} (hot reload)")
+
+        import time
+        import urllib.request
+
+        for attempt in range(30):
+            try:
+                urllib.request.urlopen(f"http://127.0.0.1:{ui_port}", timeout=1)
+                break
+            except Exception:
+                if vite_proc.poll() is not None:
+                    typer.echo("Error: Vite dev server exited unexpectedly", err=True)
+                    raise typer.Exit(1)
+                time.sleep(0.5)
+        else:
+            typer.echo("Warning: Vite dev server not responding, opening anyway", err=True)
+
+    try:
+        if browser:
+            import webbrowser
+
+            webbrowser.open(f"http://127.0.0.1:{ui_port}")
             server_thread.join()
-        except KeyboardInterrupt:
-            pass
-    else:
-        run_window(port=port, window_api=win_api)
+        else:
+            run_window(port=ui_port, window_api=win_api)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        if vite_proc is not None:
+            vite_proc.terminate()
+            vite_proc.wait(timeout=5)
 
 
 if __name__ == "__main__":

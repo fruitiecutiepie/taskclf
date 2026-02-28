@@ -165,6 +165,15 @@ This launches a local web server at `http://127.0.0.1:8741` with a
 SolidJS frontend for labeling, queue management, and live prediction
 streaming.
 
+For frontend development with hot module replacement, add `--dev`:
+
+```bash
+uv run taskclf ui --dev
+```
+
+This starts the Vite dev server on `http://127.0.0.1:5173` alongside
+the API backend. Edit `.tsx` files and see changes instantly.
+
 ### Step 4: Train a model
 
 ```bash
@@ -314,6 +323,8 @@ uv run taskclf report daily --segments-file artifacts/segments.json
 For hands-free labeling as you work, run the system tray app.  It sits
 in your taskbar/menubar, polls ActivityWatch, and prompts you to label
 when it detects a significant change in your foreground application.
+The web UI server starts automatically so the "Show/Hide Window" menu
+item opens the labeling dashboard in a browser.
 
 ```bash
 uv run taskclf tray
@@ -333,6 +344,8 @@ uv run taskclf tray --model-dir models/<run_id>
 | `--poll-seconds` | `60` | Seconds between polls |
 | `--transition-minutes` | `3` | Minutes a new app must persist before prompting |
 | `--data-dir` | `data/processed` | Processed data directory |
+| `--port` | `8741` | Port for the embedded web UI server |
+| `--dev` | off | Start Vite dev server for frontend hot reload |
 
 You can also label at any time by right-clicking the tray icon and
 choosing "Label Last N min" with a label from the submenu.

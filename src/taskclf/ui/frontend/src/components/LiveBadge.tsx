@@ -67,8 +67,14 @@ export const LiveBadge: Component<{
         fallback={
           <span
             style={{
+              padding: props.compact ? "6px 16px" : "4px 12px",
+              "border-radius": "20px",
               "font-size": props.compact ? "0.85rem" : "0.8rem",
+              "font-weight": "600",
               color: "var(--text-muted)",
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              "white-space": "nowrap",
             }}
           >
             {props.compact ? "taskclf" : "waiting..."}
