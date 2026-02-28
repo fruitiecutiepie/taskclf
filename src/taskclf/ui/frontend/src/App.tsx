@@ -1,5 +1,6 @@
 import { createSignal, createResource, For, Show, type Component } from "solid-js";
 import { LiveBadge } from "./components/LiveBadge";
+import { StatePanel } from "./components/StatePanel";
 import { useWebSocket } from "./lib/ws";
 import { host } from "./lib/host";
 import { createLabel, fetchCoreLabels } from "./lib/api";
@@ -15,13 +16,64 @@ const LABEL_COLORS: Record<string, string> = {
   BreakIdle: "#6b7280",
 };
 
-const DEFAULT_LABEL_MINUTES = 5;
+const MINUTE_OPTIONS = [0, 1, 5, 10, 15, 30, 60] as const;
+type TimeUnit = "s" | "m" | "h" | "d";
+const UNIT_TO_MINUTES: Record<TimeUnit, number> = { s: 1 / 60, m: 1, h: 60, d: 1440 };
+
+const isPanelView = new URLSearchParams(window.location.search).has("view")
+  && new URLSearchParams(window.location.search).get("view") === "panel";
+
+const PanelApp: Component = () => {
+  const ws = useWebSocket();
+
+  return (
+    <div
+      style={{
+        background: "transparent",
+        height: "100vh",
+        overflow: "auto",
+        padding: "4px",
+      }}
+      onMouseEnter={() => host.invoke({ cmd: "cancelPanelHide" })}
+      onMouseLeave={() => host.invoke({ cmd: "hideStatePanel" })}
+    >
+      <StatePanel
+        status={ws.connectionStatus}
+        latestStatus={ws.latestStatus}
+        latestPrediction={ws.latestPrediction}
+        latestTrayState={ws.latestTrayState}
+        activeSuggestion={ws.activeSuggestion}
+        wsStats={ws.wsStats}
+      />
+    </div>
+  );
+};
 
 const App: Component = () => {
+  if (isPanelView) return <PanelApp />;
+
   const [expanded, setExpanded] = createSignal(false);
   const [labels] = createResource(fetchCoreLabels);
   const [flash, setFlash] = createSignal<string | null>(null);
+  const [selectedMinutes, setSelectedMinutes] = createSignal(1);
+  const [customActive, setCustomActive] = createSignal(false);
+  const [customValue, setCustomValue] = createSignal("");
+  const [customUnit, setCustomUnit] = createSignal<TimeUnit>("m");
   const ws = useWebSocket();
+
+  function selectPreset(m: number) {
+    setSelectedMinutes(m);
+    setCustomActive(false);
+    setCustomValue("");
+  }
+
+  function applyCustom(raw: string, unit: TimeUnit) {
+    const n = parseFloat(raw);
+    if (!isNaN(n) && n >= 0) {
+      setSelectedMinutes(n * UNIT_TO_MINUTES[unit]);
+      setCustomActive(true);
+    }
+  }
 
   function expand() {
     setExpanded(true);
@@ -34,8 +86,9 @@ const App: Component = () => {
   }
 
   async function labelNow(label: string) {
+    const mins = selectedMinutes();
     const now = new Date();
-    const start = new Date(now.getTime() - DEFAULT_LABEL_MINUTES * 60_000);
+    const start = new Date(now.getTime() - mins * 60_000);
     try {
       await createLabel({
         start_ts: start.toISOString().slice(0, -1),
@@ -76,8 +129,12 @@ const App: Component = () => {
         }}
       >
         <LiveBadge
-          prediction={ws.latestPrediction}
           status={ws.connectionStatus}
+          latestStatus={ws.latestStatus}
+          latestPrediction={ws.latestPrediction}
+          latestTrayState={ws.latestTrayState}
+          activeSuggestion={ws.activeSuggestion}
+          wsStats={ws.wsStats}
           compact
         />
         <button
@@ -102,23 +159,121 @@ const App: Component = () => {
         </button>
       </div>
 
-      {/* Expanded: label grid */}
+      {/* Expanded: state + label grid */}
       <Show when={expanded()}>
         <div
           style={{
             padding: "8px 12px 12px",
             "border-top": "1px solid var(--border)",
+            "max-height": "calc(100vh - 52px)",
+            "overflow-y": "auto",
           }}
         >
           <div
             style={{
-              "font-size": "0.75rem",
-              color: "var(--text-muted)",
-              "margin-bottom": "8px",
-              "text-align": "center",
+              display: "flex",
+              "align-items": "center",
+              "justify-content": "center",
+              gap: "4px",
+              margin: "8px 0",
+              "flex-wrap": "wrap",
             }}
           >
-            Label last {DEFAULT_LABEL_MINUTES} min
+            <span
+              style={{
+                "font-size": "0.7rem",
+                color: "var(--text-muted)",
+                "margin-right": "2px",
+              }}
+            >
+              Last
+            </span>
+            <For each={[...MINUTE_OPTIONS]}>
+              {(m) => (
+                <button
+                  onClick={() => selectPreset(m)}
+                  style={{
+                    padding: "2px 7px",
+                    "border-radius": "10px",
+                    border: "1px solid var(--border)",
+                    background:
+                      !customActive() && selectedMinutes() === m
+                        ? "var(--text-muted)"
+                        : "var(--surface)",
+                    color:
+                      !customActive() && selectedMinutes() === m
+                        ? "var(--bg)"
+                        : "var(--text-muted)",
+                    cursor: "pointer",
+                    "font-size": "0.7rem",
+                    "font-weight":
+                      !customActive() && selectedMinutes() === m ? "700" : "500",
+                    "line-height": "1.4",
+                    transition: "all 0.1s ease",
+                  }}
+                >
+                  {m === 0 ? "now" : `${m}m`}
+                </button>
+              )}
+            </For>
+            <div
+              style={{
+                display: "flex",
+                "align-items": "center",
+                gap: "2px",
+                "margin-left": "2px",
+              }}
+            >
+              <input
+                type="number"
+                min="0"
+                step="any"
+                placeholder="#"
+                value={customValue()}
+                onInput={(e) => {
+                  const v = e.currentTarget.value;
+                  setCustomValue(v);
+                  applyCustom(v, customUnit());
+                }}
+                onFocus={() => {
+                  if (customValue()) applyCustom(customValue(), customUnit());
+                }}
+                style={{
+                  width: "36px",
+                  padding: "2px 4px",
+                  "border-radius": "6px",
+                  border: `1px solid ${customActive() ? "var(--text-muted)" : "var(--border)"}`,
+                  background: "var(--surface)",
+                  color: "var(--text-muted)",
+                  "font-size": "0.7rem",
+                  "text-align": "center",
+                  outline: "none",
+                }}
+              />
+              <select
+                value={customUnit()}
+                onChange={(e) => {
+                  const u = e.currentTarget.value as TimeUnit;
+                  setCustomUnit(u);
+                  if (customValue()) applyCustom(customValue(), u);
+                }}
+                style={{
+                  padding: "2px 2px",
+                  "border-radius": "6px",
+                  border: `1px solid ${customActive() ? "var(--text-muted)" : "var(--border)"}`,
+                  background: "var(--surface)",
+                  color: "var(--text-muted)",
+                  "font-size": "0.7rem",
+                  cursor: "pointer",
+                  outline: "none",
+                }}
+              >
+                <option value="s">s</option>
+                <option value="m">m</option>
+                <option value="h">h</option>
+                <option value="d">d</option>
+              </select>
+            </div>
           </div>
 
           <Show when={flash()}>

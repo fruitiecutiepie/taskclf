@@ -130,6 +130,12 @@ class ActivityMonitor:
         self._aw_warned = False
         self._stop = threading.Event()
 
+        self._poll_count: int = 0
+        self._last_event_count: int = 0
+        self._last_app_counts: dict[str, int] = {}
+        self._last_poll_ts: dt.datetime | None = None
+        self._started_at: dt.datetime | None = None
+
     def _discover_bucket(self) -> str:
         from taskclf.adapters.activitywatch.client import find_window_bucket_id
 
@@ -152,6 +158,8 @@ class ActivityMonitor:
                         f"(retrying every {self._poll_seconds}s)..."
                     )
                     self._aw_warned = True
+                self._last_event_count = 0
+                self._last_app_counts = {}
                 return None
 
         now = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
@@ -163,12 +171,18 @@ class ActivityMonitor:
             )
         except Exception:
             logger.debug("Failed to fetch AW events", exc_info=True)
+            self._last_event_count = 0
+            self._last_app_counts = {}
             return None
 
         if not events:
+            self._last_event_count = 0
+            self._last_app_counts = {}
             return None
 
         counts = Counter(ev.app_id for ev in events)
+        self._last_event_count = len(events)
+        self._last_app_counts = dict(counts.most_common(5))
         return counts.most_common(1)[0][0]
 
     def check_transition(self, dominant_app: str) -> None:
@@ -207,15 +221,40 @@ class ActivityMonitor:
             self._candidate_duration = 0
 
     def _publish_status(self, dominant_app: str) -> None:
+        now = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+        self._last_poll_ts = now
+        self._poll_count += 1
+
         if self._event_bus is not None:
+            uptime_s = (
+                int((now - self._started_at).total_seconds())
+                if self._started_at else 0
+            )
             self._event_bus.publish_threadsafe({
                 "type": "status",
                 "state": "collecting",
                 "current_app": dominant_app,
+                "current_app_since": (
+                    self._current_app_since.isoformat()
+                    if self._current_app_since else None
+                ),
+                "candidate_app": self._candidate_app,
+                "candidate_duration_s": self._candidate_duration,
+                "transition_threshold_s": self._transition_threshold,
+                "poll_seconds": self._poll_seconds,
+                "poll_count": self._poll_count,
+                "last_poll_ts": now.isoformat(),
+                "uptime_s": uptime_s,
+                "aw_connected": self._bucket_id is not None,
+                "aw_bucket_id": self._bucket_id,
+                "aw_host": self._aw_host,
+                "last_event_count": self._last_event_count,
+                "last_app_counts": self._last_app_counts,
             })
 
     def run(self) -> None:
         """Blocking poll loop. Call from a daemon thread."""
+        self._started_at = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
         while not self._stop.is_set():
             dominant = self._poll_dominant_app()
             if dominant is not None:
@@ -325,6 +364,7 @@ class TrayLabeler:
         dev: bool = False,
     ) -> None:
         self._data_dir = data_dir
+        self._model_dir = model_dir
         self._labels_path = data_dir / "labels_v1" / "labels.parquet"
         self._current_app: str = "unknown"
         self._suggested_label: str | None = None
@@ -336,6 +376,11 @@ class TrayLabeler:
         self._title_salt = title_salt
         self._dev = dev
 
+        self._transition_count: int = 0
+        self._last_transition: dict[str, Any] | None = None
+        self._labels_saved_count: int = 0
+        self._model_schema_hash: str | None = None
+
         self._event_bus = event_bus if event_bus is not None else EventBus()
 
         self._suggester: _LabelSuggester | None = None
@@ -344,6 +389,7 @@ class TrayLabeler:
                 self._suggester = _LabelSuggester(model_dir)
                 self._suggester._aw_host = aw_host
                 self._suggester._title_salt = title_salt
+                self._model_schema_hash = self._suggester._predictor._metadata.schema_hash
                 logger.info("Model loaded from %s", model_dir)
             except Exception:
                 logger.warning("Could not load model from %s", model_dir, exc_info=True)
@@ -363,6 +409,21 @@ class TrayLabeler:
         self._current_app = dominant_app
         if self._icon is not None:
             self._icon.update_menu()
+        if self._event_bus is not None:
+            self._event_bus.publish_threadsafe({
+                "type": "tray_state",
+                "model_loaded": self._suggester is not None,
+                "model_dir": str(self._model_dir) if self._model_dir else None,
+                "model_schema_hash": self._model_schema_hash,
+                "suggested_label": self._suggested_label,
+                "suggested_confidence": self._suggested_confidence,
+                "transition_count": self._transition_count,
+                "last_transition": self._last_transition,
+                "labels_saved_count": self._labels_saved_count,
+                "data_dir": str(self._data_dir),
+                "ui_port": self._ui_port,
+                "dev_mode": self._dev,
+            })
 
     def _handle_transition(
         self,
@@ -371,6 +432,15 @@ class TrayLabeler:
         block_start: dt.datetime,
         block_end: dt.datetime,
     ) -> None:
+        self._transition_count += 1
+        self._last_transition = {
+            "prev_app": prev_app,
+            "new_app": new_app,
+            "block_start": block_start.isoformat(),
+            "block_end": block_end.isoformat(),
+            "fired_at": dt.datetime.now(dt.timezone.utc).replace(tzinfo=None).isoformat(),
+        }
+
         suggestion = None
         if self._suggester is not None:
             suggestion = self._suggester.suggest(block_start, block_end)
@@ -437,6 +507,7 @@ class TrayLabeler:
             )
             try:
                 append_label_span(span, self._labels_path)
+                self._labels_saved_count += 1
                 logger.info("Labeled: %s [%s → %s]", label, start_ts, end_ts)
                 _send_desktop_notification(
                     "taskclf — Label saved",

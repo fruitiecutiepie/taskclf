@@ -2236,20 +2236,12 @@ def ui_serve_cmd(
             "current_app": new,
         })
 
-    def on_poll(dominant_app: str) -> None:
-        bus.publish_threadsafe({
-            "type": "status",
-            "state": "collecting",
-            "current_app": dominant_app,
-        })
-
     monitor = ActivityMonitor(
         aw_host=aw_host,
         title_salt=title_salt,
         poll_seconds=poll_seconds,
         transition_minutes=transition_minutes,
         on_transition=on_transition,
-        on_poll=on_poll,
         event_bus=bus,
     )
     monitor_thread = threading.Thread(target=monitor.run, daemon=True)

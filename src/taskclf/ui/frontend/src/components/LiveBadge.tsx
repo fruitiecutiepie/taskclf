@@ -1,116 +1,102 @@
 import { type Accessor, type Component, Show } from "solid-js";
-import type { ConnectionStatus, Prediction, StatusEvent } from "../lib/ws";
-
-const LABEL_COLORS: Record<string, string> = {
-  Build: "#6366f1",
-  Debug: "#f59e0b",
-  Review: "#8b5cf6",
-  Write: "#3b82f6",
-  ReadResearch: "#14b8a6",
-  Communicate: "#f97316",
-  Meet: "#ec4899",
-  BreakIdle: "#6b7280",
-  "Mixed/Unknown": "#6b7280",
-  unknown: "#6b7280",
-};
-
-function dotColor(status: ConnectionStatus): string {
-  switch (status) {
-    case "connected":
-      return "var(--success)";
-    case "connecting":
-      return "var(--warning)";
-    case "disconnected":
-      return "var(--danger)";
-  }
-}
+import type { ConnectionStatus, LabelSuggestion, Prediction, StatusEvent, TrayState, WSStats } from "../lib/ws";
+import { LABEL_COLORS, dotColor } from "./StatePanel";
+import { host } from "../lib/host";
 
 export const LiveBadge: Component<{
-  prediction: Accessor<Prediction | StatusEvent | null>;
   status: Accessor<ConnectionStatus>;
+  latestStatus: Accessor<StatusEvent | null>;
+  latestPrediction: Accessor<Prediction | null>;
+  latestTrayState: Accessor<TrayState | null>;
+  activeSuggestion: Accessor<LabelSuggestion | null>;
+  wsStats: Accessor<WSStats>;
   compact?: boolean;
 }> = (props) => {
-  const label = () => {
-    const p = props.prediction();
-    if (!p) return null;
-    if (p.type === "status") return p.current_app;
-    return p.mapped_label || p.label;
+  const displayLabel = () => {
+    const pred = props.latestPrediction();
+    if (pred) return pred.mapped_label || pred.label;
+    const st = props.latestStatus();
+    if (st) return st.current_app;
+    return null;
   };
 
-  const confidence = () => {
-    const p = props.prediction();
-    if (!p || p.type === "status") return null;
-    return p.confidence;
+  const displayConfidence = () => {
+    const pred = props.latestPrediction();
+    return pred ? pred.confidence : null;
   };
 
   const badgeColor = () => {
-    const l = label();
-    return l ? LABEL_COLORS[l] ?? "var(--accent)" : "var(--border)";
+    const l = displayLabel();
+    return l ? LABEL_COLORS[l] ?? "#555" : "#333";
   };
 
   return (
     <div
-      style={{
-        display: "flex",
-        "align-items": "center",
-        gap: "10px",
-        ...(props.compact
-          ? {
-              "justify-content": "center",
-              width: "100%",
-            }
-          : {}),
-      }}
+      style={{ display: "inline-block", width: "100%" }}
+      onMouseEnter={() => host.invoke({ cmd: "showStatePanel" })}
+      onMouseLeave={() => host.invoke({ cmd: "hideStatePanel" })}
     >
-      <Show
-        when={label()}
-        fallback={
+      <div
+        style={{
+          display: "flex",
+          "align-items": "center",
+          gap: "10px",
+          "justify-content": "center",
+          width: "100%",
+        }}
+      >
+        <Show
+          when={displayLabel()}
+          fallback={
+            <span
+              style={{
+                padding: "3px 16px",
+                "border-radius": "20px",
+                "font-size": "0.85rem",
+                "font-weight": "600",
+                color: "#888",
+                background: "#1a1a1a",
+                border: "1px solid #333",
+                "white-space": "nowrap",
+                cursor: "default",
+              }}
+            >
+              No prediction
+            </span>
+          }
+        >
           <span
             style={{
-              padding: props.compact ? "6px 16px" : "4px 12px",
+              padding: "3px 16px",
               "border-radius": "20px",
-              "font-size": props.compact ? "0.85rem" : "0.8rem",
+              "font-size": "0.85rem",
               "font-weight": "600",
-              color: "var(--text-muted)",
-              background: "var(--surface)",
-              border: "1px solid var(--border)",
+              color: "#fff",
+              background: badgeColor(),
               "white-space": "nowrap",
+              cursor: "default",
             }}
           >
-            {props.compact ? "taskclf" : "waiting..."}
+            {displayLabel()}
+            <Show when={displayConfidence() !== null}>
+              {" "}
+              <span style={{ opacity: 0.8 }}>
+                {Math.round(displayConfidence()! * 100)}%
+              </span>
+            </Show>
           </span>
-        }
-      >
+        </Show>
         <span
           style={{
-            padding: props.compact ? "6px 16px" : "4px 12px",
-            "border-radius": "20px",
-            "font-size": props.compact ? "0.85rem" : "0.8rem",
-            "font-weight": "600",
-            color: "#fff",
-            background: badgeColor(),
-            "white-space": "nowrap",
+            width: "8px",
+            height: "8px",
+            "border-radius": "50%",
+            background: dotColor(props.status()),
+            "flex-shrink": "0",
           }}
-        >
-          {label()}
-          <Show when={confidence() !== null}>
-            {" "}
-            <span style={{ opacity: 0.8 }}>
-              {Math.round(confidence()! * 100)}%
-            </span>
-          </Show>
-        </span>
-      </Show>
-      <span
-        style={{
-          width: "8px",
-          height: "8px",
-          "border-radius": "50%",
-          background: dotColor(props.status()),
-          "flex-shrink": "0",
-        }}
-        title={props.status()}
-      />
+          title={props.status()}
+        />
+      </div>
     </div>
   );
 };
