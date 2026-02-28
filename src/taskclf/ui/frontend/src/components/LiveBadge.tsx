@@ -12,12 +12,11 @@ export const LiveBadge: Component<{
   wsStats: Accessor<WSStats>;
   compact?: boolean;
 }> = (props) => {
-  const displayLabel = () => {
+  const currentApp = () => props.latestStatus()?.current_app ?? null;
+
+  const predictionLabel = () => {
     const pred = props.latestPrediction();
-    if (pred) return pred.mapped_label || pred.label;
-    const st = props.latestStatus();
-    if (st) return st.current_app;
-    return null;
+    return pred ? pred.mapped_label || pred.label : null;
   };
 
   const displayConfidence = () => {
@@ -25,28 +24,28 @@ export const LiveBadge: Component<{
     return pred ? pred.confidence : null;
   };
 
-  const badgeColor = () => {
-    const l = displayLabel();
+  const predColor = () => {
+    const l = predictionLabel();
     return l ? LABEL_COLORS[l] ?? "#555" : "#333";
   };
+
+  const hasAnything = () => currentApp() !== null || predictionLabel() !== null;
 
   return (
     <div
       style={{ display: "inline-block", width: "100%" }}
-      onMouseEnter={() => host.invoke({ cmd: "showStatePanel" })}
-      onMouseLeave={() => host.invoke({ cmd: "hideStatePanel" })}
     >
       <div
         style={{
           display: "flex",
           "align-items": "center",
-          gap: "10px",
+          gap: "6px",
           "justify-content": "center",
           width: "100%",
         }}
       >
         <Show
-          when={displayLabel()}
+          when={hasAnything()}
           fallback={
             <span
               style={{
@@ -65,26 +64,45 @@ export const LiveBadge: Component<{
             </span>
           }
         >
-          <span
-            style={{
-              padding: "3px 16px",
-              "border-radius": "20px",
-              "font-size": "0.85rem",
-              "font-weight": "600",
-              color: "#fff",
-              background: badgeColor(),
-              "white-space": "nowrap",
-              cursor: "default",
-            }}
-          >
-            {displayLabel()}
-            <Show when={displayConfidence() !== null}>
-              {" "}
-              <span style={{ opacity: 0.8 }}>
-                {Math.round(displayConfidence()! * 100)}%
-              </span>
-            </Show>
-          </span>
+          <Show when={currentApp()}>
+            <span
+              style={{
+                padding: "3px 10px",
+                "border-radius": "20px",
+                "font-size": "0.75rem",
+                "font-weight": "500",
+                color: "#aaa",
+                background: "#1a1a1a",
+                border: "1px solid #333",
+                "white-space": "nowrap",
+                cursor: "default",
+              }}
+            >
+              {currentApp()}
+            </span>
+          </Show>
+          <Show when={predictionLabel()}>
+            <span
+              style={{
+                padding: "3px 12px",
+                "border-radius": "20px",
+                "font-size": "0.85rem",
+                "font-weight": "600",
+                color: "#fff",
+                background: predColor(),
+                "white-space": "nowrap",
+                cursor: "default",
+              }}
+            >
+              {predictionLabel()}
+              <Show when={displayConfidence() !== null}>
+                {" "}
+                <span style={{ opacity: 0.8 }}>
+                  {Math.round(displayConfidence()! * 100)}%
+                </span>
+              </Show>
+            </span>
+          </Show>
         </Show>
         <span
           style={{
@@ -93,8 +111,11 @@ export const LiveBadge: Component<{
             "border-radius": "50%",
             background: dotColor(props.status()),
             "flex-shrink": "0",
+            cursor: "pointer",
           }}
           title={props.status()}
+          onMouseEnter={() => host.invoke({ cmd: "showStatePanel" })}
+          onMouseLeave={() => host.invoke({ cmd: "hideStatePanel" })}
         />
       </div>
     </div>

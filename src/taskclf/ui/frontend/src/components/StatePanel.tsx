@@ -207,7 +207,7 @@ export const StatePanel: Component<{
         "box-shadow": "0 8px 32px rgba(0, 0, 0, 0.6)",
       }}
     >
-      {/* <div
+      <div
         style={{
           "font-size": "0.75rem",
           "font-weight": "700",
@@ -219,7 +219,7 @@ export const StatePanel: Component<{
         }}
       >
         State Panel
-      </div> */}
+      </div>
 
       <Section title="WebSocket">
         <Row
