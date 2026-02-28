@@ -26,7 +26,7 @@ function loadExtendForward(): boolean {
 }
 
 interface LabelGridProps {
-  maxHeight: number;
+  maxHeight?: number;
   onCollapse: () => void;
 }
 
@@ -94,8 +94,9 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
       style={{
         padding: "8px 12px 12px",
         "border-top": "1px solid var(--border)",
-        "max-height": `${props.maxHeight}px`,
-        "overflow-y": "auto",
+        ...(props.maxHeight != null
+          ? { "max-height": `${props.maxHeight}px`, "overflow-y": "auto" }
+          : {}),
       }}
     >
       <div

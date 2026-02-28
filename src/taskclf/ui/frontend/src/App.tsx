@@ -1,5 +1,6 @@
 import { createSignal, Show, type Component } from "solid-js";
 import { LabelGrid } from "./components/LabelGrid";
+import { LabelHistory } from "./components/LabelHistory";
 import { LiveBadge } from "./components/LiveBadge";
 import { StatePanel } from "./components/StatePanel";
 import { useWebSocket } from "./lib/ws";
@@ -63,8 +64,10 @@ const App: Component = () => {
   if (isPanelView) return <PanelApp />;
 
   const inBrowser = isBrowserMode();
+  const [hovering, setHovering] = createSignal(false);
   const [expanded, setExpanded] = createSignal(false);
   const [showPanel, setShowPanel] = createSignal(false);
+  const isOpen = () => hovering() || expanded();
   let labelHideTimer: number | undefined;
 
   function browserTogglePanel() {
@@ -76,25 +79,35 @@ const App: Component = () => {
   function showLabel() {
     clearTimeout(labelHideTimer);
     if (!expanded()) {
-      setExpanded(true);
+      setHovering(true);
       host.invoke({ cmd: "setExpanded" });
     }
   }
 
   function scheduleLabelHide() {
     clearTimeout(labelHideTimer);
-    labelHideTimer = window.setTimeout(() => {
-      setExpanded(false);
-      host.invoke({ cmd: "setCompact" });
-    }, 300);
+    if (!expanded()) {
+      labelHideTimer = window.setTimeout(() => {
+        setHovering(false);
+        host.invoke({ cmd: "setCompact" });
+      }, 300);
+    }
   }
 
   function cancelLabelHide() {
     clearTimeout(labelHideTimer);
   }
 
+  function expand() {
+    clearTimeout(labelHideTimer);
+    setHovering(false);
+    setExpanded(true);
+    host.invoke({ cmd: "setExpanded" });
+  }
+
   function collapse() {
     setExpanded(false);
+    setHovering(false);
     host.invoke({ cmd: "setCompact" });
   }
 
@@ -146,12 +159,12 @@ const App: Component = () => {
             latestTrayState={ws.latestTrayState}
             activeSuggestion={ws.activeSuggestion}
             wsStats={ws.wsStats}
-            compact={!expanded()}
+            compact={!isOpen()}
             onTogglePanel={inBrowser ? browserTogglePanel : undefined}
             onShowLabel={showLabel}
             onHideLabel={scheduleLabelHide}
           />
-          {/* <button
+          <button
             onClick={(e) => {
               e.stopPropagation();
               expanded() ? collapse() : expand();
@@ -159,7 +172,7 @@ const App: Component = () => {
             style={{
               background: "none",
               border: "none",
-              color: "var(--text-muted)",
+              color: "var(--text)",
               cursor: "pointer",
               "font-size": "0.9rem",
               padding: "4px 8px",
@@ -167,21 +180,31 @@ const App: Component = () => {
               transform: expanded() ? "rotate(180deg)" : "none",
               transition: "transform 0.15s ease",
             }}
-            title={expanded() ? "Collapse" : "Label now"}
+            title={expanded() ? "Collapse" : "Expand"}
           >
             &#9660;
-          </button> */}
+          </button>
         </div>
+
+        <Show when={hovering() && !expanded()}>
+          <div
+            style={{ background: "var(--bg)" }}
+            onMouseEnter={cancelLabelHide}
+            onMouseLeave={scheduleLabelHide}
+          >
+            <LabelGrid maxHeight={EXPANDED_CONTENT_MAX_H} onCollapse={collapse} />
+          </div>
+        </Show>
 
         <Show when={expanded()}>
           <div
             style={{
               background: "var(--bg)",
+              "max-height": `${EXPANDED_CONTENT_MAX_H}px`,
+              "overflow-y": "auto",
             }}
-            onMouseEnter={cancelLabelHide}
-            onMouseLeave={scheduleLabelHide}
           >
-            <LabelGrid maxHeight={EXPANDED_CONTENT_MAX_H} onCollapse={collapse} />
+            <LabelHistory visible={expanded} />
           </div>
         </Show>
       </div>
