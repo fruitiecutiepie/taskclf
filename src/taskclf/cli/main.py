@@ -2153,6 +2153,7 @@ def tray_cmd(
     transition_minutes: int = typer.Option(DEFAULT_TRANSITION_MINUTES, "--transition-minutes", help="Minutes a new app must persist before prompting to label"),
     port: int = typer.Option(8741, "--port", help="Port for the embedded web UI server"),
     dev: bool = typer.Option(False, "--dev", help="Start Vite dev server for frontend hot reload"),
+    username: str | None = typer.Option(None, "--username", help="Display name (persisted in config.json; does not affect label identity)"),
 ) -> None:
     """Run a system tray labeling app with activity transition detection.
 
@@ -2170,6 +2171,7 @@ def tray_cmd(
         transition_minutes=transition_minutes,
         ui_port=port,
         dev=dev,
+        username=username,
     )
 
 

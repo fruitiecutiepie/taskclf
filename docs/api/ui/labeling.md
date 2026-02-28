@@ -53,7 +53,7 @@ Options:
 
 The UI is a SolidJS single-page application served by a FastAPI backend:
 
-- **REST endpoints** (`/api/labels`, `/api/queue`, `/api/features/summary`, `/api/aw/live`, `/api/config/labels`) handle label CRUD, queue management, and data queries.
+- **REST endpoints** (`/api/labels`, `/api/queue`, `/api/features/summary`, `/api/aw/live`, `/api/config/labels`, `/api/config/user`) handle label CRUD, queue management, user configuration, and data queries.
   - `POST /api/labels` accepts an optional `extend_previous` boolean. When true, the most recent label for the same user is extended so its `end_ts` equals the new label's `start_ts`, producing contiguous coverage. The quick-label flow sets this flag automatically.
 - **WebSocket** (`/ws/predictions`) streams live events from the ActivityMonitor:
   - `status` -- every poll cycle: `state`, `current_app`, `current_app_since`, `candidate_app`, `candidate_duration_s`, `transition_threshold_s`, `poll_seconds`, `poll_count`, `last_poll_ts`, `uptime_s`, `aw_connected`, `aw_bucket_id`, `aw_host`, `last_event_count`, `last_app_counts`.
@@ -79,6 +79,7 @@ System tray labeling app for continuous background labeling.
 ```bash
 taskclf tray
 taskclf tray --model-dir models/run_20260226
+taskclf tray --username alice
 taskclf tray --dev
 ```
 

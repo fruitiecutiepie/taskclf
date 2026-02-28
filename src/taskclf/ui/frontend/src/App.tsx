@@ -94,7 +94,6 @@ const App: Component = () => {
         start_ts: start.toISOString().slice(0, -1),
         end_ts: now.toISOString().slice(0, -1),
         label,
-        user_id: "default-user",
         extend_previous: true,
       });
       setFlash(label);

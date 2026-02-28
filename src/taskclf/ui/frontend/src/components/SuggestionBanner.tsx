@@ -15,7 +15,6 @@ export const SuggestionBanner: Component<{
         start_ts: sg.block_start,
         end_ts: sg.block_end,
         label: sg.suggested,
-        user_id: "default-user",
         confidence: sg.confidence,
       });
     } catch (err) {

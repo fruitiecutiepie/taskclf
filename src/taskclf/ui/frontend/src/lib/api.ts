@@ -98,3 +98,22 @@ export async function fetchAWLive(
 export async function fetchCoreLabels(): Promise<string[]> {
   return json(`${BASE}/config/labels`);
 }
+
+export interface UserConfig {
+  user_id: string;
+  username: string;
+}
+
+export async function fetchUserConfig(): Promise<UserConfig> {
+  return json(`${BASE}/config/user`);
+}
+
+export async function updateUserConfig(
+  patch: { username?: string }
+): Promise<UserConfig> {
+  return json(`${BASE}/config/user`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+}

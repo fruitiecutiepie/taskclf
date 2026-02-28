@@ -29,6 +29,7 @@ from typing import Any, Callable
 
 from PIL import Image, ImageDraw
 
+from taskclf.core.config import UserConfig
 from taskclf.core.defaults import (
     DEFAULT_AW_HOST,
     DEFAULT_BUCKET_SECONDS,
@@ -362,10 +363,14 @@ class TrayLabeler:
         event_bus: EventBus | None = None,
         ui_port: int = 8741,
         dev: bool = False,
+        username: str | None = None,
     ) -> None:
         self._data_dir = data_dir
         self._model_dir = model_dir
         self._labels_path = data_dir / "labels_v1" / "labels.parquet"
+        self._config = UserConfig(data_dir)
+        if username is not None:
+            self._config.username = username
         self._current_app: str = "unknown"
         self._suggested_label: str | None = None
         self._suggested_confidence: float | None = None
@@ -503,7 +508,7 @@ class TrayLabeler:
                 end_ts=end_ts,
                 label=label,
                 provenance="manual",
-                user_id="default-user",
+                user_id=self._config.user_id,
             )
             try:
                 append_label_span(span, self._labels_path)
@@ -669,6 +674,7 @@ def run_tray(
     event_bus: EventBus | None = None,
     ui_port: int = 8741,
     dev: bool = False,
+    username: str | None = None,
 ) -> None:
     """Launch the system tray labeling app.
 
@@ -690,6 +696,9 @@ def run_tray(
         ui_port: Port for the embedded web UI server.
         dev: When ``True``, the spawned UI subprocess starts a Vite
             dev server for frontend hot reload.
+        username: Display name to persist in ``config.json``.  Does not
+            affect label identity (labels use the stable auto-generated
+            UUID ``user_id``).
     """
     tray = TrayLabeler(
         data_dir=data_dir,
@@ -701,5 +710,6 @@ def run_tray(
         event_bus=event_bus,
         ui_port=ui_port,
         dev=dev,
+        username=username,
     )
     tray.run()

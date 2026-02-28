@@ -21,7 +21,6 @@ export const LabelRecent: Component = () => {
   const [labels] = createResource(fetchCoreLabels);
   const [minutes, setMinutes] = createSignal(10);
   const [label, setLabel] = createSignal("");
-  const [userId, setUserId] = createSignal("default-user");
   const [confidence, setConfidence] = createSignal(0.8);
   const [status, setStatus] = createSignal<{
     type: "success" | "error";
@@ -53,7 +52,6 @@ export const LabelRecent: Component = () => {
         start_ts: startIso,
         end_ts: endIso,
         label: label(),
-        user_id: userId(),
         confidence: confidence(),
       });
       setStatus({
@@ -144,54 +142,28 @@ export const LabelRecent: Component = () => {
           </select>
         </div>
 
-        <div
-          style={{
-            display: "grid",
-            "grid-template-columns": "1fr 1fr",
-            gap: "12px",
-          }}
-        >
-          <div>
-            <label
-              style={{
-                "font-size": "0.85rem",
-                color: "var(--text-muted)",
-                "margin-bottom": "4px",
-                display: "block",
-              }}
-            >
-              User ID
-            </label>
-            <input
-              type="text"
-              value={userId()}
-              onInput={(e) => setUserId(e.currentTarget.value)}
-              style={inputStyle}
-            />
-          </div>
-          <div>
-            <label
-              style={{
-                "font-size": "0.85rem",
-                color: "var(--text-muted)",
-                "margin-bottom": "4px",
-                display: "block",
-              }}
-            >
-              Confidence: {confidence().toFixed(2)}
-            </label>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              value={confidence()}
-              onInput={(e) =>
-                setConfidence(parseFloat(e.currentTarget.value))
-              }
-              style={{ width: "100%", "margin-top": "4px" }}
-            />
-          </div>
+        <div>
+          <label
+            style={{
+              "font-size": "0.85rem",
+              color: "var(--text-muted)",
+              "margin-bottom": "4px",
+              display: "block",
+            }}
+          >
+            Confidence: {confidence().toFixed(2)}
+          </label>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.05"
+            value={confidence()}
+            onInput={(e) =>
+              setConfidence(parseFloat(e.currentTarget.value))
+            }
+            style={{ width: "100%", "margin-top": "4px" }}
+          />
         </div>
 
         <button

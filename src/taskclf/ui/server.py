@@ -19,6 +19,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from taskclf.core.config import UserConfig
 from taskclf.core.defaults import DEFAULT_AW_HOST, DEFAULT_DATA_DIR, DEFAULT_TITLE_SALT
 from taskclf.core.store import read_parquet
 from taskclf.core.types import CoreLabel, LabelSpan
@@ -45,7 +46,7 @@ class LabelCreateRequest(BaseModel):
     start_ts: str = Field(description="ISO-8601 start timestamp")
     end_ts: str = Field(description="ISO-8601 end timestamp")
     label: str
-    user_id: str = "default-user"
+    user_id: str | None = None
     confidence: float | None = None
     extend_previous: bool = Field(
         default=False,
@@ -92,6 +93,15 @@ class AWLiveEntry(BaseModel):
     events: int
 
 
+class UserConfigResponse(BaseModel):
+    user_id: str
+    username: str
+
+
+class UserConfigUpdateRequest(BaseModel):
+    username: str | None = None
+
+
 # ---------------------------------------------------------------------------
 # App factory
 # ---------------------------------------------------------------------------
@@ -117,6 +127,7 @@ def create_app(
     bus = event_bus or EventBus()
     labels_path = data_dir / "labels_v1" / "labels.parquet"
     queue_path = data_dir / "labels_v1" / "queue.json"
+    user_config = UserConfig(data_dir)
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):  # type: ignore[no-untyped-def]
@@ -152,13 +163,14 @@ def create_app(
 
     @app.post("/api/labels", status_code=201)
     async def create_label(body: LabelCreateRequest) -> LabelResponse:
+        uid = body.user_id if body.user_id is not None else user_config.user_id
         try:
             span = LabelSpan(
                 start_ts=dt.datetime.fromisoformat(body.start_ts),
                 end_ts=dt.datetime.fromisoformat(body.end_ts),
                 label=body.label,
                 provenance="manual",
-                user_id=body.user_id,
+                user_id=uid,
                 confidence=body.confidence,
             )
         except (ValueError, Exception) as exc:
@@ -272,6 +284,26 @@ def create_app(
     @app.get("/api/config/labels")
     async def config_labels() -> list[str]:
         return [cl.value for cl in CoreLabel]
+
+    @app.get("/api/config/user")
+    async def get_user_config() -> UserConfigResponse:
+        return UserConfigResponse(
+            user_id=user_config.user_id,
+            username=user_config.username,
+        )
+
+    @app.put("/api/config/user")
+    async def update_user_config(body: UserConfigUpdateRequest) -> UserConfigResponse:
+        patch = {k: v for k, v in body.model_dump().items() if v is not None}
+        if patch:
+            try:
+                user_config.update(patch)
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return UserConfigResponse(
+            user_id=user_config.user_id,
+            username=user_config.username,
+        )
 
     # -- REST: window control -------------------------------------------------
 
