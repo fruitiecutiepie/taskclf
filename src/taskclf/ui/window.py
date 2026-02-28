@@ -16,6 +16,9 @@ logger = logging.getLogger(__name__)
 _COMPACT_SIZE = (280, 44)
 _EXPANDED_SIZE = (280, 280)
 _PANEL_SIZE = (280, 750)
+_PANEL_HIDE_DELAY_S = 0.3
+
+
 class WindowAPI:
     """Python methods exposed to JS as ``window.pywebview.api.<method>()``.
 
@@ -30,6 +33,7 @@ class WindowAPI:
         self._panel_window: Any = None
         self._visible = True
         self._panel_visible = False
+        self._panel_hide_timer: threading.Timer | None = None
 
     def bind(self, window: Any) -> None:
         self._window = window
@@ -67,32 +71,28 @@ class WindowAPI:
 
     # -- State panel window ----------------------------------------------------
 
-    def show_state_panel(self) -> None:
-        """Position the panel window below the main window and show it."""
-        self._cancel_panel_timer()
+    def toggle_state_panel(self) -> None:
+        """Toggle the panel window's visibility."""
         if self._panel_window is None or self._window is None:
             return
-        try:
-            main_x = self._window.x
-            main_y = self._window.y
-            main_h = self._window.height
-            self._panel_window.move(main_x, main_y + main_h + 4)
-        except Exception:
-            logger.debug("Could not reposition panel", exc_info=True)
-        self._panel_window.show()
+        if self._panel_visible:
+            self._schedule_panel_hide()
+        else:
+            self._cancel_panel_timer()
+            self._position_panel()
+            try:
+                self._panel_window.show()
+            except Exception:
+                logger.debug("Could not show panel", exc_info=True)
+            self._panel_visible = True
 
-    def hide_state_panel(self) -> None:
-        """Schedule the panel window to hide after a short delay."""
+    def _schedule_panel_hide(self) -> None:
         self._cancel_panel_timer()
         self._panel_hide_timer = threading.Timer(
             _PANEL_HIDE_DELAY_S, self._do_hide_panel,
         )
         self._panel_hide_timer.daemon = True
         self._panel_hide_timer.start()
-
-    def cancel_panel_hide(self) -> None:
-        """Cancel a pending panel hide (mouse entered the panel)."""
-        self._cancel_panel_timer()
 
     def _cancel_panel_timer(self) -> None:
         if self._panel_hide_timer is not None:
@@ -106,6 +106,24 @@ class WindowAPI:
                 self._panel_window.hide()
             except Exception:
                 logger.debug("Could not hide panel", exc_info=True)
+        self._panel_visible = False
+
+    def _position_panel(self) -> None:
+        """Place the panel window directly below the main window."""
+        if self._panel_window is None or self._window is None:
+            return
+        try:
+            self._panel_window.move(
+                self._window.x,
+                self._window.y + self._window.height + 4,
+            )
+        except Exception:
+            logger.debug("Could not reposition panel", exc_info=True)
+
+    def _on_main_window_moved(self) -> None:
+        """Reposition the panel when the main window is dragged."""
+        if self._panel_visible:
+            self._position_panel()
 
     @property
     def visible(self) -> bool:

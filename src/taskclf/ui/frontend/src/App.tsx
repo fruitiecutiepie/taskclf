@@ -45,8 +45,6 @@ const PanelApp: Component = () => {
           overflow: "auto",
           padding: "4px",
         }}
-        onMouseEnter={() => host.invoke({ cmd: "cancelPanelHide" })}
-        onMouseLeave={() => host.invoke({ cmd: "hideStatePanel" })}
       >
         <StatePanel
           status={ws.connectionStatus}
@@ -67,19 +65,10 @@ const App: Component = () => {
   const inBrowser = isBrowserMode();
   const [expanded, setExpanded] = createSignal(false);
   const [showPanel, setShowPanel] = createSignal(false);
-  let panelHideTimer: number | undefined;
   let labelHideTimer: number | undefined;
 
-  function browserShowPanel() {
-    clearTimeout(panelHideTimer);
-    setShowPanel(true);
-  }
-  function browserScheduleHide() {
-    clearTimeout(panelHideTimer);
-    panelHideTimer = window.setTimeout(() => setShowPanel(false), 300);
-  }
-  function browserCancelHide() {
-    clearTimeout(panelHideTimer);
+  function browserTogglePanel() {
+    setShowPanel((v) => !v);
   }
 
   const ws = useWebSocket();
@@ -158,8 +147,7 @@ const App: Component = () => {
             activeSuggestion={ws.activeSuggestion}
             wsStats={ws.wsStats}
             compact={!expanded()}
-            onShowPanel={inBrowser ? browserShowPanel : undefined}
-            onHidePanel={inBrowser ? browserScheduleHide : undefined}
+            onTogglePanel={inBrowser ? browserTogglePanel : undefined}
             onShowLabel={showLabel}
             onHideLabel={scheduleLabelHide}
           />
@@ -198,7 +186,7 @@ const App: Component = () => {
         </Show>
       </div>
 
-      {/* Inline state panel for browser mode (hover-to-peek, 300ms dismiss) */}
+      {/* Inline state panel for browser mode (click to toggle) */}
       <Show when={inBrowser && showPanel()}>
         <div
           style={{
@@ -207,8 +195,6 @@ const App: Component = () => {
             "overflow-y": "auto",
             "margin-top": "4px",
           }}
-          onMouseEnter={browserCancelHide}
-          onMouseLeave={browserScheduleHide}
         >
           <StatePanel
             status={ws.connectionStatus}

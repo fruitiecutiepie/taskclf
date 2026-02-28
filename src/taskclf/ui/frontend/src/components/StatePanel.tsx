@@ -99,6 +99,7 @@ const Row: Component<{
       {props.label}
     </span>
     <span
+      title={props.value}
       style={{
         "font-size": "0.65rem",
         "font-weight": props.dim ? "400" : "600",
@@ -196,7 +197,7 @@ export const StatePanel: Component<{
   return (
     <div
       style={{
-        background: "#0d0d0d",
+        background: "var(--surface)",
         border: "1px solid #2a2a2a",
         "border-radius": "8px",
         padding: "6px 8px",

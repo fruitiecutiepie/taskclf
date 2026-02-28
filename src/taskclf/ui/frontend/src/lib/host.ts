@@ -13,9 +13,7 @@ export type HostCommand =
   | { cmd: "setCompact" }
   | { cmd: "setExpanded" }
   | { cmd: "hideWindow" }
-  | { cmd: "showStatePanel" }
-  | { cmd: "hideStatePanel" }
-  | { cmd: "cancelPanelHide" };
+  | { cmd: "toggleStatePanel" };
 
 export interface Host {
   invoke(command: HostCommand): Promise<void>;
@@ -29,9 +27,7 @@ declare global {
         set_compact(): Promise<void>;
         set_expanded(): Promise<void>;
         hide_window(): Promise<void>;
-        show_state_panel(): Promise<void>;
-        hide_state_panel(): Promise<void>;
-        cancel_panel_hide(): Promise<void>;
+        toggle_state_panel(): Promise<void>;
       };
     };
   }
@@ -66,14 +62,8 @@ class AdaptiveHost implements Host {
         case "hideWindow":
           await api.hide_window();
           break;
-        case "showStatePanel":
-          await api.show_state_panel();
-          break;
-        case "hideStatePanel":
-          await api.hide_state_panel();
-          break;
-        case "cancelPanelHide":
-          await api.cancel_panel_hide();
+        case "toggleStatePanel":
+          await api.toggle_state_panel();
           break;
       }
     } catch {

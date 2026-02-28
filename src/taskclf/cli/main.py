@@ -2154,12 +2154,13 @@ def tray_cmd(
     port: int = typer.Option(8741, "--port", help="Port for the embedded web UI server"),
     dev: bool = typer.Option(False, "--dev", help="Start Vite dev server for frontend hot reload"),
     browser: bool = typer.Option(False, "--browser", help="Open UI in browser instead of native window"),
+    no_tray: bool = typer.Option(False, "--no-tray", help="Skip the native tray icon (use with --browser for browser-only mode)"),
     username: str | None = typer.Option(None, "--username", help="Display name (persisted in config.json; does not affect label identity)"),
 ) -> None:
     """Run a system tray labeling app with activity transition detection.
 
-    Automatically starts the web UI server so the "Show/Hide Window"
-    menu item opens the labeling dashboard in a browser.
+    Left-clicking the tray icon opens the web dashboard where all
+    labeling is done.  Right-click shows a minimal menu with Quit.
     """
     from taskclf.ui.tray import run_tray
 
@@ -2173,6 +2174,7 @@ def tray_cmd(
         ui_port=port,
         dev=dev,
         browser=browser,
+        no_tray=no_tray,
         username=username,
     )
 

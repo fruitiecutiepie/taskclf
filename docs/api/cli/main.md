@@ -346,10 +346,10 @@ taskclf monitor show --store-dir artifacts/telemetry --last 10
 
 Run a persistent system tray app that polls ActivityWatch, detects
 activity transitions, and prompts for labels.  Automatically starts the
-web UI server so the "Show/Hide Window" menu item opens the labeling
-dashboard in a browser.  When `--model-dir` is provided, the app
-suggests labels using the trained model.  Without a model, all 8 core
-labels are presented for manual selection.
+web UI server.  Left-clicking the tray icon opens the web dashboard
+where all labeling is done through the UI.  Right-clicking shows a
+minimal menu with "Open Dashboard" and "Quit".  When `--model-dir` is
+provided, the app suggests labels using the trained model.
 
 ```bash
 taskclf tray
@@ -373,6 +373,12 @@ Open in browser instead of native window (useful combined with `--dev`):
 taskclf tray --dev --browser
 ```
 
+Fully browser-based (no native tray icon, no pywebview):
+
+```bash
+taskclf tray --dev --browser --no-tray
+```
+
 | Option | Default | Description |
 |---|---|---|
 | `--model-dir` | *(none)* | Model bundle for label suggestions |
@@ -383,5 +389,6 @@ taskclf tray --dev --browser
 | `--port` | `8741` | Port for the embedded web UI server |
 | `--dev` | off | Pass `--dev` to the spawned `taskclf ui` subprocess for frontend hot reload |
 | `--browser` | off | Open UI in browser instead of native window |
+| `--no-tray` | off | Skip the native tray icon (use with `--browser` for browser-only mode) |
 
 ::: taskclf.cli.main

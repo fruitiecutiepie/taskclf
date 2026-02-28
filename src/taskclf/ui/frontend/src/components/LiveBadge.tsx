@@ -11,8 +11,7 @@ export const LiveBadge: Component<{
   activeSuggestion: Accessor<LabelSuggestion | null>;
   wsStats: Accessor<WSStats>;
   compact?: boolean;
-  onShowPanel?: () => void;
-  onHidePanel?: () => void;
+  onTogglePanel?: () => void;
   onShowLabel?: () => void;
   onHideLabel?: () => void;
 }> = (props) => {
@@ -69,21 +68,18 @@ export const LiveBadge: Component<{
         </span>
         <span
           style={{
-            width: "8px",
-            height: "8px",
+            width: "10px",
+            height: "10px",
             "border-radius": "50%",
             background: dotColor(props.status()),
             "flex-shrink": "0",
             cursor: "pointer",
           }}
           title={props.status()}
-          onMouseEnter={() => {
-            host.invoke({ cmd: "showStatePanel" });
-            props.onShowPanel?.();
-          }}
-          onMouseLeave={() => {
-            host.invoke({ cmd: "hideStatePanel" });
-            props.onHidePanel?.();
+          onClick={(e) => {
+            e.stopPropagation();
+            host.invoke({ cmd: "toggleStatePanel" });
+            props.onTogglePanel?.();
           }}
         />
       </div>

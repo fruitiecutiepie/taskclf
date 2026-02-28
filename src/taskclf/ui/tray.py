@@ -10,8 +10,7 @@ Runs a pystray icon in the system tray that:
 - Polls ActivityWatch for the current foreground app
 - Detects activity transitions (dominant app changes persisting >= N minutes)
 - Sends desktop notifications prompting the user to label completed blocks
-- If a trained model is provided, suggests a label; otherwise shows all 8 core labels
-- Allows quick labeling from the tray menu at any time
+- Left-click opens the web dashboard; labeling is done through the web UI
 - Publishes prediction/suggestion events to a shared EventBus for the web UI
 """
 
@@ -38,13 +37,9 @@ from taskclf.core.defaults import (
     DEFAULT_TITLE_SALT,
     DEFAULT_TRANSITION_MINUTES,
 )
-from taskclf.core.types import CoreLabel, LabelSpan
-from taskclf.labels.store import append_label_span
 from taskclf.ui.events import EventBus
 
 logger = logging.getLogger(__name__)
-
-_ALL_LABELS = [cl.value for cl in CoreLabel]
 
 
 def _send_desktop_notification(title: str, message: str, timeout: int = 10) -> None:
@@ -364,6 +359,7 @@ class TrayLabeler:
         ui_port: int = 8741,
         dev: bool = False,
         browser: bool = False,
+        no_tray: bool = False,
         username: str | None = None,
     ) -> None:
         self._data_dir = data_dir
@@ -378,10 +374,12 @@ class TrayLabeler:
         self._ui_port = ui_port
         self._ui_server_running = False
         self._ui_proc: Any = None
+        self._vite_proc: Any = None
         self._aw_host = aw_host
         self._title_salt = title_salt
         self._dev = dev
         self._browser = browser
+        self._no_tray = no_tray
 
         self._transition_count: int = 0
         self._last_transition: dict[str, Any] | None = None
@@ -414,8 +412,6 @@ class TrayLabeler:
 
     def _handle_poll(self, dominant_app: str) -> None:
         self._current_app = dominant_app
-        if self._icon is not None:
-            self._icon.update_menu()
         if self._event_bus is not None:
             self._event_bus.publish_threadsafe({
                 "type": "tray_state",
@@ -458,9 +454,6 @@ class TrayLabeler:
             self._suggested_label = None
             self._suggested_confidence = None
 
-        if self._icon is not None:
-            self._icon.update_menu()
-
         self._send_notification(prev_app, new_app, block_start, block_end)
 
         if self._event_bus is not None:
@@ -499,76 +492,26 @@ class TrayLabeler:
 
         _send_desktop_notification(title, message, timeout=10)
 
-    def _label_action(self, label: str, minutes: int) -> Callable[..., None]:
-        """Return a callback that creates a label span for the last N minutes."""
-        def _do_label(*_args: Any) -> None:
-            end_ts = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
-            start_ts = end_ts - dt.timedelta(minutes=minutes)
-
-            span = LabelSpan(
-                start_ts=start_ts,
-                end_ts=end_ts,
-                label=label,
-                provenance="manual",
-                user_id=self._config.user_id,
-            )
-            try:
-                append_label_span(span, self._labels_path)
-                self._labels_saved_count += 1
-                logger.info("Labeled: %s [%s → %s]", label, start_ts, end_ts)
-                _send_desktop_notification(
-                    "taskclf — Label saved",
-                    f"{label} [{start_ts:%H:%M} → {end_ts:%H:%M} UTC]",
-                    timeout=5,
-                )
-            except ValueError as exc:
-                logger.error("Label failed: %s", exc)
-
-        return _do_label
-
     def _build_menu(self) -> "pystray.Menu":
         import pystray
 
-        items: list[pystray.MenuItem] = []
-
-        items.append(pystray.MenuItem(
-            f"Current: {self._current_app}",
-            action=None,
-            enabled=False,
-        ))
-
-        if self._suggested_label is not None and self._suggested_confidence is not None:
-            items.append(pystray.MenuItem(
-                f"Suggested: {self._suggested_label} ({self._suggested_confidence:.0%})",
-                action=None,
-                enabled=False,
-            ))
-
-        items.append(pystray.Menu.SEPARATOR)
-
-        for minutes in (5, 10, 15, 30):
-            label_items = []
-            for lbl in _ALL_LABELS:
-                label_items.append(pystray.MenuItem(
-                    lbl,
-                    self._label_action(lbl, minutes),
-                ))
-            items.append(pystray.MenuItem(
-                f"Label Last {minutes} min",
-                pystray.Menu(*label_items),
-            ))
-
-        items.append(pystray.Menu.SEPARATOR)
-
-        items.append(pystray.MenuItem(
-            "Show/Hide Window",
-            self._toggle_window,
-        ))
-        items.append(pystray.MenuItem("Quit", self._quit))
-
-        return pystray.Menu(*items)
+        return pystray.Menu(
+            pystray.MenuItem(
+                "Open Dashboard", self._toggle_window, default=True,
+            ),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem("Quit", self._quit),
+        )
 
     def _toggle_window(self, *_args: Any) -> None:
+        if self._browser:
+            import webbrowser
+
+            ui_port = 5173 if (self._dev and self._vite_proc is not None
+                               and self._vite_proc.poll() is None) else self._ui_port
+            webbrowser.open(f"http://127.0.0.1:{ui_port}")
+            return
+
         import urllib.request
 
         if self._ui_proc is not None and self._ui_proc.poll() is not None:
@@ -621,28 +564,124 @@ class TrayLabeler:
             logger.warning("Could not start UI subprocess", exc_info=True)
             print("Warning: UI window failed to start")
 
+    def _start_ui_embedded(self) -> None:
+        """Run FastAPI + uvicorn in-process, sharing the tray's EventBus.
+
+        This gives the browser full visibility into tray state (status,
+        tray_state, suggest_label, prediction) because the server and
+        the tray publish/subscribe on the same ``EventBus`` instance.
+        """
+        import os
+        import subprocess
+        import webbrowser
+
+        import uvicorn
+
+        from taskclf.ui.server import create_app
+
+        fastapi_app = create_app(
+            data_dir=self._data_dir,
+            aw_host=self._aw_host,
+            title_salt=self._title_salt,
+            event_bus=self._event_bus,
+        )
+
+        uvicorn_config = uvicorn.Config(
+            fastapi_app, host="127.0.0.1", port=self._ui_port,
+            log_level="warning",
+        )
+        server = uvicorn.Server(uvicorn_config)
+        server_thread = threading.Thread(target=server.run, daemon=True)
+        server_thread.start()
+        self._ui_server_running = True
+
+        print(f"taskclf API on http://127.0.0.1:{self._ui_port}")
+
+        ui_port = self._ui_port
+
+        if self._dev:
+            import taskclf.ui.server as _ui_srv
+
+            frontend_dir = Path(_ui_srv.__file__).resolve().parent / "frontend"
+            if not frontend_dir.is_dir():
+                print("Warning: frontend source not found (--dev requires a repo checkout)")
+                return
+
+            if not (frontend_dir / "node_modules").is_dir():
+                print("Installing frontend dependencies…")
+                subprocess.run(["npm", "install"], cwd=frontend_dir, check=True)
+
+            vite_env = {**os.environ, "TASKCLF_PORT": str(self._ui_port)}
+            self._vite_proc = subprocess.Popen(
+                ["npm", "run", "dev"],
+                cwd=frontend_dir,
+                env=vite_env,
+            )
+            ui_port = 5173
+            print(f"Vite dev server → http://127.0.0.1:{ui_port} (hot reload)")
+
+            for _attempt in range(30):
+                try:
+                    import urllib.request
+                    urllib.request.urlopen(f"http://127.0.0.1:{ui_port}", timeout=1)
+                    break
+                except Exception:
+                    if self._vite_proc.poll() is not None:
+                        print("Warning: Vite dev server exited unexpectedly")
+                        return
+                    time.sleep(0.5)
+            else:
+                print("Warning: Vite dev server not responding, opening anyway")
+
+        webbrowser.open(f"http://127.0.0.1:{ui_port}")
+        mode = " (dev)" if self._dev else ""
+        print(f"UI opened in browser{mode} (port={ui_port})")
+
     def _cleanup_ui(self) -> None:
-        """Terminate the UI subprocess tree if still running."""
+        """Terminate UI and Vite subprocesses if still running."""
         if self._ui_proc is not None and self._ui_proc.poll() is None:
             self._ui_proc.terminate()
             try:
                 self._ui_proc.wait(timeout=5)
             except Exception:
                 self._ui_proc.kill()
+        if self._vite_proc is not None and self._vite_proc.poll() is None:
+            self._vite_proc.terminate()
+            try:
+                self._vite_proc.wait(timeout=5)
+            except Exception:
+                self._vite_proc.kill()
 
     def run(self) -> None:
         """Start the tray icon and background monitor. Blocks until quit."""
         import atexit
 
-        import pystray
-
-        self._start_ui_subprocess()
+        if self._browser:
+            self._start_ui_embedded()
+        else:
+            self._start_ui_subprocess()
         atexit.register(self._cleanup_ui)
 
         monitor_thread = threading.Thread(
             target=self._monitor.run, daemon=True,
         )
         monitor_thread.start()
+
+        mode = "with model suggestions" if self._suggester else "label-only (no model)"
+
+        if self._no_tray:
+            print(f"taskclf running ({mode}), no tray icon. Press Ctrl+C to quit.")
+            stop = threading.Event()
+            try:
+                stop.wait()
+            except KeyboardInterrupt:
+                pass
+            finally:
+                self._monitor.stop()
+                self._cleanup_ui()
+            return
+
+        import pystray
 
         icon_image = _make_icon_image()
         self._icon = pystray.Icon(
@@ -652,9 +691,8 @@ class TrayLabeler:
             menu=self._build_menu(),
         )
 
-        mode = "with model suggestions" if self._suggester else "label-only (no model)"
         print(f"taskclf tray started ({mode})")
-        print("Right-click the tray icon to label. Press Ctrl+C or Quit to exit.")
+        print("Click the tray icon to open the dashboard. Press Ctrl+C or Quit to exit.")
 
         try:
             self._icon.run()
@@ -679,6 +717,7 @@ def run_tray(
     ui_port: int = 8741,
     dev: bool = False,
     browser: bool = False,
+    no_tray: bool = False,
     username: str | None = None,
 ) -> None:
     """Launch the system tray labeling app.
@@ -689,7 +728,6 @@ def run_tray(
     Args:
         model_dir: Optional path to a trained model bundle.  When
             provided, the tray suggests labels on activity transitions.
-            When omitted, all 8 core labels are presented equally.
         aw_host: ActivityWatch server URL.
         poll_seconds: Seconds between AW polling cycles.
         title_salt: Salt for hashing window titles.
@@ -703,6 +741,9 @@ def run_tray(
             dev server for frontend hot reload.
         browser: When ``True``, the spawned UI subprocess opens in the
             default browser instead of a native window.
+        no_tray: When ``True``, skip the native tray icon entirely.
+            The main thread blocks until interrupted.  Useful with
+            ``--browser`` for a fully browser-based workflow.
         username: Display name to persist in ``config.json``.  Does not
             affect label identity (labels use the stable auto-generated
             UUID ``user_id``).
@@ -718,6 +759,7 @@ def run_tray(
         ui_port=ui_port,
         dev=dev,
         browser=browser,
+        no_tray=no_tray,
         username=username,
     )
     tray.run()
