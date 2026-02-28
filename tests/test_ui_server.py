@@ -163,15 +163,15 @@ class TestWindowControl:
         assert resp.json()["visible"] is True
 
 
-class TestExtendPreviousAPI:
-    """API-level tests for the extend_previous flag on POST /api/labels."""
+class TestExtendForwardAPI:
+    """API-level tests for the per-label extend_forward flag on POST /api/labels."""
 
-    def test_extend_previous_true_extends_gap(self, client: TestClient) -> None:
+    def test_extend_forward_on_previous_extends_gap(self, client: TestClient) -> None:
         body1 = {
             "start_ts": "2026-02-27T09:55:00",
             "end_ts": "2026-02-27T10:00:00",
             "label": "Build",
-            "extend_previous": True,
+            "extend_forward": True,
         }
         resp = client.post("/api/labels", json=body1)
         assert resp.status_code == 201
@@ -180,7 +180,6 @@ class TestExtendPreviousAPI:
             "start_ts": "2026-02-27T10:29:00",
             "end_ts": "2026-02-27T10:30:00",
             "label": "ReadResearch",
-            "extend_previous": True,
         }
         resp = client.post("/api/labels", json=body2)
         assert resp.status_code == 201
@@ -190,7 +189,7 @@ class TestExtendPreviousAPI:
         build = [l for l in labels if l["label"] == "Build"][0]
         assert build["end_ts"] == "2026-02-27T10:29:00"
 
-    def test_extend_previous_false_no_extension(self, client: TestClient) -> None:
+    def test_extend_forward_off_no_extension(self, client: TestClient) -> None:
         body1 = {
             "start_ts": "2026-02-27T09:55:00",
             "end_ts": "2026-02-27T10:00:00",
@@ -203,7 +202,6 @@ class TestExtendPreviousAPI:
             "start_ts": "2026-02-27T10:29:00",
             "end_ts": "2026-02-27T10:30:00",
             "label": "ReadResearch",
-            "extend_previous": False,
         }
         resp = client.post("/api/labels", json=body2)
         assert resp.status_code == 201
@@ -212,7 +210,29 @@ class TestExtendPreviousAPI:
         build = [l for l in labels if l["label"] == "Build"][0]
         assert build["end_ts"] == "2026-02-27T10:00:00"
 
-    def test_extend_previous_defaults_to_false(self, client: TestClient) -> None:
+    def test_extend_forward_flag_on_previous_not_request(self, client: TestClient) -> None:
+        """Extension is driven by the *previous* label's flag, not the current request."""
+        body1 = {
+            "start_ts": "2026-02-27T09:55:00",
+            "end_ts": "2026-02-27T10:00:00",
+            "label": "Build",
+            "extend_forward": True,
+        }
+        client.post("/api/labels", json=body1)
+
+        body2 = {
+            "start_ts": "2026-02-27T10:29:00",
+            "end_ts": "2026-02-27T10:30:00",
+            "label": "ReadResearch",
+            "extend_forward": False,
+        }
+        client.post("/api/labels", json=body2)
+
+        labels = client.get("/api/labels").json()
+        build = [l for l in labels if l["label"] == "Build"][0]
+        assert build["end_ts"] == "2026-02-27T10:29:00"
+
+    def test_extend_forward_defaults_to_false(self, client: TestClient) -> None:
         body1 = {
             "start_ts": "2026-02-27T09:55:00",
             "end_ts": "2026-02-27T10:00:00",
@@ -231,12 +251,12 @@ class TestExtendPreviousAPI:
         build = [l for l in labels if l["label"] == "Build"][0]
         assert build["end_ts"] == "2026-02-27T10:00:00"
 
-    def test_extend_previous_201_response_correct(self, client: TestClient) -> None:
+    def test_extend_forward_201_response_correct(self, client: TestClient) -> None:
         body1 = {
             "start_ts": "2026-02-27T09:55:00",
             "end_ts": "2026-02-27T10:00:00",
             "label": "Build",
-            "extend_previous": True,
+            "extend_forward": True,
         }
         client.post("/api/labels", json=body1)
 
@@ -246,7 +266,7 @@ class TestExtendPreviousAPI:
             "label": "Debug",
             "user_id": "default-user",
             "confidence": 0.8,
-            "extend_previous": True,
+            "extend_forward": True,
         }
         resp = client.post("/api/labels", json=body2)
         assert resp.status_code == 201
@@ -255,12 +275,26 @@ class TestExtendPreviousAPI:
         assert data["provenance"] == "manual"
         assert data["start_ts"] == "2026-02-27T10:29:00"
         assert data["end_ts"] == "2026-02-27T10:30:00"
+        assert data["extend_forward"] is True
 
-    def test_extend_previous_overlap_409(self, client: TestClient) -> None:
+    def test_extend_forward_response_flag_persisted(self, client: TestClient) -> None:
+        body = {
+            "start_ts": "2026-02-27T09:55:00",
+            "end_ts": "2026-02-27T10:00:00",
+            "label": "Build",
+            "extend_forward": True,
+        }
+        client.post("/api/labels", json=body)
+
+        labels = client.get("/api/labels").json()
+        assert labels[0]["extend_forward"] is True
+
+    def test_extend_forward_overlap_409(self, client: TestClient) -> None:
         body1 = {
             "start_ts": "2026-02-27T08:00:00",
             "end_ts": "2026-02-27T08:30:00",
             "label": "Build",
+            "extend_forward": True,
         }
         client.post("/api/labels", json=body1)
 
@@ -275,7 +309,6 @@ class TestExtendPreviousAPI:
             "start_ts": "2026-02-27T08:50:00",
             "end_ts": "2026-02-27T09:05:00",
             "label": "Debug",
-            "extend_previous": True,
         }
         resp = client.post("/api/labels", json=body3)
         assert resp.status_code == 409
@@ -285,7 +318,7 @@ class TestExtendPreviousAPI:
             "start_ts": "2026-02-27T09:00:00",
             "end_ts": "2026-02-27T10:00:00",
             "label": "NotALabel",
-            "extend_previous": True,
+            "extend_forward": True,
         }
         resp = client.post("/api/labels", json=body)
         assert resp.status_code == 422

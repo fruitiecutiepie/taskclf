@@ -16,7 +16,6 @@ from taskclf.core.types import LABEL_SET_V1, LabelSpan
 from taskclf.labels.store import (
     _same_user,
     append_label_span,
-    extend_and_append_label_span,
     generate_dummy_labels,
     generate_label_summary,
     import_labels_from_csv,
@@ -217,6 +216,7 @@ def _span(
     end: tuple[int, int],
     label: str = "Build",
     user_id: str | None = "u1",
+    extend_forward: bool = False,
 ) -> LabelSpan:
     """Shorthand: times are (hour, minute) on a fixed date."""
     base = dt.date(2025, 6, 15)
@@ -226,6 +226,7 @@ def _span(
         label=label,
         provenance="manual",
         user_id=user_id,
+        extend_forward=extend_forward,
     )
 
 
@@ -252,27 +253,26 @@ class TestSameUser:
         assert _same_user(b, a) is False
 
 
-class TestExtendAndAppendLabelSpan:
-    """Tests for extend_and_append_label_span."""
+class TestExtendForward:
+    """Tests for extend_forward flag on append_label_span."""
 
     # -- happy path / gap-filling -----------------------------------------------
 
-    def test_first_label_no_file(self, tmp_path: Path) -> None:
+    def test_first_label_with_extend_forward(self, tmp_path: Path) -> None:
         path = tmp_path / "labels.parquet"
-        span = _span((10, 0), (10, 5))
-        extend_and_append_label_span(span, path)
+        span = _span((10, 0), (10, 5), extend_forward=True)
+        append_label_span(span, path)
         loaded = read_label_spans(path)
         assert len(loaded) == 1
-        assert loaded[0].start_ts == span.start_ts
-        assert loaded[0].end_ts == span.end_ts
+        assert loaded[0].extend_forward is True
 
     def test_first_label_for_user_other_users_exist(self, tmp_path: Path) -> None:
         path = tmp_path / "labels.parquet"
-        other = _span((9, 0), (9, 5), user_id="u2")
+        other = _span((9, 0), (9, 5), user_id="u2", extend_forward=True)
         write_label_spans([other], path)
 
         span = _span((10, 0), (10, 5), user_id="u1")
-        extend_and_append_label_span(span, path)
+        append_label_span(span, path)
         loaded = read_label_spans(path)
         assert len(loaded) == 2
         u2 = [s for s in loaded if s.user_id == "u2"][0]
@@ -280,11 +280,11 @@ class TestExtendAndAppendLabelSpan:
 
     def test_normal_gap_extension(self, tmp_path: Path) -> None:
         path = tmp_path / "labels.parquet"
-        prev = _span((9, 55), (10, 0))
+        prev = _span((9, 55), (10, 0), extend_forward=True)
         write_label_spans([prev], path)
 
         new = _span((10, 29), (10, 30), label="ReadResearch")
-        extend_and_append_label_span(new, path)
+        append_label_span(new, path)
 
         loaded = read_label_spans(path)
         assert len(loaded) == 2
@@ -296,20 +296,32 @@ class TestExtendAndAppendLabelSpan:
         assert appended.start_ts == new.start_ts
         assert appended.end_ts == new.end_ts
 
+    def test_no_extension_without_flag(self, tmp_path: Path) -> None:
+        path = tmp_path / "labels.parquet"
+        prev = _span((9, 55), (10, 0))
+        write_label_spans([prev], path)
+
+        new = _span((10, 29), (10, 30), label="ReadResearch")
+        append_label_span(new, path)
+
+        loaded = read_label_spans(path)
+        build = [s for s in loaded if s.label == "Build"][0]
+        assert build.end_ts == prev.end_ts
+
     def test_chained_extension_three_labels(self, tmp_path: Path) -> None:
         path = tmp_path / "labels.parquet"
-        a = _span((9, 0), (9, 5), label="Build")
-        extend_and_append_label_span(a, path)
+        a = _span((9, 0), (9, 5), label="Build", extend_forward=True)
+        append_label_span(a, path)
 
-        b = _span((9, 30), (9, 35), label="Debug")
-        extend_and_append_label_span(b, path)
+        b = _span((9, 30), (9, 35), label="Debug", extend_forward=True)
+        append_label_span(b, path)
 
         loaded = read_label_spans(path)
         a_loaded = [s for s in loaded if s.label == "Build"][0]
         assert a_loaded.end_ts == b.start_ts
 
         c = _span((10, 0), (10, 5), label="Write")
-        extend_and_append_label_span(c, path)
+        append_label_span(c, path)
 
         loaded = read_label_spans(path)
         assert len(loaded) == 3
@@ -322,11 +334,11 @@ class TestExtendAndAppendLabelSpan:
 
     def test_overlap_truncates_previous(self, tmp_path: Path) -> None:
         path = tmp_path / "labels.parquet"
-        prev = _span((9, 55), (10, 5))
+        prev = _span((9, 55), (10, 5), extend_forward=True)
         write_label_spans([prev], path)
 
         new = _span((10, 0), (10, 10), label="Debug")
-        extend_and_append_label_span(new, path)
+        append_label_span(new, path)
 
         loaded = read_label_spans(path)
         assert len(loaded) == 2
@@ -335,11 +347,11 @@ class TestExtendAndAppendLabelSpan:
 
     def test_adjacent_spans_no_change(self, tmp_path: Path) -> None:
         path = tmp_path / "labels.parquet"
-        prev = _span((9, 55), (10, 0))
+        prev = _span((9, 55), (10, 0), extend_forward=True)
         write_label_spans([prev], path)
 
         new = _span((10, 0), (10, 5), label="Debug")
-        extend_and_append_label_span(new, path)
+        append_label_span(new, path)
 
         loaded = read_label_spans(path)
         assert len(loaded) == 2
@@ -350,30 +362,30 @@ class TestExtendAndAppendLabelSpan:
 
     def test_same_start_as_previous_raises_overlap(self, tmp_path: Path) -> None:
         path = tmp_path / "labels.parquet"
-        prev = _span((10, 0), (10, 5))
+        prev = _span((10, 0), (10, 5), extend_forward=True)
         write_label_spans([prev], path)
 
         new = _span((10, 0), (10, 10), label="Debug")
         with pytest.raises(ValueError, match="overlaps"):
-            extend_and_append_label_span(new, path)
+            append_label_span(new, path)
 
     def test_new_before_previous_no_overlap_succeeds(self, tmp_path: Path) -> None:
         path = tmp_path / "labels.parquet"
-        prev = _span((11, 0), (11, 5))
+        prev = _span((11, 0), (11, 5), extend_forward=True)
         write_label_spans([prev], path)
 
         new = _span((9, 0), (9, 5), label="Debug")
-        extend_and_append_label_span(new, path)
+        append_label_span(new, path)
         loaded = read_label_spans(path)
         assert len(loaded) == 2
 
     def test_new_inside_previous_truncates(self, tmp_path: Path) -> None:
         path = tmp_path / "labels.parquet"
-        prev = _span((9, 0), (9, 10))
+        prev = _span((9, 0), (9, 10), extend_forward=True)
         write_label_spans([prev], path)
 
         new = _span((9, 5), (9, 8), label="Debug")
-        extend_and_append_label_span(new, path)
+        append_label_span(new, path)
 
         loaded = read_label_spans(path)
         assert len(loaded) == 2
@@ -384,11 +396,11 @@ class TestExtendAndAppendLabelSpan:
 
     def test_different_user_untouched(self, tmp_path: Path) -> None:
         path = tmp_path / "labels.parquet"
-        u1_span = _span((9, 0), (9, 5), user_id="u1")
+        u1_span = _span((9, 0), (9, 5), user_id="u1", extend_forward=True)
         write_label_spans([u1_span], path)
 
         u2_span = _span((10, 0), (10, 5), user_id="u2", label="Debug")
-        extend_and_append_label_span(u2_span, path)
+        append_label_span(u2_span, path)
 
         loaded = read_label_spans(path)
         u1 = [s for s in loaded if s.user_id == "u1"][0]
@@ -396,12 +408,12 @@ class TestExtendAndAppendLabelSpan:
 
     def test_same_user_extended_other_untouched(self, tmp_path: Path) -> None:
         path = tmp_path / "labels.parquet"
-        u1_prev = _span((9, 0), (9, 5), user_id="u1")
+        u1_prev = _span((9, 0), (9, 5), user_id="u1", extend_forward=True)
         u2_span = _span((9, 0), (9, 5), user_id="u2")
         write_label_spans([u1_prev, u2_span], path)
 
         u1_new = _span((10, 0), (10, 5), user_id="u1", label="Debug")
-        extend_and_append_label_span(u1_new, path)
+        append_label_span(u1_new, path)
 
         loaded = read_label_spans(path)
         u1_old = [s for s in loaded if s.user_id == "u1" and s.label == "Build"][0]
@@ -413,11 +425,11 @@ class TestExtendAndAppendLabelSpan:
 
     def test_both_none_user_extends(self, tmp_path: Path) -> None:
         path = tmp_path / "labels.parquet"
-        prev = _span((9, 0), (9, 5), user_id=None)
+        prev = _span((9, 0), (9, 5), user_id=None, extend_forward=True)
         write_label_spans([prev], path)
 
         new = _span((10, 0), (10, 5), user_id=None, label="Debug")
-        extend_and_append_label_span(new, path)
+        append_label_span(new, path)
 
         loaded = read_label_spans(path)
         old = [s for s in loaded if s.label == "Build"][0]
@@ -425,11 +437,11 @@ class TestExtendAndAppendLabelSpan:
 
     def test_different_user_no_extension(self, tmp_path: Path) -> None:
         path = tmp_path / "labels.parquet"
-        prev = _span((9, 0), (9, 5), user_id="other")
+        prev = _span((9, 0), (9, 5), user_id="other", extend_forward=True)
         write_label_spans([prev], path)
 
         new = _span((10, 0), (10, 5), user_id="u1", label="Debug")
-        extend_and_append_label_span(new, path)
+        append_label_span(new, path)
 
         loaded = read_label_spans(path)
         old = [s for s in loaded if s.label == "Build"][0]
@@ -441,11 +453,11 @@ class TestExtendAndAppendLabelSpan:
         path = tmp_path / "labels.parquet"
         early = _span((8, 0), (8, 5), label="Debug")
         middle = _span((9, 0), (9, 5), label="Review")
-        late = _span((9, 55), (10, 0), label="Write")
+        late = _span((9, 55), (10, 0), label="Write", extend_forward=True)
         write_label_spans([early, middle, late], path)
 
         new = _span((10, 29), (10, 30), label="Meet")
-        extend_and_append_label_span(new, path)
+        append_label_span(new, path)
 
         loaded = read_label_spans(path)
         by_label = {s.label: s for s in loaded}
@@ -457,12 +469,12 @@ class TestExtendAndAppendLabelSpan:
 
     def test_extension_truncate_avoids_third_span_overlap(self, tmp_path: Path) -> None:
         path = tmp_path / "labels.parquet"
-        first = _span((9, 0), (9, 30), label="Build")
+        first = _span((9, 0), (9, 30), label="Build", extend_forward=True)
         third = _span((9, 55), (10, 0), label="Review")
         write_label_spans([first, third], path)
 
         new = _span((9, 20), (9, 25), label="Debug")
-        extend_and_append_label_span(new, path)
+        append_label_span(new, path)
 
         loaded = read_label_spans(path)
         assert len(loaded) == 3
@@ -473,12 +485,19 @@ class TestExtendAndAppendLabelSpan:
 
     def test_extension_persisted_on_disk(self, tmp_path: Path) -> None:
         path = tmp_path / "labels.parquet"
-        prev = _span((9, 0), (9, 5))
+        prev = _span((9, 0), (9, 5), extend_forward=True)
         write_label_spans([prev], path)
 
         new = _span((10, 0), (10, 5), label="Debug")
-        extend_and_append_label_span(new, path)
+        append_label_span(new, path)
 
         reloaded = read_label_spans(path)
         old = [s for s in reloaded if s.label == "Build"][0]
         assert old.end_ts == new.start_ts
+
+    def test_extend_forward_flag_round_trip(self, tmp_path: Path) -> None:
+        path = tmp_path / "labels.parquet"
+        span = _span((9, 0), (9, 5), extend_forward=True)
+        write_label_spans([span], path)
+        loaded = read_label_spans(path)
+        assert loaded[0].extend_forward is True

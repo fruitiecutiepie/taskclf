@@ -24,7 +24,7 @@ def test_user_id_stable_across_reloads(tmp_path):
 
 
 def test_user_id_is_immutable_via_update(tmp_path):
-    cfg = UserConfig.from_path(tmp_path)
+    cfg = UserConfig(tmp_path)
     original = cfg.user_id
     cfg.update({"user_id": "should-be-ignored"})
     assert cfg.user_id == original

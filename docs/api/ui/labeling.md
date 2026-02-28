@@ -31,7 +31,7 @@ Options:
 ## Panels
 
 - **Label** -- Form with date/time pickers, `CoreLabel` dropdown, confidence slider, and user ID input.
-- **Recent** -- Quick-label with preset durations (now / 1 / 5 / 10 / 15 / 30 / 60 min) or a custom duration input supporting seconds, minutes, hours, and days. "now" creates a point label at the current moment; other values label the corresponding trailing window. Each quick-label automatically extends the previous label's end time to the new label's start, so labels form contiguous coverage without gaps. Shows a live ActivityWatch summary when available.
+- **Recent** -- Quick-label with preset durations (now / 1 / 5 / 10 / 15 / 30 / 60 min) or a custom duration input supporting seconds, minutes, hours, and days. "now" creates a point label at the current moment; other values label the corresponding trailing window. The "Extend until next label" checkbox (on by default) sets `extend_forward=true` on the new label; when the *next* label is created, this label's `end_ts` is automatically stretched to meet the next label's `start_ts`, producing contiguous coverage without gaps. Shows a live ActivityWatch summary when available.
 - **Queue** -- Pending `LabelRequest` items sorted by confidence (lowest first). Shows time range, predicted label, confidence, and reason.
 - **History** -- Recent labels in a sortable table.
 
@@ -54,7 +54,7 @@ Options:
 The UI is a SolidJS single-page application served by a FastAPI backend:
 
 - **REST endpoints** (`/api/labels`, `/api/queue`, `/api/features/summary`, `/api/aw/live`, `/api/config/labels`, `/api/config/user`) handle label CRUD, queue management, user configuration, and data queries.
-  - `POST /api/labels` accepts an optional `extend_previous` boolean. When true, the most recent label for the same user is extended so its `end_ts` equals the new label's `start_ts`, producing contiguous coverage. The quick-label flow sets this flag automatically.
+  - `POST /api/labels` accepts an optional `extend_forward` boolean. When true, the label is persisted with `extend_forward=true`; when the *next* label is created for the same user, this label's `end_ts` is automatically stretched to the new label's `start_ts`, producing contiguous coverage. The quick-label UI sets this flag by default.
 - **WebSocket** (`/ws/predictions`) streams live events from the ActivityMonitor:
   - `status` -- every poll cycle: `state`, `current_app`, `current_app_since`, `candidate_app`, `candidate_duration_s`, `transition_threshold_s`, `poll_seconds`, `poll_count`, `last_poll_ts`, `uptime_s`, `aw_connected`, `aw_bucket_id`, `aw_host`, `last_event_count`, `last_app_counts`.
   - `tray_state` -- every poll cycle: `model_loaded`, `model_dir`, `model_schema_hash`, `suggested_label`, `suggested_confidence`, `transition_count`, `last_transition` (with `prev_app`, `new_app`, `block_start`, `block_end`, `fired_at`), `labels_saved_count`, `data_dir`, `ui_port`, `dev_mode`.

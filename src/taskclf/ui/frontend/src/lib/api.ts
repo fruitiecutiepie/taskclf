@@ -7,6 +7,7 @@ export interface LabelResponse {
   provenance: string;
   user_id: string | null;
   confidence: number | null;
+  extend_forward: boolean;
 }
 
 export interface QueueItem {
@@ -53,7 +54,7 @@ export async function createLabel(body: {
   label: string;
   user_id?: string;
   confidence?: number;
-  extend_previous?: boolean;
+  extend_forward?: boolean;
 }): Promise<LabelResponse> {
   return json(`${BASE}/labels`, {
     method: "POST",

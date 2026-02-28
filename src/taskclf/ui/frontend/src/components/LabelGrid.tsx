@@ -16,10 +16,13 @@ const MINUTE_OPTIONS = [0, 1, 5, 10, 15, 30, 60] as const;
 type TimeUnit = "s" | "m" | "h" | "d";
 const UNIT_TO_MINUTES: Record<TimeUnit, number> = { s: 1 / 60, m: 1, h: 60, d: 1440 };
 
-const EXTEND_PREV_KEY = "taskclf:extendPrevious";
-function loadExtendPrevious(): boolean {
-  try { return localStorage.getItem(EXTEND_PREV_KEY) !== "false"; }
-  catch { return true; }
+const EXTEND_FWD_KEY = "taskclf:extendForward";
+const _LEGACY_KEY = "taskclf:extendPrevious";
+function loadExtendForward(): boolean {
+  try {
+    const v = localStorage.getItem(EXTEND_FWD_KEY) ?? localStorage.getItem(_LEGACY_KEY);
+    return v !== "false";
+  } catch { return true; }
 }
 
 interface LabelGridProps {
@@ -30,16 +33,16 @@ interface LabelGridProps {
 export const LabelGrid: Component<LabelGridProps> = (props) => {
   const [labels] = createResource(fetchCoreLabels);
   const [flash, setFlash] = createSignal<string | null>(null);
-  const [selectedMinutes, setSelectedMinutes] = createSignal(1);
+  const [selectedMinutes, setSelectedMinutes] = createSignal(0);
   const [customActive, setCustomActive] = createSignal(false);
   const [customValue, setCustomValue] = createSignal("");
   const [customUnit, setCustomUnit] = createSignal<TimeUnit>("m");
-  const [extendPrev, setExtendPrev] = createSignal(loadExtendPrevious());
+  const [extendFwd, setExtendFwd] = createSignal(loadExtendForward());
 
-  function toggleExtendPrev() {
-    const next = !extendPrev();
-    setExtendPrev(next);
-    try { localStorage.setItem(EXTEND_PREV_KEY, String(next)); } catch {}
+  function toggleExtendFwd() {
+    const next = !extendFwd();
+    setExtendFwd(next);
+    try { localStorage.setItem(EXTEND_FWD_KEY, String(next)); } catch {}
   }
 
   function selectPreset(m: number) {
@@ -67,13 +70,13 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
   async function labelNow(label: string) {
     const mins = selectedMinutes();
     const now = new Date();
-    const start = new Date(now.getTime() - mins * 60_000);
+    const start = new Date(now.getTime() - Math.max(mins * 60_000, 1_000));
     try {
       await createLabel({
         start_ts: start.toISOString().slice(0, -1),
         end_ts: now.toISOString().slice(0, -1),
         label,
-        extend_previous: extendPrev(),
+        extend_forward: extendFwd(),
       });
       setFlash(label);
       setTimeout(() => {
@@ -155,7 +158,7 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
               display: "flex",
               "align-items": "center",
               "border-radius": "6px",
-              border: `1px solid ${customActive() ? "var(--text-muted)" : "var(--border)"}`,
+              border: "1px solid var(--border)",
               background: "var(--surface)",
               overflow: "hidden",
             }}
@@ -192,7 +195,7 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
               style={{
                 display: "flex",
                 "flex-direction": "column",
-                "border-left": `1px solid ${customActive() ? "var(--text-muted)" : "var(--border)"}`,
+                "border-left": "1px solid var(--border)",
               }}
             >
               <button
@@ -204,7 +207,7 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
                   width: "14px",
                   height: "10px",
                   border: "none",
-                  "border-bottom": `0.5px solid ${customActive() ? "var(--text-muted)" : "var(--border)"}`,
+                  "border-bottom": "0.5px solid var(--border)",
                   background: "transparent",
                   color: "var(--text-muted)",
                   cursor: "pointer",
@@ -240,7 +243,7 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
             style={{
               display: "flex",
               "border-radius": "6px",
-              border: `1px solid ${customActive() ? "var(--text-muted)" : "var(--border)"}`,
+              border: "1px solid var(--border)",
               overflow: "hidden",
             }}
           >
@@ -254,7 +257,7 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
                   style={{
                     padding: "2px 5px",
                     border: "none",
-                    "border-right": u !== "d" ? `1px solid ${customActive() ? "var(--text-muted)" : "var(--border)"}` : "none",
+                    "border-right": u !== "d" ? "1px solid var(--border)" : "none",
                     background: customUnit() === u ? "var(--text-muted)" : "var(--surface)",
                     color: customUnit() === u ? "var(--bg)" : "var(--text-muted)",
                     cursor: "pointer",
@@ -273,7 +276,7 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
       </div>
 
       <div
-        onClick={toggleExtendPrev}
+        onClick={toggleExtendFwd}
         style={{
           display: "flex",
           "align-items": "center",
@@ -291,8 +294,8 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
             width: "12px",
             height: "12px",
             "border-radius": "3px",
-            border: `1.5px solid ${extendPrev() ? "var(--accent)" : "var(--text-muted)"}`,
-            background: extendPrev() ? "var(--accent)" : "transparent",
+            border: `1.5px solid ${extendFwd() ? "var(--accent)" : "var(--text-muted)"}`,
+            background: extendFwd() ? "var(--accent)" : "transparent",
             display: "flex",
             "align-items": "center",
             "justify-content": "center",
@@ -301,7 +304,7 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
             transition: "all 0.15s ease",
           }}
         >
-          <Show when={extendPrev()}>
+          <Show when={extendFwd()}>
             <svg
               width="8"
               height="8"
@@ -325,7 +328,7 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
             color: "var(--text-muted)",
           }}
         >
-          Fill gap since last label
+          Extend until next label
         </span>
       </div>
 

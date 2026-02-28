@@ -116,11 +116,21 @@ def import_labels_from_csv(path: Path) -> list[LabelSpan]:
     return spans
 
 
+def _same_user(a: LabelSpan, b: LabelSpan) -> bool:
+    """True when both spans belong to the same user (or both have no user)."""
+    if a.user_id is None and b.user_id is None:
+        return True
+    if a.user_id is not None and b.user_id is not None:
+        return a.user_id == b.user_id
+    return False
+
+
 def append_label_span(span: LabelSpan, path: Path) -> Path:
     """Append a single label span to an existing (or new) parquet file.
 
-    Validates that the new span does not overlap any existing span
-    belonging to the same user.
+    If the most recent same-user label has ``extend_forward=True``, its
+    ``end_ts`` is stretched (or truncated) to ``span.start_ts`` so labels
+    form contiguous coverage.  Otherwise a plain overlap check is performed.
 
     Args:
         span: The label span to append.
@@ -131,59 +141,7 @@ def append_label_span(span: LabelSpan, path: Path) -> Path:
 
     Raises:
         ValueError: If the span overlaps an existing span for the
-            same user.
-    """
-    existing: list[LabelSpan] = []
-    if path.exists():
-        existing = read_label_spans(path)
-
-    for ex in existing:
-        if span.user_id is not None and ex.user_id is not None and span.user_id != ex.user_id:
-            continue
-        if span.user_id is None and ex.user_id is not None:
-            continue
-        if span.user_id is not None and ex.user_id is None:
-            continue
-        if span.start_ts < ex.end_ts and ex.start_ts < span.end_ts:
-            raise ValueError(
-                f"New span [{span.start_ts}, {span.end_ts}) overlaps "
-                f"existing span [{ex.start_ts}, {ex.end_ts}) "
-                f"for user {span.user_id!r}"
-            )
-
-    existing.append(span)
-    return write_label_spans(existing, path)
-
-
-def _same_user(a: LabelSpan, b: LabelSpan) -> bool:
-    """True when both spans belong to the same user (or both have no user)."""
-    if a.user_id is None and b.user_id is None:
-        return True
-    if a.user_id is not None and b.user_id is not None:
-        return a.user_id == b.user_id
-    return False
-
-
-def extend_and_append_label_span(span: LabelSpan, path: Path) -> Path:
-    """Append *span* and extend the previous label to fill the gap.
-
-    Finds the most recent existing label for the same ``user_id`` (by
-    ``start_ts``) and sets its ``end_ts`` to ``span.start_ts``, creating
-    contiguous label coverage.  If the previous label would overlap the
-    new span it is truncated instead.
-
-    Falls back to :func:`append_label_span` when there is no previous
-    label to extend.
-
-    Args:
-        span: The new label span to append.
-        path: Parquet file to read-modify-write.
-
-    Returns:
-        The *path* that was written.
-
-    Raises:
-        ValueError: If any overlap remains after extension.
+            same user (after any extension).
     """
     existing: list[LabelSpan] = []
     if path.exists():
@@ -200,7 +158,7 @@ def extend_and_append_label_span(span: LabelSpan, path: Path) -> Path:
             prev = ex
             prev_idx = i
 
-    if prev is not None and prev_idx is not None:
+    if prev is not None and prev_idx is not None and prev.extend_forward:
         updated = prev.model_copy(update={"end_ts": span.start_ts})
         existing[prev_idx] = updated
 

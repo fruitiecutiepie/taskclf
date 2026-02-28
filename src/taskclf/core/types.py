@@ -228,6 +228,10 @@ class LabelSpan(BaseModel, frozen=True):
     confidence: float | None = Field(
         default=None, ge=0.0, le=1.0, description="Labeler confidence (0-1)."
     )
+    extend_forward: bool = Field(
+        default=False,
+        description="When true, this label extends forward until the next label is created.",
+    )
 
     @model_validator(mode="after")
     def _check_invariants(self) -> LabelSpan:

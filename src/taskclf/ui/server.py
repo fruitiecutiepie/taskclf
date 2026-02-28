@@ -26,7 +26,6 @@ from taskclf.core.types import CoreLabel, LabelSpan
 from taskclf.labels.queue import ActiveLabelingQueue
 from taskclf.labels.store import (
     append_label_span,
-    extend_and_append_label_span,
     generate_label_summary,
     read_label_spans,
 )
@@ -48,10 +47,10 @@ class LabelCreateRequest(BaseModel):
     label: str
     user_id: str | None = None
     confidence: float | None = None
-    extend_previous: bool = Field(
+    extend_forward: bool = Field(
         default=False,
-        description="When true, extend the most recent label for this user "
-        "so it ends at start_ts, creating contiguous coverage.",
+        description="When true, this label extends forward until the next "
+        "label is created, producing contiguous coverage.",
     )
 
 
@@ -62,6 +61,7 @@ class LabelResponse(BaseModel):
     provenance: str
     user_id: str | None = None
     confidence: float | None = None
+    extend_forward: bool = False
 
 
 class QueueItemResponse(BaseModel):
@@ -157,6 +157,7 @@ def create_app(
                 provenance=s.provenance,
                 user_id=s.user_id,
                 confidence=s.confidence,
+                extend_forward=s.extend_forward,
             )
             for s in spans[:limit]
         ]
@@ -172,14 +173,12 @@ def create_app(
                 provenance="manual",
                 user_id=uid,
                 confidence=body.confidence,
+                extend_forward=body.extend_forward,
             )
         except (ValueError, Exception) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         try:
-            if body.extend_previous:
-                extend_and_append_label_span(span, labels_path)
-            else:
-                append_label_span(span, labels_path)
+            append_label_span(span, labels_path)
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return LabelResponse(
@@ -189,6 +188,7 @@ def create_app(
             provenance=span.provenance,
             user_id=span.user_id,
             confidence=span.confidence,
+            extend_forward=span.extend_forward,
         )
 
     # -- REST: queue ----------------------------------------------------------
