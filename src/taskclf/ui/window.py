@@ -13,9 +13,9 @@ from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
 
-_COMPACT_SIZE = (260, 44)
-_EXPANDED_SIZE = (260, 320)
-_PANEL_SIZE = (260, 720)
+_COMPACT_SIZE = (320, 44)
+_EXPANDED_SIZE = (320, 320)
+_PANEL_SIZE = (320, 720)
 _PANEL_HIDE_DELAY_S = 0.3
 
 

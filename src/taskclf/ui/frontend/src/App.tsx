@@ -9,7 +9,7 @@ const isPanelView = new URLSearchParams(window.location.search).has("view")
   && new URLSearchParams(window.location.search).get("view") === "panel";
 
 // Dimensions matching window.py (_COMPACT_SIZE, _EXPANDED_SIZE, _PANEL_SIZE)
-const WIDGET_W = 260;
+const WIDGET_W = 320;
 const EXPANDED_CONTENT_MAX_H = 268; // 320 (expanded height) - 44 (pill) - 8 (border/gap)
 const PANEL_MAX_H = 720;
 
@@ -30,6 +30,7 @@ const PanelApp: Component = () => {
               "justify-content": "center",
               "padding-top": "32px",
               "min-height": "100vh",
+              background: "#918d8c",
             }
           : {}),
       }}
@@ -67,6 +68,7 @@ const App: Component = () => {
   const [expanded, setExpanded] = createSignal(false);
   const [showPanel, setShowPanel] = createSignal(false);
   let panelHideTimer: number | undefined;
+  let labelHideTimer: number | undefined;
 
   function browserShowPanel() {
     clearTimeout(panelHideTimer);
@@ -82,9 +84,24 @@ const App: Component = () => {
 
   const ws = useWebSocket();
 
-  function expand() {
-    setExpanded(true);
-    host.invoke({ cmd: "setExpanded" });
+  function showLabel() {
+    clearTimeout(labelHideTimer);
+    if (!expanded()) {
+      setExpanded(true);
+      host.invoke({ cmd: "setExpanded" });
+    }
+  }
+
+  function scheduleLabelHide() {
+    clearTimeout(labelHideTimer);
+    labelHideTimer = window.setTimeout(() => {
+      setExpanded(false);
+      host.invoke({ cmd: "setCompact" });
+    }, 300);
+  }
+
+  function cancelLabelHide() {
+    clearTimeout(labelHideTimer);
   }
 
   function collapse() {
@@ -102,6 +119,7 @@ const App: Component = () => {
               "align-items": "center",
               "padding-top": "32px",
               "min-height": "100vh",
+              background: "#918d8c",
             }
           : {}),
       }}
@@ -136,11 +154,13 @@ const App: Component = () => {
             latestTrayState={ws.latestTrayState}
             activeSuggestion={ws.activeSuggestion}
             wsStats={ws.wsStats}
-            compact
+            compact={!expanded()}
             onShowPanel={inBrowser ? browserShowPanel : undefined}
             onHidePanel={inBrowser ? browserScheduleHide : undefined}
+            onShowLabel={showLabel}
+            onHideLabel={scheduleLabelHide}
           />
-          <button
+          {/* <button
             onClick={(e) => {
               e.stopPropagation();
               expanded() ? collapse() : expand();
@@ -159,12 +179,16 @@ const App: Component = () => {
             title={expanded() ? "Collapse" : "Label now"}
           >
             &#9660;
-          </button>
+          </button> */}
         </div>
 
-        {/* Expanded: state + label grid */}
         <Show when={expanded()}>
-          <LabelGrid maxHeight={EXPANDED_CONTENT_MAX_H} onCollapse={collapse} />
+          <div
+            onMouseEnter={cancelLabelHide}
+            onMouseLeave={scheduleLabelHide}
+          >
+            <LabelGrid maxHeight={EXPANDED_CONTENT_MAX_H} onCollapse={collapse} />
+          </div>
         </Show>
       </div>
 
