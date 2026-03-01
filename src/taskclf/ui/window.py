@@ -14,7 +14,7 @@ from typing import Any, Callable
 logger = logging.getLogger(__name__)
 
 _COMPACT_SIZE = (280, 44)
-_EXPANDED_SIZE = (280, 280)
+_EXPANDED_SIZE = (280, 300)
 _PANEL_SIZE = (280, 750)
 _HISTORY_SIZE = (280, 400)
 _PANEL_HIDE_DELAY_S = 0.3
@@ -39,6 +39,7 @@ class WindowAPI:
         self._history_visible = False
         self._panel_hide_timer: threading.Timer | None = None
         self._history_hide_timer: threading.Timer | None = None
+        self._main_height = _COMPACT_SIZE[1]
 
     def bind(self, window: Any) -> None:
         self._window = window
@@ -56,10 +57,14 @@ class WindowAPI:
     def set_compact(self) -> None:
         if self._window is not None:
             self._window.resize(*_COMPACT_SIZE)
+        self._main_height = _COMPACT_SIZE[1]
+        self._reposition_children()
 
     def set_expanded(self) -> None:
         if self._window is not None:
             self._window.resize(*_EXPANDED_SIZE)
+        self._main_height = _EXPANDED_SIZE[1]
+        self._reposition_children()
 
     def hide_window(self) -> None:
         if self._window is not None:
@@ -87,12 +92,12 @@ class WindowAPI:
             self._schedule_panel_hide()
         else:
             self._cancel_panel_timer()
-            self._position_panel()
+            self._panel_visible = True
+            self._reposition_children()
             try:
                 self._panel_window.show()
             except Exception:
                 logger.debug("Could not show panel", exc_info=True)
-            self._panel_visible = True
 
     def _schedule_panel_hide(self) -> None:
         self._cancel_panel_timer()
@@ -115,25 +120,11 @@ class WindowAPI:
             except Exception:
                 logger.debug("Could not hide panel", exc_info=True)
         self._panel_visible = False
-
-    def _position_panel(self) -> None:
-        """Place the panel window directly below the main window."""
-        if self._panel_window is None or self._window is None:
-            return
-        try:
-            self._panel_window.move(
-                self._window.x,
-                self._window.y + self._window.height + 4,
-            )
-        except Exception:
-            logger.debug("Could not reposition panel", exc_info=True)
+        self._reposition_children()
 
     def _on_main_window_moved(self) -> None:
         """Reposition child windows when the main window is dragged."""
-        if self._panel_visible:
-            self._position_panel()
-        if self._history_visible:
-            self._position_history()
+        self._reposition_children()
 
     # -- Label history window ---------------------------------------------------
 
@@ -145,12 +136,12 @@ class WindowAPI:
             self._schedule_history_hide()
         else:
             self._cancel_history_timer()
-            self._position_history()
+            self._history_visible = True
+            self._reposition_children()
             try:
                 self._history_window.show()
             except Exception:
                 logger.debug("Could not show history window", exc_info=True)
-            self._history_visible = True
 
     def _schedule_history_hide(self) -> None:
         self._cancel_history_timer()
@@ -173,18 +164,21 @@ class WindowAPI:
             except Exception:
                 logger.debug("Could not hide history window", exc_info=True)
         self._history_visible = False
+        self._reposition_children()
 
-    def _position_history(self) -> None:
-        """Place the history window to the left of the main window."""
-        if self._history_window is None or self._window is None:
+    def _reposition_children(self) -> None:
+        """Place panel to the left, history below the main window."""
+        if self._window is None:
             return
         try:
-            self._history_window.move(
-                self._window.x - _HISTORY_SIZE[0] - 4,
-                self._window.y,
-            )
+            x = self._window.x
+            y = self._window.y
+            if self._panel_visible and self._panel_window is not None:
+                self._panel_window.move(x - _PANEL_SIZE[0] - 4, y)
+            if self._history_visible and self._history_window is not None:
+                self._history_window.move(x, y + self._main_height + 4)
         except Exception:
-            logger.debug("Could not reposition history window", exc_info=True)
+            logger.debug("Could not reposition child windows", exc_info=True)
 
     @property
     def visible(self) -> bool:
@@ -230,8 +224,8 @@ def run_window(
     )
     api.bind(window)
 
-    panel_x = x if x is not None else 0
-    panel_y = (y + _COMPACT_SIZE[1] + 4) if y is not None else 60
+    panel_x = (x - _PANEL_SIZE[0] - 4) if x is not None else 0
+    panel_y = y if y is not None else 16
     panel = webview.create_window(
         "taskclf-panel",
         url=f"http://127.0.0.1:{port}?view=panel",
@@ -249,8 +243,8 @@ def run_window(
     )
     api.bind_panel(panel)
 
-    history_x = (x - _HISTORY_SIZE[0] - 4) if x is not None else 0
-    history_y = y if y is not None else 16
+    history_x = x if x is not None else 0
+    history_y = (y + _COMPACT_SIZE[1] + 4) if y is not None else 60
     history_win = webview.create_window(
         "taskclf-history",
         url=f"http://127.0.0.1:{port}?view=history",

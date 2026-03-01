@@ -1,7 +1,7 @@
 import { type Accessor, type Component, Show } from "solid-js";
 import type { ConnectionStatus, LabelSuggestion, Prediction, StatusEvent, TrayState, WSStats } from "../lib/ws";
-import { LABEL_COLORS, dotColor } from "./StatePanel";
-import { host } from "../lib/host";
+import { LABEL_COLORS } from "./StatePanel";
+import { LiveBadgeConnectionStatus } from "./LiveBadgeConnectionStatus";
 
 export const LiveBadge: Component<{
   status: Accessor<ConnectionStatus>;
@@ -11,7 +11,9 @@ export const LiveBadge: Component<{
   activeSuggestion: Accessor<LabelSuggestion | null>;
   wsStats: Accessor<WSStats>;
   compact?: boolean;
+  historyOpen?: Accessor<boolean>;
   onTogglePanel?: () => void;
+  onToggleHistory?: () => void;
   onShowLabel?: () => void;
   onHideLabel?: () => void;
 }> = (props) => {
@@ -32,15 +34,22 @@ export const LiveBadge: Component<{
 
   return (
     <div
-      style={{ display: "inline-block", width: "100%" }}
+      style={{
+        display: "flex",
+        "align-items": "center",
+        "justify-content": "space-between",
+        width: "100%",
+      }}
     >
+      {/* Invisible spacer matching the button width to keep center truly centered */}
+      <div style={{ width: "32px", "flex-shrink": "0" }} />
+
       <div
         style={{
           display: "flex",
           "align-items": "center",
           gap: "8px",
           "justify-content": "center",
-          width: "100%",
         }}
       >
         <span
@@ -66,23 +75,34 @@ export const LiveBadge: Component<{
             </span>
           </Show>
         </span>
-        <span
-          style={{
-            width: "10px",
-            height: "10px",
-            "border-radius": "50%",
-            background: dotColor(props.status()),
-            "flex-shrink": "0",
-            cursor: "pointer",
-          }}
-          title={props.status()}
-          onClick={(e) => {
-            e.stopPropagation();
-            host.invoke({ cmd: "toggleStatePanel" });
-            props.onTogglePanel?.();
-          }}
+        <LiveBadgeConnectionStatus
+          status={props.status}
+          onTogglePanel={props.onTogglePanel}
         />
       </div>
+
+      <Show when={props.onToggleHistory}>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            props.onToggleHistory?.();
+          }}
+          style={{
+            background: "none",
+            border: "none",
+            color: "var(--text)",
+            cursor: "pointer",
+            "font-size": "0.9rem",
+            padding: "4px 8px",
+            "line-height": "1",
+            transform: props.historyOpen?.() ? "rotate(180deg)" : "none",
+            transition: "transform 0.15s ease",
+          }}
+          title={props.historyOpen?.() ? "Hide history" : "Show history"}
+        >
+          &#9660;
+        </button>
+      </Show>
     </div>
   );
 };

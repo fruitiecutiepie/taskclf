@@ -12,7 +12,7 @@ const isHistoryView = viewParam === "history";
 
 // Dimensions matching window.py (_COMPACT_SIZE, _EXPANDED_SIZE, _PANEL_SIZE, _HISTORY_SIZE)
 const WIDGET_W = 280;
-const EXPANDED_CONTENT_MAX_H = 268; // 320 (expanded height) - 44 (pill) - 8 (border/gap)
+const EXPANDED_CONTENT_MAX_H = 300; // 320 (expanded height) - 44 (pill) - 8 (border/gap)
 const PANEL_MAX_H = 750;
 const HISTORY_MAX_H = 400;
 
@@ -197,30 +197,12 @@ const App: Component = () => {
             activeSuggestion={ws.activeSuggestion}
             wsStats={ws.wsStats}
             compact={!hovering()}
+            historyOpen={historyOpen}
             onTogglePanel={inBrowser ? browserTogglePanel : undefined}
+            onToggleHistory={toggleHistory}
             onShowLabel={showLabel}
             onHideLabel={scheduleLabelHide}
           />
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              toggleHistory();
-            }}
-            style={{
-              background: "none",
-              border: "none",
-              color: "var(--text)",
-              cursor: "pointer",
-              "font-size": "0.9rem",
-              padding: "4px 8px",
-              "line-height": "1",
-              transform: historyOpen() ? "rotate(180deg)" : "none",
-              transition: "transform 0.15s ease",
-            }}
-            title={historyOpen() ? "Hide history" : "Show history"}
-          >
-            &#9660;
-          </button>
         </div>
 
         <Show when={hovering()}>
