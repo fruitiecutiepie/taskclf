@@ -32,16 +32,22 @@ version:
 	@echo $(CURRENT_VERSION)
 
 define bump_version
-	python3 -c "\
-import re, pathlib, sys; \
+	$(eval NEW_VERSION := $(shell python3 -c "\
+import re, pathlib; \
 parts = '$(CURRENT_VERSION)'.split('.'); \
 idx = {'major': 0, 'minor': 1, 'patch': 2}['$(1)']; \
 parts[idx] = str(int(parts[idx]) + 1); \
 parts[idx+1:] = ['0'] * (2 - idx); \
-nv = '.'.join(parts); \
+print('.'.join(parts))"))
+	python3 -c "\
+import re, pathlib; \
 p = pathlib.Path('pyproject.toml'); \
-p.write_text(re.sub(r'^(version\s*=\s*)\"[^\"]+\"', rf'\1\"{nv}\"', p.read_text(), count=1, flags=re.M)); \
-print(f'$(CURRENT_VERSION) -> {nv}')"
+p.write_text(re.sub(r'^(version\s*=\s*)\"[^\"]+\"', r'\1\"$(NEW_VERSION)\"', p.read_text(), count=1, flags=re.M)); \
+print('$(CURRENT_VERSION) -> $(NEW_VERSION)')"
+	uv lock
+	git add pyproject.toml uv.lock
+	git commit -m "bump v$(NEW_VERSION)"
+	git tag v$(NEW_VERSION)
 endef
 
 bump-patch:
