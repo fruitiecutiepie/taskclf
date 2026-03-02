@@ -38,7 +38,25 @@
         margin: 0;
       }
       input[type="number"] {
+        appearance: textfield;
         -moz-appearance: textfield;
+      }
+      * {
+        scrollbar-width: thin;
+        scrollbar-color: var(--border) transparent;
+      }
+      *::-webkit-scrollbar {
+        width: 4px;
+      }
+      *::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      *::-webkit-scrollbar-thumb {
+        background: var(--border);
+        border-radius: 2px;
+      }
+      *::-webkit-scrollbar-thumb:hover {
+        background: var(--text-muted);
       }
     </style>
   </head>

@@ -217,94 +217,11 @@ export const StatePanel: Component<{
           "padding-bottom": "4px",
           "border-bottom": "1px solid #2a2a2a",
           "letter-spacing": "0.02em",
+          "text-align": "center",
         }}
       >
         State Panel
       </div>
-
-      <Section title="WebSocket">
-        <Row
-          label="status"
-          value={props.status()}
-          color={dotColor(props.status())}
-        />
-        <Row
-          label="messages"
-          value={`${stats().messageCount} total`}
-          dim
-        />
-        <Row
-          label="breakdown"
-          value={`st:${stats().statusCount} pred:${stats().predictionCount} tray:${stats().trayStateCount} sug:${stats().suggestionCount}`}
-          dim
-          mono
-        />
-        <Row
-          label="last_received"
-          value={formatTime(stats().lastMessageAt)}
-          dim
-        />
-        <Row
-          label="reconnects"
-          value={String(stats().reconnectCount)}
-          dim
-        />
-        <Show when={stats().connectedSince}>
-          <Row
-            label="connected_since"
-            value={formatTime(stats().connectedSince)}
-            dim
-          />
-        </Show>
-      </Section>
-
-      <Section title="ActivityWatch">
-        <Row
-          label="connection"
-          value={st()?.aw_connected ? "connected" : "disconnected"}
-          color={st()?.aw_connected ? "#22c55e" : "#ef4444"}
-        />
-        <Row label="host" value={st()?.aw_host ?? "—"} dim mono />
-        <Row
-          label="bucket_id"
-          value={st()?.aw_bucket_id ?? "—"}
-          dim
-          mono
-        />
-        <Row
-          label="last_events"
-          value={st() ? String(st()!.last_event_count) : "—"}
-          dim
-        />
-        <Show when={appCounts().length > 0}>
-          <div
-            style={{
-              "margin-top": "2px",
-              "padding-left": "2px",
-            }}
-          >
-            <span
-              style={{
-                color: "#7a7a7a",
-                "font-size": "0.58rem",
-                "text-transform": "uppercase",
-              }}
-            >
-              app distribution (last poll)
-            </span>
-            <For each={appCounts()}>
-              {([app, count]) => (
-                <Row
-                  label={`  ${app}`}
-                  value={String(count)}
-                  dim
-                  mono
-                />
-              )}
-            </For>
-          </div>
-        </Show>
-      </Section>
 
       <Section title="Activity Monitor">
         <Row label="state" value={st()?.state ?? "—"} />
@@ -463,6 +380,90 @@ export const StatePanel: Component<{
           />
         </Section>
       </Show>
+
+      <Section title="ActivityWatch">
+        <Row
+          label="connection"
+          value={st()?.aw_connected ? "connected" : "disconnected"}
+          color={st()?.aw_connected ? "#22c55e" : "#ef4444"}
+        />
+        <Row label="host" value={st()?.aw_host ?? "—"} dim mono />
+        <Row
+          label="bucket_id"
+          value={st()?.aw_bucket_id ?? "—"}
+          dim
+          mono
+        />
+        <Row
+          label="last_events"
+          value={st() ? String(st()!.last_event_count) : "—"}
+          dim
+        />
+        <Show when={appCounts().length > 0}>
+          <div
+            style={{
+              "margin-top": "2px",
+              "padding-left": "2px",
+            }}
+          >
+            <span
+              style={{
+                color: "#7a7a7a",
+                "font-size": "0.58rem",
+                "text-transform": "uppercase",
+              }}
+            >
+              app distribution (last poll)
+            </span>
+            <For each={appCounts()}>
+              {([app, count]) => (
+                <Row
+                  label={`  ${app}`}
+                  value={String(count)}
+                  dim
+                  mono
+                />
+              )}
+            </For>
+          </div>
+        </Show>
+      </Section>
+
+      <Section title="WebSocket">
+        <Row
+          label="status"
+          value={props.status()}
+          color={dotColor(props.status())}
+        />
+        <Row
+          label="messages"
+          value={`${stats().messageCount} total`}
+          dim
+        />
+        <Row
+          label="breakdown"
+          value={`st:${stats().statusCount} pred:${stats().predictionCount} tray:${stats().trayStateCount} sug:${stats().suggestionCount}`}
+          dim
+          mono
+        />
+        <Row
+          label="last_received"
+          value={formatTime(stats().lastMessageAt)}
+          dim
+        />
+        <Row
+          label="reconnects"
+          value={String(stats().reconnectCount)}
+          dim
+        />
+        <Show when={stats().connectedSince}>
+          <Row
+            label="connected_since"
+            value={formatTime(stats().connectedSince)}
+            dim
+          />
+        </Show>
+      </Section>
 
       <Section title="Config">
         <Row

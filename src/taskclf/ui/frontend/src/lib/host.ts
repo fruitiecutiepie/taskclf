@@ -10,11 +10,10 @@
  */
 
 export type HostCommand =
-  | { cmd: "setCompact" }
-  | { cmd: "setExpanded" }
+  | { cmd: "showLabelGrid" }
+  | { cmd: "hideLabelGrid" }
   | { cmd: "hideWindow" }
-  | { cmd: "toggleStatePanel" }
-  | { cmd: "toggleLabelHistory" };
+  | { cmd: "toggleStatePanel" };
 
 export interface Host {
   invoke(command: HostCommand): Promise<void>;
@@ -25,11 +24,10 @@ declare global {
   interface Window {
     pywebview?: {
       api?: {
-        set_compact(): Promise<void>;
-        set_expanded(): Promise<void>;
+        show_label_grid(): Promise<void>;
+        hide_label_grid(): Promise<void>;
         hide_window(): Promise<void>;
         toggle_state_panel(): Promise<void>;
-        toggle_label_history(): Promise<void>;
       };
     };
   }
@@ -55,11 +53,11 @@ class AdaptiveHost implements Host {
     if (!api) return;
     try {
       switch (command.cmd) {
-        case "setCompact":
-          await api.set_compact();
+        case "showLabelGrid":
+          await api.show_label_grid();
           break;
-        case "setExpanded":
-          await api.set_expanded();
+        case "hideLabelGrid":
+          await api.hide_label_grid();
           break;
         case "hideWindow":
           await api.hide_window();
@@ -67,12 +65,9 @@ class AdaptiveHost implements Host {
         case "toggleStatePanel":
           await api.toggle_state_panel();
           break;
-        case "toggleLabelHistory":
-          await api.toggle_label_history();
-          break;
       }
     } catch {
-      // Resize/hide may fail transiently; don't block the caller.
+      // Show/hide may fail transiently; don't block the caller.
     }
   }
 }

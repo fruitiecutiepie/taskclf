@@ -183,14 +183,10 @@ export const LabelHistory: Component<{
     <Show when={grouped().length}>
       <div
         style={{
-          background: "var(--surface)",
-          border: "1px solid #2a2a2a",
-          "border-radius": "8px",
           padding: "6px 8px",
           "font-family": "'SF Mono', 'Fira Code', 'Cascadia Code', monospace",
           "font-size": "0.65rem",
           color: "#d0d0d0",
-          "box-shadow": "0 8px 32px rgba(0, 0, 0, 0.6)",
         }}
       >
         <div
@@ -202,6 +198,7 @@ export const LabelHistory: Component<{
             "padding-bottom": "4px",
             "border-bottom": "1px solid #2a2a2a",
             "letter-spacing": "0.02em",
+            "text-align": "center",
           }}
         >
           Label History

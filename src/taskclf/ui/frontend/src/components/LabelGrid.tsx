@@ -95,7 +95,7 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
   return (
     <div
       style={{
-        padding: "8px 12px 12px",
+        padding: "8px 8px 4px",
         "border-top": "1px solid var(--border)",
         ...(props.maxHeight != null
           ? { "max-height": `${props.maxHeight}px`, "overflow-y": "auto" }

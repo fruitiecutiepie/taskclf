@@ -8,17 +8,65 @@ import { host } from "./lib/host";
 
 const viewParam = new URLSearchParams(window.location.search).get("view");
 const isPanelView = viewParam === "panel";
-const isHistoryView = viewParam === "history";
+const isLabelView = viewParam === "label";
 
-// Dimensions matching window.py (_COMPACT_SIZE, _EXPANDED_SIZE, _PANEL_SIZE, _HISTORY_SIZE)
-const WIDGET_W = 280;
-const EXPANDED_CONTENT_MAX_H = 300; // 320 (expanded height) - 44 (pill) - 8 (border/gap)
+// Dimensions matching window.py (_COMPACT_SIZE, _LABEL_SIZE, _PANEL_SIZE)
+const COMPACT_W = 150;
+const CONTENT_W = 280;
+const LABEL_MAX_H = 410;
 const PANEL_MAX_H = 750;
-const HISTORY_MAX_H = 400;
 
-// In pywebview the viewport width matches the window (260px).
-// A normal browser viewport is much wider.
 const isBrowserMode = () => window.innerWidth > 300 && !host.isNativeWindow;
+
+if (!isBrowserMode()) {
+  document.documentElement.style.background = "transparent";
+  document.body.style.background = "transparent";
+}
+
+/* ---------- Label grid window (standalone pywebview) ---------- */
+
+const LabelApp: Component = () => {
+  const ws = useWebSocket();
+  const inBrowser = isBrowserMode();
+
+  function collapse() {
+    host.invoke({ cmd: "hideLabelGrid" });
+  }
+
+  return (
+    <div
+      style={{
+        ...(inBrowser
+          ? {
+              display: "flex",
+              "justify-content": "center",
+              "padding-top": "32px",
+              "min-height": "100vh",
+              background: "url('/bliss.png') center/cover no-repeat fixed",
+            }
+          : {}),
+      }}
+    >
+      <div
+        style={{
+          background: "var(--bg)",
+          width: inBrowser ? `${CONTENT_W}px` : "100%",
+          ...(inBrowser
+            ? { "max-height": `${LABEL_MAX_H}px` }
+            : { height: "100vh" }),
+          "overflow-y": "auto",
+          "border-radius": inBrowser ? "12px" : "0",
+        }}
+      >
+        <LabelGrid onCollapse={collapse} prediction={ws.latestPrediction} />
+        <div style={{ height: "4px" }} />
+        <LabelHistory visible={() => true} />
+      </div>
+    </div>
+  );
+};
+
+/* ---------- State panel window (standalone pywebview) ---------- */
 
 const PanelApp: Component = () => {
   const ws = useWebSocket();
@@ -41,7 +89,7 @@ const PanelApp: Component = () => {
       <div
         style={{
           background: "transparent",
-          width: `${WIDGET_W}px`,
+          width: inBrowser ? `${CONTENT_W}px` : "100%",
           ...(inBrowser
             ? { "max-height": `${PANEL_MAX_H}px` }
             : { height: "100vh" }),
@@ -62,51 +110,15 @@ const PanelApp: Component = () => {
   );
 };
 
-const HistoryApp: Component = () => {
-  const inBrowser = isBrowserMode();
-  const visible = () => true;
-
-  return (
-    <div
-      style={{
-        ...(inBrowser
-          ? {
-              display: "flex",
-              "justify-content": "center",
-              "padding-top": "32px",
-              "min-height": "100vh",
-              background: "url('/bliss.png') center/cover no-repeat fixed",
-            }
-          : {}),
-      }}
-    >
-      <div
-        style={{
-          background: "transparent",
-          width: `${WIDGET_W}px`,
-          ...(inBrowser
-            ? { "max-height": `${HISTORY_MAX_H}px` }
-            : { height: "100vh" }),
-          overflow: "auto",
-          padding: "4px",
-        }}
-      >
-        <LabelHistory visible={visible} />
-      </div>
-    </div>
-  );
-};
+/* ---------- Main pill window ---------- */
 
 const App: Component = () => {
+  if (isLabelView) return <LabelApp />;
   if (isPanelView) return <PanelApp />;
-  if (isHistoryView) return <HistoryApp />;
 
   const inBrowser = isBrowserMode();
   const [hovering, setHovering] = createSignal(false);
-  const [historyOpen, setHistoryOpen] = createSignal(false);
   const [showPanel, setShowPanel] = createSignal(false);
-  const [showHistory, setShowHistory] = createSignal(false);
-  let labelHideTimer: number | undefined;
 
   function browserTogglePanel() {
     setShowPanel((v) => !v);
@@ -115,37 +127,13 @@ const App: Component = () => {
   const ws = useWebSocket();
 
   function showLabel() {
-    clearTimeout(labelHideTimer);
     setHovering(true);
-    host.invoke({ cmd: "setExpanded" });
+    host.invoke({ cmd: "showLabelGrid" });
   }
 
-  function scheduleLabelHide() {
-    clearTimeout(labelHideTimer);
-    labelHideTimer = window.setTimeout(() => {
-      setHovering(false);
-      host.invoke({ cmd: "setCompact" });
-    }, 300);
-  }
-
-  function cancelLabelHide() {
-    clearTimeout(labelHideTimer);
-  }
-
-  function collapseLabel() {
-    clearTimeout(labelHideTimer);
+  function hideLabel() {
     setHovering(false);
-    host.invoke({ cmd: "setCompact" });
-  }
-
-  function toggleHistory() {
-    const next = !historyOpen();
-    setHistoryOpen(next);
-    if (inBrowser) {
-      setShowHistory(next);
-    } else {
-      host.invoke({ cmd: "toggleLabelHistory" });
-    }
+    host.invoke({ cmd: "hideLabelGrid" });
   }
 
   return (
@@ -169,23 +157,22 @@ const App: Component = () => {
           background: "rgba(15, 17, 23, 0.5)",
           "backdrop-filter": "blur(20px)",
           "-webkit-backdrop-filter": "blur(20px)",
-          width: `${WIDGET_W}px`,
+          width: inBrowser ? `${CONTENT_W}px` : "100%",
           ...(inBrowser
             ? { "box-shadow": "0 4px 24px rgba(0, 0, 0, 0.5)" }
             : { height: "100vh" }),
           overflow: "hidden",
-          "border-radius": "12px",
+          "border-radius": "20px",
         }}
       >
-        {/* Compact pill */}
         <div
           class="pywebview-drag-region"
           style={{
             display: "flex",
             "align-items": "center",
-            "justify-content": "space-between",
+            "justify-content": "center",
             padding: "0 8px 0 12px",
-            height: "44px",
+            height: "30px",
             "user-select": "none",
           }}
         >
@@ -197,44 +184,36 @@ const App: Component = () => {
             activeSuggestion={ws.activeSuggestion}
             wsStats={ws.wsStats}
             compact={!hovering()}
-            historyOpen={historyOpen}
             onTogglePanel={inBrowser ? browserTogglePanel : undefined}
-            onToggleHistory={toggleHistory}
             onShowLabel={showLabel}
-            onHideLabel={scheduleLabelHide}
+            onHideLabel={hideLabel}
           />
         </div>
-
-        <Show when={hovering()}>
-          <div
-            style={{ background: "var(--bg)" }}
-            onMouseEnter={cancelLabelHide}
-            onMouseLeave={scheduleLabelHide}
-          >
-            <LabelGrid maxHeight={EXPANDED_CONTENT_MAX_H} onCollapse={collapseLabel} prediction={ws.latestPrediction} />
-          </div>
-        </Show>
       </div>
 
-      {/* Inline label history for browser mode */}
-      <Show when={inBrowser && showHistory()}>
+      {/* Inline label grid for browser mode preview */}
+      <Show when={inBrowser && hovering()}>
         <div
           style={{
-            width: `${WIDGET_W}px`,
-            "max-height": `${HISTORY_MAX_H}px`,
+            width: `${CONTENT_W}px`,
+            "max-height": `${LABEL_MAX_H}px`,
             "overflow-y": "auto",
             "margin-top": "4px",
+            background: "var(--bg)",
+            "border-radius": "12px",
           }}
         >
-          <LabelHistory visible={showHistory} />
+          <LabelGrid onCollapse={hideLabel} prediction={ws.latestPrediction} />
+          <div style={{ height: "4px" }} />
+          <LabelHistory visible={hovering} />
         </div>
       </Show>
 
-      {/* Inline state panel for browser mode (click to toggle) */}
+      {/* Inline state panel for browser mode preview */}
       <Show when={inBrowser && showPanel()}>
         <div
           style={{
-            width: `${WIDGET_W}px`,
+            width: `${CONTENT_W}px`,
             "max-height": `${PANEL_MAX_H}px`,
             "overflow-y": "auto",
             "margin-top": "4px",
