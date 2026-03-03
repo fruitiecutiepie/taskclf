@@ -1,5 +1,5 @@
 import { createSignal, createResource, For, Show, type Accessor, type Component } from "solid-js";
-import { createLabel, fetchCoreLabels } from "../lib/api";
+import { createLabel, fetchCoreLabels, fetchLabels } from "../lib/api";
 import type { Prediction } from "../lib/ws";
 import { ActivityContext } from "./ActivityContext";
 
@@ -33,8 +33,29 @@ interface LabelGridProps {
   prediction?: Accessor<Prediction | null>;
 }
 
+function timeAgo(iso: string): string {
+  const d = new Date(iso.includes("Z") || iso.includes("+") ? iso : iso + "Z");
+  const mins = Math.round((Date.now() - d.getTime()) / 60_000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const h = Math.floor(mins / 60);
+  if (h < 24) return `${h}h ago`;
+  const days = Math.floor(h / 24);
+  return `${days}d ago`;
+}
+
 export const LabelGrid: Component<LabelGridProps> = (props) => {
   const [labels] = createResource(fetchCoreLabels);
+  const [labelVersion, setLabelVersion] = createSignal(0);
+  const [lastLabel] = createResource(
+    labelVersion,
+    async () => {
+      try {
+        const rows = await fetchLabels(1);
+        return rows.length ? rows[0] : null;
+      } catch { return null; }
+    },
+  );
   const [flash, setFlash] = createSignal<string | null>(null);
   const [selectedMinutes, setSelectedMinutes] = createSignal(0);
   const [customActive, setCustomActive] = createSignal(false);
@@ -82,6 +103,7 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
         extend_forward: extendFwd(),
       });
       setFlash(label);
+      setLabelVersion((v) => v + 1);
       setTimeout(() => {
         setFlash(null);
         props.onCollapse();
@@ -95,7 +117,7 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
   return (
     <div
       style={{
-        padding: "8px 8px 4px",
+        padding: "8px",
         "border-top": "1px solid var(--border)",
         ...(props.maxHeight != null
           ? { "max-height": `${props.maxHeight}px`, "overflow-y": "auto" }
@@ -382,6 +404,31 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
           )}
         </For>
       </div>
+
+      <Show when={lastLabel()}>
+        <div
+          style={{
+            "text-align": "center",
+            "font-size": "0.65rem",
+            color: "var(--text-muted)",
+            "margin-top": "6px",
+            "margin-bottom": "2px",
+            "padding-top": "4px",
+            "border-top": "1px solid var(--border)",
+          }}
+        >
+          Last:{" "}
+          <span
+            style={{
+              color: LABEL_COLORS[lastLabel()!.label] ?? "var(--text)",
+              "font-weight": "600",
+            }}
+          >
+            {lastLabel()!.label}
+          </span>{" "}
+          {timeAgo(lastLabel()!.end_ts)}
+        </div>
+      </Show>
     </div>
   );
 };

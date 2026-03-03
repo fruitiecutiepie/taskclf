@@ -31,22 +31,23 @@ Options:
 ## Panels
 
 - **Label** -- Form with date/time pickers, `CoreLabel` dropdown, confidence slider, and user ID input.
-- **Recent** -- Quick-label with preset durations (now / 1 / 5 / 10 / 15 / 30 / 60 min) or a custom duration input supporting seconds, minutes, hours, and days. "now" creates a point label at the current moment; other values label the corresponding trailing window. The "Extend until next label" checkbox (on by default) sets `extend_forward=true` on the new label; when the *next* label is created, this label's `end_ts` is automatically stretched to meet the next label's `start_ts`, producing contiguous coverage without gaps. Shows a live ActivityWatch summary when available.
+- **Recent** -- Quick-label with preset durations (now / 1 / 5 / 10 / 15 / 30 / 60 min) or a custom duration input supporting seconds, minutes, hours, and days. "now" creates a point label at the current moment; other values label the corresponding trailing window. The "Extend until next label" checkbox (on by default) sets `extend_forward=true` on the new label; when the *next* label is created, this label's `end_ts` is automatically stretched to meet the next label's `start_ts`, producing contiguous coverage without gaps. Shows a live ActivityWatch summary when available. A compact "Last: *Label* Nm ago" indicator below the buttons provides continuity context without requiring the full history view.
 - **Queue** -- Pending `LabelRequest` items sorted by confidence (lowest first). Shows time range, predicted label, confidence, and reason.
-- **History** -- Recent labels in a sortable table.
 
 ## Live Features
 
 - **Live badge (compact)** -- Header pill showing the current label/app and connection dot. Visible in the collapsed tray window.
-- **Live badge (expanded)** -- Full internal-state debug panel shown when the window is expanded. Uses a collapsible accordion layout: each section header shows an inline summary badge (e.g., current app, predicted label, connection status) so all states are scannable at a glance. Click any header to expand its detail rows. **Activity Monitor** and **Last Prediction** default to open; all other sections start collapsed. Eight sections:
-  - **Activity Monitor** -- summary: `state · current_app`. Details: `state`, `current_app`, `since`, `poll_interval`, `poll_count`, `last_poll` timestamp, `uptime`. When a transition candidate exists: `candidate_app`, `candidate_progress` with duration/threshold/percentage and a visual progress bar.
-  - **Last Prediction** -- summary: `mapped_label confidence%`. Details: `label`, `mapped_label`, `confidence` (color-coded green/red at 50% threshold), `ts`, `trigger_app`.
-  - **Model** -- summary: `loaded`/`not loaded` (color-coded). Details: `loaded` status, `model_dir`, `schema_hash`, `suggested` label, `suggestion_conf`.
-  - **Transitions** -- summary: transition count. Details: `total` count, last transition details: `prev → new` apps, `block` time range, `fired_at` timestamp.
-  - **Active Suggestion** -- appears when the model suggests a label on transition. Summary: `suggested confidence%`. Details: `suggested`, `confidence`, `reason`, `old_label`, `block` time range.
-  - **ActivityWatch** -- summary: `connected`/`disconnected` (color-coded). Details: AW `connection` status, `host`, `bucket_id`, `last_events` count, and **app distribution** (top 5 apps with event counts from the last poll).
-  - **WebSocket** -- summary: connection status (color-coded). Details: `status`, `messages` total, per-type `breakdown` (st/pred/tray/sug), `last_received` timestamp, `reconnects` count, `connected_since`.
-  - **Config** -- summary: `dev`/`prod`. Details: `data_dir`, `ui_port`, `dev_mode`, `labels_saved` count.
+- **State panel** -- Tabbed panel with two views, selected via a segmented control at the top:
+  - **System tab** -- Internal-state debug panel with a collapsible accordion layout: each section header shows an inline summary badge (e.g., current app, predicted label, connection status) so all states are scannable at a glance. Click any header to expand its detail rows. **Activity Monitor** and **Last Prediction** default to open; all other sections start collapsed. Eight sections:
+    - **Activity Monitor** -- summary: `state · current_app`. Details: `state`, `current_app`, `since`, `poll_interval`, `poll_count`, `last_poll` timestamp, `uptime`. When a transition candidate exists: `candidate_app`, `candidate_progress` with duration/threshold/percentage and a visual progress bar.
+    - **Last Prediction** -- summary: `mapped_label confidence%`. Details: `label`, `mapped_label`, `confidence` (color-coded green/red at 50% threshold), `ts`, `trigger_app`.
+    - **Model** -- summary: `loaded`/`not loaded` (color-coded). Details: `loaded` status, `model_dir`, `schema_hash`, `suggested` label, `suggestion_conf`.
+    - **Transitions** -- summary: transition count. Details: `total` count, last transition details: `prev → new` apps, `block` time range, `fired_at` timestamp.
+    - **Active Suggestion** -- appears when the model suggests a label on transition. Summary: `suggested confidence%`. Details: `suggested`, `confidence`, `reason`, `old_label`, `block` time range.
+    - **ActivityWatch** -- summary: `connected`/`disconnected` (color-coded). Details: AW `connection` status, `host`, `bucket_id`, `last_events` count, and **app distribution** (top 5 apps with event counts from the last poll).
+    - **WebSocket** -- summary: connection status (color-coded). Details: `status`, `messages` total, per-type `breakdown` (st/pred/tray/sug), `last_received` timestamp, `reconnects` count, `connected_since`.
+    - **Config** -- summary: `dev`/`prod`. Details: `data_dir`, `ui_port`, `dev_mode`, `labels_saved` count.
+  - **History tab** -- Recent labels grouped by date with a color-coded timeline strip and per-entry time ranges. Provides a dedicated review surface separate from the quick-label popup, with the full panel height available for browsing.
 - **Suggestion banner** -- Appears when the ActivityMonitor detects a task change. Accept or dismiss with one click.
 
 ## Architecture

@@ -1,6 +1,5 @@
 import { createSignal, Show, type Component } from "solid-js";
 import { LabelGrid } from "./components/LabelGrid";
-import { LabelHistory } from "./components/LabelHistory";
 import { LiveBadge } from "./components/LiveBadge";
 import { StatePanel } from "./components/StatePanel";
 import { useWebSocket } from "./lib/ws";
@@ -13,8 +12,8 @@ const isLabelView = viewParam === "label";
 // Dimensions matching window.py (_COMPACT_SIZE, _LABEL_SIZE, _PANEL_SIZE)
 const COMPACT_W = 150;
 const CONTENT_W = 280;
-const LABEL_MAX_H = 410;
-const PANEL_MAX_H = 420;
+const LABEL_MAX_H = 330;
+const PANEL_MAX_H = 520;
 
 const isBrowserMode = () => window.innerWidth > 300 && !host.isNativeWindow;
 
@@ -59,8 +58,6 @@ const LabelApp: Component = () => {
         }}
       >
         <LabelGrid onCollapse={collapse} prediction={ws.latestPrediction} />
-        <div style={{ height: "4px" }} />
-        <LabelHistory visible={() => true} />
       </div>
     </div>
   );
@@ -213,8 +210,6 @@ const App: Component = () => {
             }}
           >
             <LabelGrid onCollapse={hideLabel} prediction={ws.latestPrediction} />
-            <div style={{ height: "4px" }} />
-            <LabelHistory visible={hovering} />
           </div>
         </Show>
       </div>

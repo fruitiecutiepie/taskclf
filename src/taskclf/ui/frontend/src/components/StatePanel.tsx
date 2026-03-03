@@ -14,6 +14,7 @@ import type {
   TrayState,
   WSStats,
 } from "../lib/ws";
+import { LabelHistory } from "./LabelHistory";
 
 export const LABEL_COLORS: Record<string, string> = {
   Build: "#6366f1",
@@ -213,6 +214,8 @@ const ProgressBar: Component<{ pct: number; color?: string }> = (props) => (
 // StatePanel
 // ---------------------------------------------------------------------------
 
+type PanelTab = "system" | "history";
+
 export const StatePanel: Component<{
   status: Accessor<ConnectionStatus>;
   latestStatus: Accessor<StatusEvent | null>;
@@ -221,6 +224,7 @@ export const StatePanel: Component<{
   activeSuggestion: Accessor<LabelSuggestion | null>;
   wsStats: Accessor<WSStats>;
 }> = (props) => {
+  const [tab, setTab] = createSignal<PanelTab>("system");
   const st = () => props.latestStatus();
   const pred = () => props.latestPrediction();
   const tray = () => props.latestTrayState();
@@ -317,19 +321,38 @@ export const StatePanel: Component<{
     >
       <div
         style={{
-          "font-size": "0.75rem",
-          "font-weight": "700",
-          color: "#d0d0d0",
+          display: "flex",
           "margin-bottom": "6px",
           "padding-bottom": "4px",
           "border-bottom": "1px solid #2a2a2a",
-          "letter-spacing": "0.02em",
-          "text-align": "center",
+          gap: "0",
         }}
       >
-        State Panel
+        {(["system", "history"] as PanelTab[]).map((t) => (
+          <button
+            onClick={() => setTab(t)}
+            style={{
+              flex: "1",
+              padding: "3px 0",
+              border: "none",
+              background: tab() === t ? "#333" : "transparent",
+              color: tab() === t ? "#e0e0e0" : "#7a7a7a",
+              "font-size": "0.7rem",
+              "font-weight": tab() === t ? "700" : "500",
+              "font-family": "inherit",
+              cursor: "pointer",
+              "border-radius": "6px",
+              "text-transform": "capitalize",
+              "letter-spacing": "0.02em",
+              transition: "all 0.15s ease",
+            }}
+          >
+            {t}
+          </button>
+        ))}
       </div>
 
+      <Show when={tab() === "system"}>
       <Section
         title="Activity Monitor"
         summary={activitySummary()}
@@ -619,6 +642,11 @@ export const StatePanel: Component<{
           value={tray() ? String(tray()!.labels_saved_count) : "—"}
         />
       </Section>
+      </Show>
+
+      <Show when={tab() === "history"}>
+        <LabelHistory visible={() => true} />
+      </Show>
     </div>
   );
 };
