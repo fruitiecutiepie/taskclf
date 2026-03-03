@@ -52,39 +52,67 @@ plugins:
 nav:
   - Home: index.md
   - Guide:
-      - Usage: guide/usage.md
-      - Taxonomy Mapping: guide/taxonomy.md
+      - Getting Started: guide/usage.md
+      - Privacy Model: guide/privacy.md
+      - Task Labels (v1): guide/labels_v1.md
+      - Time & Bucket Alignment: guide/time_spec.md
+      - Train/Val Splits: guide/splits.md
+      - Model Bundle Layout: guide/model_bundle_layout.md
+      - Model Selection: guide/model_selection.md
+      - Inference Pipeline Overview: guide/model_io.md
+      - Bundle Metrics Contract: guide/metrics_contract.md
+      - Custom Taxonomy: guide/taxonomy.md
+      - Per-User Calibration: guide/personalization.md
+      - Acceptance Criteria: guide/acceptance.md
   - API Reference:
       - Core:
           - Configuration: api/core/defaults.md
+          - User Identity: api/core/config.md
           - Core Types: api/core/types.md
           - Feature Schema: api/core/schema.md
           - Schema Hashing: api/core/hashing.md
+          - Data Validation: api/core/validation.md
           - Time & Buckets: api/core/time.md
-          - Data Store (Parquet): api/core/store.md
+          - Data Store: api/core/store.md
           - Model Bundles: api/core/model_io.md
+          - Model Registry: api/model_registry.md
           - Evaluation Metrics: api/core/metrics.md
+          - Drift Detection: api/core/drift.md
+          - Quality Telemetry: api/core/telemetry.md
           - Logging & Sanitization: api/core/logging.md
       - Adapters:
           - ActivityWatch: api/adapters/activitywatch.md
       - Features:
           - Build Pipeline: api/features/build.md
           - Session Detection: api/features/sessions.md
+          - Rolling Windows: api/features/windows.md
+          - Temporal Dynamics: api/features/dynamics.md
+          - Title Featurization: api/features/text.md
+          - Domain Classification: api/features/domain.md
       - Labels:
           - Label Store: api/labels/store.md
+          - Label Projection: api/labels/projection.md
+          - Labeling Queue: api/labels/queue.md
       - Training:
-          - Dataset & Splits: api/train/dataset.md
+          - Build Training Dataset: api/train/build_dataset.md
+          - Time-Based Splits: api/train/dataset.md
           - LightGBM Trainer: api/train/lgbm.md
-          - Evaluation: api/train/evaluate.md
+          - Calibrator Fitting: api/train/calibrate.md
+          - Model Evaluation: api/train/evaluate.md
+          - Retrain Pipeline: api/train/retrain.md
       - Inference:
+          - Baseline (Rule-Based): api/infer/baseline.md
           - Batch Inference: api/infer/batch.md
           - Online Loop: api/infer/online.md
           - Prediction Types: api/infer/prediction.md
           - Probability Calibration: api/infer/calibration.md
           - Prediction Smoothing: api/infer/smooth.md
+          - Drift Monitor: api/infer/monitor.md
           - Task Taxonomy: api/infer/taxonomy.md
       - Reports:
           - Daily Report: api/report/daily.md
           - Report Export: api/report/export.md
+      - UI:
+          - Web UI & System Tray: api/ui/labeling.md
       - CLI:
           - Commands: api/cli/main.md

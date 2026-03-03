@@ -1,256 +1,69 @@
-# Model Input / Output Contract v1
+# Inference Pipeline Overview
 
-Version: 1.0  
-Status: Stable  
-Last Updated: 2026-02-23  
+Version: 1.1
+Status: Stable
+Last Updated: 2026-03-03
 
-This document defines the exact interface contract between:
-
-- Feature pipeline
-- Model inference layer
-- Calibration layer
-- Personalization layer
-- Aggregation layer
-- UI layer
-
-All components MUST adhere to this contract.
+End-to-end reference for how a feature row becomes a labeled prediction.
+Each stage links to its authoritative documentation.
 
 ---
 
-# 1. Model Input Contract
-
-## 1.1 Input Type
-
-The model consumes exactly one window feature row at a time.
-
-Input must conform to:
+## Pipeline stages
 
 ```
+Feature Row → Model → core_probs → Calibration → Reject Check → Taxonomy Mapping → Final Output
+```
 
-schema/features_v1.json
-
-```id="9kfj3m"
-
-Required fields:
-
-- All numerical features
-- All categorical features
-- `user_id`
-- `bucket_start_ts`
-
-No additional fields may be required by the model.
+| Stage | What happens | Details |
+|-------|-------------|---------|
+| **1. Input** | A single feature row enters the model. Must conform to the [Feature Schema](../api/core/schema.md) and include all columns from `FEATURE_COLUMNS`. | [Core Types](../api/core/types.md), [Configuration](../api/core/defaults.md) |
+| **2. Model prediction** | LightGBM produces `core_probs: float[8]`, ordered by label ID, summing to 1.0. | [Task Labels (v1)](labels_v1.md), [LightGBM Trainer](../api/train/lgbm.md) |
+| **3. Calibration** | Per-user or global calibrator adjusts probabilities. Preserves ordering and sum constraint. | [Personalization](personalization.md) Sections 3–5, [Calibration API](../api/infer/calibration.md) |
+| **4. Reject check** | If `max(calibrated_probs) < reject_threshold`, the prediction is rejected and mapped to `Mixed/Unknown`. | [Acceptance Criteria](acceptance.md) Section 4 |
+| **5. Smoothing** | Rolling majority window merges noisy per-minute predictions into stable blocks. | [Prediction Smoothing](../api/infer/smooth.md) |
+| **6. Taxonomy mapping** | Optional: maps core labels to user-defined buckets with aggregated probabilities. | [Custom Taxonomy](taxonomy.md) |
 
 ---
 
-## 1.2 Preprocessing Rules
+## Final output object
 
-Before inference:
+Each prediction produces:
 
-- Missing numeric values must be imputed as:
-  - 0 for interaction rates
-- Boolean values must be encoded consistently
-- Categorical values must use the same encoding as training
+| Field | Type | Source |
+|-------|------|--------|
+| `user_id` | string | Feature row |
+| `bucket_start_ts` | timestamp | Feature row |
+| `core_label_id` | int | `argmax(core_probs)` |
+| `core_label_name` | string | Label set lookup |
+| `core_probs` | float[8] | Model output |
+| `confidence` | float | `max(core_probs)` |
+| `is_rejected` | boolean | Reject check |
+| `mapped_label_name` | string | Taxonomy mapping (or core label) |
+| `mapped_probs` | dict[str, float] | Taxonomy mapping |
+| `model_version` | string | [Model Bundle](model_bundle_layout.md) metadata |
+| `schema_version` | string | Feature schema |
+| `label_version` | string | Label schema |
 
-No feature scaling is required (LightGBM handles raw numeric values).
-
-Feature ordering must match training order.
-
----
-
-# 2. Model Output Contract
-
-## 2.1 Raw Model Output
-
-The global model produces:
-
-```
-
-core_probs: float[8]
-
-```
-
-Where:
-
-- Length = 8
-- Ordered by label ID
-- Sum(core_probs) = 1.0
-
-Label ordering must match:
-
-```
-
-schema/labels_v1.json
-
-```
+See [Prediction Types](../api/infer/prediction.md) for the implementation.
 
 ---
 
-## 2.2 Core Prediction
+## Invariants
 
-Derived from raw output:
-
-```
-
-core_label_id = argmax(core_probs)
-core_label_name = labels[core_label_id]
-confidence = max(core_probs)
-
-```id="ks3v0m"
-
-Confidence definition:
-
-```
-
-confidence = max(core_probs)
-
-```
-
-Entropy may optionally be logged but is not part of required interface.
+- **Determinism**: same model + calibrator + mapping + input = identical output. No stochastic inference.
+- **Error handling**: missing features, unknown categoricals, or schema mismatches produce `Mixed/Unknown` — the pipeline never crashes. See [Data Validation](../api/core/validation.md).
+- **Privacy**: no raw titles, keystrokes, or URLs enter or leave the pipeline. See [Privacy Model](privacy.md).
 
 ---
 
-# 3. Reject Policy
+## Versioning
 
-After raw prediction:
+Changes to any of the following require a version bump:
 
-```
-
-if confidence < REJECT_THRESHOLD:
-is_rejected = true
-else:
-is_rejected = false
-
-```
-
-If rejected:
-
-- core_label is still computed
-- But final mapped_label becomes `Mixed/Unknown`
-- Window is logged for potential relabeling
-
-Reject threshold is configurable and versioned separately.
-
----
-
-# 4. Calibration Layer
-
-If per-user calibration is enabled:
-
-1. Raw core_probs
-2. Apply user calibrator (if exists)
-3. Produce calibrated_probs
-
-Calibrator must:
-
-- Preserve ordering
-- Preserve probability sum = 1.0
-- Not change label count
-
-If no user calibrator exists:
-
-- Use global calibration (optional)
-- Or use raw probabilities
-
----
-
-# 5. Personalization Mapping Layer
-
-Mapping takes:
-
-```
-
-core_label_id
-core_probs
-user_mapping_config
-
-```
-
-Outputs:
-
-```
-
-mapped_label_name
-mapped_probs
-
-```id="c9xw2a"
-
-Rules:
-
-- mapped_probs must sum to 1.0
-- If multiple core labels map to same user bucket:
-  - mapped_prob[bucket] = sum(core_probs of mapped labels)
-- If rejected:
-  - mapped_label = "Mixed/Unknown"
-
-Mapping must not alter core_probs.
-
----
-
-# 6. Final Inference Output Object
-
-Each window must produce:
-
-```
-
-{
-"user_id": string,
-"bucket_start_ts": timestamp,
-"core_label_id": int,
-"core_label_name": string,
-"core_probs": float[8],
-"confidence": float,
-"is_rejected": boolean,
-"mapped_label_name": string,
-"mapped_probs": { string: float },
-"model_version": string,
-"schema_version": "features_v1",
-"label_version": "labels_v1"
-}
-
-```
-
-This structure is stable and versioned.
-
----
-
-# 7. Determinism Requirement
-
-Given:
-
-- Same model artifact
-- Same calibrator
-- Same mapping config
-- Same input feature row
-
-Inference must produce identical output.
-
-No stochastic inference allowed.
-
----
-
-# 8. Error Handling
-
-If:
-
-- Missing required feature
-- Unknown categorical value
-- Schema mismatch
-
-Then:
-
-- Log error
-- Mark window as `Mixed/Unknown`
-- Do NOT crash inference pipeline
-
----
-
-# 9. Versioning
-
-Changing any of the following requires version bump:
-
-- Label ordering
+- Label ordering or count
 - Output structure
 - Confidence definition
 - Reject semantics
 - Calibration insertion point
-- Mapping semantics
+- Taxonomy mapping semantics

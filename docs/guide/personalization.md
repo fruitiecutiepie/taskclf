@@ -76,16 +76,10 @@ estimates show per-class miscalibration.
 
 # 4. Eligibility Thresholds
 
-Per-user calibration is only enabled when a user has enough labeled data:
-
-| Criterion | Threshold |
-|-----------|-----------|
-| Labeled windows | >= 200 |
-| Distinct calendar days | >= 3 |
-| Distinct core labels observed | >= 3 |
-
-These thresholds are defined in `docs/guide/acceptance.md` Section 8
-and coded in `src/taskclf/core/defaults.py`.
+Per-user calibration is only enabled when a user has enough labeled
+data.  Exact thresholds are defined in
+[Acceptance Criteria](acceptance.md) Section 8 and coded in
+`src/taskclf/core/defaults.py`.
 
 Users who do not meet these thresholds fall back to the global calibrator.
 

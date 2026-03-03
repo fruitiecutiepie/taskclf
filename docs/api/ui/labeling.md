@@ -38,15 +38,15 @@ Options:
 ## Live Features
 
 - **Live badge (compact)** -- Header pill showing the current label/app and connection dot. Visible in the collapsed tray window.
-- **Live badge (expanded)** -- Full internal-state debug panel shown when the window is expanded. Displays every field from the WebSocket event stream grouped into eight sections:
-  - **WebSocket** -- connection `status`, `messages` total, per-type `breakdown` (st/pred/tray/sug), `last_received` timestamp, `reconnects` count, `connected_since`.
-  - **ActivityWatch** -- AW `connection` status, `host`, `bucket_id`, `last_events` count, and **app distribution** (top 5 apps with event counts from the last poll).
-  - **Activity Monitor** -- `state`, `current_app`, `since`, `poll_interval`, `poll_count`, `last_poll` timestamp, `uptime`. When a transition candidate exists: `candidate_app`, `candidate_progress` with duration/threshold/percentage and a visual progress bar.
-  - **Last Prediction** -- `label`, `mapped_label`, `confidence` (color-coded green/red at 50% threshold), `ts`, `trigger_app`.
-  - **Model** -- `loaded` status, `model_dir`, `schema_hash`, `suggested` label, `suggestion_conf`.
-  - **Transitions** -- `total` count, last transition details: `prev → new` apps, `block` time range, `fired_at` timestamp.
-  - **Active Suggestion** -- appears when the model suggests a label on transition: `suggested`, `confidence`, `reason`, `old_label`, `block` time range.
-  - **Config** -- `data_dir`, `ui_port`, `dev_mode`, `labels_saved` count.
+- **Live badge (expanded)** -- Full internal-state debug panel shown when the window is expanded. Uses a collapsible accordion layout: each section header shows an inline summary badge (e.g., current app, predicted label, connection status) so all states are scannable at a glance. Click any header to expand its detail rows. **Activity Monitor** and **Last Prediction** default to open; all other sections start collapsed. Eight sections:
+  - **Activity Monitor** -- summary: `state · current_app`. Details: `state`, `current_app`, `since`, `poll_interval`, `poll_count`, `last_poll` timestamp, `uptime`. When a transition candidate exists: `candidate_app`, `candidate_progress` with duration/threshold/percentage and a visual progress bar.
+  - **Last Prediction** -- summary: `mapped_label confidence%`. Details: `label`, `mapped_label`, `confidence` (color-coded green/red at 50% threshold), `ts`, `trigger_app`.
+  - **Model** -- summary: `loaded`/`not loaded` (color-coded). Details: `loaded` status, `model_dir`, `schema_hash`, `suggested` label, `suggestion_conf`.
+  - **Transitions** -- summary: transition count. Details: `total` count, last transition details: `prev → new` apps, `block` time range, `fired_at` timestamp.
+  - **Active Suggestion** -- appears when the model suggests a label on transition. Summary: `suggested confidence%`. Details: `suggested`, `confidence`, `reason`, `old_label`, `block` time range.
+  - **ActivityWatch** -- summary: `connected`/`disconnected` (color-coded). Details: AW `connection` status, `host`, `bucket_id`, `last_events` count, and **app distribution** (top 5 apps with event counts from the last poll).
+  - **WebSocket** -- summary: connection status (color-coded). Details: `status`, `messages` total, per-type `breakdown` (st/pred/tray/sug), `last_received` timestamp, `reconnects` count, `connected_since`.
+  - **Config** -- summary: `dev`/`prod`. Details: `data_dir`, `ui_port`, `dev_mode`, `labels_saved` count.
 - **Suggestion banner** -- Appears when the ActivityMonitor detects a task change. Accept or dismiss with one click.
 
 ## Architecture
