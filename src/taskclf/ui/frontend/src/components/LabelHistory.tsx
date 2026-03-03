@@ -180,29 +180,47 @@ export const LabelHistory: Component<{
   });
 
   return (
-    <Show when={grouped().length}>
+    <div
+      style={{
+        padding: "6px 8px",
+        "font-family": "'SF Mono', 'Fira Code', 'Cascadia Code', monospace",
+        "font-size": "0.65rem",
+        color: "#d0d0d0",
+      }}
+    >
       <div
         style={{
-          padding: "6px 8px",
-          "font-family": "'SF Mono', 'Fira Code', 'Cascadia Code', monospace",
-          "font-size": "0.65rem",
+          "font-size": "0.75rem",
+          "font-weight": "700",
           color: "#d0d0d0",
+          "margin-bottom": "6px",
+          "padding-bottom": "4px",
+          "border-bottom": "1px solid #2a2a2a",
+          "letter-spacing": "0.02em",
+          "text-align": "center",
         }}
       >
-        <div
-          style={{
-            "font-size": "0.75rem",
-            "font-weight": "700",
-            color: "#d0d0d0",
-            "margin-bottom": "6px",
-            "padding-bottom": "4px",
-            "border-bottom": "1px solid #2a2a2a",
-            "letter-spacing": "0.02em",
-            "text-align": "center",
-          }}
-        >
-          Label History
-        </div>
+        Label History
+      </div>
+      <Show
+        when={grouped().length}
+        fallback={
+          <div
+            style={{
+              "text-align": "center",
+              padding: "24px 8px",
+              color: "#5a5a5a",
+            }}
+          >
+            <div style={{ "font-size": "1.4rem", "margin-bottom": "6px" }}>
+              No labels yet
+            </div>
+            <div style={{ "font-size": "0.6rem", color: "#4a4a4a" }}>
+              Labels you create will appear here
+            </div>
+          </div>
+        }
+      >
         <For each={grouped()}>
           {(group) => (
             <div style={{ "margin-bottom": "5px" }}>
@@ -281,7 +299,7 @@ export const LabelHistory: Component<{
             </div>
           )}
         </For>
-      </div>
-    </Show>
+      </Show>
+    </div>
   );
 };

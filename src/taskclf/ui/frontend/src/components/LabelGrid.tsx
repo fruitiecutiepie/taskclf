@@ -405,17 +405,20 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
         </For>
       </div>
 
-      <Show when={lastLabel()}>
-        <div
-          style={{
-            "text-align": "center",
-            "font-size": "0.65rem",
-            color: "var(--text-muted)",
-            "margin-top": "6px",
-            "margin-bottom": "2px",
-            "padding-top": "4px",
-            "border-top": "1px solid var(--border)",
-          }}
+      <div
+        style={{
+          "text-align": "center",
+          "font-size": "0.65rem",
+          color: "var(--text-muted)",
+          "margin-top": "6px",
+          "margin-bottom": "2px",
+          "padding-top": "4px",
+          "border-top": "1px solid var(--border)",
+        }}
+      >
+        <Show
+          when={lastLabel()}
+          fallback={<span style={{ color: "#5a5a5a" }}>No labels yet</span>}
         >
           Last:{" "}
           <span
@@ -427,8 +430,8 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
             {lastLabel()!.label}
           </span>{" "}
           {timeAgo(lastLabel()!.end_ts)}
-        </div>
-      </Show>
+        </Show>
+      </div>
     </div>
   );
 };
