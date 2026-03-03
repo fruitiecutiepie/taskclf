@@ -30,9 +30,10 @@ theme:
         name: Switch to light mode
   features:
     - navigation.instant
+    - navigation.tabs
     - navigation.sections
-    - navigation.expand
     - navigation.top
+    - navigation.path
     - search.suggest
     - search.highlight
     - content.code.copy
@@ -51,35 +52,45 @@ plugins:
 
 nav:
   - Home: index.md
+
   - Guide:
-      - Getting Started: guide/usage.md
-      - Privacy Model: guide/privacy.md
-      - Task Labels (v1): guide/labels_v1.md
-      - Time & Bucket Alignment: guide/time_spec.md
-      - Train/Val Splits: guide/splits.md
-      - Model Bundle Layout: guide/model_bundle_layout.md
-      - Model Selection: guide/model_selection.md
-      - Inference Pipeline Overview: guide/model_io.md
-      - Bundle Metrics Contract: guide/metrics_contract.md
-      - Custom Taxonomy: guide/taxonomy.md
-      - Per-User Calibration: guide/personalization.md
-      - Acceptance Criteria: guide/acceptance.md
+      - Basics:
+          - Getting Started: guide/usage.md
+          - Privacy Model: guide/privacy.md
+          - Acceptance Criteria: guide/acceptance.md
+      - Data & Labels:
+          - Task Labels (v1): guide/labels_v1.md
+          - Custom Taxonomy: guide/taxonomy.md
+          - Time & Bucket Alignment: guide/time_spec.md
+      - Modeling:
+          - Train/Val Splits: guide/splits.md
+          - Model Selection: guide/model_selection.md
+          - Model Bundle Layout: guide/model_bundle_layout.md
+          - Bundle Metrics Contract: guide/metrics_contract.md
+      - Deployment:
+          - Inference Pipeline: guide/model_io.md
+          - Per-User Calibration: guide/personalization.md
+
   - API Reference:
-      - Core:
-          - Configuration: api/core/defaults.md
-          - User Identity: api/core/config.md
+      - Core — Schema & Types:
           - Core Types: api/core/types.md
           - Feature Schema: api/core/schema.md
           - Schema Hashing: api/core/hashing.md
           - Data Validation: api/core/validation.md
+      - Core — Configuration:
+          - Defaults: api/core/defaults.md
+          - User Identity: api/core/config.md
+          - Logging & Sanitization: api/core/logging.md
+      - Core — Storage & Time:
           - Time & Buckets: api/core/time.md
           - Data Store: api/core/store.md
+      - Core — Models & Metrics:
           - Model Bundles: api/core/model_io.md
           - Model Registry: api/model_registry.md
           - Evaluation Metrics: api/core/metrics.md
+      - Core — Observability:
           - Drift Detection: api/core/drift.md
           - Quality Telemetry: api/core/telemetry.md
-          - Logging & Sanitization: api/core/logging.md
       - Adapters:
           - ActivityWatch: api/adapters/activitywatch.md
       - Features:
@@ -94,7 +105,7 @@ nav:
           - Label Projection: api/labels/projection.md
           - Labeling Queue: api/labels/queue.md
       - Training:
-          - Build Training Dataset: api/train/build_dataset.md
+          - Build Dataset: api/train/build_dataset.md
           - Time-Based Splits: api/train/dataset.md
           - LightGBM Trainer: api/train/lgbm.md
           - Calibrator Fitting: api/train/calibrate.md
