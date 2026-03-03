@@ -4,6 +4,7 @@ import {
   For,
   Show,
   createMemo,
+  createSignal,
 } from "solid-js";
 import type {
   ConnectionStatus,
@@ -119,25 +120,72 @@ const Row: Component<{
   </div>
 );
 
-const Section: Component<{ title: string; children: any }> = (props) => (
-  <div style={{ "margin-bottom": "5px" }}>
-    <div
-      style={{
-        "font-size": "0.6rem",
-        "font-weight": "700",
-        "text-transform": "uppercase",
-        "letter-spacing": "0.06em",
-        color: "#7a7a7a",
-        "margin-bottom": "1px",
-        "border-bottom": "1px solid #333",
-        "padding-bottom": "1px",
-      }}
-    >
-      {props.title}
+const Section: Component<{
+  title: string;
+  summary?: string;
+  summaryColor?: string;
+  defaultOpen?: boolean;
+  children: any;
+}> = (props) => {
+  const [open, setOpen] = createSignal(props.defaultOpen ?? false);
+
+  return (
+    <div style={{ "margin-bottom": "3px" }}>
+      <div
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          display: "flex",
+          "align-items": "center",
+          "justify-content": "space-between",
+          cursor: "pointer",
+          "user-select": "none",
+          "font-size": "0.6rem",
+          "font-weight": "700",
+          "text-transform": "uppercase",
+          "letter-spacing": "0.06em",
+          color: "#7a7a7a",
+          padding: "2px 0 1px",
+          "border-bottom": "1px solid #333",
+        }}
+      >
+        <div style={{ display: "flex", "align-items": "center", gap: "4px" }}>
+          <span
+            style={{
+              display: "inline-block",
+              transition: "transform 0.15s ease",
+              transform: open() ? "rotate(90deg)" : "rotate(0deg)",
+              "font-size": "0.5rem",
+              color: "#555",
+            }}
+          >
+            ▶
+          </span>
+          <span>{props.title}</span>
+        </div>
+        <Show when={!open() && props.summary}>
+          <span
+            style={{
+              "font-size": "0.6rem",
+              "font-weight": "600",
+              color: props.summaryColor ?? "#999",
+              "text-transform": "none",
+              "letter-spacing": "normal",
+              overflow: "hidden",
+              "text-overflow": "ellipsis",
+              "white-space": "nowrap",
+              "max-width": "140px",
+            }}
+          >
+            {props.summary}
+          </span>
+        </Show>
+      </div>
+      <Show when={open()}>
+        <div style={{ "padding-top": "1px" }}>{props.children}</div>
+      </Show>
     </div>
-    {props.children}
-  </div>
-);
+  );
+};
 
 const ProgressBar: Component<{ pct: number; color?: string }> = (props) => (
   <div
@@ -194,12 +242,71 @@ export const StatePanel: Component<{
     return Object.entries(s.last_app_counts).sort(([, a], [, b]) => b - a);
   });
 
+  // -- Section summaries (shown inline when collapsed) -----------------------
+
+  const activitySummary = createMemo(() => {
+    const s = st();
+    if (!s) return "—";
+    return s.current_app ? `${s.state} · ${s.current_app}` : s.state;
+  });
+
+  const predSummary = createMemo(() => {
+    const p = pred();
+    if (!p) return "none";
+    return `${p.mapped_label} ${Math.round(p.confidence * 100)}%`;
+  });
+  const predSummaryColor = createMemo(() => {
+    const p = pred();
+    return p ? (LABEL_COLORS[p.mapped_label] ?? "#d0d0d0") : "#8a8a8a";
+  });
+
+  const modelSummary = createMemo(() => {
+    const t = tray();
+    if (!t) return "—";
+    return t.model_loaded ? "loaded" : "not loaded";
+  });
+  const modelSummaryColor = createMemo(() => {
+    const t = tray();
+    return t?.model_loaded ? "#22c55e" : "#ef4444";
+  });
+
+  const transitionSummary = createMemo(() => {
+    const t = tray();
+    return t ? String(t.transition_count) : "—";
+  });
+
+  const sugSummary = createMemo(() => {
+    const s = sug();
+    if (!s) return "";
+    return `${s.suggested} ${Math.round(s.confidence * 100)}%`;
+  });
+  const sugSummaryColor = createMemo(() => {
+    const s = sug();
+    return s ? (LABEL_COLORS[s.suggested] ?? "#d0d0d0") : "#8a8a8a";
+  });
+
+  const awSummary = createMemo(() =>
+    st()?.aw_connected ? "connected" : "disconnected",
+  );
+  const awSummaryColor = createMemo(() =>
+    st()?.aw_connected ? "#22c55e" : "#ef4444",
+  );
+
+  const wsSummary = createMemo(() => props.status());
+  const wsSummaryColor = createMemo(() => dotColor(props.status()));
+
+  const configSummary = createMemo(() => {
+    const t = tray();
+    if (!t) return "—";
+    return t.dev_mode ? "dev" : "prod";
+  });
+
   return (
     <div
       style={{
         background: "var(--surface)",
         border: "1px solid #2a2a2a",
-        "border-radius": "8px",
+        "border-radius": "10px",
         padding: "6px 8px",
         "font-family": "'SF Mono', 'Fira Code', 'Cascadia Code', monospace",
         "font-size": "0.65rem",
@@ -223,7 +330,11 @@ export const StatePanel: Component<{
         State Panel
       </div>
 
-      <Section title="Activity Monitor">
+      <Section
+        title="Activity Monitor"
+        summary={activitySummary()}
+        defaultOpen
+      >
         <Row label="state" value={st()?.state ?? "—"} />
         <Row label="current_app" value={st()?.current_app ?? "—"} />
         <Row
@@ -269,7 +380,12 @@ export const StatePanel: Component<{
         </Show>
       </Section>
 
-      <Section title="Last Prediction">
+      <Section
+        title="Last Prediction"
+        summary={predSummary()}
+        summaryColor={predSummaryColor()}
+        defaultOpen
+      >
         <Show
           when={pred()}
           fallback={<Row label="status" value="no prediction yet" dim />}
@@ -296,7 +412,11 @@ export const StatePanel: Component<{
         </Show>
       </Section>
 
-      <Section title="Model">
+      <Section
+        title="Model"
+        summary={modelSummary()}
+        summaryColor={modelSummaryColor()}
+      >
         <Row
           label="loaded"
           value={tray() ? (tray()!.model_loaded ? "yes" : "no") : "—"}
@@ -334,7 +454,7 @@ export const StatePanel: Component<{
         </Show>
       </Section>
 
-      <Section title="Transitions">
+      <Section title="Transitions" summary={transitionSummary()}>
         <Row
           label="total"
           value={tray() ? String(tray()!.transition_count) : "—"}
@@ -361,7 +481,11 @@ export const StatePanel: Component<{
       </Section>
 
       <Show when={sug()}>
-        <Section title="Active Suggestion">
+        <Section
+          title="Active Suggestion"
+          summary={sugSummary()}
+          summaryColor={sugSummaryColor()}
+        >
           <Row
             label="suggested"
             value={sug()!.suggested}
@@ -381,7 +505,11 @@ export const StatePanel: Component<{
         </Section>
       </Show>
 
-      <Section title="ActivityWatch">
+      <Section
+        title="ActivityWatch"
+        summary={awSummary()}
+        summaryColor={awSummaryColor()}
+      >
         <Row
           label="connection"
           value={st()?.aw_connected ? "connected" : "disconnected"}
@@ -429,7 +557,11 @@ export const StatePanel: Component<{
         </Show>
       </Section>
 
-      <Section title="WebSocket">
+      <Section
+        title="WebSocket"
+        summary={wsSummary()}
+        summaryColor={wsSummaryColor()}
+      >
         <Row
           label="status"
           value={props.status()}
@@ -465,7 +597,7 @@ export const StatePanel: Component<{
         </Show>
       </Section>
 
-      <Section title="Config">
+      <Section title="Config" summary={configSummary()}>
         <Row
           label="data_dir"
           value={truncPath(tray()?.data_dir)}

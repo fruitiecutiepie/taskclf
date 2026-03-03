@@ -14,7 +14,7 @@ const isLabelView = viewParam === "label";
 const COMPACT_W = 150;
 const CONTENT_W = 280;
 const LABEL_MAX_H = 410;
-const PANEL_MAX_H = 750;
+const PANEL_MAX_H = 420;
 
 const isBrowserMode = () => window.innerWidth > 300 && !host.isNativeWindow;
 
@@ -153,61 +153,71 @@ const App: Component = () => {
       }}
     >
       <div
+        onMouseEnter={inBrowser ? () => setHovering(true) : undefined}
+        onMouseLeave={inBrowser ? () => setHovering(false) : undefined}
         style={{
-          background: "rgba(15, 17, 23, 0.5)",
-          "backdrop-filter": "blur(20px)",
-          "-webkit-backdrop-filter": "blur(20px)",
-          width: inBrowser ? `${CONTENT_W}px` : "100%",
-          ...(inBrowser
-            ? { "box-shadow": "0 4px 24px rgba(0, 0, 0, 0.5)" }
-            : { height: "100vh" }),
-          overflow: "hidden",
-          "border-radius": "20px",
+          display: "flex",
+          "flex-direction": "column",
+          "align-items": "flex-end",
         }}
       >
         <div
-          class="pywebview-drag-region"
           style={{
-            display: "flex",
-            "align-items": "center",
-            "justify-content": "center",
-            padding: "0 8px 0 12px",
-            height: "30px",
-            "user-select": "none",
+            background: "rgba(15, 17, 23, 0.5)",
+            "backdrop-filter": "blur(20px)",
+            "-webkit-backdrop-filter": "blur(20px)",
+            width: inBrowser ? `${COMPACT_W}px` : "100%",
+            ...(inBrowser
+              ? { "box-shadow": "0 4px 24px rgba(0, 0, 0, 0.5)" }
+              : { height: "100vh" }),
+            overflow: "hidden",
+            "border-radius": "20px",
           }}
         >
-          <LiveBadge
-            status={ws.connectionStatus}
-            latestStatus={ws.latestStatus}
-            latestPrediction={ws.latestPrediction}
-            latestTrayState={ws.latestTrayState}
-            activeSuggestion={ws.activeSuggestion}
-            wsStats={ws.wsStats}
-            compact={!hovering()}
-            onTogglePanel={inBrowser ? browserTogglePanel : undefined}
-            onShowLabel={showLabel}
-            onHideLabel={hideLabel}
-          />
+          <div
+            class="pywebview-drag-region"
+            style={{
+              display: "flex",
+              "align-items": "center",
+              "justify-content": "center",
+              padding: "0 8px 0 12px",
+              height: "30px",
+              "user-select": "none",
+            }}
+          >
+            <LiveBadge
+              status={ws.connectionStatus}
+              latestStatus={ws.latestStatus}
+              latestPrediction={ws.latestPrediction}
+              latestTrayState={ws.latestTrayState}
+              activeSuggestion={ws.activeSuggestion}
+              wsStats={ws.wsStats}
+              compact={!hovering()}
+              onTogglePanel={inBrowser ? browserTogglePanel : undefined}
+              onShowLabel={inBrowser ? undefined : showLabel}
+              onHideLabel={inBrowser ? undefined : hideLabel}
+            />
+          </div>
         </div>
-      </div>
 
-      {/* Inline label grid for browser mode preview */}
-      <Show when={inBrowser && hovering()}>
-        <div
-          style={{
-            width: `${CONTENT_W}px`,
-            "max-height": `${LABEL_MAX_H}px`,
-            "overflow-y": "auto",
-            "margin-top": "4px",
-            background: "var(--bg)",
-            "border-radius": "12px",
-          }}
-        >
-          <LabelGrid onCollapse={hideLabel} prediction={ws.latestPrediction} />
-          <div style={{ height: "4px" }} />
-          <LabelHistory visible={hovering} />
-        </div>
-      </Show>
+        {/* Inline label grid for browser mode preview */}
+        <Show when={inBrowser && hovering()}>
+          <div
+            style={{
+              width: `${CONTENT_W}px`,
+              "max-height": `${LABEL_MAX_H}px`,
+              "overflow-y": "auto",
+              "margin-top": "4px",
+              background: "var(--bg)",
+              "border-radius": "12px",
+            }}
+          >
+            <LabelGrid onCollapse={hideLabel} prediction={ws.latestPrediction} />
+            <div style={{ height: "4px" }} />
+            <LabelHistory visible={hovering} />
+          </div>
+        </Show>
+      </div>
 
       {/* Inline state panel for browser mode preview */}
       <Show when={inBrowser && showPanel()}>
