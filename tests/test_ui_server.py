@@ -929,3 +929,127 @@ class TestPauseAPI:
         paused_state["paused"] = True
         resp = client.get("/api/tray/state")
         assert resp.json() == {"available": True, "paused": True}
+
+
+# ---------------------------------------------------------------------------
+# Structured 409 overlap error  (Item 6)
+# ---------------------------------------------------------------------------
+
+
+class TestStructuredOverlapError:
+    """Verify 409 responses contain structured conflict details."""
+
+    def test_overlap_returns_structured_detail(self, client: TestClient) -> None:
+        """TC-UI-OVL-001: POST /api/labels overlap includes conflicting span."""
+        client.post("/api/labels", json={
+            "start_ts": "2026-02-27T09:00:00",
+            "end_ts": "2026-02-27T10:00:00",
+            "label": "Build",
+        })
+        resp = client.post("/api/labels", json={
+            "start_ts": "2026-02-27T09:30:00",
+            "end_ts": "2026-02-27T10:30:00",
+            "label": "Meet",
+        })
+        assert resp.status_code == 409
+        detail = resp.json()["detail"]
+        assert "error" in detail
+        assert detail["conflicting_start_ts"] is not None
+        assert detail["conflicting_end_ts"] is not None
+        assert "2026-02-27" in detail["conflicting_start_ts"]
+        assert "2026-02-27" in detail["conflicting_end_ts"]
+
+    def test_overlap_conflicting_span_is_existing(self, client: TestClient) -> None:
+        """TC-UI-OVL-002: the conflicting span points to the previously saved label."""
+        client.post("/api/labels", json={
+            "start_ts": "2026-02-27T09:00:00",
+            "end_ts": "2026-02-27T10:00:00",
+            "label": "Build",
+        })
+        resp = client.post("/api/labels", json={
+            "start_ts": "2026-02-27T09:30:00",
+            "end_ts": "2026-02-27T10:30:00",
+            "label": "Meet",
+        })
+        detail = resp.json()["detail"]
+        assert "09:00:00" in detail["conflicting_start_ts"]
+        assert "10:00:00" in detail["conflicting_end_ts"]
+
+    def test_notification_accept_overlap_structured(self, client: TestClient) -> None:
+        """TC-UI-OVL-003: POST /api/notification/accept overlap is also structured."""
+        client.post("/api/labels", json={
+            "start_ts": "2026-02-27T09:00:00",
+            "end_ts": "2026-02-27T10:00:00",
+            "label": "Build",
+        })
+        resp = client.post("/api/notification/accept", json={
+            "block_start": "2026-02-27T09:30:00",
+            "block_end": "2026-02-27T10:30:00",
+            "label": "Write",
+        })
+        assert resp.status_code == 409
+        detail = resp.json()["detail"]
+        assert "error" in detail
+        assert detail["conflicting_start_ts"] is not None
+        assert detail["conflicting_end_ts"] is not None
+
+
+# ---------------------------------------------------------------------------
+# label_created event type  (Item 14)
+# ---------------------------------------------------------------------------
+
+
+class TestLabelCreatedEvent:
+    """Verify extend_forward publishes label_created (not prediction)."""
+
+    def test_extend_forward_publishes_label_created(self, data_dir: Path) -> None:
+        """TC-UI-LC-001: extend_forward=True emits label_created via WS."""
+        import threading
+
+        bus = EventBus()
+        app = create_app(data_dir=data_dir, event_bus=bus)
+
+        with TestClient(app) as tc, tc.websocket_connect("/ws/predictions") as ws:
+            def _post() -> None:
+                import time
+                time.sleep(0.05)
+                tc.post("/api/labels", json={
+                    "start_ts": "2026-02-27T09:00:00",
+                    "end_ts": "2026-02-27T10:00:00",
+                    "label": "Build",
+                    "extend_forward": True,
+                })
+
+            threading.Thread(target=_post).start()
+            received = ws.receive_json()
+            assert received["type"] == "label_created"
+            assert received["label"] == "Build"
+            assert received["extend_forward"] is True
+            assert received["start_ts"] == "2026-02-27T09:00:00"
+            assert received["ts"] == "2026-02-27T10:00:00"
+            assert "provenance" not in received
+            assert "mapped_label" not in received
+
+    def test_no_event_without_extend_forward(self, data_dir: Path) -> None:
+        """TC-UI-LC-002: extend_forward=False does not emit any event."""
+        import threading, time
+
+        bus = EventBus()
+        app = create_app(data_dir=data_dir, event_bus=bus)
+
+        with TestClient(app) as tc, tc.websocket_connect("/ws/predictions") as ws:
+            def _post() -> None:
+                time.sleep(0.05)
+                tc.post("/api/labels", json={
+                    "start_ts": "2026-02-27T09:00:00",
+                    "end_ts": "2026-02-27T10:00:00",
+                    "label": "Build",
+                    "extend_forward": False,
+                })
+                time.sleep(0.1)
+                bus.publish_threadsafe({"type": "status", "state": "sentinel"})
+
+            threading.Thread(target=_post).start()
+            received = ws.receive_json()
+            assert received["type"] == "status"
+            assert received["state"] == "sentinel"

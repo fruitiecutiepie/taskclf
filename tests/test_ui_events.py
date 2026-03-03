@@ -50,24 +50,67 @@ class TestEventBusMultipleSubscribers:
         assert r1 == r2 == {"type": "prediction", "label": "Build"}
 
 
-class TestEventBusDeadSubscriberEviction:
-    """TC-UI-EB-003: full queue evicted from _subscribers on next publish."""
+class TestEventBusBackpressure:
+    """TC-UI-EB-003: full queue evicts oldest event, subscriber stays."""
 
-    def test_full_queue_evicted(self) -> None:
-        async def _test() -> int:
+    def test_subscriber_retained_after_overflow(self) -> None:
+        async def _test() -> tuple[int, int]:
             bus = EventBus()
             async with bus.subscribe() as q:
                 for i in range(256):
                     await bus.publish({"i": i})
                 assert q.full()
                 await bus.publish({"i": 256})
-                return len(bus._subscribers)
+                inside = len(bus._subscribers)
+            after = len(bus._subscribers)
+            return inside, after
 
-        remaining = _run(_test())
-        # The full queue should have been evicted during the 257th publish,
-        # but the subscribe context manager re-discards on exit. Either way
-        # the set should be empty after context exit.
-        assert remaining == 0
+        inside, after = _run(_test())
+        assert inside == 1  # subscriber retained despite overflow
+        assert after == 0   # cleaned up on context exit
+
+    def test_newest_event_always_in_queue(self) -> None:
+        """After overflow, the most recent event is always present."""
+        async def _test() -> dict[str, Any]:
+            bus = EventBus()
+            async with bus.subscribe() as q:
+                for i in range(300):
+                    await bus.publish({"i": i})
+                items = []
+                while not q.empty():
+                    items.append(q.get_nowait())
+                return items[-1]
+
+        last = _run(_test())
+        assert last["i"] == 299
+
+    def test_queue_stays_full_after_overflow(self) -> None:
+        """Queue contains exactly 256 events after 300 publishes."""
+        async def _test() -> int:
+            bus = EventBus()
+            async with bus.subscribe() as q:
+                for i in range(300):
+                    await bus.publish({"i": i})
+                return q.qsize()
+
+        size = _run(_test())
+        assert size == 256
+
+    def test_subscriber_still_receives_after_overflow(self) -> None:
+        """A subscriber that overflowed still gets subsequent events."""
+        async def _test() -> dict[str, Any]:
+            bus = EventBus()
+            async with bus.subscribe() as q:
+                for i in range(260):
+                    await bus.publish({"i": i})
+                assert len(bus._subscribers) == 1
+                while not q.empty():
+                    q.get_nowait()
+                await bus.publish({"type": "after_overflow"})
+                return q.get_nowait()
+
+        result = _run(_test())
+        assert result["type"] == "after_overflow"
 
 
 class TestPublishThreadsafeBoundLoop:

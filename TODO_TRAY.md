@@ -47,12 +47,10 @@ When `notifications_enabled=False`, `_send_notification()` is a no-op.
 When `privacy_notifications=True` (the default), notification messages show "Activity changed" instead of raw app identifiers. Set to `False` to opt in to showing raw app names.
 Both parameters are also exposed on `run_tray()`.
 
-### 6. No label overlap guidance in the UI
-**Files:** `server.py:195-196`, `LabelGrid.tsx:113`
+### ~~6. No label overlap guidance in the UI~~ DONE
 
-The server returns HTTP 409 on overlapping spans. The LabelGrid catches this as a generic `"Error: <message>"` with no guidance on which label conflicts or how to resolve it.
-
-**Fix:** Return structured error data (conflicting span timestamps, label) in the 409 response. Show actionable UI: "Overlaps with [Label] from HH:MM–HH:MM. Delete it or adjust the time window."
+The server now returns structured 409 responses with an `OverlapErrorDetail` body: `{"error": "...", "conflicting_start_ts": "...", "conflicting_end_ts": "..."}`. Both `POST /api/labels` and `POST /api/notification/accept` parse the overlap error to identify the conflicting (existing) span's timestamps.
+**Note:** The frontend (`LabelGrid.tsx`) still shows a generic error message; it should be updated to display the conflicting span details (e.g. "Overlaps with label from HH:MM–HH:MM").
 
 ### ~~7. Transition detection cold start gap~~ DONE
 
@@ -98,23 +96,18 @@ After a successful label, the grid shows a flash message for 1500ms then collaps
 
 **Fix:** Remove `LabelRecent.tsx` or wire it into the app as a dedicated "custom time range" labeling view if that use case is needed.
 
-### 14. `extend_forward` publishes a fake "prediction" event
-**File:** `server.py:198-206`
+### ~~14. `extend_forward` publishes a fake "prediction" event~~ DONE
 
-When a label is created with `extend_forward: true`, the server publishes a `prediction` event with `provenance: "manual"`. This updates the LiveBadge to show the label — which is the desired visual effect — but it co-opts the `prediction` event type for something that isn't a prediction. The frontend then renders it as "Last Label" (via a provenance check in `StatePanel`) but it still populates `latestPrediction`, which feeds into `ActivityContext` and `LabelHistory` refetch logic. Mixing label events into the prediction channel makes the event semantics fragile.
-
-**Fix:** Introduce a dedicated `label_created` event type. Have the frontend update the LiveBadge from that event type directly, keeping the prediction channel reserved for actual model outputs.
+The server now publishes a `label_created` event (with `label`, `confidence`, `ts`, `start_ts`, `extend_forward`) instead of a `prediction` event with `provenance: "manual"`. The `prediction` channel is reserved for actual model outputs.
+**Note:** The frontend (LiveBadge, StatePanel) should be updated to handle the `label_created` event type; until then, the badge won't update on `extend_forward` labels (no regression in prediction display).
 
 ### ~~15. Candidate duration uses `poll_seconds` instead of actual elapsed time~~ DONE
 
 `ActivityMonitor.check_transition()` now tracks `_last_check_time` and computes actual wall-clock elapsed time instead of assuming `poll_seconds`. An optional `_now` parameter enables deterministic testing.
 
-### 16. EventBus silently drops slow WebSocket consumers
-**File:** `events.py:36-41`
+### ~~16. EventBus silently drops slow WebSocket consumers~~ DONE
 
-The subscriber queue has `maxsize=256`. When a consumer can't keep up, `put_nowait` raises `QueueFull` and the subscriber is permanently removed (`dead.append(q)` → `discard`). The WebSocket connection stays open but stops receiving events with no error sent to the client. The frontend has no way to detect this — it looks "connected" but receives nothing.
-
-**Fix:** Either send a "backpressure" warning event before dropping, or evict the oldest event from the queue instead of removing the subscriber entirely.
+`EventBus.publish()` now evicts the oldest event from a full subscriber queue instead of permanently removing the subscriber. The subscriber stays registered and continues receiving new events; only stale events are lost under backpressure.
 
 ### 17. Naive-UTC timestamps throughout tray and server
 **Files:** `tray.py` (5 occurrences), `server.py`, `client.py`, `online.py`, `time.py`

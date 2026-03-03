@@ -29,16 +29,25 @@ class EventBus:
         self._loop = loop
 
     async def publish(self, event: dict[str, Any]) -> None:
-        """Broadcast *event* to all current subscribers."""
+        """Broadcast *event* to all current subscribers.
+
+        When a subscriber's queue is full, the oldest event is evicted
+        so the subscriber keeps receiving new events (at the cost of
+        missing stale ones).  The subscriber is never silently dropped.
+        """
         async with self._lock:
-            dead: list[asyncio.Queue[dict[str, Any]]] = []
             for q in self._subscribers:
                 try:
                     q.put_nowait(event)
                 except asyncio.QueueFull:
-                    dead.append(q)
-            for q in dead:
-                self._subscribers.discard(q)
+                    try:
+                        q.get_nowait()
+                    except asyncio.QueueEmpty:
+                        pass
+                    try:
+                        q.put_nowait(event)
+                    except asyncio.QueueFull:
+                        logger.warning("EventBus: failed to enqueue after eviction")
 
     def publish_threadsafe(self, event: dict[str, Any]) -> None:
         """Schedule a publish from a non-async thread (e.g. ``ActivityMonitor``)."""

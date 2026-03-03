@@ -55,7 +55,7 @@ Options:
 The UI is a SolidJS single-page application served by a FastAPI backend:
 
 - **REST endpoints** (`/api/labels`, `/api/queue`, `/api/features/summary`, `/api/aw/live`, `/api/config/labels`, `/api/config/user`, `/api/tray/pause`, `/api/tray/state`) handle label CRUD, queue management, user configuration, tray control, and data queries.
-  - `POST /api/labels` accepts an optional `extend_forward` boolean. When true, the label is persisted with `extend_forward=true`; when the *next* label is created for the same user, this label's `end_ts` is automatically stretched to the new label's `start_ts`, producing contiguous coverage. The quick-label UI sets this flag by default.
+  - `POST /api/labels` accepts an optional `extend_forward` boolean. When true, the label is persisted with `extend_forward=true`; when the *next* label is created for the same user, this label's `end_ts` is automatically stretched to the new label's `start_ts`, producing contiguous coverage. The quick-label UI sets this flag by default. On overlap (409), the response body contains structured conflict details: `{"detail": {"error": "...", "conflicting_start_ts": "...", "conflicting_end_ts": "..."}}` so the frontend can show which existing label conflicts and its time range.
   - `PUT /api/labels` changes the label on an existing span identified by `start_ts` + `end_ts`. Returns 404 if no matching span exists.
   - `DELETE /api/labels` removes a span identified by `start_ts` + `end_ts`. Returns 404 if no matching span exists.
   - `POST /api/tray/pause` toggles the monitoring pause state. Returns `{"status": "ok", "paused": true/false}` when connected to a tray, or `{"status": "unavailable", "paused": false}` when no tray callbacks are configured.
@@ -64,10 +64,13 @@ The UI is a SolidJS single-page application served by a FastAPI backend:
   - `status` -- every poll cycle: `state` (`"collecting"` or `"paused"`), `current_app`, `current_app_since`, `candidate_app`, `candidate_duration_s`, `transition_threshold_s`, `poll_seconds`, `poll_count`, `last_poll_ts`, `uptime_s`, `aw_connected`, `aw_bucket_id`, `aw_host`, `last_event_count`, `last_app_counts`. When monitoring is paused, `state` is `"paused"` and polling/transition detection is skipped.
   - `tray_state` -- every poll cycle: `model_loaded`, `model_dir`, `model_schema_hash`, `suggested_label`, `suggested_confidence`, `transition_count`, `last_transition` (with `prev_app`, `new_app`, `block_start`, `block_end`, `fired_at`), `labels_saved_count`, `data_dir`, `ui_port`, `dev_mode`, `paused`.
   - `initial_app` -- once on startup when the first dominant app is detected: `app`, `ts`. Allows the UI to prompt the user to label the pre-start period that would otherwise be unlabeled.
-  - `prediction` -- on app transition without a suggestion: `label`, `confidence`, `ts`, `mapped_label`, `current_app`.
+  - `prediction` -- on app transition without a suggestion: `label`, `confidence`, `ts`, `mapped_label`, `current_app`. Reserved for actual model outputs; manual labels no longer use this event type.
+  - `label_created` -- when a label with `extend_forward=true` is created via `POST /api/labels`: `label`, `confidence`, `ts` (end), `start_ts`, `extend_forward`. Replaces the former `prediction` event with `provenance: "manual"`.
   - `suggest_label` -- on app transition with model suggestion: `suggested`, `confidence`, `reason`, `old_label`, `block_start`, `block_end`.
   - `prompt_label` -- on task transition with labeling prompt: `prev_app`, `new_app`, `block_start`, `block_end`, `duration_min`, `suggested_label`, `suggested_confidence`.
   - `show_label_grid` -- triggered by `POST /api/window/show-label-grid`: `type` (`"show_label_grid"`, no other fields).
+
+  **Backpressure policy:** Each WebSocket subscriber has a 256-event queue. When the queue is full, the oldest event is evicted to make room for the new one. The subscriber is never silently dropped; it continues receiving events at the cost of missing stale ones.
 
 ## Privacy
 
@@ -104,7 +107,7 @@ taskclf tray --dev
 - **Label suggestions** -- when `--model-dir` is provided, the app predicts a label and includes it in the notification. Without a model, all 8 core labels are shown.
 - **Quick-label menus** -- right-click the tray icon to label the last 5/10/15/30 minutes with any core label.
 - **Open Web UI** -- menu option to open the labeling web UI in the browser.
-- **Event broadcasting** -- publishes `status`, `tray_state`, `initial_app`, `prediction`, and `suggest_label` events to the shared EventBus for connected WebSocket clients.
+- **Event broadcasting** -- publishes `status`, `tray_state`, `initial_app`, `prediction`, `label_created`, and `suggest_label` events to the shared EventBus for connected WebSocket clients.
 
 ## Privacy
 
