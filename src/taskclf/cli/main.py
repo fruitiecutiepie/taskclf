@@ -1,6 +1,7 @@
 """Typer CLI entrypoint and command definitions for taskclf."""
 
 import datetime as dt
+from importlib.metadata import version as _pkg_version
 from pathlib import Path
 
 import typer
@@ -32,7 +33,24 @@ from taskclf.core.defaults import (
     DEFAULT_RETRAIN_CADENCE_DAYS,
 )
 
+def _version_callback(value: bool) -> None:
+    if value:
+        typer.echo(f"taskclf {_pkg_version('taskclf')}")
+        raise typer.Exit()
+
+
 app = typer.Typer()
+
+
+@app.callback()
+def main(
+    version: bool = typer.Option(
+        False, "--version", "-V", callback=_version_callback, is_eager=True,
+        help="Show version and exit.",
+    ),
+) -> None:
+    """Local-first task classifier CLI."""
+
 
 # -- ingest -------------------------------------------------------------------
 ingest_app = typer.Typer()
