@@ -398,6 +398,7 @@ class TestHandlePoll:
             "suggested_label", "suggested_confidence",
             "transition_count", "last_transition",
             "labels_saved_count", "data_dir", "ui_port", "dev_mode",
+            "paused",
         }
         assert set(event.keys()) == expected_keys
         assert event["model_loaded"] is False
@@ -678,3 +679,245 @@ class TestLabelSuggester:
         result = suggester.suggest(_BLOCK_START, _BLOCK_END)
 
         assert result is None
+
+
+# ---------------------------------------------------------------------------
+# Pause/resume  (Item 4)
+# ---------------------------------------------------------------------------
+
+
+class TestPauseResume:
+
+    def test_monitor_starts_unpaused(self) -> None:
+        monitor = ActivityMonitor(poll_seconds=60, transition_minutes=3)
+        assert monitor.is_paused is False
+
+    def test_pause_sets_flag(self) -> None:
+        monitor = ActivityMonitor(poll_seconds=60, transition_minutes=3)
+        monitor.pause()
+        assert monitor.is_paused is True
+
+    def test_resume_clears_flag(self) -> None:
+        monitor = ActivityMonitor(poll_seconds=60, transition_minutes=3)
+        monitor.pause()
+        monitor.resume()
+        assert monitor.is_paused is False
+
+    def test_publish_status_paused_state(self) -> None:
+        """When paused, _publish_status emits state='paused'."""
+        bus, captured = _capture_bus()
+        monitor = ActivityMonitor(
+            poll_seconds=60, transition_minutes=3, event_bus=bus,
+        )
+        monitor._started_at = dt.datetime(2026, 3, 1, 9, 0, 0)
+
+        monitor._publish_status("app1", state="paused")
+
+        assert len(captured) == 1
+        assert captured[0]["state"] == "paused"
+        assert captured[0]["current_app"] == "app1"
+
+    def test_publish_status_defaults_to_collecting(self) -> None:
+        bus, captured = _capture_bus()
+        monitor = ActivityMonitor(
+            poll_seconds=60, transition_minutes=3, event_bus=bus,
+        )
+        monitor._started_at = dt.datetime(2026, 3, 1, 9, 0, 0)
+
+        monitor._publish_status("app1")
+
+        assert captured[0]["state"] == "collecting"
+
+    def test_session_state_preserved_across_pause(self) -> None:
+        """poll_count and transition state survive pause/resume."""
+        bus, captured = _capture_bus()
+        transitions: list = []
+        monitor = ActivityMonitor(
+            poll_seconds=60, transition_minutes=2,
+            event_bus=bus, on_transition=lambda *a: transitions.append(a),
+        )
+        monitor._started_at = dt.datetime(2026, 3, 1, 9, 0, 0)
+
+        monitor._publish_status("app1")
+        monitor.check_transition("app1", _now=_t(0))
+        assert monitor._poll_count == 1
+
+        monitor.pause()
+        assert monitor.is_paused is True
+        assert monitor._poll_count == 1
+
+        monitor.resume()
+        monitor._publish_status("app1")
+        assert monitor._poll_count == 2
+        assert monitor.current_app == "app1"
+
+    def test_tray_toggle_pause(self, tmp_path: Path) -> None:
+        """TrayLabeler._toggle_pause toggles the monitor's paused state."""
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+
+        assert labeler._monitor.is_paused is False
+        result = labeler._toggle_pause()
+        assert result is True
+        assert labeler._monitor.is_paused is True
+
+        result = labeler._toggle_pause()
+        assert result is False
+        assert labeler._monitor.is_paused is False
+
+    def test_tray_state_includes_paused_field(self, tmp_path: Path) -> None:
+        """tray_state event includes 'paused' key."""
+        bus, captured = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+
+        labeler._handle_poll("app1")
+        tray_state = next(e for e in captured if e["type"] == "tray_state")
+        assert "paused" in tray_state
+        assert tray_state["paused"] is False
+
+        captured.clear()
+        labeler._toggle_pause()
+        labeler._handle_poll("app1")
+        tray_state = next(e for e in captured if e["type"] == "tray_state")
+        assert tray_state["paused"] is True
+
+
+# ---------------------------------------------------------------------------
+# Notification privacy  (Item 5)
+# ---------------------------------------------------------------------------
+
+
+class TestNotificationPrivacy:
+
+    @patch("taskclf.ui.tray._send_desktop_notification")
+    def test_notifications_disabled_skips_call(
+        self, mock_notif: MagicMock, tmp_path: Path,
+    ) -> None:
+        bus, _ = _capture_bus()
+        labeler = TrayLabeler(
+            data_dir=tmp_path, model_dir=None, event_bus=bus,
+            notifications_enabled=False,
+        )
+        labeler._send_notification(
+            "com.apple.Terminal", "us.zoom.xos", _BLOCK_START, _BLOCK_END,
+        )
+        mock_notif.assert_not_called()
+
+    @patch("taskclf.ui.tray._send_desktop_notification")
+    def test_privacy_mode_redacts_app_names(
+        self, mock_notif: MagicMock, tmp_path: Path,
+    ) -> None:
+        """Default privacy_notifications=True hides app identifiers."""
+        bus, _ = _capture_bus()
+        labeler = TrayLabeler(
+            data_dir=tmp_path, model_dir=None, event_bus=bus,
+            privacy_notifications=True,
+        )
+        labeler._send_notification(
+            "com.apple.Terminal", "us.zoom.xos", _BLOCK_START, _BLOCK_END,
+        )
+        mock_notif.assert_called_once()
+        message = mock_notif.call_args[1].get("message") or mock_notif.call_args[0][1]
+        assert "com.apple.Terminal" not in message
+        assert "us.zoom.xos" not in message
+        assert "Activity changed" in message
+        assert "15 min" in message
+
+    @patch("taskclf.ui.tray._send_desktop_notification")
+    def test_privacy_off_shows_raw_app_names(
+        self, mock_notif: MagicMock, tmp_path: Path,
+    ) -> None:
+        bus, _ = _capture_bus()
+        labeler = TrayLabeler(
+            data_dir=tmp_path, model_dir=None, event_bus=bus,
+            privacy_notifications=False,
+        )
+        labeler._send_notification(
+            "com.apple.Terminal", "us.zoom.xos", _BLOCK_START, _BLOCK_END,
+        )
+        mock_notif.assert_called_once()
+        message = mock_notif.call_args[0][1]
+        assert "com.apple.Terminal" in message
+        assert "us.zoom.xos" in message
+
+    @patch("taskclf.ui.tray._send_desktop_notification")
+    def test_privacy_default_is_true(
+        self, mock_notif: MagicMock, tmp_path: Path,
+    ) -> None:
+        """Default TrayLabeler has privacy_notifications=True."""
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+        labeler._send_notification(
+            "com.apple.Terminal", "us.zoom.xos", _BLOCK_START, _BLOCK_END,
+        )
+        message = mock_notif.call_args[0][1]
+        assert "com.apple.Terminal" not in message
+
+
+# ---------------------------------------------------------------------------
+# Cold start gap  (Item 7)
+# ---------------------------------------------------------------------------
+
+
+class TestColdStart:
+
+    def test_first_poll_fires_on_initial_app(self) -> None:
+        """on_initial_app fires on the very first check_transition call."""
+        initial_calls: list = []
+        monitor = ActivityMonitor(
+            poll_seconds=60, transition_minutes=3,
+            on_initial_app=lambda app, ts: initial_calls.append((app, ts)),
+        )
+
+        monitor.check_transition("com.apple.Terminal", _now=_t(0))
+
+        assert len(initial_calls) == 1
+        assert initial_calls[0][0] == "com.apple.Terminal"
+        assert initial_calls[0][1] == _t(0)
+
+    def test_subsequent_polls_do_not_refire(self) -> None:
+        """on_initial_app fires only once, not on subsequent polls."""
+        initial_calls: list = []
+        monitor = ActivityMonitor(
+            poll_seconds=60, transition_minutes=3,
+            on_initial_app=lambda app, ts: initial_calls.append((app, ts)),
+        )
+
+        monitor.check_transition("com.apple.Terminal", _now=_t(0))
+        monitor.check_transition("com.apple.Terminal", _now=_t(60))
+        monitor.check_transition("us.zoom.xos", _now=_t(120))
+
+        assert len(initial_calls) == 1
+
+    def test_no_callback_is_safe(self) -> None:
+        """on_initial_app=None doesn't raise on first poll."""
+        monitor = ActivityMonitor(
+            poll_seconds=60, transition_minutes=3,
+            on_initial_app=None,
+        )
+        monitor.check_transition("com.apple.Terminal", _now=_t(0))
+        assert monitor.current_app == "com.apple.Terminal"
+
+    def test_tray_publishes_initial_app_event(self, tmp_path: Path) -> None:
+        """TrayLabeler._handle_initial_app publishes an initial_app event."""
+        bus, captured = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+
+        labeler._handle_initial_app("com.apple.Terminal", _t(0))
+
+        assert len(captured) == 1
+        event = captured[0]
+        assert event["type"] == "initial_app"
+        assert event["app"] == "com.apple.Terminal"
+        assert event["ts"] == _t(0).isoformat()
+
+    def test_monitor_wired_to_tray_initial_app(self, tmp_path: Path) -> None:
+        """ActivityMonitor fires on_initial_app which TrayLabeler publishes."""
+        bus, captured = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+
+        labeler._monitor.check_transition("com.apple.Safari", _now=_t(0))
+
+        initial_events = [e for e in captured if e["type"] == "initial_app"]
+        assert len(initial_events) == 1
+        assert initial_events[0]["app"] == "com.apple.Safari"

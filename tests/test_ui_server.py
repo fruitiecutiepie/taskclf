@@ -870,3 +870,62 @@ class TestOnLabelSavedCallback:
             "label": "Meet",
         })
         cb.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# POST /api/tray/pause, GET /api/tray/state  (Item 4)
+# ---------------------------------------------------------------------------
+
+
+class TestPauseAPI:
+
+    def test_pause_unavailable_without_callbacks(self, client: TestClient) -> None:
+        resp = client.post("/api/tray/pause")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "unavailable"
+
+    def test_state_unavailable_without_callbacks(self, client: TestClient) -> None:
+        resp = client.get("/api/tray/state")
+        assert resp.status_code == 200
+        assert resp.json()["available"] is False
+
+    def test_pause_toggle_with_callbacks(self, data_dir: Path) -> None:
+        paused_state = {"paused": False}
+
+        def toggle() -> bool:
+            paused_state["paused"] = not paused_state["paused"]
+            return paused_state["paused"]
+
+        def is_paused() -> bool:
+            return paused_state["paused"]
+
+        app = create_app(
+            data_dir=data_dir, event_bus=EventBus(),
+            pause_toggle=toggle, is_paused=is_paused,
+        )
+        client = TestClient(app)
+
+        resp = client.post("/api/tray/pause")
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "ok", "paused": True}
+
+        resp = client.post("/api/tray/pause")
+        assert resp.json() == {"status": "ok", "paused": False}
+
+    def test_state_with_callbacks(self, data_dir: Path) -> None:
+        paused_state = {"paused": False}
+
+        app = create_app(
+            data_dir=data_dir, event_bus=EventBus(),
+            pause_toggle=lambda: True,
+            is_paused=lambda: paused_state["paused"],
+        )
+        client = TestClient(app)
+
+        resp = client.get("/api/tray/state")
+        assert resp.status_code == 200
+        assert resp.json() == {"available": True, "paused": False}
+
+        paused_state["paused"] = True
+        resp = client.get("/api/tray/state")
+        assert resp.json() == {"available": True, "paused": True}

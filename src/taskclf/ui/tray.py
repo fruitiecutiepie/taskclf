@@ -101,6 +101,7 @@ class ActivityMonitor:
         transition_minutes: int = DEFAULT_TRANSITION_MINUTES,
         on_transition: Callable[[str, str, dt.datetime, dt.datetime], Any] | None = None,
         on_poll: Callable[[str], Any] | None = None,
+        on_initial_app: Callable[[str, dt.datetime], Any] | None = None,
         event_bus: EventBus | None = None,
     ) -> None:
         self._aw_host = aw_host
@@ -109,6 +110,7 @@ class ActivityMonitor:
         self._transition_threshold = transition_minutes * 60
         self._on_transition = on_transition
         self._on_poll = on_poll
+        self._on_initial_app = on_initial_app
         self._event_bus = event_bus
 
         self._current_app: str | None = None
@@ -120,6 +122,7 @@ class ActivityMonitor:
         self._bucket_id: str | None = None
         self._aw_warned = False
         self._stop = threading.Event()
+        self._paused = threading.Event()
 
         self._poll_count: int = 0
         self._last_event_count: int = 0
@@ -199,6 +202,8 @@ class ActivityMonitor:
         if self._current_app is None:
             self._current_app = dominant_app
             self._current_app_since = now
+            if self._on_initial_app is not None:
+                self._on_initial_app(dominant_app, now)
             return
 
         if dominant_app != self._current_app:
@@ -223,7 +228,9 @@ class ActivityMonitor:
             self._candidate_app = None
             self._candidate_duration = 0
 
-    def _publish_status(self, dominant_app: str) -> None:
+    def _publish_status(
+        self, dominant_app: str, *, state: str = "collecting",
+    ) -> None:
         now = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
         self._last_poll_ts = now
         self._poll_count += 1
@@ -235,7 +242,7 @@ class ActivityMonitor:
             )
             self._event_bus.publish_threadsafe({
                 "type": "status",
-                "state": "collecting",
+                "state": state,
                 "current_app": dominant_app,
                 "current_app_since": (
                     self._current_app_since.isoformat()
@@ -259,17 +266,33 @@ class ActivityMonitor:
         """Blocking poll loop. Call from a daemon thread."""
         self._started_at = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
         while not self._stop.is_set():
-            dominant = self._poll_dominant_app()
-            if dominant is not None:
-                if self._on_poll is not None:
-                    self._on_poll(dominant)
-                self._publish_status(dominant)
-                self.check_transition(dominant)
+            if self._paused.is_set():
+                app = self._current_app or "unknown"
+                self._publish_status(app, state="paused")
+            else:
+                dominant = self._poll_dominant_app()
+                if dominant is not None:
+                    if self._on_poll is not None:
+                        self._on_poll(dominant)
+                    self._publish_status(dominant)
+                    self.check_transition(dominant)
             self._stop.wait(timeout=self._poll_seconds)
 
     def stop(self) -> None:
         """Signal the poll loop to stop."""
         self._stop.set()
+
+    def pause(self) -> None:
+        """Pause monitoring without clearing session state."""
+        self._paused.set()
+
+    def resume(self) -> None:
+        """Resume monitoring after a pause."""
+        self._paused.clear()
+
+    @property
+    def is_paused(self) -> bool:
+        return self._paused.is_set()
 
     @property
     def current_app(self) -> str | None:
@@ -368,6 +391,8 @@ class TrayLabeler:
         browser: bool = False,
         no_tray: bool = False,
         username: str | None = None,
+        notifications_enabled: bool = True,
+        privacy_notifications: bool = True,
     ) -> None:
         self._data_dir = data_dir
         self._model_dir = model_dir
@@ -375,6 +400,8 @@ class TrayLabeler:
         self._config = UserConfig(data_dir)
         if username is not None:
             self._config.username = username
+        self._notifications_enabled = notifications_enabled
+        self._privacy_notifications = privacy_notifications
         self._current_app: str = "unknown"
         self._suggested_label: str | None = None
         self._suggested_confidence: float | None = None
@@ -413,13 +440,31 @@ class TrayLabeler:
             transition_minutes=transition_minutes,
             on_transition=self._handle_transition,
             on_poll=self._handle_poll,
+            on_initial_app=self._handle_initial_app,
             event_bus=self._event_bus,
         )
         self._icon: Any = None
 
+    def _handle_initial_app(self, app: str, ts: dt.datetime) -> None:
+        """Publish an initial_app event so the UI can prompt for the pre-start period."""
+        if self._event_bus is not None:
+            self._event_bus.publish_threadsafe({
+                "type": "initial_app",
+                "app": app,
+                "ts": ts.isoformat(),
+            })
+
     def _on_label_saved(self) -> None:
         """Increment the saved-label counter (called by the embedded server)."""
         self._labels_saved_count += 1
+
+    def _toggle_pause(self) -> bool:
+        """Toggle pause state on the monitor. Returns new paused state."""
+        if self._monitor.is_paused:
+            self._monitor.resume()
+        else:
+            self._monitor.pause()
+        return self._monitor.is_paused
 
     def _handle_poll(self, dominant_app: str) -> None:
         self._current_app = dominant_app
@@ -437,6 +482,7 @@ class TrayLabeler:
                 "data_dir": str(self._data_dir),
                 "ui_port": self._ui_port,
                 "dev_mode": self._dev,
+                "paused": self._monitor.is_paused,
             })
 
     def _handle_transition(
@@ -504,9 +550,17 @@ class TrayLabeler:
         block_start: dt.datetime,
         block_end: dt.datetime,
     ) -> None:
+        if not self._notifications_enabled:
+            return
+
         title = "taskclf — Activity changed"
         duration_min = max(1, int((block_end - block_start).total_seconds() / 60))
-        message = f"{prev_app} → {new_app}\nLabel the last {duration_min} min?"
+
+        if self._privacy_notifications:
+            message = f"Activity changed\nLabel the last {duration_min} min?"
+        else:
+            message = f"{prev_app} → {new_app}\nLabel the last {duration_min} min?"
+
         if self._suggested_label is not None and self._suggested_confidence is not None:
             message += f"\nSuggested: {self._suggested_label} ({self._suggested_confidence:.0%})"
 
@@ -519,9 +573,18 @@ class TrayLabeler:
             pystray.MenuItem(
                 "Open Dashboard", self._open_dashboard, default=True,
             ),
+            pystray.MenuItem(
+                lambda _: "Resume" if self._monitor.is_paused else "Pause",
+                self._on_pause_menu,
+            ),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Quit", self._quit),
         )
+
+    def _on_pause_menu(self, *_args: Any) -> None:
+        paused = self._toggle_pause()
+        state = "paused" if paused else "resumed"
+        self._notify(f"Monitoring {state}")
 
     def _open_dashboard(self, *_args: Any) -> None:
         if self._browser:
@@ -606,6 +669,8 @@ class TrayLabeler:
             title_salt=self._title_salt,
             event_bus=self._event_bus,
             on_label_saved=self._on_label_saved,
+            pause_toggle=self._toggle_pause,
+            is_paused=lambda: self._monitor.is_paused,
         )
 
         uvicorn_config = uvicorn.Config(
@@ -745,6 +810,8 @@ def run_tray(
     browser: bool = False,
     no_tray: bool = False,
     username: str | None = None,
+    notifications_enabled: bool = True,
+    privacy_notifications: bool = True,
 ) -> None:
     """Launch the system tray labeling app.
 
@@ -773,6 +840,11 @@ def run_tray(
         username: Display name to persist in ``config.json``.  Does not
             affect label identity (labels use the stable auto-generated
             UUID ``user_id``).
+        notifications_enabled: When ``False``, desktop notifications
+            are suppressed entirely.
+        privacy_notifications: When ``True`` (the default), app names
+            are redacted from desktop notifications to protect privacy.
+            Set to ``False`` to show raw app identifiers.
     """
     tray = TrayLabeler(
         data_dir=data_dir,
@@ -787,5 +859,7 @@ def run_tray(
         browser=browser,
         no_tray=no_tray,
         username=username,
+        notifications_enabled=notifications_enabled,
+        privacy_notifications=privacy_notifications,
     )
     tray.run()

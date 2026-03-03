@@ -34,19 +34,18 @@ A 1-second label is useless for training and pollutes the dataset.
 
 **Fix:** Make "now" mean "since last label end_ts" or "since last transition", falling back to a configurable minimum (e.g. 1 minute).
 
-### 4. No pause/resume capability
-**Files:** `tray.py`, `server.py`
+### ~~4. No pause/resume capability~~ DONE
 
-No mechanism to pause monitoring. Users must kill and restart the process to stop tracking, losing session state (`poll_count`, `uptime_s`, `transition_count`).
+`ActivityMonitor` now has `pause()`, `resume()`, and `is_paused` property using a `threading.Event`. When paused, the `run()` loop skips polling and transition detection but still publishes `status` events with `state: "paused"`. Session state (`poll_count`, `transition_count`, `current_app`) is fully preserved across pause/resume cycles.
+`TrayLabeler` exposes `_toggle_pause()` and adds a dynamic "Pause"/"Resume" menu item. The `tray_state` event now includes `paused: bool`.
+Server-side: `POST /api/tray/pause` toggles pause state; `GET /api/tray/state` returns current state. Both return `"unavailable"` when not connected to a tray.
 
-**Fix:** Add a `pause` tray menu item and `POST /api/tray/pause` endpoint that sets `ActivityMonitor._stop` temporarily without clearing state.
+### ~~5. Raw app names exposed in desktop notifications~~ DONE
 
-### 5. Raw app names exposed in desktop notifications
-**File:** `tray.py:488-494`
-
-Notifications display `"{prev_app} → {new_app}"` in plain text. Someone viewing the user's screen can read their app usage. AGENTS.md privacy rules hash window titles but app names in notifications are unprotected.
-
-**Fix:** Add a config option to disable notifications or obfuscate app names (e.g. show only the label category, not the raw app identifier).
+`TrayLabeler` now accepts `notifications_enabled` (default `True`) and `privacy_notifications` (default `True`).
+When `notifications_enabled=False`, `_send_notification()` is a no-op.
+When `privacy_notifications=True` (the default), notification messages show "Activity changed" instead of raw app identifiers. Set to `False` to opt in to showing raw app names.
+Both parameters are also exposed on `run_tray()`.
 
 ### 6. No label overlap guidance in the UI
 **Files:** `server.py:195-196`, `LabelGrid.tsx:113`
@@ -55,12 +54,11 @@ The server returns HTTP 409 on overlapping spans. The LabelGrid catches this as 
 
 **Fix:** Return structured error data (conflicting span timestamps, label) in the 409 response. Show actionable UI: "Overlaps with [Label] from HH:MM–HH:MM. Delete it or adjust the time window."
 
-### 7. Transition detection cold start gap
-**File:** `tray.py:192-195`
+### ~~7. Transition detection cold start gap~~ DONE
 
-On startup, the first poll sets `_current_app` but never fires a transition. All activity before the first detected transition is unlabeled. Users who start the tray mid-session have a coverage gap.
-
-**Fix:** Publish an `initial_block` event on first poll (or after N polls confirm the initial app) so the UI can prompt the user to label the pre-start period.
+`ActivityMonitor` now accepts an `on_initial_app(app, ts)` callback. On the first `check_transition()` call (when `_current_app is None`), the callback fires after setting the initial app. It fires exactly once.
+`TrayLabeler` wires this to `_handle_initial_app()`, which publishes an `initial_app` event via the EventBus: `{"type": "initial_app", "app": <app_id>, "ts": <iso_ts>}`.
+**Note:** The frontend does not yet handle this event type; it will be silently ignored until a UI component is added to prompt labeling for the pre-start period.
 
 ### 8. Suggestion never expires
 **File:** `ws.ts:89-90`, `LabelGrid.tsx`

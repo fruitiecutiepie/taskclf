@@ -135,6 +135,8 @@ def create_app(
     event_bus: EventBus | None = None,
     window_api: Any = None,
     on_label_saved: Callable[[], None] | None = None,
+    pause_toggle: Callable[[], bool] | None = None,
+    is_paused: Callable[[], bool] | None = None,
 ) -> FastAPI:
     """Build and return the FastAPI application.
 
@@ -147,6 +149,9 @@ def create_app(
         on_label_saved: Optional callback invoked after a label is
             successfully saved (via ``POST /api/labels`` or
             ``POST /api/notification/accept``).
+        pause_toggle: Optional callback to toggle pause state; returns
+            new paused boolean.
+        is_paused: Optional callable returning current paused state.
     """
     bus = event_bus or EventBus()
     labels_path = data_dir / "labels_v1" / "labels.parquet"
@@ -435,6 +440,21 @@ def create_app(
             provenance=span.provenance,
             user_id=span.user_id,
         )
+
+    # -- REST: tray control ---------------------------------------------------
+
+    @app.post("/api/tray/pause")
+    async def tray_pause_toggle() -> dict[str, Any]:
+        if pause_toggle is None:
+            return {"status": "unavailable", "paused": False}
+        paused = pause_toggle()
+        return {"status": "ok", "paused": paused}
+
+    @app.get("/api/tray/state")
+    async def tray_state() -> dict[str, Any]:
+        if is_paused is None:
+            return {"available": False, "paused": False}
+        return {"available": True, "paused": is_paused()}
 
     # -- WebSocket ------------------------------------------------------------
 
