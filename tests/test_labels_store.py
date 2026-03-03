@@ -666,3 +666,42 @@ class TestDeleteLabelSpan:
         assert len(loaded) == 1
         assert loaded[0].label == "Debug"
         assert loaded[0].end_ts == dt.datetime(2025, 6, 15, 10, 10)
+
+
+# ---------------------------------------------------------------------------
+# import_labels_from_csv — error paths (item 30)
+# ---------------------------------------------------------------------------
+
+
+class TestImportLabelsFromCsvErrors:
+    """TC-LABEL-CSV-001..003: import_labels_from_csv error paths."""
+
+    def test_missing_label_column(self, tmp_path: Path) -> None:
+        """TC-LABEL-CSV-001: missing 'label' column raises ValueError."""
+        csv_path = tmp_path / "bad.csv"
+        csv_path.write_text(
+            "start_ts,end_ts,provenance\n"
+            "2025-06-15T10:00:00,2025-06-15T10:05:00,manual\n"
+        )
+        with pytest.raises(ValueError, match="label"):
+            import_labels_from_csv(csv_path)
+
+    def test_missing_multiple_columns(self, tmp_path: Path) -> None:
+        """TC-LABEL-CSV-002: missing multiple columns lists all in error."""
+        csv_path = tmp_path / "bad.csv"
+        csv_path.write_text("start_ts,end_ts\n2025-06-15T10:00:00,2025-06-15T10:05:00\n")
+        with pytest.raises(ValueError, match="CSV missing required columns") as exc_info:
+            import_labels_from_csv(csv_path)
+        msg = str(exc_info.value)
+        assert "label" in msg
+        assert "provenance" in msg
+
+    def test_invalid_label_value(self, tmp_path: Path) -> None:
+        """TC-LABEL-CSV-003: invalid label value in row raises ValidationError."""
+        csv_path = tmp_path / "bad.csv"
+        csv_path.write_text(
+            "start_ts,end_ts,label,provenance\n"
+            "2025-06-15T10:00:00,2025-06-15T10:05:00,NotALabel,manual\n"
+        )
+        with pytest.raises(ValidationError):
+            import_labels_from_csv(csv_path)

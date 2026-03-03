@@ -139,6 +139,87 @@ class TestWindowPrediction:
                 model_version="abc123",
             )
 
+    def test_confidence_below_zero_rejected(self) -> None:
+        """TC-PRED-001: confidence < 0 raises ValidationError."""
+        with pytest.raises(ValueError):
+            WindowPrediction(
+                user_id="u1",
+                bucket_start_ts=dt.datetime(2026, 1, 1, 10, 0),
+                core_label_id=0,
+                core_label_name="Build",
+                core_probs=[0.125] * 8,
+                confidence=-0.1,
+                is_rejected=False,
+                mapped_label_name="Build",
+                mapped_probs={"Build": 1.0},
+                model_version="abc123",
+            )
+
+    def test_confidence_above_one_rejected(self) -> None:
+        """TC-PRED-002: confidence > 1.0 raises ValidationError."""
+        with pytest.raises(ValueError):
+            WindowPrediction(
+                user_id="u1",
+                bucket_start_ts=dt.datetime(2026, 1, 1, 10, 0),
+                core_label_id=0,
+                core_label_name="Build",
+                core_probs=[0.125] * 8,
+                confidence=1.5,
+                is_rejected=False,
+                mapped_label_name="Build",
+                mapped_probs={"Build": 1.0},
+                model_version="abc123",
+            )
+
+    def test_core_label_id_below_zero_rejected(self) -> None:
+        """TC-PRED-003: core_label_id < 0 raises ValidationError."""
+        with pytest.raises(ValueError):
+            WindowPrediction(
+                user_id="u1",
+                bucket_start_ts=dt.datetime(2026, 1, 1, 10, 0),
+                core_label_id=-1,
+                core_label_name="Build",
+                core_probs=[0.125] * 8,
+                confidence=0.5,
+                is_rejected=False,
+                mapped_label_name="Build",
+                mapped_probs={"Build": 1.0},
+                model_version="abc123",
+            )
+
+    def test_core_label_id_above_seven_rejected(self) -> None:
+        """TC-PRED-004: core_label_id > 7 raises ValidationError."""
+        with pytest.raises(ValueError):
+            WindowPrediction(
+                user_id="u1",
+                bucket_start_ts=dt.datetime(2026, 1, 1, 10, 0),
+                core_label_id=8,
+                core_label_name="Build",
+                core_probs=[0.125] * 8,
+                confidence=0.5,
+                is_rejected=False,
+                mapped_label_name="Build",
+                mapped_probs={"Build": 1.0},
+                model_version="abc123",
+            )
+
+    def test_frozen_model_immutable(self) -> None:
+        """TC-PRED-005: assigning to a field on frozen model raises error."""
+        pred = WindowPrediction(
+            user_id="u1",
+            bucket_start_ts=dt.datetime(2026, 1, 1, 10, 0),
+            core_label_id=0,
+            core_label_name="Build",
+            core_probs=[0.6, 0.1, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05],
+            confidence=0.6,
+            is_rejected=False,
+            mapped_label_name="Build",
+            mapped_probs={"Build": 0.6, "Other": 0.4},
+            model_version="abc123",
+        )
+        with pytest.raises(ValueError):
+            pred.confidence = 0.9  # type: ignore[misc]
+
 
 # ---------------------------------------------------------------------------
 # Calibrator tests

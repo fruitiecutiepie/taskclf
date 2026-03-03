@@ -280,52 +280,22 @@ basic range, start==end, start>end, unaligned inputs, timezone-aware, custom buc
 
 ---
 
-### 8. `core.validation` — 2 documented checks untested
-**File:** `src/taskclf/core/validation.py`
-**Tests:** `tests/test_core_validation.py`
+### ~~8. `core.validation` — 2 documented checks untested~~ DONE
 
-#### 8a. Dominant-value warning (`_check_distributions`)
-**Lines:** 285-296
-
-Documented: columns where >90% of values are identical should emit a
-`dominant_value` warning. Not tested.
-
-| Test case | Expected |
-|---|---|
-| Column with 95% identical values | `Finding(check="dominant_value")` warning |
-| Column with 80% identical values | No warning |
-
-#### 8b. Session boundary gap warning (`_check_session_boundaries`)
-**Lines:** 244-268
-
-Documented: session changes with very small gaps (<= 60s) emit a
-`session_boundary` warning. Not tested.
-
-| Test case | Expected |
-|---|---|
-| Session change with 60s gap | Warning emitted |
-| Session change with 300s gap | No warning |
-| Same session throughout | No warning |
+**Status:** Covered by `tests/test_core_validation.py`:
+- **8a. Dominant-value warning**: `TestDistributionWarnings` (2 tests:
+  `test_dominant_value_warns` with 95% identical, `test_no_dominant_value_at_80_percent`)
+- **8b. Session boundary gap warning**: `TestSessionBoundary` (3 tests:
+  small gap warns, large gap no warning, same session no warning)
 
 ---
 
 ## Low Priority
 
-### 9. `core.model_io` — `generate_run_id()` untested
-**File:** `src/taskclf/core/model_io.py:59-67`
-**Tests:** `tests/test_core_model_io.py`
+### ~~9. `core.model_io` — `generate_run_id()` untested~~ DONE
 
-```python
-def generate_run_id() -> str:
-    now = datetime.now(UTC)
-    suffix = f"{random.randint(0, 9999):04d}"
-    return f"{now.strftime('%Y-%m-%d_%H%M%S')}_run-{suffix}"
-```
-
-| Test case | Expected |
-|---|---|
-| Format matches `YYYY-MM-DD_HHMMSS_run-XXXX` | Regex: `r"\d{4}-\d{2}-\d{2}_\d{6}_run-\d{4}"` |
-| Two calls produce different IDs (probabilistic) | Assert not equal |
+**Status:** Covered by `tests/test_core_model_io.py::TestGenerateRunId` (2 tests:
+TC-MODEL-RUN-001 format matches regex, TC-MODEL-RUN-002 two calls differ).
 
 ---
 ---
@@ -349,59 +319,22 @@ Missing tests identified by auditing `docs/api/features/` against
 
 ---
 
-### 11. `features.build` — `generate_dummy_features()` untested
-**File:** `src/taskclf/features/build.py:48-138`
-**Tests:** none
+### ~~11. `features.build` — `generate_dummy_features()` untested~~ DONE
 
-```python
-def generate_dummy_features(
-    date: dt.date,
-    n_rows: int = DEFAULT_DUMMY_ROWS,
-    *,
-    user_id: str = "dummy-user-001",
-    device_id: str | None = None,
-) -> list[FeatureRow]:
-```
-
-Generates synthetic `FeatureRow` instances for testing/demo.
-Used by `build_features_for_date`.
-
-| Test case | Expected |
-|---|---|
-| Default call | Returns `DEFAULT_DUMMY_ROWS` rows |
-| Custom `n_rows=5` | Returns exactly 5 rows |
-| All rows pass `FeatureSchemaV1` validation | No `ValidationError` |
-| `bucket_start_ts` spans hours 9–17 of the given date | All timestamps on the correct date |
-| Custom `user_id` and `device_id` | All rows carry those values |
-| `schema_version` and `schema_hash` match `FeatureSchemaV1` | Correct on every row |
-| `session_id` is a valid hash string | Non-empty, consistent within call |
-| Dynamics fields are populated (not all None) | At least the rolling means after the first few rows |
-| `n_rows=0` | Returns empty list |
-
-Suggested test IDs: `TC-FEAT-BUILD-001` through `TC-FEAT-BUILD-009`.
+**Status:** Covered by `tests/test_features_build.py::TestGenerateDummyFeatures` (9 tests:
+TC-FEAT-BUILD-001 through TC-FEAT-BUILD-009 — default row count, custom n_rows,
+schema validation, timestamps on correct date, custom user_id/device_id,
+schema_version/schema_hash, session_id consistency, dynamics fields populated,
+n_rows=0 empty list).
 
 ---
 
-### 12. `features.build` — `build_features_for_date()` untested
-**File:** `src/taskclf/features/build.py:417-439`
-**Tests:** none
+### ~~12. `features.build` — `build_features_for_date()` untested~~ DONE
 
-```python
-def build_features_for_date(date: dt.date, data_dir: Path) -> Path:
-```
-
-End-to-end pipeline: generates dummy features, validates against
-`FeatureSchemaV1`, writes to parquet at
-`data_dir/features_v1/date=YYYY-MM-DD/features.parquet`.
-
-| Test case | Expected |
-|---|---|
-| Valid date + `tmp_path` | Returns a `Path` that exists and is a `.parquet` file |
-| Output path matches expected structure | `data_dir/features_v1/date=YYYY-MM-DD/features.parquet` |
-| Parquet readable with correct columns | `pd.read_parquet(path)` has all `FeatureRow` columns |
-| Row count matches `DEFAULT_DUMMY_ROWS` | `len(df) == DEFAULT_DUMMY_ROWS` |
-
-Suggested test IDs: `TC-FEAT-BUILD-010` through `TC-FEAT-BUILD-013`.
+**Status:** Covered by `tests/test_features_build.py::TestBuildFeaturesForDate` (4 tests:
+TC-FEAT-BUILD-010 through TC-FEAT-BUILD-013 — returns existing parquet path,
+output path structure matches, parquet readable with correct columns,
+row count matches DEFAULT_DUMMY_ROWS).
 
 ---
 
@@ -1183,21 +1116,11 @@ Suggested test IDs: `TC-ONLINE-001` through `TC-ONLINE-006`.
 
 ---
 
-### 25. `infer.prediction` — boundary validation untested
-**File:** `src/taskclf/infer/prediction.py`
-**Doc:** `docs/api/infer/prediction.md`
-**Existing tests:** `tests/test_infer_pipeline.py::TestWindowPrediction`
-(4 tests: valid, sum-to-one for core/mapped probs, 8-element check).
+### ~~25. `infer.prediction` — boundary validation untested~~ DONE
 
-| Test case | Expected |
-|---|---|
-| `confidence < 0` | Raises `ValidationError` (Field `ge=0.0`) |
-| `confidence > 1.0` | Raises `ValidationError` (Field `le=1.0`) |
-| `core_label_id < 0` | Raises `ValidationError` (Field `ge=0`) |
-| `core_label_id > 7` | Raises `ValidationError` (Field `le=7`) |
-| Frozen model (immutability) | Assigning to field raises error |
-
-Suggested test IDs: `TC-PRED-001` through `TC-PRED-005`.
+**Status:** Covered by `tests/test_infer_pipeline.py::TestWindowPrediction` (5 new tests:
+TC-PRED-001 confidence<0, TC-PRED-002 confidence>1.0, TC-PRED-003 core_label_id<0,
+TC-PRED-004 core_label_id>7, TC-PRED-005 frozen model immutability).
 
 ---
 
@@ -1266,52 +1189,28 @@ top-level key, nested key, all 4 keys individually, clean dict passes).
 
 ## Medium Priority — Missing edge cases
 
-### 21. `build_daily_report()` — non-default `bucket_seconds`
-**File:** `src/taskclf/report/daily.py:79-144`
-**Tests:** All existing tests use `bucket_seconds=60`.
+### ~~21. `build_daily_report()` — non-default `bucket_seconds`~~ DONE
 
-| Test case | Expected |
-|---|---|
-| `bucket_seconds=300` (5-min buckets) | `total_minutes` = sum of `(bucket_count × 300 / 60)` across segments |
-| `bucket_seconds=120` | `core_breakdown` minutes scale correctly |
+**Status:** Covered by `tests/test_report.py::TestBuildDailyReportBucketSeconds` (2 tests:
+TC-RPT-DAILY-001 bucket_seconds=300 scales total_minutes, TC-RPT-DAILY-002
+bucket_seconds=120 scales core_breakdown).
 
-Suggested test IDs: `TC-RPT-DAILY-001`, `TC-RPT-DAILY-002`.
+### ~~22. `build_daily_report()` — `smoothed_labels` without `raw_labels`~~ DONE
 
-### 22. `build_daily_report()` — `smoothed_labels` without `raw_labels`
-**File:** `src/taskclf/report/daily.py:79-144`
-**Tests:** `test_flap_rate_only_raw` tests raw-without-smoothed but
-not the reverse.
+**Status:** Covered by `tests/test_report.py::TestBuildDailyReportSmoothedOnly` (1 test:
+TC-RPT-DAILY-003 smoothed_labels provided with raw_labels=None).
 
-| Test case | Expected |
-|---|---|
-| `smoothed_labels` provided, `raw_labels=None` | `flap_rate_smoothed` populated, `flap_rate_raw` is `None` |
+### ~~23. `_build_context_switch_stats()` — edge cases~~ DONE
 
-Suggested test ID: `TC-RPT-DAILY-003`.
+**Status:** Covered by `tests/test_report.py::TestBuildContextSwitchStatsEdgeCases` (4 tests:
+TC-RPT-CTX-001 empty list, TC-RPT-CTX-002 single element,
+TC-RPT-CTX-003 float values truncated, TC-RPT-CTX-004 median even count).
 
-### 23. `_build_context_switch_stats()` — edge cases
-**File:** `src/taskclf/report/daily.py:64-76`
-**Tests:** Tested indirectly; empty-list and float-value paths not covered.
+### ~~24. Pydantic validation on report models~~ DONE
 
-| Test case | Expected |
-|---|---|
-| Empty list `[]` (not all-None — no elements at all) | Returns `None` |
-| Single-element list `[5]` | `mean=5.0, median=5.0, max_value=5, total_switches=5, buckets_counted=1` |
-| Float values `[2.7, 3.1]` | Values truncated to `int` (`2, 3`); `total_switches=5` |
-| `median` correctness (even count) | Median of `[1, 2, 3, 4]` → `2.5` |
-
-Suggested test IDs: `TC-RPT-CTX-001` through `TC-RPT-CTX-004`.
-
-### 24. Pydantic validation on report models
-**Files:** `src/taskclf/report/daily.py:19-61`
-**Tests:** No test verifies `Field(ge=0)` rejection.
-
-| Test case | Expected |
-|---|---|
-| `ContextSwitchStats(mean=-1, ...)` | Raises `ValidationError` |
-| `DailyReport(total_minutes=-1, ...)` | Raises `ValidationError` |
-| `DailyReport(segments_count=-1, ...)` | Raises `ValidationError` |
-
-Suggested test IDs: `TC-RPT-VAL-001` through `TC-RPT-VAL-003`.
+**Status:** Covered by `tests/test_report.py::TestReportModelValidation` (3 tests:
+TC-RPT-VAL-001 negative ContextSwitchStats.mean, TC-RPT-VAL-002 negative
+DailyReport.total_minutes, TC-RPT-VAL-003 negative DailyReport.segments_count).
 
 ---
 
@@ -1371,7 +1270,7 @@ Missing tests identified by auditing `docs/api/labels/` against
   `TestExtendForward` (18 tests), and `test_label_now.py::TestLabelNowSpanCreation`
 - `_same_user` — `test_labels_store.py::TestSameUser` (4 tests)
 - `import_labels_from_csv` — `test_labels_store.py::TestImportLabelsFromCsvWithOptionalColumns`
-  (happy paths only)
+  (happy paths) + `TestImportLabelsFromCsvErrors` (3 error-path tests)
 - `generate_label_summary` — `test_labels_store.py::TestGenerateLabelSummary` (happy paths only)
 - `generate_dummy_labels` — `test_labels_store.py::TestGenerateDummyLabels` (4 tests)
 - `project_blocks_to_windows` — `test_labels_projection.py` (11 tests across 7 classes)
@@ -1398,22 +1297,11 @@ same start different end).
 
 ## Medium Priority — Error/edge paths missing in tested functions
 
-### 30. `labels.store.import_labels_from_csv()` — missing error path
-**File:** `src/taskclf/labels/store.py:76-121`
-**Tests:** `test_labels_store.py::TestImportLabelsFromCsvWithOptionalColumns`
-(2 happy-path tests)
+### ~~30. `labels.store.import_labels_from_csv()` — missing error path~~ DONE
 
-The function raises `ValueError` when required columns
-(`start_ts`, `end_ts`, `label`, `provenance`) are missing. This path
-is untested.
-
-| Test case | Setup | Expected |
-|---|---|---|
-| Missing `label` column | CSV with only `start_ts,end_ts,provenance` | `ValueError("CSV missing required columns: ['label']")` |
-| Missing multiple columns | CSV with only `start_ts,end_ts` | `ValueError` listing both missing columns |
-| Invalid label value in row | CSV with `label="NotALabel"` | `ValidationError` from `LabelSpan` constructor |
-
-Suggested test IDs: `TC-LABEL-CSV-001` through `TC-LABEL-CSV-003`.
+**Status:** Covered by `tests/test_labels_store.py::TestImportLabelsFromCsvErrors` (3 tests:
+TC-LABEL-CSV-001 missing label column, TC-LABEL-CSV-002 missing multiple columns,
+TC-LABEL-CSV-003 invalid label value raises ValidationError).
 
 ---
 

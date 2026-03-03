@@ -1,7 +1,8 @@
 """Tests for report generation: flap rate, daily summaries, and export formats.
 
 Also covers: TC-RPT-SENS-001..004 (_check_no_sensitive_fields),
-TC-RPT-GUARD-001..003 (export functions reject sensitive data).
+TC-RPT-GUARD-001..003 (export functions reject sensitive data),
+TC-RPT-DAILY-001..003, TC-RPT-CTX-001..004, TC-RPT-VAL-001..003.
 """
 
 from __future__ import annotations
@@ -14,8 +15,15 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from pydantic import ValidationError
+
 from taskclf.infer.smooth import Segment, flap_rate
-from taskclf.report.daily import DailyReport, build_daily_report
+from taskclf.report.daily import (
+    ContextSwitchStats,
+    DailyReport,
+    _build_context_switch_stats,
+    build_daily_report,
+)
 from taskclf.report.export import (
     _check_no_sensitive_fields,
     export_report_csv,
@@ -376,3 +384,118 @@ class TestExportSensitiveGuard:
 
         with pytest.raises(ValueError, match="window_title_raw"):
             export_report_parquet(report, out)
+
+
+# ---------------------------------------------------------------------------
+# build_daily_report() — non-default bucket_seconds (item 21)
+# ---------------------------------------------------------------------------
+
+
+class TestBuildDailyReportBucketSeconds:
+    """TC-RPT-DAILY-001..002: non-default bucket_seconds scales minutes."""
+
+    def test_bucket_seconds_300(self) -> None:
+        """TC-RPT-DAILY-001: 5-min buckets scale total_minutes correctly."""
+        segs = _segs([("Build", 3), ("Write", 2)])
+        report = build_daily_report(segs, bucket_seconds=300)
+        assert report.core_breakdown["Build"] == pytest.approx(3 * 300 / 60)
+        assert report.core_breakdown["Write"] == pytest.approx(2 * 300 / 60)
+        assert report.total_minutes == pytest.approx(5 * 300 / 60)
+
+    def test_bucket_seconds_120(self) -> None:
+        """TC-RPT-DAILY-002: 2-min buckets scale core_breakdown correctly."""
+        segs = _segs([("Build", 4), ("BreakIdle", 6)])
+        report = build_daily_report(segs, bucket_seconds=120)
+        assert report.core_breakdown["Build"] == pytest.approx(4 * 120 / 60)
+        assert report.core_breakdown["BreakIdle"] == pytest.approx(6 * 120 / 60)
+
+
+# ---------------------------------------------------------------------------
+# build_daily_report() — smoothed_labels without raw_labels (item 22)
+# ---------------------------------------------------------------------------
+
+
+class TestBuildDailyReportSmoothedOnly:
+    """TC-RPT-DAILY-003: smoothed without raw."""
+
+    def test_smoothed_without_raw(self) -> None:
+        smoothed = ["Build"] * 5 + ["BreakIdle"] * 5
+        report = _basic_report(smoothed_labels=smoothed)
+        assert report.flap_rate_smoothed is not None
+        assert report.flap_rate_raw is None
+
+
+# ---------------------------------------------------------------------------
+# _build_context_switch_stats() — edge cases (item 23)
+# ---------------------------------------------------------------------------
+
+
+class TestBuildContextSwitchStatsEdgeCases:
+    """TC-RPT-CTX-001..004: edge cases for _build_context_switch_stats."""
+
+    def test_empty_list(self) -> None:
+        """TC-RPT-CTX-001: empty list returns None."""
+        assert _build_context_switch_stats([]) is None
+
+    def test_single_element(self) -> None:
+        """TC-RPT-CTX-002: single-element list."""
+        stats = _build_context_switch_stats([5])
+        assert stats is not None
+        assert stats.mean == 5.0
+        assert stats.median == 5.0
+        assert stats.max_value == 5
+        assert stats.total_switches == 5
+        assert stats.buckets_counted == 1
+
+    def test_float_values_truncated(self) -> None:
+        """TC-RPT-CTX-003: float values truncated to int."""
+        stats = _build_context_switch_stats([2.7, 3.1])
+        assert stats is not None
+        assert stats.total_switches == 2 + 3
+        assert stats.max_value == 3
+
+    def test_median_even_count(self) -> None:
+        """TC-RPT-CTX-004: median of even-count list."""
+        stats = _build_context_switch_stats([1, 2, 3, 4])
+        assert stats is not None
+        assert stats.median == 2.5
+
+
+# ---------------------------------------------------------------------------
+# Pydantic validation on report models (item 24)
+# ---------------------------------------------------------------------------
+
+
+class TestReportModelValidation:
+    """TC-RPT-VAL-001..003: Field(ge=0) rejection."""
+
+    def test_negative_context_switch_mean(self) -> None:
+        """TC-RPT-VAL-001: ContextSwitchStats rejects negative mean."""
+        with pytest.raises(ValidationError):
+            ContextSwitchStats(
+                mean=-1,
+                median=1.0,
+                max_value=1,
+                total_switches=1,
+                buckets_counted=1,
+            )
+
+    def test_negative_total_minutes(self) -> None:
+        """TC-RPT-VAL-002: DailyReport rejects negative total_minutes."""
+        with pytest.raises(ValidationError):
+            DailyReport(
+                date="2025-06-15",
+                total_minutes=-1,
+                core_breakdown={"Build": 5.0},
+                segments_count=1,
+            )
+
+    def test_negative_segments_count(self) -> None:
+        """TC-RPT-VAL-003: DailyReport rejects negative segments_count."""
+        with pytest.raises(ValidationError):
+            DailyReport(
+                date="2025-06-15",
+                total_minutes=5.0,
+                core_breakdown={"Build": 5.0},
+                segments_count=-1,
+            )
