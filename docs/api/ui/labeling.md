@@ -24,9 +24,9 @@ Options:
 | `--aw-host` | `http://localhost:5600` | ActivityWatch server URL |
 | `--poll-seconds` | `60` | Seconds between AW polling |
 | `--title-salt` | `taskclf-default-salt` | Salt for hashing window titles |
-| `--data-dir` | `data/processed` | Processed data directory |
+| `--data-dir` | `data/processed` (ephemeral in `--dev`) | Processed data directory; omit with `--dev` for an auto-cleaned temp dir |
 | `--transition-minutes` | `3` | Minutes before suggesting a label change |
-| `--dev` | off | Start Vite dev server for frontend hot reload |
+| `--dev` | off | Start Vite dev server for frontend hot reload; uses ephemeral data dir unless `--data-dir` is set |
 
 ## Panels
 

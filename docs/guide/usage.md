@@ -174,6 +174,14 @@ uv run taskclf ui --dev
 This starts the Vite dev server on `http://127.0.0.1:5173` alongside
 the API backend. Edit `.tsx` files and see changes instantly.
 
+In `--dev` mode, an ephemeral data directory is created automatically
+and cleaned up on exit, so your production data is never touched.
+To use a specific directory instead, pass `--data-dir`:
+
+```bash
+uv run taskclf ui --dev --data-dir data/dev
+```
+
 ### Step 4: Train a model
 
 ```bash
@@ -343,9 +351,9 @@ uv run taskclf tray --model-dir models/<run_id>
 | `--aw-host` | `http://localhost:5600` | ActivityWatch server URL |
 | `--poll-seconds` | `60` | Seconds between polls |
 | `--transition-minutes` | `3` | Minutes a new app must persist before prompting |
-| `--data-dir` | `data/processed` | Processed data directory |
+| `--data-dir` | `data/processed` (ephemeral in `--dev`) | Processed data directory; omit with `--dev` for an auto-cleaned temp dir |
 | `--port` | `8741` | Port for the embedded web UI server |
-| `--dev` | off | Start Vite dev server for frontend hot reload |
+| `--dev` | off | Vite hot reload + ephemeral data dir (unless `--data-dir` is set) |
 
 You can also label at any time by right-clicking the tray icon and
 choosing "Label Last N min" with a label from the submenu.

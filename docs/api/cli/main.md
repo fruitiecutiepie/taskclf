@@ -385,9 +385,9 @@ taskclf tray --dev --browser --no-tray
 | `--aw-host` | `http://localhost:5600` | ActivityWatch server URL |
 | `--poll-seconds` | `60` | Seconds between AW polls |
 | `--transition-minutes` | `3` | Minutes a new app must persist before prompting |
-| `--data-dir` | `data/processed` | Processed data directory |
+| `--data-dir` | `data/processed` (ephemeral in `--dev`) | Processed data directory; omit with `--dev` for an auto-cleaned temp dir |
 | `--port` | `8741` | Port for the embedded web UI server |
-| `--dev` | off | Pass `--dev` to the spawned `taskclf ui` subprocess for frontend hot reload |
+| `--dev` | off | Vite hot reload + ephemeral data dir (unless `--data-dir` is set) |
 | `--browser` | off | Open UI in browser instead of native window |
 | `--no-tray` | off | Skip the native tray icon (use with `--browser` for browser-only mode) |
 

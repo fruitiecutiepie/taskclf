@@ -2167,7 +2167,7 @@ def tray_cmd(
     aw_host: str = typer.Option(DEFAULT_AW_HOST, "--aw-host", help="ActivityWatch server URL"),
     poll_seconds: int = typer.Option(DEFAULT_POLL_SECONDS, "--poll-seconds", help="Seconds between polling iterations"),
     title_salt: str = typer.Option(DEFAULT_TITLE_SALT, "--title-salt", help="Salt for hashing window titles"),
-    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory"),
+    data_dir: str | None = typer.Option(None, "--data-dir", help="Processed data directory (default: data/processed; ephemeral in --dev)"),
     transition_minutes: int = typer.Option(DEFAULT_TRANSITION_MINUTES, "--transition-minutes", help="Minutes a new app must persist before prompting to label"),
     port: int = typer.Option(8741, "--port", help="Port for the embedded web UI server"),
     dev: bool = typer.Option(False, "--dev", help="Start Vite dev server for frontend hot reload"),
@@ -2180,21 +2180,39 @@ def tray_cmd(
     Left-clicking the tray icon opens the web dashboard where all
     labeling is done.  Right-click shows a minimal menu with Quit.
     """
+    import shutil
+    import tempfile
+
     from taskclf.ui.tray import run_tray
 
-    run_tray(
-        model_dir=Path(model_dir) if model_dir else None,
-        aw_host=aw_host,
-        poll_seconds=poll_seconds,
-        title_salt=title_salt,
-        data_dir=Path(data_dir),
-        transition_minutes=transition_minutes,
-        ui_port=port,
-        dev=dev,
-        browser=browser,
-        no_tray=no_tray,
-        username=username,
-    )
+    tmp_dir: str | None = None
+    if data_dir is not None:
+        resolved_data_dir = data_dir
+    elif dev:
+        tmp_dir = tempfile.mkdtemp(prefix="taskclf-dev-")
+        resolved_data_dir = tmp_dir
+        typer.echo(f"Dev mode: using ephemeral data dir → {tmp_dir}")
+    else:
+        resolved_data_dir = DEFAULT_DATA_DIR
+
+    try:
+        run_tray(
+            model_dir=Path(model_dir) if model_dir else None,
+            aw_host=aw_host,
+            poll_seconds=poll_seconds,
+            title_salt=title_salt,
+            data_dir=Path(resolved_data_dir),
+            transition_minutes=transition_minutes,
+            ui_port=port,
+            dev=dev,
+            browser=browser,
+            no_tray=no_tray,
+            username=username,
+        )
+    finally:
+        if tmp_dir is not None:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            typer.echo(f"Dev mode: cleaned up ephemeral data dir → {tmp_dir}")
 
 
 # -- ui -----------------------------------------------------------------------
@@ -2207,14 +2225,16 @@ def ui_serve_cmd(
     aw_host: str = typer.Option(DEFAULT_AW_HOST, "--aw-host", help="ActivityWatch server URL"),
     poll_seconds: int = typer.Option(DEFAULT_POLL_SECONDS, "--poll-seconds", help="Seconds between AW polling iterations"),
     title_salt: str = typer.Option(DEFAULT_TITLE_SALT, "--title-salt", help="Salt for hashing window titles"),
-    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory"),
+    data_dir: str | None = typer.Option(None, "--data-dir", help="Processed data directory (default: data/processed; ephemeral in --dev)"),
     transition_minutes: int = typer.Option(DEFAULT_TRANSITION_MINUTES, "--transition-minutes", help="Minutes a new app must persist before suggesting a label"),
     browser: bool = typer.Option(False, "--browser", help="Open in browser instead of native window"),
     dev: bool = typer.Option(False, "--dev", help="Start Vite dev server for frontend hot reload"),
 ) -> None:
     """Launch the labeling UI as a native floating window with live prediction streaming."""
     import os
+    import shutil
     import subprocess
+    import tempfile
     import threading
 
     import uvicorn
@@ -2223,6 +2243,16 @@ def ui_serve_cmd(
     from taskclf.ui.server import create_app
     from taskclf.ui.tray import ActivityMonitor, _LabelSuggester
     from taskclf.ui.window import WindowAPI, run_window
+
+    tmp_dir: str | None = None
+    if data_dir is not None:
+        resolved_data_dir = data_dir
+    elif dev:
+        tmp_dir = tempfile.mkdtemp(prefix="taskclf-dev-")
+        resolved_data_dir = tmp_dir
+        typer.echo(f"Dev mode: using ephemeral data dir → {tmp_dir}")
+    else:
+        resolved_data_dir = DEFAULT_DATA_DIR
 
     bus = EventBus()
     win_api = WindowAPI()
@@ -2272,7 +2302,7 @@ def ui_serve_cmd(
     monitor_thread.start()
 
     fastapi_app = create_app(
-        data_dir=Path(data_dir),
+        data_dir=Path(resolved_data_dir),
         aw_host=aw_host,
         title_salt=title_salt,
         event_bus=bus,
@@ -2344,6 +2374,9 @@ def ui_serve_cmd(
         if vite_proc is not None:
             vite_proc.terminate()
             vite_proc.wait(timeout=5)
+        if tmp_dir is not None:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            typer.echo(f"Dev mode: cleaned up ephemeral data dir → {tmp_dir}")
 
 
 if __name__ == "__main__":
