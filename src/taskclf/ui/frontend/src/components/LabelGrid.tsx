@@ -62,6 +62,7 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
   const [customValue, setCustomValue] = createSignal("");
   const [customUnit, setCustomUnit] = createSignal<TimeUnit>("m");
   const [extendFwd, setExtendFwd] = createSignal(loadExtendForward());
+  const [confPercent, setConfPercent] = createSignal(100);
 
   function toggleExtendFwd() {
     const next = !extendFwd();
@@ -100,6 +101,7 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
         start_ts: start.toISOString().slice(0, -1),
         end_ts: now.toISOString().slice(0, -1),
         label,
+        confidence: confPercent() / 100,
         extend_forward: extendFwd(),
       });
       setFlash(label);
@@ -355,6 +357,53 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
           }}
         >
           Extend until next label
+        </span>
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          "align-items": "center",
+          "justify-content": "center",
+          gap: "6px",
+          "margin-bottom": "6px",
+        }}
+      >
+        <span
+          style={{
+            "font-size": "0.7rem",
+            color: "var(--text-muted)",
+            "flex-shrink": "0",
+          }}
+        >
+          Confidence
+        </span>
+        <input
+          type="range"
+          min="0"
+          max="100"
+          step="5"
+          value={confPercent()}
+          onInput={(e) => setConfPercent(parseInt(e.currentTarget.value))}
+          style={{
+            flex: "1",
+            height: "4px",
+            "max-width": "120px",
+            "accent-color": "var(--accent)",
+            cursor: "pointer",
+          }}
+        />
+        <span
+          style={{
+            "font-size": "0.7rem",
+            "font-weight": confPercent() < 100 ? "700" : "500",
+            color: confPercent() < 100 ? "var(--text)" : "var(--text-muted)",
+            "min-width": "30px",
+            "text-align": "right",
+            "flex-shrink": "0",
+          }}
+        >
+          {confPercent()}%
         </span>
       </div>
 
