@@ -124,6 +124,7 @@ class ActiveModelReloader:
         try:
             return self._active_path.stat().st_mtime
         except OSError:
+            logger.debug("Could not stat %s", self._active_path, exc_info=True)
             return None
 
     def check_reload(

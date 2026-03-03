@@ -56,18 +56,22 @@ def _send_desktop_notification(title: str, message: str, timeout: int = 10) -> N
             )
             return
         except Exception:
-            pass
+            logger.debug("osascript notification failed", exc_info=True)
 
     try:
-        from plyer import notification
+        import contextlib
+        import io
 
-        notification.notify(
-            title=title, message=message,
-            app_name="taskclf", timeout=timeout,
-        )
+        with contextlib.redirect_stderr(io.StringIO()):
+            from plyer import notification
+
+            notification.notify(
+                title=title, message=message,
+                app_name="taskclf", timeout=timeout,
+            )
         return
     except Exception:
-        pass
+        logger.debug("plyer notification failed", exc_info=True)
 
     print(f"[{title}] {message}")
 
@@ -529,6 +533,7 @@ class TrayLabeler:
             )
             urllib.request.urlopen(req, timeout=2)
         except Exception:
+            logger.debug("UI toggle API request failed, falling back to subprocess", exc_info=True)
             self._start_ui_subprocess()
 
     def _quit(self, *_args: Any) -> None:
@@ -645,12 +650,14 @@ class TrayLabeler:
             try:
                 self._ui_proc.wait(timeout=5)
             except Exception:
+                logger.debug("UI process did not exit gracefully, killing", exc_info=True)
                 self._ui_proc.kill()
         if self._vite_proc is not None and self._vite_proc.poll() is None:
             self._vite_proc.terminate()
             try:
                 self._vite_proc.wait(timeout=5)
             except Exception:
+                logger.debug("Vite process did not exit gracefully, killing", exc_info=True)
                 self._vite_proc.kill()
 
     def run(self) -> None:

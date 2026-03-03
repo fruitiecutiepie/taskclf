@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -12,6 +13,8 @@ import pandas as pd
 from pydantic import BaseModel
 from sklearn.metrics import accuracy_score, f1_score
 from sklearn.preprocessing import LabelEncoder
+
+logger = logging.getLogger(__name__)
 
 from taskclf.core.defaults import DEFAULT_REJECT_THRESHOLD, MIXED_UNKNOWN
 from taskclf.core.metrics import (
@@ -389,6 +392,6 @@ def write_evaluation_artifacts(
         plt.close(fig)
         paths["calibration_plot"] = plot_path
     except Exception:
-        pass
+        logger.debug("Calibration plot generation failed", exc_info=True)
 
     return paths

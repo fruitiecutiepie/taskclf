@@ -752,7 +752,7 @@ def should_switch_active(
         try:
             current_f1 = float(current.reason["macro_f1"])  # type: ignore[arg-type]
         except (TypeError, ValueError):
-            pass
+            logger.debug("Could not parse macro_f1 from active pointer reason", exc_info=True)
 
     if current_f1 is None:
         return True

@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import random
 import subprocess
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any, Literal
+
+logger = logging.getLogger(__name__)
 
 import lightgbm as lgb
 import pandas as pd
@@ -49,6 +52,7 @@ def _current_git_commit() -> str:
         )
         return result.stdout.strip() if result.returncode == 0 else "unknown"
     except Exception:
+        logger.debug("Could not determine git commit", exc_info=True)
         return "unknown"
 
 

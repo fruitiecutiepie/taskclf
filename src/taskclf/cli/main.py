@@ -1,6 +1,7 @@
 """Typer CLI entrypoint and command definitions for taskclf."""
 
 import datetime as dt
+import logging
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
 
@@ -48,8 +49,16 @@ def main(
         False, "--version", "-v", callback=_version_callback, is_eager=True,
         help="Show version and exit.",
     ),
+    verbose: bool = typer.Option(
+        False, "--verbose", help="Enable DEBUG logging with file/line info.",
+    ),
 ) -> None:
     """Local-first task classifier CLI."""
+    level = logging.DEBUG if verbose else logging.WARNING
+    logging.basicConfig(
+        level=level,
+        format="%(levelname)s %(name)s %(pathname)s:%(lineno)d — %(message)s",
+    )
 
 
 # -- ingest -------------------------------------------------------------------
@@ -2185,6 +2194,9 @@ def tray_cmd(
 
     from taskclf.ui.tray import run_tray
 
+    if dev:
+        logging.getLogger("taskclf").setLevel(logging.DEBUG)
+
     tmp_dir: str | None = None
     if data_dir is not None:
         resolved_data_dir = data_dir
@@ -2243,6 +2255,9 @@ def ui_serve_cmd(
     from taskclf.ui.server import create_app
     from taskclf.ui.tray import ActivityMonitor, _LabelSuggester
     from taskclf.ui.window import WindowAPI, run_window
+
+    if dev:
+        logging.getLogger("taskclf").setLevel(logging.DEBUG)
 
     tmp_dir: str | None = None
     if data_dir is not None:

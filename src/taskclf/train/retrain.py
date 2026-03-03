@@ -178,6 +178,7 @@ def find_latest_model(models_dir: Path) -> Path | None:
                 best_ts = created
                 best_path = candidate
         except (json.JSONDecodeError, OSError):
+            logger.debug("Skipping unreadable metadata at %s", meta_path, exc_info=True)
             continue
 
     return best_path
@@ -212,6 +213,7 @@ def check_retrain_due(
         age = datetime.now(UTC) - model_ts
         return age >= timedelta(days=cadence_days)
     except (ValueError, TypeError):
+        logger.debug("Could not parse model created_at timestamp", exc_info=True)
         return True
 
 
@@ -243,6 +245,7 @@ def check_calibrator_update_due(
             store_ts = store_ts.replace(tzinfo=UTC)
         return datetime.now(UTC) - store_ts >= timedelta(days=cadence_days)
     except (json.JSONDecodeError, ValueError, TypeError, OSError):
+        logger.debug("Could not parse calibrator store.json", exc_info=True)
         return True
 
 

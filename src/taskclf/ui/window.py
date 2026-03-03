@@ -262,6 +262,7 @@ def run_window(
             os.dup2(devnull, 2)
             os.close(devnull)
         except OSError:
+            logger.debug("Could not redirect stderr for pywebview", exc_info=True)
             saved_stderr_fd = None
 
     def _startup(win: Any) -> None:
@@ -271,7 +272,7 @@ def run_window(
                 os.dup2(saved_stderr_fd, 2)
                 os.close(saved_stderr_fd)
             except OSError:
-                pass
+                logger.debug("Could not restore stderr after pywebview init", exc_info=True)
             saved_stderr_fd = None
         if on_ready is not None:
             on_ready(win)
