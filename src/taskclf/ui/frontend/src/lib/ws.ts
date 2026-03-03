@@ -62,7 +62,28 @@ export interface TrayState {
   dev_mode: boolean;
 }
 
-export type WSEvent = Prediction | LabelSuggestion | StatusEvent | TrayState;
+export interface ShowLabelGridEvent {
+  type: "show_label_grid";
+}
+
+export interface PromptLabelEvent {
+  type: "prompt_label";
+  prev_app: string;
+  new_app: string;
+  block_start: string;
+  block_end: string;
+  duration_min: number;
+  suggested_label: string | null;
+  suggested_confidence: number | null;
+}
+
+export type WSEvent =
+  | Prediction
+  | LabelSuggestion
+  | StatusEvent
+  | TrayState
+  | ShowLabelGridEvent
+  | PromptLabelEvent;
 
 export type ConnectionStatus = "connecting" | "connected" | "disconnected";
 
@@ -88,6 +109,9 @@ export function useWebSocket() {
   );
   const [activeSuggestion, setActiveSuggestion] =
     createSignal<LabelSuggestion | null>(null);
+  const [latestPrompt, setLatestPrompt] =
+    createSignal<PromptLabelEvent | null>(null);
+  const [labelGridRequested, setLabelGridRequested] = createSignal(0);
   const [connectionStatus, setConnectionStatus] =
     createSignal<ConnectionStatus>("connecting");
   const [wsStats, setWsStats] = createSignal<WSStats>({
@@ -162,6 +186,22 @@ export function useWebSocket() {
               lastMessageAt: now,
             }));
             break;
+          case "show_label_grid":
+            setLabelGridRequested((n) => n + 1);
+            setWsStats((prev) => ({
+              ...prev,
+              messageCount: prev.messageCount + 1,
+              lastMessageAt: now,
+            }));
+            break;
+          case "prompt_label":
+            setLatestPrompt(data);
+            setWsStats((prev) => ({
+              ...prev,
+              messageCount: prev.messageCount + 1,
+              lastMessageAt: now,
+            }));
+            break;
         }
       } catch {
         // ignore malformed messages
@@ -208,6 +248,8 @@ export function useWebSocket() {
     latestPrediction,
     latestTrayState,
     activeSuggestion,
+    latestPrompt,
+    labelGridRequested,
     connectionStatus,
     wsStats,
     dismissSuggestion,

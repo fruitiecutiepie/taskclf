@@ -115,6 +115,12 @@ class UserConfigUpdateRequest(BaseModel):
     username: str | None = None
 
 
+class NotificationAcceptRequest(BaseModel):
+    block_start: str = Field(description="ISO-8601 start of the activity block")
+    block_end: str = Field(description="ISO-8601 end of the activity block")
+    label: str = Field(description="Suggested label to accept")
+
+
 # ---------------------------------------------------------------------------
 # App factory
 # ---------------------------------------------------------------------------
@@ -377,6 +383,46 @@ def create_app(
         if window_api is None:
             return {"available": False, "visible": False}
         return {"available": True, "visible": window_api.visible}
+
+    @app.post("/api/window/show-label-grid")
+    async def window_show_label_grid() -> dict[str, str]:
+        if window_api is not None:
+            window_api.show_label_grid()
+        await bus.publish({"type": "show_label_grid"})
+        return {"status": "ok"}
+
+    # -- REST: notification actions -------------------------------------------
+
+    @app.post("/api/notification/skip")
+    async def notification_skip() -> dict[str, str]:
+        logger.info("Notification skipped by user (no label change needed)")
+        return {"status": "skipped"}
+
+    @app.post("/api/notification/accept")
+    async def notification_accept(body: NotificationAcceptRequest) -> LabelResponse:
+        uid = user_config.user_id
+        try:
+            span = LabelSpan(
+                start_ts=dt.datetime.fromisoformat(body.block_start),
+                end_ts=dt.datetime.fromisoformat(body.block_end),
+                label=body.label,
+                provenance="suggestion",
+                user_id=uid,
+            )
+        except (ValueError, Exception) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        try:
+            append_label_span(span, labels_path)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        logger.info("Accepted suggested label: %s (%s → %s)", body.label, body.block_start, body.block_end)
+        return LabelResponse(
+            start_ts=span.start_ts.isoformat(),
+            end_ts=span.end_ts.isoformat(),
+            label=span.label,
+            provenance=span.provenance,
+            user_id=span.user_id,
+        )
 
     # -- WebSocket ------------------------------------------------------------
 

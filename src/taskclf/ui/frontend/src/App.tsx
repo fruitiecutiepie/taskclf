@@ -1,7 +1,17 @@
-import { createSignal, Show, type Component } from "solid-js";
+import {
+  createEffect,
+  createSignal,
+  onMount,
+  Show,
+  type Component,
+} from "solid-js";
 import { LabelGrid } from "./components/LabelGrid";
 import { LiveBadge } from "./components/LiveBadge";
 import { StatePanel } from "./components/StatePanel";
+import {
+  requestPermission,
+  showTransitionNotification,
+} from "./lib/notifications";
 import { useWebSocket } from "./lib/ws";
 import { host } from "./lib/host";
 
@@ -144,6 +154,27 @@ const App: Component = () => {
   }
 
   const ws = useWebSocket();
+
+  onMount(() => {
+    requestPermission();
+  });
+
+  createEffect(() => {
+    const count = ws.labelGridRequested();
+    if (count > 0) {
+      setHovering(true);
+      if (!inBrowser) host.invoke({ cmd: "showLabelGrid" });
+    }
+  });
+
+  createEffect(() => {
+    const prompt = ws.latestPrompt();
+    if (!prompt) return;
+    showTransitionNotification(prompt, () => {
+      setHovering(true);
+      if (!inBrowser) host.invoke({ cmd: "showLabelGrid" });
+    });
+  });
 
   function showLabel() {
     setHovering(true);

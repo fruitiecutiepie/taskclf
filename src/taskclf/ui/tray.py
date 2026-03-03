@@ -43,7 +43,12 @@ logger = logging.getLogger(__name__)
 
 
 def _send_desktop_notification(title: str, message: str, timeout: int = 10) -> None:
-    """Best-effort desktop notification with platform-native fallbacks."""
+    """Best-effort passive desktop notification (secondary fallback).
+
+    The primary notification mechanism is the Web Notifications API
+    in the frontend (cross-platform, works on mobile).  This function
+    serves as a backup for when no browser client is connected.
+    """
     if platform.system() == "Darwin":
         script = (
             f'display notification "{message}" '
@@ -58,22 +63,7 @@ def _send_desktop_notification(title: str, message: str, timeout: int = 10) -> N
         except Exception:
             logger.debug("osascript notification failed", exc_info=True)
 
-    try:
-        import contextlib
-        import io
-
-        with contextlib.redirect_stderr(io.StringIO()):
-            from plyer import notification
-
-            notification.notify(
-                title=title, message=message,
-                app_name="taskclf", timeout=timeout,
-            )
-        return
-    except Exception:
-        logger.debug("plyer notification failed", exc_info=True)
-
-    print(f"[{title}] {message}")
+    logger.info("[%s] %s", title, message)
 
 
 # ---------------------------------------------------------------------------
@@ -461,6 +451,16 @@ class TrayLabeler:
         self._send_notification(prev_app, new_app, block_start, block_end)
 
         if self._event_bus is not None:
+            self._event_bus.publish_threadsafe({
+                "type": "prompt_label",
+                "prev_app": prev_app,
+                "new_app": new_app,
+                "block_start": block_start.isoformat(),
+                "block_end": block_end.isoformat(),
+                "duration_min": max(1, int((block_end - block_start).total_seconds() / 60)),
+                "suggested_label": self._suggested_label,
+                "suggested_confidence": self._suggested_confidence,
+            })
             if self._suggested_label is not None and self._suggested_confidence is not None:
                 self._event_bus.publish_threadsafe({
                     "type": "suggest_label",
