@@ -32,6 +32,11 @@ from taskclf.ui.tray import (
 )
 
 
+def _t(seconds: int) -> dt.datetime:
+    """Return a test timestamp offset by *seconds* from a fixed epoch."""
+    return dt.datetime(2026, 3, 1, 10, 0, 0) + dt.timedelta(seconds=seconds)
+
+
 class TestActivityTransitionDetection:
     """Unit tests for the transition detection state machine."""
 
@@ -56,8 +61,8 @@ class TestActivityTransitionDetection:
         transitions: list = []
         monitor = self._make_monitor(transitions=transitions)
 
-        for _ in range(10):
-            monitor.check_transition("com.apple.Terminal")
+        for i in range(10):
+            monitor.check_transition("com.apple.Terminal", _now=_t(i * 60))
 
         assert len(transitions) == 0
 
@@ -67,15 +72,15 @@ class TestActivityTransitionDetection:
             transition_minutes=3, poll_seconds=60, transitions=transitions,
         )
 
-        monitor.check_transition("com.apple.Terminal")
+        monitor.check_transition("com.apple.Terminal", _now=_t(0))
         assert monitor.current_app == "com.apple.Terminal"
 
         # 3 consecutive polls with a new app (3 * 60s = 180s = 3 min)
-        monitor.check_transition("us.zoom.xos")
+        monitor.check_transition("us.zoom.xos", _now=_t(60))
         assert len(transitions) == 0
-        monitor.check_transition("us.zoom.xos")
+        monitor.check_transition("us.zoom.xos", _now=_t(120))
         assert len(transitions) == 0
-        monitor.check_transition("us.zoom.xos")
+        monitor.check_transition("us.zoom.xos", _now=_t(180))
         assert len(transitions) == 1
 
         prev, new, _start, _end = transitions[0]
@@ -89,12 +94,12 @@ class TestActivityTransitionDetection:
             transition_minutes=3, poll_seconds=60, transitions=transitions,
         )
 
-        monitor.check_transition("com.apple.Terminal")
+        monitor.check_transition("com.apple.Terminal", _now=_t(0))
 
         # Switch to Zoom for 2 polls (under threshold), then back
-        monitor.check_transition("us.zoom.xos")
-        monitor.check_transition("us.zoom.xos")
-        monitor.check_transition("com.apple.Terminal")
+        monitor.check_transition("us.zoom.xos", _now=_t(60))
+        monitor.check_transition("us.zoom.xos", _now=_t(120))
+        monitor.check_transition("com.apple.Terminal", _now=_t(180))
 
         assert len(transitions) == 0
         assert monitor.current_app == "com.apple.Terminal"
@@ -105,15 +110,15 @@ class TestActivityTransitionDetection:
             transition_minutes=2, poll_seconds=60, transitions=transitions,
         )
 
-        monitor.check_transition("com.apple.Terminal")
-        monitor.check_transition("us.zoom.xos")
-        monitor.check_transition("us.zoom.xos")
+        monitor.check_transition("com.apple.Terminal", _now=_t(0))
+        monitor.check_transition("us.zoom.xos", _now=_t(60))
+        monitor.check_transition("us.zoom.xos", _now=_t(120))
         assert len(transitions) == 1
 
         # Now stable on Zoom, transition to Slack
-        monitor.check_transition("us.zoom.xos")
-        monitor.check_transition("com.tinyspeck.slackmacgap")
-        monitor.check_transition("com.tinyspeck.slackmacgap")
+        monitor.check_transition("us.zoom.xos", _now=_t(180))
+        monitor.check_transition("com.tinyspeck.slackmacgap", _now=_t(240))
+        monitor.check_transition("com.tinyspeck.slackmacgap", _now=_t(300))
         assert len(transitions) == 2
         assert transitions[1][0] == "us.zoom.xos"
         assert transitions[1][1] == "com.tinyspeck.slackmacgap"
@@ -125,18 +130,18 @@ class TestActivityTransitionDetection:
             transition_minutes=3, poll_seconds=60, transitions=transitions,
         )
 
-        monitor.check_transition("com.apple.Terminal")
-        monitor.check_transition("us.zoom.xos")  # candidate = Zoom
-        monitor.check_transition("com.tinyspeck.slackmacgap")  # candidate resets to Slack
-        monitor.check_transition("com.tinyspeck.slackmacgap")
-        monitor.check_transition("com.tinyspeck.slackmacgap")
+        monitor.check_transition("com.apple.Terminal", _now=_t(0))
+        monitor.check_transition("us.zoom.xos", _now=_t(60))  # candidate = Zoom
+        monitor.check_transition("com.tinyspeck.slackmacgap", _now=_t(120))  # candidate resets to Slack
+        monitor.check_transition("com.tinyspeck.slackmacgap", _now=_t(180))
+        monitor.check_transition("com.tinyspeck.slackmacgap", _now=_t(240))
         assert len(transitions) == 1
         assert transitions[0][1] == "com.tinyspeck.slackmacgap"
 
     def test_first_app_sets_current(self) -> None:
         monitor = self._make_monitor()
         assert monitor.current_app is None
-        monitor.check_transition("com.apple.Terminal")
+        monitor.check_transition("com.apple.Terminal", _now=_t(0))
         assert monitor.current_app == "com.apple.Terminal"
 
     def test_short_threshold(self) -> None:
@@ -146,11 +151,25 @@ class TestActivityTransitionDetection:
             transition_minutes=1, poll_seconds=60, transitions=transitions,
         )
 
-        monitor.check_transition("com.apple.Terminal")
-        monitor.check_transition("us.zoom.xos")  # candidate set, duration=60
+        monitor.check_transition("com.apple.Terminal", _now=_t(0))
+        monitor.check_transition("us.zoom.xos", _now=_t(60))  # candidate set, duration=60
         assert len(transitions) == 0
-        monitor.check_transition("us.zoom.xos")  # duration=120 >= 60, fires
+        monitor.check_transition("us.zoom.xos", _now=_t(120))  # duration=120 >= 60, fires
         assert len(transitions) == 1
+
+    def test_delayed_poll_accumulates_wall_clock_time(self) -> None:
+        """A 90-second gap between polls accumulates 90s, not poll_seconds (60s)."""
+        transitions: list = []
+        monitor = self._make_monitor(
+            transition_minutes=3, poll_seconds=60, transitions=transitions,
+        )
+
+        monitor.check_transition("com.apple.Terminal", _now=_t(0))
+        # Each poll delayed to 90s apart instead of 60s
+        monitor.check_transition("us.zoom.xos", _now=_t(90))   # candidate, duration=90
+        monitor.check_transition("us.zoom.xos", _now=_t(180))  # duration=180 >= 180, fires
+        assert len(transitions) == 1
+        assert transitions[0][1] == "us.zoom.xos"
 
 
 class TestLabelFromTray:
@@ -253,7 +272,7 @@ _BLOCK_END = dt.datetime(2026, 3, 1, 10, 15, 0)
 class TestHandleTransition:
 
     @patch("taskclf.ui.tray._send_desktop_notification")
-    def test_transition_without_model_publishes_prompt_and_prediction(
+    def test_transition_without_model_publishes_prompt_and_no_model_transition(
         self, _mock_notif: MagicMock, tmp_path: Path,
     ) -> None:
         """TC-UI-TRAY-001"""
@@ -266,7 +285,8 @@ class TestHandleTransition:
 
         types = [e["type"] for e in captured]
         assert "prompt_label" in types
-        assert "prediction" in types
+        assert "no_model_transition" in types
+        assert "prediction" not in types
 
         prompt = next(e for e in captured if e["type"] == "prompt_label")
         assert prompt["suggested_label"] is None
@@ -274,10 +294,11 @@ class TestHandleTransition:
         assert prompt["prev_app"] == "com.apple.Terminal"
         assert prompt["new_app"] == "us.zoom.xos"
 
-        pred = next(e for e in captured if e["type"] == "prediction")
-        assert pred["label"] == "unknown"
-        assert pred["confidence"] == 0.0
-        assert pred["current_app"] == "us.zoom.xos"
+        nmt = next(e for e in captured if e["type"] == "no_model_transition")
+        assert nmt["current_app"] == "us.zoom.xos"
+        assert nmt["ts"] == _BLOCK_END.isoformat()
+        assert nmt["block_start"] == _BLOCK_START.isoformat()
+        assert nmt["block_end"] == _BLOCK_END.isoformat()
 
     @patch("taskclf.ui.tray._send_desktop_notification")
     def test_transition_with_suggestion_publishes_suggest_label(
@@ -391,6 +412,39 @@ class TestHandlePoll:
 
         labeler._handle_poll("com.apple.Safari")
         assert labeler._current_app == "com.apple.Safari"
+
+
+# ---------------------------------------------------------------------------
+# 46b′ — TrayLabeler._on_label_saved counter (Item 9)
+# ---------------------------------------------------------------------------
+
+
+class TestOnLabelSaved:
+
+    def test_counter_increments(self, tmp_path: Path) -> None:
+        """TC-UI-TRAY-010: _on_label_saved increments _labels_saved_count."""
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+        assert labeler._labels_saved_count == 0
+
+        labeler._on_label_saved()
+        assert labeler._labels_saved_count == 1
+
+        labeler._on_label_saved()
+        labeler._on_label_saved()
+        assert labeler._labels_saved_count == 3
+
+    def test_counter_reflected_in_tray_state(self, tmp_path: Path) -> None:
+        """TC-UI-TRAY-011: tray_state event includes updated labels_saved_count."""
+        bus, captured = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+
+        labeler._on_label_saved()
+        labeler._on_label_saved()
+        labeler._handle_poll("com.apple.Safari")
+
+        tray_state = next(e for e in captured if e["type"] == "tray_state")
+        assert tray_state["labels_saved_count"] == 2
 
 
 # ---------------------------------------------------------------------------

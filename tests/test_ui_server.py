@@ -794,3 +794,79 @@ class TestLabelsLimit:
         """TC-UI-LL-004: limit=501 violates le=500 -> 422."""
         resp = client.get("/api/labels", params={"limit": 501})
         assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# on_label_saved callback  (Item 9)
+# ---------------------------------------------------------------------------
+
+
+class TestOnLabelSavedCallback:
+    """TC-UI-OLS-001 through TC-UI-OLS-004: verify on_label_saved fires."""
+
+    def test_callback_invoked_on_create_label(self, data_dir: Path) -> None:
+        """TC-UI-OLS-001: POST /api/labels calls on_label_saved."""
+        from unittest.mock import MagicMock
+
+        cb = MagicMock()
+        app = create_app(data_dir=data_dir, event_bus=EventBus(), on_label_saved=cb)
+        client = TestClient(app)
+
+        client.post("/api/labels", json={
+            "start_ts": "2026-02-27T09:00:00",
+            "end_ts": "2026-02-27T10:00:00",
+            "label": "Build",
+        })
+        cb.assert_called_once()
+
+    def test_callback_invoked_on_notification_accept(self, data_dir: Path) -> None:
+        """TC-UI-OLS-002: POST /api/notification/accept calls on_label_saved."""
+        from unittest.mock import MagicMock
+
+        cb = MagicMock()
+        app = create_app(data_dir=data_dir, event_bus=EventBus(), on_label_saved=cb)
+        client = TestClient(app)
+
+        client.post("/api/notification/accept", json={
+            "block_start": "2026-02-27T09:00:00",
+            "block_end": "2026-02-27T10:00:00",
+            "label": "Build",
+        })
+        cb.assert_called_once()
+
+    def test_callback_not_invoked_on_validation_error(self, data_dir: Path) -> None:
+        """TC-UI-OLS-003: 422 error does not call on_label_saved."""
+        from unittest.mock import MagicMock
+
+        cb = MagicMock()
+        app = create_app(data_dir=data_dir, event_bus=EventBus(), on_label_saved=cb)
+        client = TestClient(app)
+
+        client.post("/api/labels", json={
+            "start_ts": "2026-02-27T09:00:00",
+            "end_ts": "2026-02-27T10:00:00",
+            "label": "NotALabel",
+        })
+        cb.assert_not_called()
+
+    def test_callback_not_invoked_on_overlap_error(self, data_dir: Path) -> None:
+        """TC-UI-OLS-004: 409 overlap does not call on_label_saved."""
+        from unittest.mock import MagicMock
+
+        cb = MagicMock()
+        app = create_app(data_dir=data_dir, event_bus=EventBus(), on_label_saved=cb)
+        client = TestClient(app)
+
+        client.post("/api/labels", json={
+            "start_ts": "2026-02-27T09:00:00",
+            "end_ts": "2026-02-27T10:00:00",
+            "label": "Build",
+        })
+        cb.reset_mock()
+
+        client.post("/api/labels", json={
+            "start_ts": "2026-02-27T09:30:00",
+            "end_ts": "2026-02-27T10:30:00",
+            "label": "Meet",
+        })
+        cb.assert_not_called()

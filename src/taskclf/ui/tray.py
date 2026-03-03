@@ -115,6 +115,7 @@ class ActivityMonitor:
         self._current_app_since: dt.datetime | None = None
         self._candidate_app: str | None = None
         self._candidate_duration: int = 0
+        self._last_check_time: dt.datetime | None = None
 
         self._bucket_id: str | None = None
         self._aw_warned = False
@@ -175,13 +176,25 @@ class ActivityMonitor:
         self._last_app_counts = dict(counts.most_common(5))
         return counts.most_common(1)[0][0]
 
-    def check_transition(self, dominant_app: str) -> None:
+    def check_transition(
+        self, dominant_app: str, *, _now: dt.datetime | None = None,
+    ) -> None:
         """Update internal state and fire transition callback if warranted.
 
         Exposed as a public method so that transition logic can be unit-tested
         without requiring a live ActivityWatch server.
+
+        Args:
+            dominant_app: The current dominant foreground application.
+            _now: Override for the current time (testing only).
         """
-        now = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+        now = _now or dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+        elapsed = (
+            int((now - self._last_check_time).total_seconds())
+            if self._last_check_time is not None
+            else self._poll_seconds
+        )
+        self._last_check_time = now
 
         if self._current_app is None:
             self._current_app = dominant_app
@@ -190,7 +203,7 @@ class ActivityMonitor:
 
         if dominant_app != self._current_app:
             if self._candidate_app == dominant_app:
-                self._candidate_duration += self._poll_seconds
+                self._candidate_duration += elapsed
                 if self._candidate_duration >= self._transition_threshold:
                     block_start = self._current_app_since or now
                     block_end = now - dt.timedelta(seconds=self._candidate_duration)
@@ -205,7 +218,7 @@ class ActivityMonitor:
                         self._on_transition(prev, dominant_app, block_start, block_end)
             else:
                 self._candidate_app = dominant_app
-                self._candidate_duration = self._poll_seconds
+                self._candidate_duration = elapsed
         else:
             self._candidate_app = None
             self._candidate_duration = 0
@@ -404,6 +417,10 @@ class TrayLabeler:
         )
         self._icon: Any = None
 
+    def _on_label_saved(self) -> None:
+        """Increment the saved-label counter (called by the embedded server)."""
+        self._labels_saved_count += 1
+
     def _handle_poll(self, dominant_app: str) -> None:
         self._current_app = dominant_app
         if self._event_bus is not None:
@@ -473,13 +490,11 @@ class TrayLabeler:
                 })
             else:
                 self._event_bus.publish_threadsafe({
-                    "type": "prediction",
-                    "label": "unknown",
-                    "confidence": 0.0,
-                    "ts": block_end.isoformat(),
-                    "mapped_label": "unknown",
+                    "type": "no_model_transition",
                     "current_app": new_app,
-                    "provenance": "model",
+                    "ts": block_end.isoformat(),
+                    "block_start": block_start.isoformat(),
+                    "block_end": block_end.isoformat(),
                 })
 
     def _send_notification(
@@ -502,13 +517,13 @@ class TrayLabeler:
 
         return pystray.Menu(
             pystray.MenuItem(
-                "Open Dashboard", self._toggle_window, default=True,
+                "Open Dashboard", self._open_dashboard, default=True,
             ),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Quit", self._quit),
         )
 
-    def _toggle_window(self, *_args: Any) -> None:
+    def _open_dashboard(self, *_args: Any) -> None:
         if self._browser:
             import webbrowser
 
@@ -590,6 +605,7 @@ class TrayLabeler:
             aw_host=self._aw_host,
             title_salt=self._title_salt,
             event_bus=self._event_bus,
+            on_label_saved=self._on_label_saved,
         )
 
         uvicorn_config = uvicorn.Config(
@@ -678,7 +694,9 @@ class TrayLabeler:
         mode = "with model suggestions" if self._suggester else "label-only (no model)"
 
         if self._no_tray:
-            print(f"taskclf running ({mode}), no tray icon. Press Ctrl+C to quit.")
+            print(f"taskclf running ({mode}), no tray icon.")
+            print(f"UI available at http://127.0.0.1:{self._ui_port}")
+            print("Press Ctrl+C to quit.")
             stop = threading.Event()
             try:
                 stop.wait()

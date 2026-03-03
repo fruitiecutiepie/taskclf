@@ -12,6 +12,7 @@ import logging
 from collections import Counter
 from contextlib import asynccontextmanager
 from pathlib import Path
+from collections.abc import Callable
 from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
@@ -133,6 +134,7 @@ def create_app(
     title_salt: str = DEFAULT_TITLE_SALT,
     event_bus: EventBus | None = None,
     window_api: Any = None,
+    on_label_saved: Callable[[], None] | None = None,
 ) -> FastAPI:
     """Build and return the FastAPI application.
 
@@ -142,6 +144,9 @@ def create_app(
         title_salt: Salt for hashing window titles.
         event_bus: Shared event bus for WebSocket broadcasting.
         window_api: Optional ``WindowAPI`` for pywebview window control.
+        on_label_saved: Optional callback invoked after a label is
+            successfully saved (via ``POST /api/labels`` or
+            ``POST /api/notification/accept``).
     """
     bus = event_bus or EventBus()
     labels_path = data_dir / "labels_v1" / "labels.parquet"
@@ -200,6 +205,9 @@ def create_app(
             append_label_span(span, labels_path)
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+        if on_label_saved is not None:
+            on_label_saved()
 
         if span.extend_forward:
             await bus.publish({
@@ -415,6 +423,10 @@ def create_app(
             append_label_span(span, labels_path)
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+        if on_label_saved is not None:
+            on_label_saved()
+
         logger.info("Accepted suggested label: %s (%s → %s)", body.label, body.block_start, body.block_end)
         return LabelResponse(
             start_ts=span.start_ts.isoformat(),

@@ -20,13 +20,11 @@ StatePanel, LiveBadge predictions, suggestion banners, and transition progress b
 
 ## Medium Priority
 
-### 2. Fake "unknown" prediction published when no model is loaded
-**File:** `tray.py:470-479`
+### ~~2. Fake "unknown" prediction published when no model is loaded~~ DONE
 
-When a transition fires without a model, a `prediction` event with `label: "unknown"`, `confidence: 0.0`, `provenance: "model"` is published.
-The LiveBadge and StatePanel display this as if the model predicted "unknown" — misleading users into thinking the model ran and failed.
-
-**Fix:** Publish a distinct `transition` event type (or omit the prediction entirely) so the UI can differentiate "no model" from "model predicted unknown".
+Transitions without a model now publish a `no_model_transition` event instead of a fake `prediction` event.
+The frontend can distinguish "no model loaded" from "model predicted unknown".
+**Note:** Frontend components (LiveBadge, StatePanel) should be updated to handle the new event type; currently they will simply ignore it (no visual regression, but the "no model" state won't render a badge until the frontend is updated).
 
 ### 3. "now" preset creates a 1-second label span
 **File:** `LabelGrid.tsx:98`
@@ -75,26 +73,18 @@ On startup, the first poll sets `_current_app` but never fires a transition. All
 
 ## Low Priority
 
-### 9. `labels_saved_count` is always zero
-**File:** `tray.py:386`
+### ~~9. `labels_saved_count` is always zero~~ DONE
 
-`self._labels_saved_count` is initialized to 0 and never incremented. Labels are saved through `POST /api/labels`, which has no back-channel to the tray. The StatePanel's "labels_saved" row always shows `0`.
+`create_app()` now accepts an `on_label_saved` callback. The server calls it after successful saves in `POST /api/labels` and `POST /api/notification/accept`. `TrayLabeler._start_ui_embedded()` passes `_on_label_saved` which increments `_labels_saved_count`.
+**Note:** Only works in embedded (`--browser`) mode. In subprocess mode the counter stays zero (blocked by item #1).
 
-**Fix:** Either increment the counter via an EventBus listener when labels are saved, or remove the field from `tray_state`.
+### ~~10. `--no-tray` without `--browser` doesn't tell the user where the UI is~~ DONE
 
-### 10. `--no-tray` without `--browser` doesn't tell the user where the UI is
-**File:** `tray.py:672-683`
+The `--no-tray` message now prints `"UI available at http://127.0.0.1:{port}"`.
 
-Prints `"taskclf running (...), no tray icon. Press Ctrl+C to quit."` but doesn't mention the UI port or URL. The user has a running server but no way to discover it.
+### ~~11. `_toggle_window` doesn't toggle in browser mode~~ DONE
 
-**Fix:** Print `"UI available at http://127.0.0.1:{port}"` in the `--no-tray` message.
-
-### 11. `_toggle_window` doesn't toggle in browser mode
-**File:** `tray.py:507-513`
-
-In browser mode, clicking "Open Dashboard" always calls `webbrowser.open()`, which opens a new tab every time. Repeated clicks stack tabs. The method name is misleading.
-
-**Fix:** Rename to `_open_dashboard` for clarity, or use a browser-control approach that focuses an existing tab.
+Renamed to `_open_dashboard` for accuracy. The menu label already says "Open Dashboard".
 
 ### 12. LabelGrid auto-collapse has a forced 1.5s delay
 **File:** `LabelGrid.tsx:109-111`
@@ -117,12 +107,9 @@ When a label is created with `extend_forward: true`, the server publishes a `pre
 
 **Fix:** Introduce a dedicated `label_created` event type. Have the frontend update the LiveBadge from that event type directly, keeping the prediction channel reserved for actual model outputs.
 
-### 15. Candidate duration uses `poll_seconds` instead of actual elapsed time
-**File:** `tray.py:199`
+### ~~15. Candidate duration uses `poll_seconds` instead of actual elapsed time~~ DONE
 
-`self._candidate_duration += self._poll_seconds` assumes polls happen exactly on schedule. If the system is under load and a poll is delayed (e.g. AW fetch takes 5s on a 30s interval), the candidate duration is still incremented by `poll_seconds`, not the actual wall-clock time since the last poll. This can cause transitions to fire earlier or later than the configured threshold.
-
-**Fix:** Track `_last_poll_time` and compute `elapsed = now - _last_poll_time` for duration accumulation.
+`ActivityMonitor.check_transition()` now tracks `_last_check_time` and computes actual wall-clock elapsed time instead of assuming `poll_seconds`. An optional `_now` parameter enables deterministic testing.
 
 ### 16. EventBus silently drops slow WebSocket consumers
 **File:** `events.py:36-41`
