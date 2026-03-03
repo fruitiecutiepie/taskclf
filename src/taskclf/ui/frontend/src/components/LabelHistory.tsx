@@ -1,5 +1,6 @@
-import { type Accessor, type Component, createResource, createMemo, createSignal, For, Show } from "solid-js";
+import { type Accessor, type Component, createEffect, createResource, createMemo, createSignal, For, on, Show } from "solid-js";
 import { fetchLabels } from "../lib/api";
+import type { Prediction } from "../lib/ws";
 import { LABEL_COLORS } from "./StatePanel";
 
 function parseDate(iso: string): Date {
@@ -121,7 +122,7 @@ const TimelineStrip: Component<{ segments: TimelineSegment[] }> = (props) => {
                 "flex-grow": seg.fraction,
                 "flex-basis": "0",
                 "min-width": seg.label ? "2px" : "0",
-                background: seg.label ? (LABEL_COLORS[seg.label] ?? "#8a8a8a") : "transparent",
+                background: seg.label ? (LABEL_COLORS[seg.label] ?? "#a0a0a0") : "transparent",
                 cursor: seg.label ? "pointer" : "default",
                 transition: "opacity 0.1s",
               }}
@@ -168,11 +169,18 @@ const TimelineStrip: Component<{ segments: TimelineSegment[] }> = (props) => {
 
 export const LabelHistory: Component<{
   visible: Accessor<boolean>;
+  latestPrediction?: Accessor<Prediction | null>;
 }> = (props) => {
-  const [labels] = createResource(props.visible, async (show) => {
+  const [labels, { refetch }] = createResource(props.visible, async (show) => {
     if (!show) return [];
     return fetchLabels(50);
   });
+
+  createEffect(on(
+    () => props.latestPrediction?.(),
+    () => { if (props.visible()) refetch(); },
+    { defer: true },
+  ));
 
   const grouped = createMemo(() => {
     const l = labels();
@@ -185,14 +193,14 @@ export const LabelHistory: Component<{
         padding: "6px 8px",
         "font-family": "'SF Mono', 'Fira Code', 'Cascadia Code', monospace",
         "font-size": "0.65rem",
-        color: "#d0d0d0",
+        color: "#e0e0e0",
       }}
     >
       <div
         style={{
           "font-size": "0.75rem",
           "font-weight": "700",
-          color: "#d0d0d0",
+          color: "#e0e0e0",
           "margin-bottom": "6px",
           "padding-bottom": "4px",
           "border-bottom": "1px solid #2a2a2a",
@@ -203,26 +211,66 @@ export const LabelHistory: Component<{
         Label History
       </div>
       <Show
-        when={grouped().length}
+        when={!labels.loading}
         fallback={
           <div
             style={{
               "text-align": "center",
-              padding: "24px 8px",
-              color: "#5a5a5a",
+              padding: "16px 8px",
+              color: "#707070",
+              "font-size": "0.6rem",
             }}
           >
-            <div style={{ "font-size": "1.4rem", "margin-bottom": "6px" }}>
-              No labels yet
-            </div>
-            <div style={{ "font-size": "0.6rem", color: "#4a4a4a" }}>
-              Labels you create will appear here
-            </div>
+            Loading labels…
           </div>
         }
       >
-        <For each={grouped()}>
-          {(group) => (
+        <Show
+          when={grouped().length}
+          fallback={
+            <div
+              style={{
+                "text-align": "center",
+                padding: "16px 12px",
+                color: "#808080",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  height: "7px",
+                  "border-radius": "3px",
+                  overflow: "hidden",
+                  background: "#1a1a1a",
+                  "margin-bottom": "10px",
+                }}
+              >
+                <div style={{ flex: "2", background: "#6366f1", opacity: "0.15" }} />
+                <div style={{ flex: "1" }} />
+                <div style={{ flex: "3", background: "#3b82f6", opacity: "0.15" }} />
+                <div style={{ flex: "1" }} />
+                <div style={{ flex: "2", background: "#14b8a6", opacity: "0.15" }} />
+              </div>
+              <div
+                style={{
+                  "font-size": "0.7rem",
+                  "font-weight": "600",
+                  color: "#909090",
+                  "margin-bottom": "4px",
+                }}
+              >
+                No labels yet
+              </div>
+              <div style={{ "font-size": "0.58rem", color: "#707070", "line-height": "1.4" }}>
+                Use the label grid above to tag your activity.
+                <br />
+                A timeline will build up here over time.
+              </div>
+            </div>
+          }
+        >
+          <For each={grouped()}>
+            {(group) => (
             <div style={{ "margin-bottom": "5px" }}>
               <div
                 style={{
@@ -230,7 +278,7 @@ export const LabelHistory: Component<{
                   "font-weight": "700",
                   "text-transform": "uppercase",
                   "letter-spacing": "0.06em",
-                  color: "#7a7a7a",
+                  color: "#9a9a9a",
                   "margin-bottom": "1px",
                   "border-bottom": "1px solid #333",
                   "padding-bottom": "1px",
@@ -268,13 +316,13 @@ export const LabelHistory: Component<{
                             width: "6px",
                             height: "6px",
                             "border-radius": "50%",
-                            background: LABEL_COLORS[lbl.label] ?? "#8a8a8a",
+                            background: LABEL_COLORS[lbl.label] ?? "#a0a0a0",
                             "flex-shrink": "0",
                           }}
                         />
                         <span
                           style={{
-                            color: LABEL_COLORS[lbl.label] ?? "#d0d0d0",
+                            color: LABEL_COLORS[lbl.label] ?? "#e0e0e0",
                             "font-weight": "600",
                             "font-size": "0.65rem",
                           }}
@@ -284,13 +332,13 @@ export const LabelHistory: Component<{
                       </span>
                       <span
                         style={{
-                          color: "#8a8a8a",
+                          color: "#a0a0a0",
                           "font-size": "0.65rem",
                           "white-space": "nowrap",
                         }}
                       >
                         {fmtTime(startD)} – {fmtTime(endD)}{" "}
-                        <span style={{ color: "#5a5a5a" }}>({dur})</span>
+                        <span style={{ color: "#808080" }}>({dur})</span>
                       </span>
                     </div>
                   );
@@ -298,7 +346,8 @@ export const LabelHistory: Component<{
               </For>
             </div>
           )}
-        </For>
+          </For>
+        </Show>
       </Show>
     </div>
   );

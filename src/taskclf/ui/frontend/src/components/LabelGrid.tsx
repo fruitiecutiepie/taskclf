@@ -418,7 +418,7 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
       >
         <Show
           when={lastLabel()}
-          fallback={<span style={{ color: "#5a5a5a" }}>No labels yet</span>}
+          fallback={<span style={{ color: "var(--text-muted)" }}>No labels yet</span>}
         >
           Last:{" "}
           <span

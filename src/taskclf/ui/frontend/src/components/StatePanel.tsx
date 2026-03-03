@@ -92,7 +92,7 @@ const Row: Component<{
   >
     <span
       style={{
-        color: "#8a8a8a",
+        color: "#a0a0a0",
         "font-size": "0.65rem",
         "flex-shrink": "0",
         "user-select": "none",
@@ -108,7 +108,7 @@ const Row: Component<{
         "font-family": props.mono
           ? "'SF Mono', 'Fira Code', monospace"
           : "inherit",
-        color: props.color ?? (props.dim ? "#8a8a8a" : "#d0d0d0"),
+        color: props.color ?? (props.dim ? "#a0a0a0" : "#e0e0e0"),
         "text-align": "right",
         overflow: "hidden",
         "text-overflow": "ellipsis",
@@ -144,9 +144,10 @@ const Section: Component<{
           "font-weight": "700",
           "text-transform": "uppercase",
           "letter-spacing": "0.06em",
-          color: "#7a7a7a",
-          padding: "2px 0 1px",
-          "border-bottom": "1px solid #333",
+          color: "#b0b0b0",
+          padding: "3px 5px 2px",
+          "border-radius": "4px",
+          background: "rgba(255, 255, 255, 0.04)",
         }}
       >
         <div style={{ display: "flex", "align-items": "center", gap: "4px" }}>
@@ -156,7 +157,7 @@ const Section: Component<{
               transition: "transform 0.15s ease",
               transform: open() ? "rotate(90deg)" : "rotate(0deg)",
               "font-size": "0.5rem",
-              color: "#555",
+              color: "#808080",
             }}
           >
             ▶
@@ -168,7 +169,7 @@ const Section: Component<{
             style={{
               "font-size": "0.6rem",
               "font-weight": "600",
-              color: props.summaryColor ?? "#999",
+              color: props.summaryColor ?? "#b0b0b0",
               "text-transform": "none",
               "letter-spacing": "normal",
               overflow: "hidden",
@@ -182,7 +183,7 @@ const Section: Component<{
         </Show>
       </div>
       <Show when={open()}>
-        <div style={{ "padding-top": "1px" }}>{props.children}</div>
+        <div style={{ "padding": "2px 0 0 6px" }}>{props.children}</div>
       </Show>
     </div>
   );
@@ -261,7 +262,7 @@ export const StatePanel: Component<{
   });
   const predSummaryColor = createMemo(() => {
     const p = pred();
-    return p ? (LABEL_COLORS[p.mapped_label] ?? "#d0d0d0") : "#8a8a8a";
+    return p ? (LABEL_COLORS[p.mapped_label] ?? "#e0e0e0") : "#a0a0a0";
   });
 
   const modelSummary = createMemo(() => {
@@ -286,7 +287,7 @@ export const StatePanel: Component<{
   });
   const sugSummaryColor = createMemo(() => {
     const s = sug();
-    return s ? (LABEL_COLORS[s.suggested] ?? "#d0d0d0") : "#8a8a8a";
+    return s ? (LABEL_COLORS[s.suggested] ?? "#e0e0e0") : "#a0a0a0";
   });
 
   const awSummary = createMemo(() =>
@@ -315,7 +316,7 @@ export const StatePanel: Component<{
         "font-family": "'SF Mono', 'Fira Code', 'Cascadia Code', monospace",
         "font-size": "0.65rem",
         "min-width": "230px",
-        color: "#d0d0d0",
+        color: "#e0e0e0",
         "box-shadow": "0 8px 32px rgba(0, 0, 0, 0.6)",
       }}
     >
@@ -336,7 +337,7 @@ export const StatePanel: Component<{
               padding: "3px 0",
               border: "none",
               background: tab() === t ? "#333" : "transparent",
-              color: tab() === t ? "#e0e0e0" : "#7a7a7a",
+              color: tab() === t ? "#e0e0e0" : "#9a9a9a",
               "font-size": "0.7rem",
               "font-weight": tab() === t ? "700" : "500",
               "font-family": "inherit",
@@ -416,12 +417,12 @@ export const StatePanel: Component<{
           <Row
             label="label"
             value={pred()!.label}
-            color={LABEL_COLORS[pred()!.label] ?? "#d0d0d0"}
+            color={LABEL_COLORS[pred()!.label] ?? "#e0e0e0"}
           />
           <Row
             label="mapped_label"
             value={pred()!.mapped_label}
-            color={LABEL_COLORS[pred()!.mapped_label] ?? "#d0d0d0"}
+            color={LABEL_COLORS[pred()!.mapped_label] ?? "#e0e0e0"}
           />
           <Row
             label="confidence"
@@ -465,7 +466,7 @@ export const StatePanel: Component<{
           <Row
             label="suggested"
             value={tray()!.suggested_label!}
-            color={LABEL_COLORS[tray()!.suggested_label!] ?? "#d0d0d0"}
+            color={LABEL_COLORS[tray()!.suggested_label!] ?? "#e0e0e0"}
           />
           <Row
             label="suggestion_conf"
@@ -512,7 +513,7 @@ export const StatePanel: Component<{
           <Row
             label="suggested"
             value={sug()!.suggested}
-            color={LABEL_COLORS[sug()!.suggested] ?? "#d0d0d0"}
+            color={LABEL_COLORS[sug()!.suggested] ?? "#e0e0e0"}
           />
           <Row
             label="confidence"
@@ -559,7 +560,7 @@ export const StatePanel: Component<{
           >
             <span
               style={{
-                color: "#7a7a7a",
+                color: "#9a9a9a",
                 "font-size": "0.58rem",
                 "text-transform": "uppercase",
               }}
@@ -645,7 +646,7 @@ export const StatePanel: Component<{
       </Show>
 
       <Show when={tab() === "history"}>
-        <LabelHistory visible={() => true} />
+        <LabelHistory visible={() => true} latestPrediction={props.latestPrediction} />
       </Show>
     </div>
   );
