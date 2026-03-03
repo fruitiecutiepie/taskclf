@@ -189,10 +189,7 @@ def run_window(
             one is created.
     """
     import os
-    import platform
-
-    if platform.system() == "Darwin":
-        os.environ.setdefault("OS_ACTIVITY_MODE", "disable")
+    import sys
 
     import webview
 
@@ -257,7 +254,25 @@ def run_window(
     )
     api.bind_panel(panel)
 
+    saved_stderr_fd: int | None = None
+    if sys.platform == "darwin":
+        try:
+            saved_stderr_fd = os.dup(2)
+            devnull = os.open(os.devnull, os.O_WRONLY)
+            os.dup2(devnull, 2)
+            os.close(devnull)
+        except OSError:
+            saved_stderr_fd = None
+
     def _startup(win: Any) -> None:
+        nonlocal saved_stderr_fd
+        if saved_stderr_fd is not None:
+            try:
+                os.dup2(saved_stderr_fd, 2)
+                os.close(saved_stderr_fd)
+            except OSError:
+                pass
+            saved_stderr_fd = None
         if on_ready is not None:
             on_ready(win)
 
