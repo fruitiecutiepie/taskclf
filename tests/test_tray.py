@@ -973,3 +973,181 @@ class TestColdStart:
         initial_events = [e for e in captured if e["type"] == "initial_app"]
         assert len(initial_events) == 1
         assert initial_events[0]["app"] == "com.apple.Safari"
+
+
+# ---------------------------------------------------------------------------
+# Server startup unification  (Item 1)
+# ---------------------------------------------------------------------------
+
+
+class TestServerStartup:
+    """Verify that both --browser and native-window modes run FastAPI
+    in-process with the tray's shared EventBus."""
+
+    @patch("uvicorn.Server")
+    @patch("uvicorn.Config")
+    @patch("taskclf.ui.server.create_app")
+    def test_start_server_passes_shared_event_bus(
+        self, mock_create_app: MagicMock, mock_config: MagicMock,
+        mock_server_cls: MagicMock, tmp_path: Path,
+    ) -> None:
+        """_start_server() must pass self._event_bus to create_app()."""
+        mock_create_app.return_value = MagicMock()
+        mock_server_cls.return_value = MagicMock()
+
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+        labeler._start_server()
+
+        mock_create_app.assert_called_once()
+        call_kwargs = mock_create_app.call_args[1]
+        assert call_kwargs["event_bus"] is bus
+
+    @patch("uvicorn.Server")
+    @patch("uvicorn.Config")
+    @patch("taskclf.ui.server.create_app")
+    def test_start_server_passes_callbacks(
+        self, mock_create_app: MagicMock, mock_config: MagicMock,
+        mock_server_cls: MagicMock, tmp_path: Path,
+    ) -> None:
+        """_start_server() must wire on_label_saved, pause_toggle, is_paused."""
+        mock_create_app.return_value = MagicMock()
+        mock_server_cls.return_value = MagicMock()
+
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+        labeler._start_server()
+
+        call_kwargs = mock_create_app.call_args[1]
+        assert call_kwargs["on_label_saved"] == labeler._on_label_saved
+        assert call_kwargs["pause_toggle"] == labeler._toggle_pause
+        assert callable(call_kwargs["is_paused"])
+
+    @patch("uvicorn.Server")
+    @patch("uvicorn.Config")
+    @patch("taskclf.ui.server.create_app")
+    def test_start_server_sets_ui_server_running(
+        self, mock_create_app: MagicMock, mock_config: MagicMock,
+        mock_server_cls: MagicMock, tmp_path: Path,
+    ) -> None:
+        mock_create_app.return_value = MagicMock()
+        mock_server_cls.return_value = MagicMock()
+
+        labeler = _make_tray_labeler(tmp_path)
+        assert labeler._ui_server_running is False
+        labeler._start_server()
+        assert labeler._ui_server_running is True
+
+    @patch("uvicorn.Server")
+    @patch("uvicorn.Config")
+    @patch("taskclf.ui.server.create_app")
+    def test_start_server_returns_ui_port(
+        self, mock_create_app: MagicMock, mock_config: MagicMock,
+        mock_server_cls: MagicMock, tmp_path: Path,
+    ) -> None:
+        mock_create_app.return_value = MagicMock()
+        mock_server_cls.return_value = MagicMock()
+
+        labeler = TrayLabeler(data_dir=tmp_path, ui_port=9999)
+        port = labeler._start_server()
+        assert port == 9999
+
+    @patch("taskclf.ui.tray.TrayLabeler._spawn_window")
+    @patch("taskclf.ui.tray.TrayLabeler._start_server")
+    def test_subprocess_mode_calls_start_server_then_spawn_window(
+        self, mock_start: MagicMock, mock_spawn: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """_start_ui_subprocess() must call _start_server() then _spawn_window()."""
+        labeler = _make_tray_labeler(tmp_path)
+        labeler._start_ui_subprocess()
+
+        mock_start.assert_called_once()
+        mock_spawn.assert_called_once()
+
+    @patch("taskclf.ui.tray.TrayLabeler._start_server", return_value=8741)
+    def test_embedded_mode_calls_start_server(
+        self, mock_start: MagicMock, tmp_path: Path,
+    ) -> None:
+        """_start_ui_embedded() must call _start_server()."""
+        labeler = TrayLabeler(data_dir=tmp_path, browser=True)
+        with patch("webbrowser.open"):
+            labeler._start_ui_embedded()
+        mock_start.assert_called_once()
+
+    @patch("subprocess.Popen")
+    def test_spawn_window_launches_pywebview_module(
+        self, mock_popen: MagicMock, tmp_path: Path,
+    ) -> None:
+        """_spawn_window() must invoke python -m taskclf.ui.window."""
+        mock_proc = MagicMock()
+        mock_proc.pid = 12345
+        mock_popen.return_value = mock_proc
+
+        labeler = TrayLabeler(data_dir=tmp_path, ui_port=8741)
+        labeler._spawn_window()
+
+        mock_popen.assert_called_once()
+        cmd = mock_popen.call_args[0][0]
+        assert "taskclf.ui.window" in cmd
+        assert "--port" in cmd
+        assert "8741" in cmd
+        assert "taskclf.cli.main" not in cmd
+
+    @patch("subprocess.Popen")
+    def test_spawn_window_failure_does_not_raise(
+        self, mock_popen: MagicMock, tmp_path: Path,
+    ) -> None:
+        """_spawn_window() gracefully handles subprocess failures."""
+        mock_popen.side_effect = OSError("pywebview not installed")
+
+        labeler = _make_tray_labeler(tmp_path)
+        labeler._spawn_window()
+        assert labeler._ui_proc is None
+
+
+class TestOpenDashboard:
+    """Verify _open_dashboard behaviour for both browser and native modes."""
+
+    def test_browser_mode_opens_webbrowser(self, tmp_path: Path) -> None:
+        bus, _ = _capture_bus()
+        labeler = TrayLabeler(data_dir=tmp_path, browser=True, event_bus=bus)
+        with patch("webbrowser.open") as mock_open:
+            labeler._open_dashboard()
+            mock_open.assert_called_once()
+            url = mock_open.call_args[0][0]
+            assert "127.0.0.1" in url
+
+    def test_native_mode_noop_when_window_alive(self, tmp_path: Path) -> None:
+        """If pywebview subprocess is still running, _open_dashboard is a no-op."""
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = None  # still running
+        labeler._ui_proc = mock_proc
+
+        with patch.object(labeler, "_spawn_window") as mock_spawn:
+            labeler._open_dashboard()
+            mock_spawn.assert_not_called()
+
+    def test_native_mode_respawns_when_window_exited(self, tmp_path: Path) -> None:
+        """If pywebview subprocess exited, _open_dashboard restarts it."""
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = 0  # exited
+        labeler._ui_proc = mock_proc
+
+        with patch.object(labeler, "_spawn_window") as mock_spawn:
+            labeler._open_dashboard()
+            mock_spawn.assert_called_once()
+
+    def test_native_mode_spawns_when_no_prior_proc(self, tmp_path: Path) -> None:
+        """If no subprocess was ever started, _open_dashboard spawns one."""
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+        assert labeler._ui_proc is None
+
+        with patch.object(labeler, "_spawn_window") as mock_spawn:
+            labeler._open_dashboard()
+            mock_spawn.assert_called_once()

@@ -278,3 +278,12 @@ def run_window(
             on_ready(win)
 
     webview.start(func=_startup, args=[window])
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Launch pywebview window for taskclf")
+    parser.add_argument("--port", type=int, default=8741, help="Port of the FastAPI server")
+    args = parser.parse_args()
+    run_window(port=args.port)

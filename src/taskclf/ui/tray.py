@@ -602,24 +602,10 @@ class TrayLabeler:
             webbrowser.open(f"http://127.0.0.1:{ui_port}")
             return
 
-        import urllib.request
-
-        if self._ui_proc is not None and self._ui_proc.poll() is not None:
-            self._ui_server_running = False
-
-        if not self._ui_server_running:
-            self._start_ui_subprocess()
+        if self._ui_proc is not None and self._ui_proc.poll() is None:
             return
 
-        try:
-            req = urllib.request.Request(
-                f"http://127.0.0.1:{self._ui_port}/api/window/toggle",
-                method="POST",
-            )
-            urllib.request.urlopen(req, timeout=2)
-        except Exception:
-            logger.debug("UI toggle API request failed, falling back to subprocess", exc_info=True)
-            self._start_ui_subprocess()
+        self._spawn_window()
 
     def _quit(self, *_args: Any) -> None:
         self._monitor.stop()
@@ -630,41 +616,18 @@ class TrayLabeler:
     def _notify(self, message: str) -> None:
         _send_desktop_notification("taskclf", message, timeout=5)
 
-    def _start_ui_subprocess(self) -> None:
-        """Spawn ``taskclf ui`` as a child process (pywebview + FastAPI server)."""
-        import subprocess
-        import sys
+    def _start_server(self) -> int:
+        """Start FastAPI + uvicorn in-process, sharing the tray's EventBus.
 
-        try:
-            cmd = [
-                sys.executable, "-m", "taskclf.cli.main", "ui",
-                "--port", str(self._ui_port),
-                "--data-dir", str(self._data_dir),
-                "--aw-host", self._aw_host,
-                "--title-salt", self._title_salt,
-            ]
-            if self._dev:
-                cmd.append("--dev")
-            if self._browser:
-                cmd.append("--browser")
-            self._ui_proc = subprocess.Popen(cmd)
-            self._ui_server_running = True
-            mode = " (dev)" if self._dev else ""
-            print(f"UI window launched{mode} (pid={self._ui_proc.pid}, port={self._ui_port})")
-        except Exception:
-            logger.warning("Could not start UI subprocess", exc_info=True)
-            print("Warning: UI window failed to start")
+        Both ``--browser`` and native-window modes call this so that tray
+        events (status, tray_state, suggest_label, prediction) are always
+        visible to WebSocket clients.
 
-    def _start_ui_embedded(self) -> None:
-        """Run FastAPI + uvicorn in-process, sharing the tray's EventBus.
-
-        This gives the browser full visibility into tray state (status,
-        tray_state, suggest_label, prediction) because the server and
-        the tray publish/subscribe on the same ``EventBus`` instance.
+        Returns:
+            The effective UI port (may differ from ``self._ui_port`` when
+            ``--dev`` starts a Vite proxy on port 5173).
         """
         import os
-        import subprocess
-        import webbrowser
 
         import uvicorn
 
@@ -699,7 +662,7 @@ class TrayLabeler:
             frontend_dir = Path(_ui_srv.__file__).resolve().parent / "frontend"
             if not frontend_dir.is_dir():
                 print("Warning: frontend source not found (--dev requires a repo checkout)")
-                return
+                return ui_port
 
             if not (frontend_dir / "node_modules").is_dir():
                 print("Installing frontend dependencies…")
@@ -722,11 +685,44 @@ class TrayLabeler:
                 except Exception:
                     if self._vite_proc.poll() is not None:
                         print("Warning: Vite dev server exited unexpectedly")
-                        return
+                        return ui_port
                     time.sleep(0.5)
             else:
                 print("Warning: Vite dev server not responding, opening anyway")
 
+        return ui_port
+
+    def _start_ui_subprocess(self) -> None:
+        """Run FastAPI in-process and spawn a pywebview window subprocess.
+
+        The server runs in-process so the tray's ``EventBus`` is shared
+        with WebSocket clients.  Only the native window shell runs in a
+        child process (no duplicate ``ActivityMonitor`` or ``EventBus``).
+        """
+        self._start_server()
+        self._spawn_window()
+
+    def _spawn_window(self) -> None:
+        """Spawn a pywebview-only subprocess pointing at the in-process server."""
+        import sys
+
+        try:
+            cmd = [
+                sys.executable, "-m", "taskclf.ui.window",
+                "--port", str(self._ui_port),
+            ]
+            self._ui_proc = subprocess.Popen(cmd)
+            mode = " (dev)" if self._dev else ""
+            print(f"UI window launched{mode} (pid={self._ui_proc.pid}, port={self._ui_port})")
+        except Exception:
+            logger.warning("Could not start UI window subprocess", exc_info=True)
+            print(f"Warning: UI window failed to start. Dashboard at http://127.0.0.1:{self._ui_port}")
+
+    def _start_ui_embedded(self) -> None:
+        """Run FastAPI in-process and open the dashboard in the default browser."""
+        import webbrowser
+
+        ui_port = self._start_server()
         webbrowser.open(f"http://127.0.0.1:{ui_port}")
         mode = " (dev)" if self._dev else ""
         print(f"UI opened in browser{mode} (port={ui_port})")
@@ -822,8 +818,10 @@ def run_tray(
 ) -> None:
     """Launch the system tray labeling app.
 
-    Spawns ``taskclf ui`` as a child process on startup so the
-    native floating window is available immediately.
+    Always starts the FastAPI server in-process so the tray's
+    ``EventBus`` is shared with WebSocket clients.  In browser mode
+    the dashboard opens in the default browser; otherwise a lightweight
+    pywebview subprocess provides the native floating window.
 
     Args:
         model_dir: Optional path to a trained model bundle.  When

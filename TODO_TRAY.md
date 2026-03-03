@@ -6,15 +6,10 @@ Issues identified from user-use-case analysis of `taskclf tray`.
 
 ## High Priority
 
-### 1. EventBus not shared in native window mode
-**File:** `tray.py` — `_start_ui_subprocess()` vs `_start_ui_embedded()`
+### ~~1. EventBus not shared in native window mode~~ DONE
 
-`--browser` runs FastAPI in-process and shares the tray's `EventBus`.
-Without `--browser`, the UI is spawned as a child process (`taskclf ui`) with its own isolated `EventBus`.
-The `status`, `tray_state`, `suggest_label`, and `prediction` events from `ActivityMonitor` and `TrayLabeler` never reach the subprocess's web UI.
-StatePanel, LiveBadge predictions, suggestion banners, and transition progress bars all show nothing in native mode.
-
-**Fix:** Either forward events over an IPC channel (e.g. Unix socket / localhost TCP) or always run FastAPI in-process regardless of `--browser`.
+FastAPI now always runs in-process with the tray's shared `EventBus`, regardless of `--browser`. The server startup logic is extracted into `_start_server()` which both `_start_ui_embedded()` and `_start_ui_subprocess()` call. In native window mode, the subprocess now spawns only a lightweight pywebview shell (`python -m taskclf.ui.window --port PORT`) instead of a full `taskclf ui` process — no duplicate `ActivityMonitor` or `EventBus`. All tray events (`status`, `tray_state`, `suggest_label`, `prediction`) now reach the web UI in both modes.
+**Note:** The `POST /api/window/toggle` endpoint is unavailable in native window mode (same as browser mode) because the `WindowAPI` is not shared across processes. Window visibility is managed by pywebview directly. The `labels_saved_count` counter (item #9) now works in both modes.
 
 ---
 
@@ -71,8 +66,8 @@ The server now returns structured 409 responses with an `OverlapErrorDetail` bod
 
 ### ~~9. `labels_saved_count` is always zero~~ DONE
 
-`create_app()` now accepts an `on_label_saved` callback. The server calls it after successful saves in `POST /api/labels` and `POST /api/notification/accept`. `TrayLabeler._start_ui_embedded()` passes `_on_label_saved` which increments `_labels_saved_count`.
-**Note:** Only works in embedded (`--browser`) mode. In subprocess mode the counter stays zero (blocked by item #1).
+`create_app()` now accepts an `on_label_saved` callback. The server calls it after successful saves in `POST /api/labels` and `POST /api/notification/accept`. `TrayLabeler._start_server()` passes `_on_label_saved` which increments `_labels_saved_count`.
+Works in both `--browser` and native window modes since the server always runs in-process (item #1 fixed).
 
 ### ~~10. `--no-tray` without `--browser` doesn't tell the user where the UI is~~ DONE
 
@@ -89,12 +84,9 @@ After a successful label, the grid shows a flash message for 1500ms then collaps
 
 **Fix:** Allow click-to-dismiss or reduce the delay. Consider keeping the grid open so the user can label again immediately.
 
-### 13. `LabelRecent` component is dead code
-**File:** `LabelRecent.tsx`
+### ~~13. `LabelRecent` component is dead code~~ DONE
 
-`LabelRecent` is exported but never imported anywhere — not in `App.tsx`, not in any route. It duplicates `LabelGrid` functionality (creating labels for recent time windows) with a different UX (form with range sliders vs. preset buttons). It also lacks `extend_forward` and confidence controls that `LabelGrid` has.
-
-**Fix:** Remove `LabelRecent.tsx` or wire it into the app as a dedicated "custom time range" labeling view if that use case is needed.
+`LabelRecent.tsx` has been removed. It was never imported in `App.tsx` or any other component and duplicated `LabelGrid` functionality without `extend_forward` or confidence controls.
 
 ### ~~14. `extend_forward` publishes a fake "prediction" event~~ DONE
 

@@ -100,7 +100,7 @@ taskclf tray --dev
 ## Features
 
 - **System tray icon** -- runs persistently in the background via pystray.
-- **Embedded web UI server** -- automatically starts the FastAPI server so "Show/Hide Window" opens the labeling dashboard in a browser without needing a separate `taskclf ui` process.
+- **In-process web UI server** -- the FastAPI server always runs in-process, sharing the tray's `EventBus`. In `--browser` mode the dashboard opens in the default browser; otherwise a lightweight pywebview subprocess provides a native floating window. Both modes receive the same live events (status, tray_state, suggest_label, prediction) because the server and the tray publish/subscribe on the same `EventBus` instance.
 - **Activity transition detection** -- polls ActivityWatch and detects when the dominant foreground app changes. A transition fires when the new app persists for >= `--transition-minutes` (default 3). On the first poll, an `initial_app` event is published so the UI can prompt labeling for the pre-start period.
 - **Pause/resume** -- monitoring can be paused via the tray menu ("Pause"/"Resume") or the `POST /api/tray/pause` REST endpoint. When paused, polling and transition detection are skipped but session state (poll count, transitions) is preserved. The `status` event emits `state: "paused"` and the `tray_state` event includes `paused: true`.
 - **Desktop notifications** -- on each transition, a notification prompts the user to label the completed block. By default, app names are redacted for privacy (`privacy_notifications=True`). Set `privacy_notifications=False` to show raw app identifiers. Notifications can be disabled entirely with `notifications_enabled=False`.
