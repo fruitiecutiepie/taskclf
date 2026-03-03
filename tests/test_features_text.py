@@ -74,10 +74,16 @@ class TestTitleHashBucket:
             title_hash_bucket("aabbccddee00", n_buckets=-1)
 
     def test_non_hex_fallback(self) -> None:
-        """TC-FEAT-TEXT-003: non-hex input falls back to hash(), returns valid int."""
+        """TC-FEAT-TEXT-003: non-hex input falls back to SHA-256, returns valid int."""
         result = title_hash_bucket("not-hex-string", n_buckets=256)
         assert isinstance(result, int)
         assert 0 <= result < 256
+
+    def test_non_hex_fallback_deterministic(self) -> None:
+        """Regression: non-hex fallback must be deterministic across calls."""
+        a = title_hash_bucket("not-hex-string", n_buckets=256)
+        b = title_hash_bucket("not-hex-string", n_buckets=256)
+        assert a == b
 
     def test_custom_n_buckets(self) -> None:
         """TC-FEAT-TEXT-004: custom n_buckets=10 produces result in [0, 10)."""

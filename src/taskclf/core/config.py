@@ -63,8 +63,8 @@ class UserConfig:
         return {}
 
     def _ensure_user_id(self) -> None:
-        """Generate and persist a stable ``user_id`` if one does not exist."""
-        if "user_id" not in self._data:
+        """Generate and persist a stable ``user_id`` if one is missing or invalid."""
+        if not self._data.get("user_id"):
             self._data["user_id"] = str(uuid.uuid4())
             self._persist()
 

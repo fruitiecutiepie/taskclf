@@ -1950,9 +1950,9 @@ def report_daily_cmd(
             if smoothed_labels is None:
                 smoothed_labels = raw_labels
         if "mapped_label" in pred_df.columns:
-            mapped_labels = list(pred_df["mapped_label"].dropna().values)
-            if len(mapped_labels) == 0:
-                mapped_labels = None
+            from taskclf.core.defaults import MIXED_UNKNOWN as _MU
+
+            mapped_labels = list(pred_df["mapped_label"].fillna(_MU).values)
 
     app_switch_counts: list[float | int | None] | None = None
     if features_dir is not None:

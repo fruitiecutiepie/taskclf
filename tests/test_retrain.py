@@ -422,6 +422,31 @@ class TestRetrainPipeline:
             bundle_dir = Path(result.run_dir)
             assert bundle_dir.name in pointer.model_dir
 
+    def test_date_range_from_labeled_data(self, tmp_path: Path) -> None:
+        """Regression: snapshot date range must come from labeled data, not all features."""
+        models_dir = tmp_path / "models"
+        models_dir.mkdir()
+        out_dir = tmp_path / "artifacts"
+        config = RetrainConfig()
+
+        dates = [dt.date(2025, 7, 1), dt.date(2025, 7, 2), dt.date(2025, 7, 3)]
+        features_df, labels = _make_features_and_labels(dates)
+
+        result = run_retrain_pipeline(
+            config, features_df, labels,
+            models_dir=models_dir,
+            out_dir=out_dir,
+            force=True,
+            data_provenance="synthetic",
+        )
+
+        snap = result.dataset_snapshot
+        assert snap.date_from != ""
+        assert snap.date_to != ""
+        date_from = pd.Timestamp(snap.date_from)
+        date_to = pd.Timestamp(snap.date_to)
+        assert date_to >= date_from
+
     def test_champion_source_reported(self, tmp_path: Path) -> None:
         """When a champion exists, champion_source should name it."""
         models_dir = tmp_path / "models"

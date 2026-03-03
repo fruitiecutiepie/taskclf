@@ -404,3 +404,20 @@ class TestCustomThresholds:
 
         custom_labels, _ = run_baseline_inference(df, scroll_high=100.0)
         assert custom_labels[0] != CoreLabel.ReadResearch
+
+
+class TestUnsortedInput:
+    def test_unsorted_df_produces_sorted_segments(self) -> None:
+        """Regression: unsorted features_df must produce correctly ordered segments."""
+        base_ts = dt.datetime(2025, 6, 15, 10, 0)
+        rows = []
+        for i in [2, 0, 1]:
+            rows.append({
+                "bucket_start_ts": base_ts + dt.timedelta(minutes=i),
+                "bucket_end_ts": base_ts + dt.timedelta(minutes=i + 1),
+            })
+        df = _make_df(rows)
+
+        _, segments = run_baseline_inference(df)
+        for i in range(1, len(segments)):
+            assert segments[i].start_ts >= segments[i - 1].start_ts

@@ -314,6 +314,22 @@ class TestLoadCatEncodersRoundTrip:
         _, _, cat_encoders = load_model_bundle(run_dir)
         assert cat_encoders is None
 
+    def test_unsorted_classes_produce_correct_transform(self, tmp_path, trained_bundle) -> None:
+        """Regression: encoder must transform correctly even when JSON vocab is unsorted."""
+        run_dir = tmp_path / "unsorted_enc_run"
+        run_dir.mkdir()
+        shutil.copy(trained_bundle["run_dir"] / "model.txt", run_dir / "model.txt")
+        shutil.copy(trained_bundle["run_dir"] / "metadata.json", run_dir / "metadata.json")
+
+        unsorted_vocab = {"test_col": ["zebra", "apple", "mango"]}
+        (run_dir / "categorical_encoders.json").write_text(json.dumps(unsorted_vocab))
+
+        _, _, cat_encoders = load_model_bundle(run_dir)
+        assert cat_encoders is not None
+        le = cat_encoders["test_col"]
+        result = le.transform(["apple", "mango", "zebra"])
+        assert list(result) == [0, 1, 2]
+
 
 class TestBuildMetadataParams:
     """TC-MODEL-009/010: build_metadata reject_threshold and dataset_hash."""

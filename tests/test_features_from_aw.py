@@ -327,6 +327,20 @@ class TestNewFeatureUpgrades:
         assert rows[1].title_repeat_count_session == 1
         assert rows[2].title_repeat_count_session == 2
 
+    def test_title_repeat_count_resets_across_sessions(self) -> None:
+        """Regression: title_repeat_count_session must reset at session boundaries."""
+        base = dt.datetime(2026, 2, 23, 10, 0, 0)
+        gap = dt.timedelta(seconds=600)
+        events = [
+            _make_event(base, title_hash="same_hash"),
+            _make_event(base + dt.timedelta(minutes=1), title_hash="same_hash"),
+            _make_event(base + dt.timedelta(minutes=2) + gap, title_hash="same_hash"),
+        ]
+        rows = build_features_from_aw_events(events, idle_gap_seconds=300)
+        assert rows[0].title_repeat_count_session == 1
+        assert rows[1].title_repeat_count_session == 2
+        assert rows[2].title_repeat_count_session == 1
+
     def test_rolling_means_none_without_input(self) -> None:
         """Rolling means are None when no input events provided."""
         ts = dt.datetime(2026, 2, 23, 10, 0, 0)

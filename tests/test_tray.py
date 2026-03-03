@@ -590,6 +590,20 @@ class TestSendDesktopNotification:
 
         mock_logger.info.assert_called_once()
 
+    @patch("taskclf.ui.tray.subprocess.run")
+    @patch("taskclf.ui.tray.platform.system", return_value="Darwin")
+    def test_newlines_and_quotes_escaped(
+        self, _mock_sys: MagicMock, mock_run: MagicMock,
+    ) -> None:
+        """Regression: newlines and double quotes must not break the AppleScript."""
+        _send_desktop_notification('Has "quotes"', "Line1\nLine2")
+
+        mock_run.assert_called_once()
+        script = mock_run.call_args[0][0][2]
+        assert "\n" not in script
+        assert '"Has \\"quotes\\""' in script or '\\"quotes\\"' in script
+        assert "Line1 Line2" in script
+
 
 # ---------------------------------------------------------------------------
 # 48 — _make_icon_image

@@ -508,7 +508,7 @@ def run_retrain_pipeline(
         raise ValueError("No labeled rows after projection — cannot retrain")
 
     class_dist = labeled_df["label"].value_counts().to_dict()
-    ts_col = features_df["bucket_start_ts"]
+    ts_col = labeled_df["bucket_start_ts"]
 
     snapshot = DatasetSnapshot(
         dataset_hash=dataset_hash,

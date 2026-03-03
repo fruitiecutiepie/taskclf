@@ -179,6 +179,7 @@ def run_baseline_inference(
     Returns:
         A ``(smoothed_labels, segments)`` tuple.
     """
+    features_df = features_df.sort_values("bucket_start_ts").reset_index(drop=True)
     raw_labels = predict_baseline(
         features_df,
         idle_active_threshold=idle_active_threshold,

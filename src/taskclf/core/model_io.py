@@ -178,7 +178,7 @@ def load_model_bundle(
         cat_encoders = {}
         for col, classes in vocab.items():
             le = LabelEncoder()
-            le.classes_ = __import__("numpy").array(classes)
+            le.fit(classes)
             cat_encoders[col] = le
 
     return model, metadata, cat_encoders

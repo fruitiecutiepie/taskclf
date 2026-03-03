@@ -141,3 +141,22 @@ def test_update_whitespace_username_rejected(tmp_path):
     cfg = UserConfig(tmp_path)
     with pytest.raises(ValueError, match="empty"):
         cfg.update({"username": "   "})
+
+
+def test_empty_user_id_regenerated(tmp_path):
+    """Regression: empty-string user_id in config.json must be regenerated."""
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps({"user_id": ""}))
+    cfg = UserConfig(tmp_path)
+    assert cfg.user_id != ""
+    uuid.UUID(cfg.user_id)
+
+
+def test_null_user_id_regenerated(tmp_path):
+    """Regression: null user_id in config.json must be regenerated."""
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps({"user_id": None}))
+    cfg = UserConfig(tmp_path)
+    assert cfg.user_id is not None
+    assert cfg.user_id != ""
+    uuid.UUID(cfg.user_id)

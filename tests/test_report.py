@@ -135,6 +135,19 @@ class TestBuildDailyReportMapped:
         report = _basic_report(mapped_labels=mapped)
         assert report.mapped_breakdown == {"Focus": pytest.approx(10.0)}
 
+    def test_mapped_labels_length_must_match_buckets(self) -> None:
+        """Regression: mapped_labels list must have one entry per bucket.
+
+        The Bug 11 fix in CLI ensures NaN values are filled rather than
+        dropped, keeping the list the same length as the bucket count.
+        """
+        segs = _segs([("Build", 5), ("Write", 5)])
+        mapped = ["Deep Work"] * 10
+        report = build_daily_report(segs, bucket_seconds=60, mapped_labels=mapped)
+        assert report.mapped_breakdown is not None
+        total_mapped = sum(report.mapped_breakdown.values())
+        assert total_mapped == pytest.approx(10.0)
+
 
 # ---------------------------------------------------------------------------
 # build_daily_report() — flap rates
@@ -330,6 +343,18 @@ class TestCheckNoSensitiveFields:
             "core_breakdown": {"Build": 5.0, "Write": 5.0},
         })
 
+    def test_sensitive_key_inside_list(self) -> None:
+        """Regression: sensitive keys nested in lists must be detected."""
+        with pytest.raises(ValueError, match="raw_keystrokes"):
+            _check_no_sensitive_fields({
+                "items": [{"raw_keystrokes": "secret"}],
+            })
+
+    def test_clean_list_passes(self) -> None:
+        _check_no_sensitive_fields({
+            "items": [{"app_id": "com.apple.Terminal", "count": 5}],
+        })
+
 
 # ---------------------------------------------------------------------------
 # Export functions reject sensitive data
@@ -461,6 +486,14 @@ class TestBuildContextSwitchStatsEdgeCases:
         stats = _build_context_switch_stats([1, 2, 3, 4])
         assert stats is not None
         assert stats.median == 2.5
+
+    def test_nan_values_filtered(self) -> None:
+        """Regression: NaN values must not crash int() conversion."""
+        counts: list[float | int | None] = [2, float("nan"), 4, None, float("nan")]
+        stats = _build_context_switch_stats(counts)
+        assert stats is not None
+        assert stats.buckets_counted == 2
+        assert stats.total_switches == 6
 
 
 # ---------------------------------------------------------------------------

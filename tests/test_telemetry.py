@@ -174,3 +174,14 @@ class TestTelemetryStore:
         start = datetime(2026, 1, 1, tzinfo=timezone.utc)
         end = datetime(2026, 12, 31, tzinfo=timezone.utc)
         assert store.read_range(start, end) == []
+
+    def test_append_no_temp_files_left(self, tmp_path: Path) -> None:
+        """Regression: atomic write must not leave .tmp files behind."""
+        store = TelemetryStore(tmp_path / "telemetry")
+        snap = TelemetrySnapshot(
+            timestamp=datetime.now(tz=timezone.utc),
+            total_windows=42,
+        )
+        store.append(snap)
+        tmp_files = list((tmp_path / "telemetry").glob("*.tmp"))
+        assert tmp_files == []
