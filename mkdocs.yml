@@ -129,6 +129,7 @@ nav:
           - Label Store: api/labels/store.md
           - Label Projection: api/labels/projection.md
           - Labeling Queue: api/labels/queue.md
+          - Weak Rules: api/labels/weak_rules.md
       - Training:
           - Build Dataset: api/train/build_dataset.md
           - Time-Based Splits: api/train/dataset.md
@@ -145,10 +146,13 @@ nav:
           - Prediction Smoothing: api/infer/smooth.md
           - Drift Monitor: api/infer/monitor.md
           - Task Taxonomy: api/infer/taxonomy.md
+          - Model Resolution: api/infer/resolve.md
       - Reports:
           - Daily Report: api/report/daily.md
           - Report Export: api/report/export.md
       - UI:
           - Web UI & System Tray: api/ui/labeling.md
+          - Event Bus: api/ui/events.md
+          - Native Window: api/ui/window.md
       - CLI:
           - Commands: api/cli/main.md

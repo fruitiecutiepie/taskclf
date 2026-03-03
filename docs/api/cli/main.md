@@ -15,6 +15,9 @@ Typer CLI entrypoint and commands.
 | `taskclf labels project` | Project label blocks onto feature windows |
 | `taskclf train build-dataset` | Build training dataset (X/y/splits artifacts) |
 | `taskclf train lgbm` | Train a LightGBM multiclass model |
+| `taskclf train evaluate` | Evaluate a trained model: metrics, calibration, acceptance checks |
+| `taskclf train tune-reject` | Sweep reject thresholds and recommend the best one |
+| `taskclf train calibrate` | Fit per-user probability calibrators |
 | `taskclf train retrain` | Run full retrain pipeline (train, evaluate, gate-check, promote) |
 | `taskclf train check-retrain` | Check whether retraining or calibrator update is due |
 | `taskclf train list` | List model bundles with ranking metrics and status |
@@ -30,6 +33,7 @@ Typer CLI entrypoint and commands.
 | `taskclf monitor drift-check` | Run drift detection (reference vs current) |
 | `taskclf monitor telemetry` | Compute and store a telemetry snapshot |
 | `taskclf monitor show` | Display recent telemetry snapshots |
+| `taskclf ui` | Launch the labeling UI as a native floating window |
 | `taskclf tray` | Run system tray labeling app with activity transition detection |
 
 ### labels add-block
@@ -91,6 +95,97 @@ taskclf train build-dataset \
   --synthetic \
   --holdout-fraction 0.1
 ```
+
+### train evaluate
+
+Run full evaluation of a trained model against labeled data.  Outputs
+overall metrics, per-class precision/recall/F1, per-user macro-F1,
+and acceptance-check verdicts.  Writes `evaluation.json`,
+`calibration.json`, `confusion_matrix.csv`, and `calibration.png` to
+the output directory.
+
+```bash
+taskclf train evaluate \
+  --model-dir models/run_20250615_120000 \
+  --from 2025-06-10 --to 2025-06-15 --synthetic
+```
+
+With user holdout for seen/unseen evaluation:
+
+```bash
+taskclf train evaluate \
+  --model-dir models/run_20250615_120000 \
+  --from 2025-06-10 --to 2025-06-15 \
+  --holdout-fraction 0.1 --reject-threshold 0.55
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--model-dir` | *(required)* | Path to a model run directory |
+| `--from` | *(required)* | Start date (YYYY-MM-DD) |
+| `--to` | *(required)* | End date (YYYY-MM-DD, inclusive) |
+| `--synthetic` | off | Generate dummy features + labels |
+| `--data-dir` | `data/processed` | Processed data directory |
+| `--out-dir` | `artifacts` | Output directory for evaluation artifacts |
+| `--holdout-fraction` | `0.0` | Fraction of users held out for unseen-user evaluation |
+| `--reject-threshold` | `0.55` | Max-probability below which prediction is rejected |
+
+### train tune-reject
+
+Sweep reject thresholds on a validation set and recommend the optimal
+value.  Outputs a Rich table showing accuracy, reject rate, coverage,
+and macro-F1 at each threshold.  Writes `reject_tuning.json` to the
+output directory.
+
+```bash
+taskclf train tune-reject \
+  --model-dir models/run_20250615_120000 \
+  --from 2025-06-10 --to 2025-06-15 --synthetic
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--model-dir` | *(required)* | Path to a model run directory |
+| `--from` | *(required)* | Start date (YYYY-MM-DD) |
+| `--to` | *(required)* | End date (YYYY-MM-DD, inclusive) |
+| `--synthetic` | off | Generate dummy features + labels |
+| `--data-dir` | `data/processed` | Processed data directory |
+| `--out-dir` | `artifacts` | Output directory for tuning report |
+
+### train calibrate
+
+Fit per-user probability calibrators and save a calibrator store.
+Reports each user's eligibility (labeled windows, days, distinct
+labels) and writes the store (global + per-user calibrators) to disk.
+
+```bash
+taskclf train calibrate \
+  --model-dir models/run_20250615_120000 \
+  --from 2025-06-10 --to 2025-06-15 --synthetic
+```
+
+With custom eligibility thresholds and isotonic method:
+
+```bash
+taskclf train calibrate \
+  --model-dir models/run_20250615_120000 \
+  --from 2025-06-10 --to 2025-06-15 \
+  --method isotonic \
+  --min-windows 100 --min-days 2 --min-labels 2
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--model-dir` | *(required)* | Path to a model run directory |
+| `--from` | *(required)* | Start date (YYYY-MM-DD) |
+| `--to` | *(required)* | End date (YYYY-MM-DD, inclusive) |
+| `--synthetic` | off | Generate dummy features + labels |
+| `--data-dir` | `data/processed` | Processed data directory |
+| `--out` | `artifacts/calibrator_store` | Output directory for calibrator store |
+| `--method` | `temperature` | Calibration method: `temperature` or `isotonic` |
+| `--min-windows` | `200` | Minimum labeled windows for per-user calibration |
+| `--min-days` | `3` | Minimum distinct days for per-user calibration |
+| `--min-labels` | `3` | Minimum distinct core labels for per-user calibration |
 
 ### train retrain
 
@@ -390,5 +485,52 @@ taskclf tray --dev --browser --no-tray
 | `--dev` | off | Vite hot reload + ephemeral data dir (unless `--data-dir` is set) |
 | `--browser` | off | Open UI in browser instead of native window |
 | `--no-tray` | off | Skip the native tray icon (use with `--browser` for browser-only mode) |
+
+### ui
+
+Launch the labeling UI as a native floating window with live prediction
+streaming.  Starts a FastAPI server, an `ActivityMonitor` background
+thread, and a pywebview window.  When `--model-dir` is provided, the
+app suggests labels on activity transitions using the trained model.
+
+```bash
+taskclf ui
+```
+
+With a model for live predictions:
+
+```bash
+taskclf ui --model-dir models/run_20260226
+```
+
+With frontend hot reload for development:
+
+```bash
+taskclf ui --dev
+```
+
+Open in browser instead of native window:
+
+```bash
+taskclf ui --browser
+```
+
+Combined dev + browser mode:
+
+```bash
+taskclf ui --dev --browser
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--port` | `8741` | Port for the web UI server |
+| `--model-dir` | *(none)* | Model bundle for live predictions |
+| `--aw-host` | `http://localhost:5600` | ActivityWatch server URL |
+| `--poll-seconds` | `60` | Seconds between AW polling iterations |
+| `--title-salt` | `taskclf-default-salt` | Salt for hashing window titles |
+| `--data-dir` | `data/processed` (ephemeral in `--dev`) | Processed data directory; omit with `--dev` for an auto-cleaned temp dir |
+| `--transition-minutes` | `3` | Minutes a new app must persist before suggesting a label |
+| `--browser` | off | Open UI in browser instead of native window |
+| `--dev` | off | Start Vite dev server for frontend hot reload; uses ephemeral data dir unless `--data-dir` is set |
 
 ::: taskclf.cli.main

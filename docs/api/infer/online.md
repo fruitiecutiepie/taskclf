@@ -16,7 +16,7 @@ automatically using `resolve_model_dir()` from `taskclf.infer.resolve`:
 ## Model hot-reload
 
 When `--models-dir` is provided (always the case with the default CLI),
-the online loop watches `models/active.json` for changes using mtime
+the online loop watches `models/active.json` (see [model bundle layout](../../guide/model_io.md)) for changes using mtime
 polling (default interval: 60 seconds).  When a change is detected:
 
 1. The new active bundle is resolved and loaded.
@@ -30,7 +30,7 @@ running, without requiring a restart.
 
 When `label_queue_path` is provided, the online loop auto-enqueues
 predictions whose confidence falls below `label_confidence_threshold`
-(default 0.55) into the `ActiveLabelingQueue`.  Enqueued items surface
+(default 0.55) into the [`ActiveLabelingQueue`](../labels/queue.md).  Enqueued items surface
 in `taskclf labels show-queue` and the web UI for
 manual review.
 

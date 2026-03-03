@@ -5,8 +5,8 @@ auto-creates labeling tasks when triggers fire.
 
 ## Overview
 
-Ties together the pure drift statistics from `core.drift` with the
-telemetry store and the active labeling queue.
+Ties together the pure drift statistics from [`core.drift`](../core/drift.md) with the
+[telemetry store](../core/telemetry.md) and the active labeling queue.
 
 ## Models
 

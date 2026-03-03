@@ -13,7 +13,7 @@ This establishes the cold-start performance floor that ML models must beat.
 
 ## Thresholds
 
-All thresholds are defined in `taskclf.core.defaults` and can be overridden
+All thresholds are defined in [`taskclf.core.defaults`](../core/defaults.md) and can be overridden
 per-call:
 
 | Constant | Default | Used by |
