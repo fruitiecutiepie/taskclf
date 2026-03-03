@@ -4,23 +4,30 @@ Covers:
 - AW export JSON parsing (client.parse_aw_export)
 - App name normalization (mapping.normalize_app)
 - Privacy: no raw titles appear in AWEvent outputs
-- REST helper function contracts (list_aw_buckets, find_window_bucket_id)
+- REST helper function contracts (list_aw_buckets, find_window_bucket_id,
+  find_input_bucket_id, fetch_aw_events, fetch_aw_input_events)
 """
 
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
 from taskclf.adapters.activitywatch.client import (
     _raw_event_to_aw_event,
+    fetch_aw_events,
+    fetch_aw_input_events,
+    find_input_bucket_id,
+    find_window_bucket_id,
+    list_aw_buckets,
     parse_aw_export,
 )
 from taskclf.adapters.activitywatch.mapping import KNOWN_APPS, normalize_app
-from taskclf.adapters.activitywatch.types import AWEvent
+from taskclf.adapters.activitywatch.types import AWEvent, AWInputEvent
 from taskclf.core.types import Event
 
 SALT = "test-salt-42"
@@ -398,3 +405,238 @@ class TestIngestIntegration:
             assert all(c in "0123456789abcdef" for c in ev.window_title_hash)
 
         assert events[0].window_title_hash != events[1].window_title_hash
+
+
+# ---------------------------------------------------------------------------
+# REST API helpers: list_aw_buckets
+# ---------------------------------------------------------------------------
+
+_MOCK_API = "taskclf.adapters.activitywatch.client._api_get"
+
+_SAMPLE_BUCKETS: dict[str, dict] = {
+    "aw-watcher-window_myhost": {
+        "id": "aw-watcher-window_myhost",
+        "type": "currentwindow",
+        "client": "aw-watcher-window",
+        "hostname": "myhost",
+    },
+    "aw-watcher-afk_myhost": {
+        "id": "aw-watcher-afk_myhost",
+        "type": "afkstatus",
+        "client": "aw-watcher-afk",
+        "hostname": "myhost",
+    },
+    "aw-watcher-input_myhost": {
+        "id": "aw-watcher-input_myhost",
+        "type": "os.hid.input",
+        "client": "aw-watcher-input",
+        "hostname": "myhost",
+    },
+}
+
+
+class TestListAwBuckets:
+    """TC-AW-REST-001..003: list_aw_buckets returns bucket dict from AW API."""
+
+    @patch(_MOCK_API, return_value=_SAMPLE_BUCKETS)
+    def test_returns_bucket_dict(self, mock_get) -> None:
+        result = list_aw_buckets("http://localhost:5600")
+        assert result == _SAMPLE_BUCKETS
+        mock_get.assert_called_once()
+
+    @patch(_MOCK_API, return_value=_SAMPLE_BUCKETS)
+    def test_url_trailing_slash_normalized(self, mock_get) -> None:
+        list_aw_buckets("http://localhost:5600/")
+        (url,), _ = mock_get.call_args
+        assert url == "http://localhost:5600/api/0/buckets/"
+
+    @patch(_MOCK_API, return_value={})
+    def test_empty_response(self, mock_get) -> None:
+        result = list_aw_buckets("http://localhost:5600")
+        assert result == {}
+
+
+# ---------------------------------------------------------------------------
+# REST API helpers: find_window_bucket_id
+# ---------------------------------------------------------------------------
+
+
+class TestFindWindowBucketId:
+    """TC-AW-REST-004..007: find_window_bucket_id discovers currentwindow bucket."""
+
+    @patch(_MOCK_API, return_value=_SAMPLE_BUCKETS)
+    def test_found_returns_id(self, mock_get) -> None:
+        result = find_window_bucket_id("http://localhost:5600")
+        assert result == "aw-watcher-window_myhost"
+
+    @patch(_MOCK_API, return_value={
+        "aw-watcher-afk_myhost": {"type": "afkstatus"},
+    })
+    def test_no_match_raises_valueerror(self, mock_get) -> None:
+        with pytest.raises(ValueError, match="No bucket with type='currentwindow'"):
+            find_window_bucket_id("http://localhost:5600")
+
+    @patch(_MOCK_API, return_value={
+        "afk": {"type": "afkstatus"},
+        "input": {"type": "os.hid.input"},
+        "window": {"type": "currentwindow"},
+    })
+    def test_multiple_buckets_picks_correct_one(self, mock_get) -> None:
+        assert find_window_bucket_id("http://localhost:5600") == "window"
+
+    @patch(_MOCK_API, return_value={})
+    def test_empty_buckets_raises_valueerror(self, mock_get) -> None:
+        with pytest.raises(ValueError, match="No bucket"):
+            find_window_bucket_id("http://localhost:5600")
+
+
+# ---------------------------------------------------------------------------
+# REST API helpers: find_input_bucket_id
+# ---------------------------------------------------------------------------
+
+
+class TestFindInputBucketId:
+    """TC-AW-REST-008..010: find_input_bucket_id discovers os.hid.input bucket."""
+
+    @patch(_MOCK_API, return_value=_SAMPLE_BUCKETS)
+    def test_found_returns_id(self, mock_get) -> None:
+        result = find_input_bucket_id("http://localhost:5600")
+        assert result == "aw-watcher-input_myhost"
+
+    @patch(_MOCK_API, return_value={
+        "aw-watcher-window_myhost": {"type": "currentwindow"},
+    })
+    def test_no_match_returns_none(self, mock_get) -> None:
+        assert find_input_bucket_id("http://localhost:5600") is None
+
+    @patch(_MOCK_API, return_value={
+        "afk": {"type": "afkstatus"},
+        "window": {"type": "currentwindow"},
+        "input": {"type": "os.hid.input"},
+    })
+    def test_multiple_buckets_picks_correct_one(self, mock_get) -> None:
+        assert find_input_bucket_id("http://localhost:5600") == "input"
+
+
+# ---------------------------------------------------------------------------
+# REST API helpers: fetch_aw_events
+# ---------------------------------------------------------------------------
+
+
+class TestFetchAwEvents:
+    """TC-AW-REST-011..014: fetch_aw_events fetches and normalizes window events."""
+
+    @patch(_MOCK_API, return_value=[
+        {"timestamp": "2026-02-23T10:01:00Z", "duration": 20.0,
+         "data": {"app": "Code", "title": "main.py"}},
+        {"timestamp": "2026-02-23T10:00:00Z", "duration": 30.0,
+         "data": {"app": "Firefox", "title": "GitHub"}},
+    ])
+    def test_returns_sorted_aw_events(self, mock_get) -> None:
+        events = fetch_aw_events(
+            "http://localhost:5600",
+            "aw-watcher-window_myhost",
+            datetime(2026, 2, 23, 10, 0),
+            datetime(2026, 2, 23, 11, 0),
+            title_salt=SALT,
+        )
+        assert len(events) == 2
+        assert all(isinstance(e, AWEvent) for e in events)
+        assert events[0].timestamp < events[1].timestamp
+        assert events[0].is_browser is True
+        assert events[1].is_editor is True
+
+    @patch(_MOCK_API, return_value=[])
+    def test_naive_utc_timestamp_url(self, mock_get) -> None:
+        """Naive-UTC datetimes get 'Z' suffix in query string."""
+        fetch_aw_events(
+            "http://localhost:5600",
+            "bucket1",
+            datetime(2026, 2, 23, 10, 0),
+            datetime(2026, 2, 23, 11, 0),
+            title_salt=SALT,
+        )
+        (url,), _ = mock_get.call_args
+        assert "start=2026-02-23T10:00:00Z" in url
+        assert "end=2026-02-23T11:00:00Z" in url
+
+    @patch(_MOCK_API, return_value=[])
+    def test_tz_aware_timestamp_url(self, mock_get) -> None:
+        """TZ-aware datetimes use isoformat() without extra Z."""
+        start = datetime(2026, 2, 23, 10, 0, tzinfo=timezone.utc)
+        end = datetime(2026, 2, 23, 11, 0, tzinfo=timezone.utc)
+        fetch_aw_events(
+            "http://localhost:5600",
+            "bucket1",
+            start,
+            end,
+            title_salt=SALT,
+        )
+        (url,), _ = mock_get.call_args
+        assert "start=2026-02-23T10:00:00+00:00" in url
+        assert "end=2026-02-23T11:00:00+00:00" in url
+
+    @patch(_MOCK_API, return_value=[])
+    def test_empty_response(self, mock_get) -> None:
+        events = fetch_aw_events(
+            "http://localhost:5600",
+            "bucket1",
+            datetime(2026, 2, 23, 10, 0),
+            datetime(2026, 2, 23, 11, 0),
+            title_salt=SALT,
+        )
+        assert events == []
+
+
+# ---------------------------------------------------------------------------
+# REST API helpers: fetch_aw_input_events
+# ---------------------------------------------------------------------------
+
+
+class TestFetchAwInputEvents:
+    """TC-AW-REST-015..017: fetch_aw_input_events fetches and normalizes input events."""
+
+    @patch(_MOCK_API, return_value=[
+        {"timestamp": "2026-02-23T10:01:00Z", "duration": 60.0,
+         "data": {"presses": 5, "clicks": 2, "deltaX": 10, "deltaY": 20,
+                  "scrollX": 0, "scrollY": 100}},
+        {"timestamp": "2026-02-23T10:00:00Z", "duration": 60.0,
+         "data": {"presses": 10, "clicks": 3, "deltaX": 50, "deltaY": 30,
+                  "scrollX": 0, "scrollY": 0}},
+    ])
+    def test_returns_sorted_input_events(self, mock_get) -> None:
+        events = fetch_aw_input_events(
+            "http://localhost:5600",
+            "aw-watcher-input_myhost",
+            datetime(2026, 2, 23, 10, 0),
+            datetime(2026, 2, 23, 11, 0),
+        )
+        assert len(events) == 2
+        assert all(isinstance(e, AWInputEvent) for e in events)
+        assert events[0].timestamp < events[1].timestamp
+        assert events[0].presses == 10
+        assert events[1].presses == 5
+
+    @patch(_MOCK_API, return_value=[])
+    def test_empty_response(self, mock_get) -> None:
+        events = fetch_aw_input_events(
+            "http://localhost:5600",
+            "aw-watcher-input_myhost",
+            datetime(2026, 2, 23, 10, 0),
+            datetime(2026, 2, 23, 11, 0),
+        )
+        assert events == []
+
+    @patch(_MOCK_API, return_value=[])
+    def test_url_construction(self, mock_get) -> None:
+        """URL includes bucket_id and start/end query params."""
+        fetch_aw_input_events(
+            "http://localhost:5600/",
+            "aw-watcher-input_myhost",
+            datetime(2026, 2, 23, 10, 0),
+            datetime(2026, 2, 23, 11, 0),
+        )
+        (url,), _ = mock_get.call_args
+        assert "/api/0/buckets/aw-watcher-input_myhost/events" in url
+        assert "start=" in url
+        assert "end=" in url

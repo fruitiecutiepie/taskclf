@@ -107,3 +107,37 @@ def test_changing_username_does_not_change_user_id(tmp_path):
     cfg.username = "two"
     cfg.username = "three"
     assert cfg.user_id == original_id
+
+
+# ---------------------------------------------------------------------------
+# Edge cases: custom keys and as_dict
+# ---------------------------------------------------------------------------
+
+
+def test_update_custom_keys_persisted(tmp_path):
+    """TC-CFG-001: update() with custom keys stores and persists them."""
+    cfg = UserConfig(tmp_path)
+    result = cfg.update({"theme": "dark", "poll_interval": 30})
+    assert result["theme"] == "dark"
+    assert result["poll_interval"] == 30
+
+    reloaded = UserConfig(tmp_path)
+    assert reloaded.as_dict()["theme"] == "dark"
+    assert reloaded.as_dict()["poll_interval"] == 30
+
+
+def test_as_dict_includes_custom_keys(tmp_path):
+    """TC-CFG-002: as_dict() surfaces extra keys alongside user_id and username."""
+    cfg = UserConfig(tmp_path)
+    cfg.update({"locale": "en_US"})
+    d = cfg.as_dict()
+    assert "user_id" in d
+    assert "username" in d
+    assert d["locale"] == "en_US"
+
+
+def test_update_whitespace_username_rejected(tmp_path):
+    """TC-CFG-003: update() with whitespace-only username raises ValueError."""
+    cfg = UserConfig(tmp_path)
+    with pytest.raises(ValueError, match="empty"):
+        cfg.update({"username": "   "})

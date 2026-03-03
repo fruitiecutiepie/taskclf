@@ -915,3 +915,96 @@ TC-LABEL-QD-003 mixed new/existing returns only new count).
 **Status:** Covered by `tests/test_labels_projection.py` (2 new tests:
 TC-LABEL-PROJ-001 auto-derived `bucket_end_ts` when column is missing,
 TC-LABEL-PROJ-002 same-label multi-block covering labels window correctly).
+
+---
+---
+
+# TODO — Adapters Test Coverage
+
+Missing tests identified by auditing `src/taskclf/adapters/` against
+`tests/test_adapters_aw.py` and `tests/test_aw_input_events.py`.
+
+**Already tested:**
+- `parse_aw_export` — 7 tests in `test_adapters_aw.py::TestParseAWExport`
+- `parse_aw_input_export` — 5 tests in `test_aw_input_events.py::TestParseAWInputExport`
+- `normalize_app` — 8 tests in `test_adapters_aw.py::TestNormalizeApp`
+- `_raw_event_to_aw_event` — 5 tests in `test_adapters_aw.py::TestRawEventToAWEvent`
+- `AWEvent` protocol — `test_adapters_aw.py::TestEventProtocol`
+- `AWInputEvent` — 3 tests in `test_aw_input_events.py::TestAWInputEvent`
+
+---
+
+## High Priority — REST client functions with zero coverage
+
+### ~~50. `list_aw_buckets()` — no test~~ DONE
+
+**Status:** Covered by `tests/test_adapters_aw.py::TestListAwBuckets` (3 tests:
+TC-AW-REST-001 returns bucket dict from mocked API,
+TC-AW-REST-002 URL trailing slash normalized,
+TC-AW-REST-003 empty response returns empty dict).
+
+---
+
+### ~~51. `find_window_bucket_id()` — no test~~ DONE
+
+**Status:** Covered by `tests/test_adapters_aw.py::TestFindWindowBucketId` (4 tests:
+TC-AW-REST-004 found currentwindow bucket returns correct ID,
+TC-AW-REST-005 no matching bucket raises ValueError,
+TC-AW-REST-006 multiple buckets picks correct one,
+TC-AW-REST-007 empty buckets dict raises ValueError).
+
+---
+
+### ~~52. `find_input_bucket_id()` — no test~~ DONE
+
+**Status:** Covered by `tests/test_adapters_aw.py::TestFindInputBucketId` (3 tests:
+TC-AW-REST-008 found os.hid.input bucket returns ID,
+TC-AW-REST-009 no matching bucket returns None,
+TC-AW-REST-010 multiple buckets picks correct one).
+
+---
+
+### ~~53. `fetch_aw_events()` — no test~~ DONE
+
+**Status:** Covered by `tests/test_adapters_aw.py::TestFetchAwEvents` (4 tests:
+TC-AW-REST-011 returns sorted AWEvent list from mocked API,
+TC-AW-REST-012 naive-UTC timestamp builds ISO query string with Z suffix,
+TC-AW-REST-013 TZ-aware timestamp uses isoformat without extra Z,
+TC-AW-REST-014 empty response returns []).
+
+---
+
+### ~~54. `fetch_aw_input_events()` — no test~~ DONE
+
+**Status:** Covered by `tests/test_adapters_aw.py::TestFetchAwInputEvents` (3 tests:
+TC-AW-REST-015 returns sorted AWInputEvent list,
+TC-AW-REST-016 empty response returns [],
+TC-AW-REST-017 URL construction includes bucket_id and start/end params).
+
+---
+---
+
+# TODO — Config Test Coverage
+
+Missing edge cases identified by auditing `src/taskclf/core/config.py` against
+`tests/test_core_config.py`.
+
+**Already tested:** auto-generated UUID, stable across reloads, immutable via update,
+default username, set username, empty username rejection, as_dict basic, update username,
+update empty rejection, update no-op, corrupt config fallback, parent dir creation,
+username change preserves user_id.
+
+---
+
+### ~~55. `UserConfig.update()` — custom keys not tested~~ DONE
+
+**Status:** Covered by `tests/test_core_config.py` (2 tests:
+TC-CFG-001 update with custom keys persists and survives reload,
+TC-CFG-002 as_dict includes custom keys alongside user_id and username).
+
+---
+
+### ~~56. `UserConfig.update()` — whitespace-only username via update~~ DONE
+
+**Status:** Covered by `tests/test_core_config.py` (1 test:
+TC-CFG-003 update with whitespace-only username raises ValueError).
