@@ -13,7 +13,7 @@ function fmtRate(v: number | null): string | null {
   return v < 10 ? v.toFixed(1) : String(Math.round(v));
 }
 
-interface TimeRange {
+export interface TimeRange {
   start: string;
   end: string;
 }
@@ -29,10 +29,12 @@ function timeRangeForMinutes(mins: number): TimeRange | null {
 }
 
 export const ActivityContext: Component<{
-  minutes: Accessor<number>;
+  minutes?: Accessor<number>;
+  timeRange?: Accessor<TimeRange | null>;
   prediction?: Accessor<Prediction | null>;
 }> = (props) => {
-  const range = () => timeRangeForMinutes(props.minutes());
+  const range = () =>
+    props.timeRange?.() ?? (props.minutes ? timeRangeForMinutes(props.minutes()) : null);
 
   const [awApps] = createResource(range, async (r) => {
     if (!r) return [];

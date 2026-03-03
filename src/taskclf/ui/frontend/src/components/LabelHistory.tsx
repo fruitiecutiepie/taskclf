@@ -1,6 +1,7 @@
 import { type Accessor, type Component, createEffect, createResource, createMemo, createSignal, For, on, Show } from "solid-js";
-import { fetchLabels } from "../lib/api";
+import { deleteLabel, fetchCoreLabels, fetchLabels, updateLabel } from "../lib/api";
 import type { Prediction } from "../lib/ws";
+import { ActivityContext, type TimeRange } from "./ActivityContext";
 import { LABEL_COLORS } from "./StatePanel";
 
 function parseDate(iso: string): Date {
@@ -167,6 +168,236 @@ const TimelineStrip: Component<{ segments: TimelineSegment[] }> = (props) => {
   );
 };
 
+function labelKey(lbl: LabelEntry): string {
+  return `${lbl.start_ts}|${lbl.end_ts}`;
+}
+
+const LabelRow: Component<{
+  lbl: LabelEntry;
+  expanded: boolean;
+  onToggle: () => void;
+  onUpdate: (label: string) => void;
+  onDelete: () => void;
+  coreLabels: string[];
+  busy: boolean;
+  flash: string | null;
+}> = (props) => {
+  const startD = () => parseDate(props.lbl.start_ts);
+  const endD = () => parseDate(props.lbl.end_ts);
+  const dur = () => fmtDuration(endD().getTime() - startD().getTime());
+  const [confirmDelete, setConfirmDelete] = createSignal(false);
+
+  const timeRange = (): TimeRange | null => ({
+    start: new Date(
+      props.lbl.start_ts.includes("Z") || props.lbl.start_ts.includes("+")
+        ? props.lbl.start_ts
+        : props.lbl.start_ts + "Z",
+    ).toISOString(),
+    end: new Date(
+      props.lbl.end_ts.includes("Z") || props.lbl.end_ts.includes("+")
+        ? props.lbl.end_ts
+        : props.lbl.end_ts + "Z",
+    ).toISOString(),
+  });
+
+  return (
+    <div>
+      <div
+        onClick={props.onToggle}
+        style={{
+          display: "flex",
+          "justify-content": "space-between",
+          "align-items": "baseline",
+          padding: "2px 4px",
+          gap: "8px",
+          cursor: "pointer",
+          "border-radius": "4px",
+          background: props.expanded ? "#1e1e2e" : "transparent",
+          transition: "background 0.1s ease",
+        }}
+        onMouseEnter={(e) => {
+          if (!props.expanded) e.currentTarget.style.background = "#1a1a24";
+        }}
+        onMouseLeave={(e) => {
+          if (!props.expanded) e.currentTarget.style.background = "transparent";
+        }}
+      >
+        <span style={{ display: "flex", "align-items": "center", gap: "6px" }}>
+          <span
+            style={{
+              width: "6px",
+              height: "6px",
+              "border-radius": "50%",
+              background: LABEL_COLORS[props.lbl.label] ?? "#a0a0a0",
+              "flex-shrink": "0",
+            }}
+          />
+          <span
+            style={{
+              color: LABEL_COLORS[props.lbl.label] ?? "#e0e0e0",
+              "font-weight": "600",
+              "font-size": "0.65rem",
+            }}
+          >
+            {props.lbl.label}
+          </span>
+        </span>
+        <span
+          style={{ color: "#a0a0a0", "font-size": "0.65rem", "white-space": "nowrap" }}
+        >
+          {fmtTime(startD())} – {fmtTime(endD())}{" "}
+          <span style={{ color: "#808080" }}>({dur()})</span>
+        </span>
+      </div>
+
+      <Show when={props.expanded}>
+        <div
+          style={{
+            padding: "6px 8px",
+            margin: "2px 0 4px",
+            background: "#161622",
+            "border-radius": "6px",
+            border: "1px solid #2a2a3a",
+          }}
+        >
+          <ActivityContext timeRange={() => timeRange()} />
+
+          <Show when={props.flash}>
+            <div
+              style={{
+                "text-align": "center",
+                "font-size": "0.65rem",
+                "margin-bottom": "4px",
+                color: props.flash!.startsWith("Error")
+                  ? "#ef4444"
+                  : "#22c55e",
+              }}
+            >
+              {props.flash!.startsWith("Error") ? props.flash : `Saved: ${props.flash}`}
+            </div>
+          </Show>
+
+          <div
+            style={{
+              display: "grid",
+              "grid-template-columns": "repeat(4, 1fr)",
+              gap: "3px",
+              "margin-bottom": "6px",
+            }}
+          >
+            <For each={props.coreLabels}>
+              {(lbl) => (
+                <button
+                  disabled={props.busy}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (lbl !== props.lbl.label) props.onUpdate(lbl);
+                  }}
+                  style={{
+                    padding: "4px 2px",
+                    "border-radius": "4px",
+                    border:
+                      lbl === props.lbl.label
+                        ? `1.5px solid ${LABEL_COLORS[lbl] ?? "#888"}`
+                        : "1px solid #333",
+                    background: lbl === props.lbl.label ? "#1e1e2e" : "#111",
+                    color: LABEL_COLORS[lbl] ?? "#e0e0e0",
+                    cursor: lbl === props.lbl.label ? "default" : "pointer",
+                    "font-size": "0.58rem",
+                    "font-weight": lbl === props.lbl.label ? "700" : "500",
+                    "text-align": "center",
+                    opacity: props.busy ? "0.5" : lbl === props.lbl.label ? "1" : "0.8",
+                    transition: "all 0.1s ease",
+                  }}
+                >
+                  {lbl}
+                </button>
+              )}
+            </For>
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              "justify-content": "flex-end",
+              gap: "6px",
+              "padding-top": "4px",
+              "border-top": "1px solid #2a2a2a",
+            }}
+          >
+            <Show
+              when={confirmDelete()}
+              fallback={
+                <button
+                  disabled={props.busy}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setConfirmDelete(true);
+                  }}
+                  style={{
+                    padding: "2px 8px",
+                    "border-radius": "4px",
+                    border: "1px solid #442222",
+                    background: "transparent",
+                    color: "#ef4444",
+                    cursor: "pointer",
+                    "font-size": "0.58rem",
+                    opacity: props.busy ? "0.5" : "0.7",
+                    transition: "opacity 0.1s",
+                  }}
+                >
+                  Delete
+                </button>
+              }
+            >
+              <span style={{ "font-size": "0.58rem", color: "#999", "align-self": "center" }}>
+                Delete this label?
+              </span>
+              <button
+                disabled={props.busy}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setConfirmDelete(false);
+                }}
+                style={{
+                  padding: "2px 8px",
+                  "border-radius": "4px",
+                  border: "1px solid #333",
+                  background: "transparent",
+                  color: "#999",
+                  cursor: "pointer",
+                  "font-size": "0.58rem",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                disabled={props.busy}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  props.onDelete();
+                }}
+                style={{
+                  padding: "2px 8px",
+                  "border-radius": "4px",
+                  border: "1px solid #ef4444",
+                  background: "#ef4444",
+                  color: "#fff",
+                  cursor: "pointer",
+                  "font-size": "0.58rem",
+                  "font-weight": "600",
+                }}
+              >
+                Confirm
+              </button>
+            </Show>
+          </div>
+        </div>
+      </Show>
+    </div>
+  );
+};
+
 export const LabelHistory: Component<{
   visible: Accessor<boolean>;
   latestPrediction?: Accessor<Prediction | null>;
@@ -175,6 +406,11 @@ export const LabelHistory: Component<{
     if (!show) return [];
     return fetchLabels(50);
   });
+  const [coreLabels] = createResource(fetchCoreLabels);
+
+  const [expandedKey, setExpandedKey] = createSignal<string | null>(null);
+  const [busy, setBusy] = createSignal(false);
+  const [flash, setFlash] = createSignal<string | null>(null);
 
   createEffect(on(
     () => props.latestPrediction?.(),
@@ -186,6 +422,51 @@ export const LabelHistory: Component<{
     const l = labels();
     return l?.length ? groupByDate(l) : [];
   });
+
+  function toggleRow(lbl: LabelEntry) {
+    const key = labelKey(lbl);
+    setExpandedKey(expandedKey() === key ? null : key);
+    setFlash(null);
+  }
+
+  async function handleUpdate(lbl: LabelEntry, newLabel: string) {
+    setBusy(true);
+    setFlash(null);
+    try {
+      await updateLabel({
+        start_ts: lbl.start_ts,
+        end_ts: lbl.end_ts,
+        label: newLabel,
+      });
+      setFlash(newLabel);
+      setTimeout(() => {
+        setFlash(null);
+        setExpandedKey(null);
+        refetch();
+      }, 800);
+    } catch (err: any) {
+      setFlash(`Error: ${err.message}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDelete(lbl: LabelEntry) {
+    setBusy(true);
+    setFlash(null);
+    try {
+      await deleteLabel({
+        start_ts: lbl.start_ts,
+        end_ts: lbl.end_ts,
+      });
+      setExpandedKey(null);
+      refetch();
+    } catch (err: any) {
+      setFlash(`Error: ${err.message}`);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <div
@@ -290,59 +571,18 @@ export const LabelHistory: Component<{
                 <TimelineStrip segments={group.timeline} />
               </Show>
               <For each={group.entries}>
-                {(lbl) => {
-                  const startD = parseDate(lbl.start_ts);
-                  const endD = parseDate(lbl.end_ts);
-                  const dur = fmtDuration(endD.getTime() - startD.getTime());
-                  return (
-                    <div
-                      style={{
-                        display: "flex",
-                        "justify-content": "space-between",
-                        "align-items": "baseline",
-                        padding: "1px 0",
-                        gap: "8px",
-                      }}
-                    >
-                      <span
-                        style={{
-                          display: "flex",
-                          "align-items": "center",
-                          gap: "6px",
-                        }}
-                      >
-                        <span
-                          style={{
-                            width: "6px",
-                            height: "6px",
-                            "border-radius": "50%",
-                            background: LABEL_COLORS[lbl.label] ?? "#a0a0a0",
-                            "flex-shrink": "0",
-                          }}
-                        />
-                        <span
-                          style={{
-                            color: LABEL_COLORS[lbl.label] ?? "#e0e0e0",
-                            "font-weight": "600",
-                            "font-size": "0.65rem",
-                          }}
-                        >
-                          {lbl.label}
-                        </span>
-                      </span>
-                      <span
-                        style={{
-                          color: "#a0a0a0",
-                          "font-size": "0.65rem",
-                          "white-space": "nowrap",
-                        }}
-                      >
-                        {fmtTime(startD)} – {fmtTime(endD)}{" "}
-                        <span style={{ color: "#808080" }}>({dur})</span>
-                      </span>
-                    </div>
-                  );
-                }}
+                {(lbl) => (
+                  <LabelRow
+                    lbl={lbl}
+                    expanded={expandedKey() === labelKey(lbl)}
+                    onToggle={() => toggleRow(lbl)}
+                    onUpdate={(newLabel) => handleUpdate(lbl, newLabel)}
+                    onDelete={() => handleDelete(lbl)}
+                    coreLabels={coreLabels() ?? []}
+                    busy={busy()}
+                    flash={expandedKey() === labelKey(lbl) ? flash() : null}
+                  />
+                )}
               </For>
             </div>
           )}

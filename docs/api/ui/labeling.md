@@ -47,7 +47,7 @@ Options:
     - **ActivityWatch** -- summary: `connected`/`disconnected` (color-coded). Details: AW `connection` status, `host`, `bucket_id`, `last_events` count, and **app distribution** (top 5 apps with event counts from the last poll).
     - **WebSocket** -- summary: connection status (color-coded). Details: `status`, `messages` total, per-type `breakdown` (st/pred/tray/sug), `last_received` timestamp, `reconnects` count, `connected_since`.
     - **Config** -- summary: `dev`/`prod`. Details: `data_dir`, `ui_port`, `dev_mode`, `labels_saved` count.
-  - **History tab** -- Recent labels grouped by date with a color-coded timeline strip and per-entry time ranges. Provides a dedicated review surface separate from the quick-label popup, with the full panel height available for browsing.
+  - **History tab** -- Recent labels grouped by date with a color-coded timeline strip and per-entry time ranges. Click any label row to expand an inline editor showing the ActivityContext for that time window (apps used, input stats), a label-change grid (current label highlighted), and a delete button with confirmation. Provides a dedicated review surface separate from the quick-label popup, with the full panel height available for browsing.
 - **Suggestion banner** -- Appears when the ActivityMonitor detects a task change. Accept or dismiss with one click.
 
 ## Architecture
@@ -56,6 +56,8 @@ The UI is a SolidJS single-page application served by a FastAPI backend:
 
 - **REST endpoints** (`/api/labels`, `/api/queue`, `/api/features/summary`, `/api/aw/live`, `/api/config/labels`, `/api/config/user`) handle label CRUD, queue management, user configuration, and data queries.
   - `POST /api/labels` accepts an optional `extend_forward` boolean. When true, the label is persisted with `extend_forward=true`; when the *next* label is created for the same user, this label's `end_ts` is automatically stretched to the new label's `start_ts`, producing contiguous coverage. The quick-label UI sets this flag by default.
+  - `PUT /api/labels` changes the label on an existing span identified by `start_ts` + `end_ts`. Returns 404 if no matching span exists.
+  - `DELETE /api/labels` removes a span identified by `start_ts` + `end_ts`. Returns 404 if no matching span exists.
 - **WebSocket** (`/ws/predictions`) streams live events from the ActivityMonitor:
   - `status` -- every poll cycle: `state`, `current_app`, `current_app_since`, `candidate_app`, `candidate_duration_s`, `transition_threshold_s`, `poll_seconds`, `poll_count`, `last_poll_ts`, `uptime_s`, `aw_connected`, `aw_bucket_id`, `aw_host`, `last_event_count`, `last_app_counts`.
   - `tray_state` -- every poll cycle: `model_loaded`, `model_dir`, `model_schema_hash`, `suggested_label`, `suggested_confidence`, `transition_count`, `last_transition` (with `prev_app`, `new_app`, `block_start`, `block_end`, `fired_at`), `labels_saved_count`, `data_dir`, `ui_port`, `dev_mode`.

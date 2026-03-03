@@ -96,6 +96,29 @@ export async function fetchAWLive(
   );
 }
 
+export async function updateLabel(body: {
+  start_ts: string;
+  end_ts: string;
+  label: string;
+}): Promise<LabelResponse> {
+  return json(`${BASE}/labels`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteLabel(body: {
+  start_ts: string;
+  end_ts: string;
+}): Promise<{ status: string }> {
+  return json(`${BASE}/labels`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
 export async function fetchCoreLabels(): Promise<string[]> {
   return json(`${BASE}/config/labels`);
 }

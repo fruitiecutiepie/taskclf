@@ -179,6 +179,74 @@ def append_label_span(span: LabelSpan, path: Path) -> Path:
     return write_label_spans(existing, path)
 
 
+def update_label_span(
+    start_ts: dt.datetime,
+    end_ts: dt.datetime,
+    new_label: str,
+    path: Path,
+) -> LabelSpan:
+    """Change the label on an existing span identified by its timestamps.
+
+    Args:
+        start_ts: Original start timestamp of the span.
+        end_ts: Original end timestamp of the span.
+        new_label: Replacement label (must be in ``LABEL_SET_V1``).
+        path: Parquet file containing label spans.
+
+    Returns:
+        The updated ``LabelSpan``.
+
+    Raises:
+        ValueError: If no matching span is found or the new label is
+            invalid.
+    """
+    if not path.exists():
+        raise ValueError("No labels file found")
+
+    spans = read_label_spans(path)
+    for i, s in enumerate(spans):
+        if s.start_ts == start_ts and s.end_ts == end_ts:
+            updated = LabelSpan(
+                start_ts=s.start_ts,
+                end_ts=s.end_ts,
+                label=new_label,
+                provenance=s.provenance,
+                user_id=s.user_id,
+                confidence=s.confidence,
+                extend_forward=s.extend_forward,
+            )
+            spans[i] = updated
+            write_label_spans(spans, path)
+            return updated
+    raise ValueError(f"No label found for [{start_ts}, {end_ts})")
+
+
+def delete_label_span(
+    start_ts: dt.datetime,
+    end_ts: dt.datetime,
+    path: Path,
+) -> None:
+    """Remove a label span identified by its timestamps.
+
+    Args:
+        start_ts: Start timestamp of the span to remove.
+        end_ts: End timestamp of the span to remove.
+        path: Parquet file containing label spans.
+
+    Raises:
+        ValueError: If no matching span is found.
+    """
+    if not path.exists():
+        raise ValueError("No labels file found")
+
+    spans = read_label_spans(path)
+    original_len = len(spans)
+    spans = [s for s in spans if not (s.start_ts == start_ts and s.end_ts == end_ts)]
+    if len(spans) == original_len:
+        raise ValueError(f"No label found for [{start_ts}, {end_ts})")
+    write_label_spans(spans, path)
+
+
 def generate_label_summary(
     features_df: pd.DataFrame,
     start_ts: dt.datetime,

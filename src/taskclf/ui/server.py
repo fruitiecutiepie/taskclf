@@ -26,8 +26,10 @@ from taskclf.core.types import CoreLabel, LabelSpan
 from taskclf.labels.queue import ActiveLabelingQueue
 from taskclf.labels.store import (
     append_label_span,
+    delete_label_span,
     generate_label_summary,
     read_label_spans,
+    update_label_span,
 )
 from taskclf.ui.events import EventBus
 
@@ -73,6 +75,17 @@ class QueueItemResponse(BaseModel):
     confidence: float | None = None
     predicted_label: str | None = None
     status: str
+
+
+class LabelUpdateRequest(BaseModel):
+    start_ts: str = Field(description="ISO-8601 start timestamp (identifies the span)")
+    end_ts: str = Field(description="ISO-8601 end timestamp (identifies the span)")
+    label: str = Field(description="New label to assign")
+
+
+class LabelDeleteRequest(BaseModel):
+    start_ts: str = Field(description="ISO-8601 start timestamp (identifies the span)")
+    end_ts: str = Field(description="ISO-8601 end timestamp (identifies the span)")
 
 
 class MarkDoneRequest(BaseModel):
@@ -199,6 +212,40 @@ def create_app(
             confidence=span.confidence,
             extend_forward=span.extend_forward,
         )
+
+    @app.put("/api/labels")
+    async def update_label(body: LabelUpdateRequest) -> LabelResponse:
+        try:
+            start = dt.datetime.fromisoformat(body.start_ts)
+            end = dt.datetime.fromisoformat(body.end_ts)
+        except (ValueError, Exception) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        try:
+            span = update_label_span(start, end, body.label, labels_path)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return LabelResponse(
+            start_ts=span.start_ts.isoformat(),
+            end_ts=span.end_ts.isoformat(),
+            label=span.label,
+            provenance=span.provenance,
+            user_id=span.user_id,
+            confidence=span.confidence,
+            extend_forward=span.extend_forward,
+        )
+
+    @app.delete("/api/labels")
+    async def delete_label(body: LabelDeleteRequest) -> dict[str, str]:
+        try:
+            start = dt.datetime.fromisoformat(body.start_ts)
+            end = dt.datetime.fromisoformat(body.end_ts)
+        except (ValueError, Exception) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        try:
+            delete_label_span(start, end, labels_path)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return {"status": "deleted"}
 
     # -- REST: queue ----------------------------------------------------------
 
