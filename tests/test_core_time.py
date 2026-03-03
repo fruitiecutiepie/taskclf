@@ -1,13 +1,13 @@
-"""Tests for time-bucket alignment: align_to_bucket.
+"""Tests for time-bucket alignment and range generation.
 
-Covers: TC-TIME-001 through TC-TIME-004.
+Covers: TC-TIME-001 through TC-TIME-010.
 """
 
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from taskclf.core.time import align_to_bucket
+from taskclf.core.time import align_to_bucket, generate_bucket_range
 
 
 def test_tc_time_001_bucket_alignment() -> None:
@@ -51,3 +51,61 @@ def test_tc_time_004_dst_transition() -> None:
     assert aligned_std.tzinfo is None
     assert aligned_dst.tzinfo is None
     assert aligned_std != aligned_dst
+
+
+# ---------------------------------------------------------------------------
+# generate_bucket_range
+# ---------------------------------------------------------------------------
+
+
+def test_tc_time_005_basic_range() -> None:
+    """TC-TIME-005: 10:00 to 10:05 with 60s buckets produces 5 buckets."""
+    start = datetime(2025, 6, 15, 10, 0, 0)
+    end = datetime(2025, 6, 15, 10, 5, 0)
+    buckets = generate_bucket_range(start, end)
+    assert len(buckets) == 5
+    assert buckets[0] == datetime(2025, 6, 15, 10, 0, 0)
+    assert buckets[-1] == datetime(2025, 6, 15, 10, 4, 0)
+
+
+def test_tc_time_006_start_equals_end() -> None:
+    """TC-TIME-006: start == end produces empty list (exclusive end)."""
+    ts = datetime(2025, 6, 15, 10, 0, 0)
+    assert generate_bucket_range(ts, ts) == []
+
+
+def test_tc_time_007_start_after_end() -> None:
+    """TC-TIME-007: start > end produces empty list."""
+    start = datetime(2025, 6, 15, 10, 5, 0)
+    end = datetime(2025, 6, 15, 10, 0, 0)
+    assert generate_bucket_range(start, end) == []
+
+
+def test_tc_time_008_unaligned_inputs() -> None:
+    """TC-TIME-008: unaligned start/end are aligned before ranging."""
+    start = datetime(2025, 6, 15, 10, 0, 37)
+    end = datetime(2025, 6, 15, 10, 3, 12)
+    buckets = generate_bucket_range(start, end)
+    assert buckets[0] == datetime(2025, 6, 15, 10, 0, 0)
+    assert buckets[-1] == datetime(2025, 6, 15, 10, 2, 0)
+    assert len(buckets) == 3
+
+
+def test_tc_time_009_timezone_aware_inputs() -> None:
+    """TC-TIME-009: timezone-aware inputs are converted to naive UTC."""
+    eastern = timezone(timedelta(hours=-5))
+    start = datetime(2025, 6, 15, 10, 0, 0, tzinfo=eastern)  # 15:00 UTC
+    end = datetime(2025, 6, 15, 10, 3, 0, tzinfo=eastern)    # 15:03 UTC
+    buckets = generate_bucket_range(start, end)
+    assert len(buckets) == 3
+    for b in buckets:
+        assert b.tzinfo is None
+
+
+def test_tc_time_010_custom_bucket_seconds() -> None:
+    """TC-TIME-010: custom bucket_seconds=300 produces 5-min buckets."""
+    start = datetime(2025, 6, 15, 10, 0, 0)
+    end = datetime(2025, 6, 15, 10, 15, 0)
+    buckets = generate_bucket_range(start, end, bucket_seconds=300)
+    assert len(buckets) == 3
+    assert buckets[1] - buckets[0] == timedelta(seconds=300)

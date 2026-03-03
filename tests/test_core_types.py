@@ -1,6 +1,9 @@
-"""Tests for core data contracts: FeatureRow privacy/validation and LabelSpan invariants.
+"""Tests for core data contracts: FeatureRow privacy/validation, LabelSpan invariants,
+and Event protocol conformance.
 
-Covers: TC-CORE-001 through TC-CORE-005, TC-LABEL-004.
+Covers: TC-CORE-001 through TC-CORE-005, TC-LABEL-004,
+TC-TYPES-001..002 (Event protocol), TC-TYPES-003..005 (LabelSpan confidence NaN),
+TC-TYPES-006..007 (LabelSpan extend_forward).
 """
 
 from __future__ import annotations
@@ -11,7 +14,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from taskclf.core.types import CoreLabel, FeatureRow, LabelSpan, TitlePolicy
+from taskclf.core.types import CoreLabel, Event, FeatureRow, LabelSpan, TitlePolicy
 
 
 class TestFeatureRowValidation:
@@ -221,3 +224,123 @@ class TestCoreLabelMatchesSchema:
         schema = json.loads(schema_path.read_text())
 
         assert schema["num_classes"] == len(CoreLabel)
+
+
+# ---------------------------------------------------------------------------
+# Event protocol
+# ---------------------------------------------------------------------------
+
+
+class TestEventProtocol:
+    """TC-TYPES-001..002: runtime_checkable Event protocol."""
+
+    def test_conforming_object_satisfies_protocol(self) -> None:
+        class _FakeEvent:
+            @property
+            def timestamp(self) -> dt.datetime:
+                return dt.datetime(2025, 6, 15, 10, 0)
+
+            @property
+            def duration_seconds(self) -> float:
+                return 60.0
+
+            @property
+            def app_id(self) -> str:
+                return "com.example.App"
+
+            @property
+            def window_title_hash(self) -> str:
+                return "abc123"
+
+            @property
+            def is_browser(self) -> bool:
+                return False
+
+            @property
+            def is_editor(self) -> bool:
+                return True
+
+            @property
+            def is_terminal(self) -> bool:
+                return False
+
+            @property
+            def app_category(self) -> str:
+                return "editor"
+
+        assert isinstance(_FakeEvent(), Event)
+
+    def test_non_conforming_object_fails_protocol(self) -> None:
+        class _Incomplete:
+            @property
+            def timestamp(self) -> dt.datetime:
+                return dt.datetime(2025, 6, 15, 10, 0)
+
+        assert not isinstance(_Incomplete(), Event)
+
+
+# ---------------------------------------------------------------------------
+# LabelSpan.confidence NaN coercion
+# ---------------------------------------------------------------------------
+
+
+class TestLabelSpanConfidenceNaN:
+    """TC-TYPES-003..005: NaN confidence is coerced to None."""
+
+    def test_nan_confidence_becomes_none(self) -> None:
+        span = LabelSpan(
+            start_ts=dt.datetime(2025, 6, 15, 10, 0),
+            end_ts=dt.datetime(2025, 6, 15, 10, 5),
+            label="Build",
+            provenance="manual",
+            confidence=float("nan"),
+        )
+        assert span.confidence is None
+
+    def test_valid_confidence_preserved(self) -> None:
+        span = LabelSpan(
+            start_ts=dt.datetime(2025, 6, 15, 10, 0),
+            end_ts=dt.datetime(2025, 6, 15, 10, 5),
+            label="Build",
+            provenance="manual",
+            confidence=0.8,
+        )
+        assert span.confidence == 0.8
+
+    def test_none_confidence_preserved(self) -> None:
+        span = LabelSpan(
+            start_ts=dt.datetime(2025, 6, 15, 10, 0),
+            end_ts=dt.datetime(2025, 6, 15, 10, 5),
+            label="Build",
+            provenance="manual",
+            confidence=None,
+        )
+        assert span.confidence is None
+
+
+# ---------------------------------------------------------------------------
+# LabelSpan.extend_forward
+# ---------------------------------------------------------------------------
+
+
+class TestLabelSpanExtendForward:
+    """TC-TYPES-006..007: extend_forward field."""
+
+    def test_defaults_to_false(self) -> None:
+        span = LabelSpan(
+            start_ts=dt.datetime(2025, 6, 15, 10, 0),
+            end_ts=dt.datetime(2025, 6, 15, 10, 5),
+            label="Build",
+            provenance="manual",
+        )
+        assert span.extend_forward is False
+
+    def test_explicit_true(self) -> None:
+        span = LabelSpan(
+            start_ts=dt.datetime(2025, 6, 15, 10, 0),
+            end_ts=dt.datetime(2025, 6, 15, 10, 5),
+            label="Build",
+            provenance="manual",
+            extend_forward=True,
+        )
+        assert span.extend_forward is True

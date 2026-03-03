@@ -1,7 +1,9 @@
 """Tests for label span I/O, synthetic generation, and new store helpers.
 
 Covers: write/read round-trip, generate_dummy_labels, append_label_span,
-generate_label_summary, and CSV import with optional columns.
+generate_label_summary, CSV import with optional columns,
+TC-LABEL-UPD-001..005 (update_label_span),
+TC-LABEL-DEL-001..005 (delete_label_span).
 """
 
 from __future__ import annotations
@@ -11,15 +13,18 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
+from pydantic import ValidationError
 
 from taskclf.core.types import LABEL_SET_V1, LabelSpan
 from taskclf.labels.store import (
     _same_user,
     append_label_span,
+    delete_label_span,
     generate_dummy_labels,
     generate_label_summary,
     import_labels_from_csv,
     read_label_spans,
+    update_label_span,
     write_label_spans,
 )
 
@@ -501,3 +506,163 @@ class TestExtendForward:
         write_label_spans([span], path)
         loaded = read_label_spans(path)
         assert loaded[0].extend_forward is True
+
+
+# ---------------------------------------------------------------------------
+# update_label_span
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateLabelSpan:
+    """TC-LABEL-UPD-001..005: update_label_span replaces a span's label."""
+
+    def test_happy_path(self, tmp_path: Path) -> None:
+        """TC-LABEL-UPD-001: update an existing span's label."""
+        path = tmp_path / "labels.parquet"
+        s1 = _span((10, 0), (10, 5), label="Build")
+        s2 = _span((11, 0), (11, 5), label="Write")
+        write_label_spans([s1, s2], path)
+
+        updated = update_label_span(s1.start_ts, s1.end_ts, "Debug", path)
+        assert updated.label == "Debug"
+
+        loaded = read_label_spans(path)
+        labels = {s.label for s in loaded}
+        assert "Debug" in labels
+        assert "Build" not in labels
+        assert "Write" in labels
+
+    def test_file_not_found(self, tmp_path: Path) -> None:
+        """TC-LABEL-UPD-002: missing file raises ValueError."""
+        path = tmp_path / "no_such_file.parquet"
+        with pytest.raises(ValueError, match="No labels file found"):
+            update_label_span(
+                dt.datetime(2025, 6, 15, 10, 0),
+                dt.datetime(2025, 6, 15, 10, 5),
+                "Debug",
+                path,
+            )
+
+    def test_no_matching_span(self, tmp_path: Path) -> None:
+        """TC-LABEL-UPD-003: no span with given timestamps raises ValueError."""
+        path = tmp_path / "labels.parquet"
+        write_label_spans([_span((10, 0), (10, 5))], path)
+
+        with pytest.raises(ValueError, match="No label found"):
+            update_label_span(
+                dt.datetime(2025, 6, 15, 12, 0),
+                dt.datetime(2025, 6, 15, 12, 5),
+                "Debug",
+                path,
+            )
+
+    def test_invalid_new_label(self, tmp_path: Path) -> None:
+        """TC-LABEL-UPD-004: invalid label raises ValidationError."""
+        path = tmp_path / "labels.parquet"
+        s = _span((10, 0), (10, 5))
+        write_label_spans([s], path)
+
+        with pytest.raises(ValidationError, match="Unknown label"):
+            update_label_span(s.start_ts, s.end_ts, "InvalidLabel", path)
+
+    def test_preserves_other_fields(self, tmp_path: Path) -> None:
+        """TC-LABEL-UPD-005: all fields except label are preserved."""
+        path = tmp_path / "labels.parquet"
+        span = LabelSpan(
+            start_ts=dt.datetime(2025, 6, 15, 10, 0),
+            end_ts=dt.datetime(2025, 6, 15, 10, 5),
+            label="Build",
+            provenance="manual",
+            user_id="test-user",
+            confidence=0.85,
+            extend_forward=True,
+        )
+        write_label_spans([span], path)
+
+        updated = update_label_span(span.start_ts, span.end_ts, "Debug", path)
+        assert updated.label == "Debug"
+        assert updated.provenance == "manual"
+        assert updated.user_id == "test-user"
+        assert updated.confidence == pytest.approx(0.85)
+        assert updated.extend_forward is True
+
+
+# ---------------------------------------------------------------------------
+# delete_label_span
+# ---------------------------------------------------------------------------
+
+
+class TestDeleteLabelSpan:
+    """TC-LABEL-DEL-001..005: delete_label_span removes a span."""
+
+    def test_delete_one_of_two(self, tmp_path: Path) -> None:
+        """TC-LABEL-DEL-001: delete one span, other remains."""
+        path = tmp_path / "labels.parquet"
+        s1 = _span((10, 0), (10, 5), label="Build")
+        s2 = _span((11, 0), (11, 5), label="Write")
+        write_label_spans([s1, s2], path)
+
+        delete_label_span(s1.start_ts, s1.end_ts, path)
+
+        loaded = read_label_spans(path)
+        assert len(loaded) == 1
+        assert loaded[0].label == "Write"
+
+    def test_delete_only_span(self, tmp_path: Path) -> None:
+        """TC-LABEL-DEL-002: deleting the only span leaves empty file."""
+        path = tmp_path / "labels.parquet"
+        s = _span((10, 0), (10, 5))
+        write_label_spans([s], path)
+
+        delete_label_span(s.start_ts, s.end_ts, path)
+
+        loaded = read_label_spans(path)
+        assert len(loaded) == 0
+
+    def test_file_not_found(self, tmp_path: Path) -> None:
+        """TC-LABEL-DEL-003: missing file raises ValueError."""
+        path = tmp_path / "no_such_file.parquet"
+        with pytest.raises(ValueError, match="No labels file found"):
+            delete_label_span(
+                dt.datetime(2025, 6, 15, 10, 0),
+                dt.datetime(2025, 6, 15, 10, 5),
+                path,
+            )
+
+    def test_no_matching_span(self, tmp_path: Path) -> None:
+        """TC-LABEL-DEL-004: no matching span raises ValueError."""
+        path = tmp_path / "labels.parquet"
+        write_label_spans([_span((10, 0), (10, 5))], path)
+
+        with pytest.raises(ValueError, match="No label found"):
+            delete_label_span(
+                dt.datetime(2025, 6, 15, 12, 0),
+                dt.datetime(2025, 6, 15, 12, 5),
+                path,
+            )
+
+    def test_same_start_different_end(self, tmp_path: Path) -> None:
+        """TC-LABEL-DEL-005: spans with same start but different end are distinct."""
+        path = tmp_path / "labels.parquet"
+        s1 = LabelSpan(
+            start_ts=dt.datetime(2025, 6, 15, 10, 0),
+            end_ts=dt.datetime(2025, 6, 15, 10, 5),
+            label="Build",
+            provenance="manual",
+            user_id="u1",
+        )
+        s2 = LabelSpan(
+            start_ts=dt.datetime(2025, 6, 15, 10, 0),
+            end_ts=dt.datetime(2025, 6, 15, 10, 10),
+            label="Debug",
+            provenance="manual",
+            user_id="u2",
+        )
+        write_label_spans([s1, s2], path)
+
+        delete_label_span(s1.start_ts, s1.end_ts, path)
+
+        loaded = read_label_spans(path)
+        assert len(loaded) == 1
+        assert loaded[0].label == "Debug"
+        assert loaded[0].end_ts == dt.datetime(2025, 6, 15, 10, 10)

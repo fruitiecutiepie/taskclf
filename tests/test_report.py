@@ -1,4 +1,8 @@
-"""Tests for report generation: flap rate, daily summaries, and export formats."""
+"""Tests for report generation: flap rate, daily summaries, and export formats.
+
+Also covers: TC-RPT-SENS-001..004 (_check_no_sensitive_fields),
+TC-RPT-GUARD-001..003 (export functions reject sensitive data).
+"""
 
 from __future__ import annotations
 
@@ -13,6 +17,7 @@ import pytest
 from taskclf.infer.smooth import Segment, flap_rate
 from taskclf.report.daily import DailyReport, build_daily_report
 from taskclf.report.export import (
+    _check_no_sensitive_fields,
     export_report_csv,
     export_report_json,
     export_report_parquet,
@@ -286,3 +291,88 @@ class TestExportParquet:
         df = pd.read_parquet(out)
         assert len(df[df["label_type"] == "core"]) == 3
         assert len(df[df["label_type"] == "mapped"]) == 1
+
+
+# ---------------------------------------------------------------------------
+# _check_no_sensitive_fields — direct tests
+# ---------------------------------------------------------------------------
+
+
+class TestCheckNoSensitiveFields:
+    """TC-RPT-SENS-001..004: _check_no_sensitive_fields rejects forbidden keys."""
+
+    def test_top_level_sensitive_key(self) -> None:
+        with pytest.raises(ValueError, match="raw_keystrokes"):
+            _check_no_sensitive_fields({"raw_keystrokes": "secret"})
+
+    def test_nested_sensitive_key(self) -> None:
+        with pytest.raises(ValueError, match="clipboard_content"):
+            _check_no_sensitive_fields({"meta": {"clipboard_content": "paste"}})
+
+    def test_all_four_sensitive_keys_rejected(self) -> None:
+        for key in ("raw_keystrokes", "window_title_raw", "clipboard_content", "clipboard"):
+            with pytest.raises(ValueError, match=key):
+                _check_no_sensitive_fields({key: "value"})
+
+    def test_clean_dict_passes(self) -> None:
+        _check_no_sensitive_fields({
+            "total_minutes": 10.0,
+            "core_breakdown": {"Build": 5.0, "Write": 5.0},
+        })
+
+
+# ---------------------------------------------------------------------------
+# Export functions reject sensitive data
+# ---------------------------------------------------------------------------
+
+
+class TestExportSensitiveGuard:
+    """TC-RPT-GUARD-001..003: export functions raise ValueError on sensitive keys."""
+
+    def test_json_rejects_sensitive(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        report = _basic_report()
+        out = tmp_path / "report.json"
+
+        original_dump = DailyReport.model_dump
+
+        def _injected_dump(self, **kwargs):  # noqa: ANN001, ANN003
+            data = original_dump(self, **kwargs)
+            data["raw_keystrokes"] = "leaked"
+            return data
+
+        monkeypatch.setattr(DailyReport, "model_dump", _injected_dump)
+
+        with pytest.raises(ValueError, match="raw_keystrokes"):
+            export_report_json(report, out)
+
+    def test_csv_rejects_sensitive(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        report = _basic_report()
+        out = tmp_path / "report.csv"
+
+        original_dump = DailyReport.model_dump
+
+        def _injected_dump(self, **kwargs):  # noqa: ANN001, ANN003
+            data = original_dump(self, **kwargs)
+            data["clipboard_content"] = "leaked"
+            return data
+
+        monkeypatch.setattr(DailyReport, "model_dump", _injected_dump)
+
+        with pytest.raises(ValueError, match="clipboard_content"):
+            export_report_csv(report, out)
+
+    def test_parquet_rejects_sensitive(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        report = _basic_report()
+        out = tmp_path / "report.parquet"
+
+        original_dump = DailyReport.model_dump
+
+        def _injected_dump(self, **kwargs):  # noqa: ANN001, ANN003
+            data = original_dump(self, **kwargs)
+            data["window_title_raw"] = "leaked"
+            return data
+
+        monkeypatch.setattr(DailyReport, "model_dump", _injected_dump)
+
+        with pytest.raises(ValueError, match="window_title_raw"):
+            export_report_parquet(report, out)

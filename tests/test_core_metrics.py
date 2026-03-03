@@ -3,19 +3,26 @@
 Covers: TC-EVAL-002 (confusion matrix shape), TC-EVAL-003 (missing classes),
 TC-EVAL-004 (class imbalance reporting), TC-EVAL-005 (weighted_f1),
 TC-EVAL-006 (per_user_metrics), TC-EVAL-007 (calibration curves),
-TC-EVAL-008 (user stratification report).
+TC-EVAL-008 (user stratification report),
+TC-METRICS-001..004 (reject_rate), TC-METRICS-005..007 (per_class_metrics),
+TC-METRICS-008..010 (compare_baselines).
 """
 
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
+from taskclf.core.defaults import MIXED_UNKNOWN
 from taskclf.core.metrics import (
     calibration_curve_data,
     class_distribution,
+    compare_baselines,
     compute_metrics,
     confusion_matrix_df,
+    per_class_metrics,
     per_user_metrics,
+    reject_rate,
     user_stratification_report,
 )
 
@@ -248,3 +255,107 @@ class TestUserStratificationReport:
         assert result["per_user"]["u1"]["label_distribution"]["Build"] == 2
         assert result["per_user"]["u2"]["label_distribution"]["Write"] == 2
         assert result["total_rows"] == 4
+
+
+# ---------------------------------------------------------------------------
+# reject_rate
+# ---------------------------------------------------------------------------
+
+
+class TestRejectRate:
+    """TC-METRICS-001..004: reject_rate counts reject labels."""
+
+    def test_no_rejects(self) -> None:
+        assert reject_rate(["Build", "Write", "Debug"]) == 0.0
+
+    def test_all_rejects(self) -> None:
+        assert reject_rate([MIXED_UNKNOWN] * 5) == 1.0
+
+    def test_empty_sequence(self) -> None:
+        assert reject_rate([]) == 0.0
+
+    def test_custom_reject_label(self) -> None:
+        labels = ["Build", "SKIP", "Build", "SKIP"]
+        assert reject_rate(labels, reject_label="SKIP") == pytest.approx(0.5)
+
+    def test_partial_rejects(self) -> None:
+        labels = ["Build", MIXED_UNKNOWN, "Write", "Build"]
+        assert reject_rate(labels) == pytest.approx(0.25)
+
+
+# ---------------------------------------------------------------------------
+# per_class_metrics
+# ---------------------------------------------------------------------------
+
+
+class TestPerClassMetrics:
+    """TC-METRICS-005..007: per_class_metrics returns precision/recall/f1."""
+
+    def test_perfect_predictions(self) -> None:
+        labels = ["Build", "Write", "BreakIdle"]
+        y_true = ["Build", "Write", "BreakIdle", "Build"]
+        y_pred = ["Build", "Write", "BreakIdle", "Build"]
+
+        result = per_class_metrics(y_true, y_pred, labels)
+        for name in labels:
+            assert result[name]["precision"] == pytest.approx(1.0)
+            assert result[name]["recall"] == pytest.approx(1.0)
+            assert result[name]["f1"] == pytest.approx(1.0)
+
+    def test_missing_class_in_predictions(self) -> None:
+        labels = ["Build", "Write", "BreakIdle"]
+        y_true = ["Build", "Build", "Write"]
+        y_pred = ["Build", "Build", "Build"]
+
+        result = per_class_metrics(y_true, y_pred, labels)
+        assert result["Write"]["f1"] == 0.0
+        assert result["BreakIdle"]["f1"] == 0.0
+
+    def test_all_keys_present(self) -> None:
+        labels = ["Build", "Write"]
+        result = per_class_metrics(["Build"], ["Build"], labels)
+        for name in labels:
+            assert "precision" in result[name]
+            assert "recall" in result[name]
+            assert "f1" in result[name]
+
+
+# ---------------------------------------------------------------------------
+# compare_baselines
+# ---------------------------------------------------------------------------
+
+
+class TestCompareBaselines:
+    """TC-METRICS-008..010: compare_baselines compares prediction methods."""
+
+    def test_two_methods_compared(self) -> None:
+        y_true = ["Build", "Write", "Build", "Write"]
+        preds = {
+            "method_a": ["Build", "Build", "Build", "Build"],
+            "method_b": ["Build", "Write", "Build", "Write"],
+        }
+        result = compare_baselines(y_true, preds, ["Build", "Write"])
+        assert "method_a" in result
+        assert "method_b" in result
+
+    def test_required_keys_present(self) -> None:
+        y_true = ["Build", "Write"]
+        preds = {"baseline": ["Build", "Write"]}
+        result = compare_baselines(y_true, preds, ["Build", "Write"])
+        entry = result["baseline"]
+        for key in ("macro_f1", "weighted_f1", "reject_rate", "per_class",
+                     "confusion_matrix", "label_names"):
+            assert key in entry, f"Missing key: {key}"
+
+    def test_reject_label_appended_to_label_names(self) -> None:
+        y_true = ["Build", MIXED_UNKNOWN]
+        preds = {"m": ["Build", MIXED_UNKNOWN]}
+        result = compare_baselines(y_true, preds, ["Build", "Write"])
+        assert MIXED_UNKNOWN in result["m"]["label_names"]
+
+    def test_reject_label_not_duplicated_when_present(self) -> None:
+        labels_with_reject = ["Build", MIXED_UNKNOWN]
+        y_true = ["Build", MIXED_UNKNOWN]
+        preds = {"m": ["Build", MIXED_UNKNOWN]}
+        result = compare_baselines(y_true, preds, labels_with_reject)
+        assert result["m"]["label_names"].count(MIXED_UNKNOWN) == 1

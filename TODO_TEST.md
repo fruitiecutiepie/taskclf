@@ -216,53 +216,29 @@ Missing tests identified by auditing `docs/api/core/` against
 
 ## High Priority — Entire modules untested
 
-### 1. `core.drift` — no test file exists
-**File:** `src/taskclf/core/drift.py`
-**Doc:** `docs/api/core/drift.md`
+### ~~1. `core.drift` — no test file exists~~ DONE
 
-Six public functions and six result models have zero test coverage.
-
-| Function | Signature | What to test |
-|---|---|---|
-| `compute_psi(reference, current, bins=10)` | Returns `float` (PSI) | Identical distributions → ~0.0; shifted distribution → >0.2; empty/constant arrays → 0.0; NaN handling (uses `np.isfinite` filter) |
-| `compute_ks(reference, current)` | Returns `KsResult(statistic, p_value)` | Same distribution → high p-value; different distributions → low p-value; `is_significant(alpha)` helper; empty arrays → `KsResult(0.0, 1.0)` |
-| `feature_drift_report(ref_df, cur_df, numerical_features)` | Returns `FeatureDriftReport` | Multi-feature report; `flagged_features` populated when PSI > threshold or KS significant; missing columns skipped; `timestamp` is set |
-| `detect_reject_rate_increase(ref_labels, cur_labels, threshold=0.10)` | Returns `RejectRateDrift` | No increase → `is_flagged=False`; increase >= threshold → flagged; empty sequences → rate 0.0; custom `reject_label` |
-| `detect_entropy_spike(ref_probs, cur_probs, spike_multiplier=2.0)` | Returns `EntropyDrift` | Confident ref + uncertain cur → flagged; same entropy → not flagged; zero-ref entropy → not flagged (guarded by `_EPS`); empty arrays |
-| `detect_class_shift(ref_labels, cur_labels, threshold=0.15)` | Returns `ClassShiftResult` | Same distribution → not flagged; class disappears/appears → flagged; `shifted_classes` lists only shifted ones; `max_shift` correct |
-
-Result models to validate: `KsResult.is_significant()`, `FeatureDriftResult`, `FeatureDriftReport`, `RejectRateDrift`, `EntropyDrift`, `ClassShiftResult`.
-
-Suggested test IDs: `TC-DRIFT-001` through `TC-DRIFT-006`.
+**Status:** Fully covered by `tests/test_drift.py` (18+ tests covering
+`compute_psi`, `compute_ks`, `feature_drift_report`,
+`detect_reject_rate_increase`, `detect_entropy_spike`, `detect_class_shift`).
 
 ---
 
-### 2. `core.telemetry` — no test file exists
-**File:** `src/taskclf/core/telemetry.py`
-**Doc:** `docs/api/core/telemetry.md`
+### ~~2. `core.telemetry` — no test file exists~~ DONE
 
-| Function / Class | What to test |
-|---|---|
-| `compute_telemetry(features_df, *, labels, confidences, core_probs, user_id)` | Returns `TelemetrySnapshot`; `feature_missingness` computed from `NUMERICAL_FEATURES`; `confidence_stats` (mean/median/p5/p95/std) when `confidences` provided, `None` when omitted; `reject_rate` counts `MIXED_UNKNOWN` labels; `class_distribution` sums to ~1.0; `mean_entropy` from `core_probs`; `window_start`/`window_end` from `bucket_start_ts` column; empty DataFrame → `total_windows=0`, no crash |
-| `TelemetryStore(store_dir)` | Creates directory on init; `append(snapshot)` writes JSONL, returns path; file named `telemetry_{user_id}.jsonl` or `telemetry_global.jsonl`; `read_recent(n, user_id=)` returns last N snapshots; `read_range(start, end)` filters by timestamp; round-trip: append then read back; empty store → empty list |
-| `ConfidenceStats` | Pydantic model with `mean`, `median`, `p5`, `p95`, `std` — basic construction |
-| `TelemetrySnapshot` | Model with defaults (`reject_rate=0.0`, `mean_entropy=0.0`, `schema_version="features_v1"`); serialization round-trip via `model_dump_json` / `model_validate_json` |
-
-Suggested test IDs: `TC-TELEM-001` through `TC-TELEM-004`.
+**Status:** Fully covered by `tests/test_telemetry.py` (12+ tests covering
+`compute_telemetry`, `TelemetryStore.append`, `read_recent`, `read_range`,
+per-user files, empty store, user_id propagation, window range, class distribution).
 
 ---
 
-### 3. `core.logging` — no test file exists
-**File:** `src/taskclf/core/logging.py`
-**Doc:** `docs/api/core/logging.md`
+### ~~3. `core.logging` — no test file exists~~ DONE
 
-| Function / Class | What to test |
-|---|---|
-| `redact_message(message)` | Redacts each key in `_SENSITIVE_KEYS`: `raw_keystrokes`, `raw_keys`, `window_title_raw`, `window_title`, `clipboard_content`, `typed_text`, `im_content`, `full_url`; handles `key=value`, `key: value`, `key="quoted value"` formats; non-sensitive keys pass through untouched; multiple sensitive keys in one message all redacted; case-insensitive matching |
-| `SanitizingFilter` | `filter(record)` rewrites `record.msg` and clears `record.args`; when `record.args` is `None`, redacts `record.msg` directly; always returns `True` (never drops records) |
-| `install_sanitizing_filter(logger, handler_level=False)` | Attaches filter to logger (default) or to each handler (`handler_level=True`); defaults to root logger when `logger=None`; returns the `SanitizingFilter` instance |
-
-Suggested test IDs: `TC-LOG-001` through `TC-LOG-003`.
+**Status:** Covered by `tests/test_core_logging.py` (15 tests):
+- `redact_message`: all 8 sensitive keys, `key=value`/`key: value`/quoted formats,
+  non-sensitive passthrough, multiple keys, case-insensitive, empty/plain messages
+- `SanitizingFilter`: always returns True, redacts with/without `record.args`
+- `install_sanitizing_filter`: root logger, given logger, `handler_level=True`
 
 ---
 
@@ -278,114 +254,29 @@ catch accidental deletions or type changes.
 
 ## Medium Priority — Gaps within tested modules
 
-### 5. `core.time` — `generate_bucket_range()` untested
-**File:** `src/taskclf/core/time.py:42-67`
-**Tests:** `tests/test_core_time.py` (only covers `align_to_bucket`)
+### ~~5. `core.time` — `generate_bucket_range()` untested~~ DONE
 
-```python
-def generate_bucket_range(
-    start: datetime,
-    end: datetime,
-    bucket_seconds: int = DEFAULT_BUCKET_SECONDS,
-) -> list[datetime]:
-```
-
-| Test case | Expected |
-|---|---|
-| 10:00:00 → 10:05:00 (60s buckets) | 5 buckets: `[10:00, 10:01, 10:02, 10:03, 10:04]` |
-| start == end | Empty list (exclusive end) |
-| start > end | Empty list |
-| Unaligned start/end (e.g. 10:00:37 → 10:03:12) | Aligns both, returns buckets within |
-| Timezone-aware inputs | Converted to naive UTC |
-| Custom `bucket_seconds` (e.g. 300) | Correct step size |
-
-Suggested test IDs: `TC-TIME-005` through `TC-TIME-010`.
+**Status:** Covered by `tests/test_core_time.py` (TC-TIME-005 through TC-TIME-010):
+basic range, start==end, start>end, unaligned inputs, timezone-aware, custom bucket_seconds=300.
 
 ---
 
-### 6. `core.metrics` — 4 functions untested
-**File:** `src/taskclf/core/metrics.py`
-**Tests:** `tests/test_core_metrics.py`
+### ~~6. `core.metrics` — 4 functions untested~~ DONE
 
-#### 6a. `reject_rate(labels, reject_label=MIXED_UNKNOWN)` → `float`
-**Lines:** 97-112
-
-| Test case | Expected |
-|---|---|
-| No rejects | 0.0 |
-| All rejects | 1.0 |
-| Empty sequence | 0.0 |
-| Custom `reject_label` | Counts only that label |
-
-#### 6b. `per_class_metrics(y_true, y_pred, label_names)` → `dict[str, dict[str, float]]`
-**Lines:** 115-141
-
-| Test case | Expected |
-|---|---|
-| Perfect predictions | `precision=1.0, recall=1.0, f1=1.0` per class |
-| Missing class in predictions | `f1=0.0` for that class (zero_division=0) |
-| All keys present | Each label has `precision`, `recall`, `f1` |
-
-#### 6c. `compare_baselines(y_true, predictions, label_names, reject_label)` → `dict[str, dict]`
-**Lines:** 144-186
-
-| Test case | Expected |
-|---|---|
-| Two methods compared | Both keyed in output |
-| Each entry has required keys | `macro_f1`, `weighted_f1`, `reject_rate`, `per_class`, `confusion_matrix`, `label_names` |
-| `reject_label` appended to `label_names` if absent | `label_names` in output includes it |
-
-#### 6d. `reject_rate_by_group(labels, user_ids, timestamps, reject_label, spike_multiplier)` → `dict`
-**Lines:** 341-395
-
-| Test case | Expected |
-|---|---|
-| No rejects anywhere | `global_reject_rate=0.0`, empty `drift_flags` |
-| One user/day spikes | That group key appears in `drift_flags` |
-| `per_group` keys format | `"user_id\|YYYY-MM-DD"` |
-| Each group has `reject_rate`, `total`, `rejected` | Correct counts |
+**Status:**
+- **6a. `reject_rate`**: Covered by `tests/test_core_metrics.py::TestRejectRate` (5 tests)
+- **6b. `per_class_metrics`**: Covered by `tests/test_core_metrics.py::TestPerClassMetrics` (3 tests)
+- **6c. `compare_baselines`**: Covered by `tests/test_core_metrics.py::TestCompareBaselines` (4 tests)
+- **6d. `reject_rate_by_group`**: Covered by `tests/test_reject_rate_by_group.py` (8 tests)
 
 ---
 
-### 7. `core.types` — 3 areas untested
-**File:** `src/taskclf/core/types.py`
-**Tests:** `tests/test_core_types.py`
+### ~~7. `core.types` — 3 areas untested~~ DONE
 
-#### 7a. `Event` protocol
-**Lines:** 14-38
-
-`Event` is a `@runtime_checkable` `Protocol`. No test verifies that an object
-satisfying the protocol passes `isinstance(obj, Event)`, or that a
-non-conforming object fails.
-
-| Test case | Expected |
-|---|---|
-| Object with all required properties | `isinstance(obj, Event)` is `True` |
-| Object missing a property | `isinstance(obj, Event)` is `False` |
-
-#### 7b. `LabelSpan.confidence` NaN coercion
-**Lines:** 222-226
-
-```python
-@field_validator("confidence", mode="before")
-@classmethod
-def _nan_confidence_to_none(cls, v: object) -> object:
-    if isinstance(v, float) and math.isnan(v):
-        return None
-    return v
-```
-
-| Test case | Expected |
-|---|---|
-| `confidence=float('nan')` | Stored as `None` |
-| `confidence=0.8` | Stored as `0.8` |
-| `confidence=None` | Stored as `None` |
-
-#### 7c. `LabelSpan.extend_forward` field
-**Line:** 237
-
-`extend_forward: bool = Field(default=False)`. No test verifies the default
-or explicit `True` construction.
+**Status:** Covered by `tests/test_core_types.py`:
+- **7a. Event protocol**: `TestEventProtocol` (2 tests: conforming/non-conforming)
+- **7b. LabelSpan NaN coercion**: `TestLabelSpanConfidenceNaN` (3 tests: NaN→None, 0.8→0.8, None→None)
+- **7c. LabelSpan.extend_forward**: `TestLabelSpanExtendForward` (2 tests: default False, explicit True)
 
 ---
 
@@ -1477,54 +1368,18 @@ Missing tests identified by auditing `docs/api/report/` against
 
 ## High Priority — Sensitive-field guard never triggered
 
-### 19. `_check_no_sensitive_fields()` — rejection path untested
-**File:** `src/taskclf/report/export.py:21-29`
-**Tests:** `tests/test_report.py` — only exercised on clean data;
-no test passes data containing a forbidden key.
+### ~~19. `_check_no_sensitive_fields()` — rejection path untested~~ DONE
 
-```python
-_SENSITIVE_KEYS = frozenset({
-    "raw_keystrokes", "window_title_raw",
-    "clipboard_content", "clipboard",
-})
-
-def _check_no_sensitive_fields(data: dict) -> None:
-    for key in data:
-        if key in _SENSITIVE_KEYS:
-            raise ValueError(...)
-        if isinstance(data[key], dict):
-            _check_no_sensitive_fields(data[key])
-```
-
-| Test case | Expected |
-|---|---|
-| Top-level sensitive key (e.g. `{"raw_keystrokes": "..."}`) | Raises `ValueError` mentioning the key name |
-| Nested sensitive key (e.g. `{"meta": {"clipboard_content": "..."}}`) | Raises `ValueError` (recursive branch) |
-| All 4 sensitive keys rejected individually | Each raises `ValueError` |
-| Clean dict passes through | No exception |
-
-Suggested test IDs: `TC-RPT-SENS-001` through `TC-RPT-SENS-004`.
+**Status:** Covered by `tests/test_report.py::TestCheckNoSensitiveFields` (4 tests:
+top-level key, nested key, all 4 keys individually, clean dict passes).
 
 ---
 
-### 20. Sensitive-field rejection via each export function
-**Files:** `src/taskclf/report/export.py` — `export_report_json` (line 32),
-`export_report_csv` (line 77), `export_report_parquet` (line 104)
-**Tests:** `tests/test_report.py` — `TestExportJson.test_no_sensitive_fields`
-only checks that clean output doesn't contain the keys; it never triggers
-the `ValueError` guard.
+### ~~20. Sensitive-field rejection via each export function~~ DONE
 
-| Test case | Expected |
-|---|---|
-| `export_report_json` with injected sensitive key in model dump | Raises `ValueError` before writing file |
-| `export_report_csv` with injected sensitive key | Raises `ValueError` |
-| `export_report_parquet` with injected sensitive key | Raises `ValueError` |
-
-**How to test:** Monkeypatch `DailyReport.model_dump` to inject a
-forbidden key, or construct a dict manually and call
-`_check_no_sensitive_fields` directly.
-
-Suggested test IDs: `TC-RPT-GUARD-001` through `TC-RPT-GUARD-003`.
+**Status:** Covered by `tests/test_report.py::TestExportSensitiveGuard` (3 tests:
+`export_report_json`, `export_report_csv`, `export_report_parquet` each raise
+`ValueError` when monkeypatched `model_dump` injects a sensitive key).
 
 ---
 
@@ -1645,61 +1500,18 @@ Missing tests identified by auditing `docs/api/labels/` against
 
 ## High Priority — Public functions with zero test coverage
 
-### 28. `labels.store.update_label_span()` — no tests
-**File:** `src/taskclf/labels/store.py:187-226`
-**Doc:** `docs/api/labels/store.md` (listed in table)
+### ~~28. `labels.store.update_label_span()` — no tests~~ DONE
 
-```python
-def update_label_span(
-    start_ts: dt.datetime,
-    end_ts: dt.datetime,
-    new_label: str,
-    path: Path,
-) -> LabelSpan:
-```
-
-Reads all spans from parquet, finds the one matching `start_ts`/`end_ts`,
-replaces its label with `new_label` (validated via `LabelSpan` constructor
-against `LABEL_SET_V1`), writes back, and returns the updated span.
-Raises `ValueError` if file doesn't exist or no matching span is found.
-
-| Test case | Setup | Expected |
-|---|---|---|
-| Happy path: update label | Write 2 spans, update the first's label from "Build" to "Debug" | Returns updated `LabelSpan` with `label="Debug"`; re-read file confirms change persisted; other span unchanged |
-| File does not exist | Call with non-existent path | `ValueError("No labels file found")` |
-| No matching span | Write spans, call with timestamps that don't match any | `ValueError("No label found for ...")` |
-| Invalid new_label | Write a span, update with `new_label="InvalidLabel"` | `ValidationError` from `LabelSpan` constructor (label not in `LABEL_SET_V1`) |
-| Preserves other fields | Write span with `user_id`, `confidence`, `extend_forward` | After update, all fields except `label` are unchanged |
-
-Suggested test IDs: `TC-LABEL-UPD-001` through `TC-LABEL-UPD-005`.
+**Status:** Covered by `tests/test_labels_store.py::TestUpdateLabelSpan` (5 tests:
+happy path, file not found, no matching span, invalid label, preserves other fields).
 
 ---
 
-### 29. `labels.store.delete_label_span()` — no tests
-**File:** `src/taskclf/labels/store.py:229-252`
-**Doc:** `docs/api/labels/store.md` (listed in table)
+### ~~29. `labels.store.delete_label_span()` — no tests~~ DONE
 
-```python
-def delete_label_span(
-    start_ts: dt.datetime,
-    end_ts: dt.datetime,
-    path: Path,
-) -> None:
-```
-
-Reads all spans, removes the one matching both `start_ts` and `end_ts`,
-writes the remaining spans back. Raises `ValueError` if file doesn't
-exist or no matching span is found.
-
-| Test case | Setup | Expected |
-|---|---|---|
-| Happy path: delete one of two spans | Write 2 non-overlapping spans, delete the first | File contains only the second span |
-| Delete the only span | Write 1 span, delete it | File contains 0 spans (empty parquet) |
-| File does not exist | Call with non-existent path | `ValueError("No labels file found")` |
-| No matching span | Write spans, call with timestamps that don't match any | `ValueError("No label found for ...")` |
-| Multiple spans with same start but different end | Write 2 spans with same `start_ts` but different `end_ts` (different users), delete one | Only the targeted span removed |
-
-Suggested test IDs: `TC-LABEL-DEL-001` through `TC-LABEL-DEL-005`.
+**Status:** Covered by `tests/test_labels_store.py::TestDeleteLabelSpan` (5 tests:
+delete one of two, delete only span, file not found, no matching span,
+same start different end).
 
 ---
 
