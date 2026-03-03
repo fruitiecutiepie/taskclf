@@ -77,13 +77,19 @@ export interface PromptLabelEvent {
   suggested_confidence: number | null;
 }
 
+export interface SuggestionClearedEvent {
+  type: "suggestion_cleared";
+  reason: string;
+}
+
 export type WSEvent =
   | Prediction
   | LabelSuggestion
   | StatusEvent
   | TrayState
   | ShowLabelGridEvent
-  | PromptLabelEvent;
+  | PromptLabelEvent
+  | SuggestionClearedEvent;
 
 export type ConnectionStatus = "connecting" | "connected" | "disconnected";
 
@@ -125,9 +131,27 @@ export function useWebSocket() {
     connectedSince: null,
   });
 
+  const SUGGESTION_TTL_MS = 10 * 60 * 1000;
+
   let ws: WebSocket | null = null;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let suggestionTimer: ReturnType<typeof setTimeout> | null = null;
   let retryDelay = 1000;
+
+  function clearSuggestionTimer() {
+    if (suggestionTimer) {
+      clearTimeout(suggestionTimer);
+      suggestionTimer = null;
+    }
+  }
+
+  function startSuggestionTimer() {
+    clearSuggestionTimer();
+    suggestionTimer = setTimeout(() => {
+      suggestionTimer = null;
+      setActiveSuggestion(null);
+    }, SUGGESTION_TTL_MS);
+  }
 
   function connect() {
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
@@ -179,10 +203,20 @@ export function useWebSocket() {
             break;
           case "suggest_label":
             setActiveSuggestion(data);
+            startSuggestionTimer();
             setWsStats((prev) => ({
               ...prev,
               messageCount: prev.messageCount + 1,
               suggestionCount: prev.suggestionCount + 1,
+              lastMessageAt: now,
+            }));
+            break;
+          case "suggestion_cleared":
+            setActiveSuggestion(null);
+            clearSuggestionTimer();
+            setWsStats((prev) => ({
+              ...prev,
+              messageCount: prev.messageCount + 1,
               lastMessageAt: now,
             }));
             break;
@@ -234,12 +268,14 @@ export function useWebSocket() {
 
   function dismissSuggestion() {
     setActiveSuggestion(null);
+    clearSuggestionTimer();
   }
 
   onMount(() => connect());
 
   onCleanup(() => {
     if (reconnectTimer) clearTimeout(reconnectTimer);
+    clearSuggestionTimer();
     ws?.close();
   });
 

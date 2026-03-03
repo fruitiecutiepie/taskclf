@@ -1021,6 +1021,8 @@ class TestLabelCreatedEvent:
                 })
 
             threading.Thread(target=_post).start()
+            cleared = ws.receive_json()
+            assert cleared["type"] == "suggestion_cleared"
             received = ws.receive_json()
             assert received["type"] == "label_created"
             assert received["label"] == "Build"
@@ -1031,7 +1033,7 @@ class TestLabelCreatedEvent:
             assert "mapped_label" not in received
 
     def test_no_event_without_extend_forward(self, data_dir: Path) -> None:
-        """TC-UI-LC-002: extend_forward=False does not emit any event."""
+        """TC-UI-LC-002: extend_forward=False does not emit label_created."""
         import threading, time
 
         bus = EventBus()
@@ -1045,6 +1047,114 @@ class TestLabelCreatedEvent:
                     "end_ts": "2026-02-27T10:00:00",
                     "label": "Build",
                     "extend_forward": False,
+                })
+                time.sleep(0.1)
+                bus.publish_threadsafe({"type": "status", "state": "sentinel"})
+
+            threading.Thread(target=_post).start()
+            cleared = ws.receive_json()
+            assert cleared["type"] == "suggestion_cleared"
+            received = ws.receive_json()
+            assert received["type"] == "status"
+            assert received["state"] == "sentinel"
+
+
+# ---------------------------------------------------------------------------
+# suggestion_cleared event  (Item 8)
+# ---------------------------------------------------------------------------
+
+
+class TestSuggestionCleared:
+    """Verify label saves publish suggestion_cleared, errors do not."""
+
+    def test_label_save_publishes_suggestion_cleared(self, data_dir: Path) -> None:
+        """TC-UI-SC-001: POST /api/labels emits suggestion_cleared via WS."""
+        import threading
+
+        bus = EventBus()
+        app = create_app(data_dir=data_dir, event_bus=bus)
+
+        with TestClient(app) as tc, tc.websocket_connect("/ws/predictions") as ws:
+            def _post() -> None:
+                import time
+                time.sleep(0.05)
+                tc.post("/api/labels", json={
+                    "start_ts": "2026-02-27T09:00:00",
+                    "end_ts": "2026-02-27T10:00:00",
+                    "label": "Build",
+                })
+
+            threading.Thread(target=_post).start()
+            received = ws.receive_json()
+            assert received["type"] == "suggestion_cleared"
+            assert received["reason"] == "label_saved"
+
+    def test_notification_accept_publishes_suggestion_cleared(self, data_dir: Path) -> None:
+        """TC-UI-SC-002: POST /api/notification/accept emits suggestion_cleared."""
+        import threading
+
+        bus = EventBus()
+        app = create_app(data_dir=data_dir, event_bus=bus)
+
+        with TestClient(app) as tc, tc.websocket_connect("/ws/predictions") as ws:
+            def _post() -> None:
+                import time
+                time.sleep(0.05)
+                tc.post("/api/notification/accept", json={
+                    "block_start": "2026-02-27T09:00:00",
+                    "block_end": "2026-02-27T10:00:00",
+                    "label": "Build",
+                })
+
+            threading.Thread(target=_post).start()
+            received = ws.receive_json()
+            assert received["type"] == "suggestion_cleared"
+            assert received["reason"] == "label_saved"
+
+    def test_validation_error_no_suggestion_cleared(self, data_dir: Path) -> None:
+        """TC-UI-SC-003: Invalid label does not emit suggestion_cleared."""
+        import threading, time
+
+        bus = EventBus()
+        app = create_app(data_dir=data_dir, event_bus=bus)
+
+        with TestClient(app) as tc, tc.websocket_connect("/ws/predictions") as ws:
+            def _post() -> None:
+                time.sleep(0.05)
+                tc.post("/api/labels", json={
+                    "start_ts": "2026-02-27T09:00:00",
+                    "end_ts": "2026-02-27T10:00:00",
+                    "label": "NotALabel",
+                })
+                time.sleep(0.1)
+                bus.publish_threadsafe({"type": "status", "state": "sentinel"})
+
+            threading.Thread(target=_post).start()
+            received = ws.receive_json()
+            assert received["type"] == "status"
+            assert received["state"] == "sentinel"
+
+    def test_overlap_error_no_suggestion_cleared(self, data_dir: Path) -> None:
+        """TC-UI-SC-004: Overlap error does not emit suggestion_cleared."""
+        import threading, time
+
+        bus = EventBus()
+        app = create_app(data_dir=data_dir, event_bus=bus)
+
+        with TestClient(app) as tc:
+            tc.post("/api/labels", json={
+                "start_ts": "2026-02-27T09:00:00",
+                "end_ts": "2026-02-27T10:00:00",
+                "label": "Build",
+            })
+
+        with TestClient(app) as tc, tc.websocket_connect("/ws/predictions") as ws:
+            def _post() -> None:
+                time.sleep(0.05)
+                tc.post("/api/labels", json={
+                    "start_ts": "2026-02-27T09:30:00",
+                    "end_ts": "2026-02-27T10:30:00",
+                    "label": "Meet",
                 })
                 time.sleep(0.1)
                 bus.publish_threadsafe({"type": "status", "state": "sentinel"})

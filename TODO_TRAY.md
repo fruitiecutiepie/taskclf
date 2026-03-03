@@ -53,12 +53,9 @@ The server now returns structured 409 responses with an `OverlapErrorDetail` bod
 `TrayLabeler` wires this to `_handle_initial_app()`, which publishes an `initial_app` event via the EventBus: `{"type": "initial_app", "app": <app_id>, "ts": <iso_ts>}`.
 **Note:** The frontend does not yet handle this event type; it will be silently ignored until a UI component is added to prompt labeling for the pre-start period.
 
-### 8. Suggestion never expires
-**File:** `ws.ts:89-90`, `LabelGrid.tsx`
+### ~~8. Suggestion never expires~~ DONE
 
-`activeSuggestion` persists until manually dismissed or replaced by a new suggestion. If no new transitions occur, a stale suggestion from hours ago remains visible.
-
-**Fix:** Add a TTL (e.g. 10 minutes) after which the suggestion auto-dismisses, or clear it when the user creates any label.
+The server now publishes a `suggestion_cleared` event via EventBus after every successful label save (`POST /api/labels` and `POST /api/notification/accept`), so all connected clients dismiss stale suggestions immediately. The frontend (`ws.ts`) handles the new event type and also applies a 10-minute TTL timer: if no new `suggest_label` event arrives within 10 minutes, the suggestion auto-dismisses. The TTL timer is cancelled when a suggestion is explicitly dismissed, replaced, or cleared by the server.
 
 ---
 
@@ -77,12 +74,9 @@ The `--no-tray` message now prints `"UI available at http://127.0.0.1:{port}"`.
 
 Renamed to `_open_dashboard` for accuracy. The menu label already says "Open Dashboard".
 
-### 12. LabelGrid auto-collapse has a forced 1.5s delay
-**File:** `LabelGrid.tsx:109-111`
+### ~~12. LabelGrid auto-collapse has a forced 1.5s delay~~ DONE
 
-After a successful label, the grid shows a flash message for 1500ms then collapses. No way to dismiss early. In rapid labeling workflows this adds friction.
-
-**Fix:** Allow click-to-dismiss or reduce the delay. Consider keeping the grid open so the user can label again immediately.
+The success flash now auto-clears after 1.5s but no longer collapses the grid — the grid stays open for rapid consecutive labeling. The flash is also click-to-dismiss for instant clearance.
 
 ### ~~13. `LabelRecent` component is dead code~~ DONE
 

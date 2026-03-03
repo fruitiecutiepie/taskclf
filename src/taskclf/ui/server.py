@@ -259,6 +259,8 @@ def create_app(
         if on_label_saved is not None:
             on_label_saved()
 
+        await bus.publish({"type": "suggestion_cleared", "reason": "label_saved"})
+
         if span.extend_forward:
             await bus.publish({
                 "type": "label_created",
@@ -479,6 +481,8 @@ def create_app(
 
         if on_label_saved is not None:
             on_label_saved()
+
+        await bus.publish({"type": "suggestion_cleared", "reason": "label_saved"})
 
         logger.info("Accepted suggested label: %s (%s → %s)", body.label, body.block_start, body.block_end)
         return LabelResponse(

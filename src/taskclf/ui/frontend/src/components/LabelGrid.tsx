@@ -106,10 +106,7 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
       });
       setFlash(label);
       setLabelVersion((v) => v + 1);
-      setTimeout(() => {
-        setFlash(null);
-        props.onCollapse();
-      }, 1500);
+      setTimeout(() => setFlash(null), 1500);
     } catch (err: any) {
       setFlash(`Error: ${err.message}`);
       setTimeout(() => setFlash(null), 3000);
@@ -411,10 +408,12 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
 
       <Show when={flash()}>
         <div
+          onClick={() => setFlash(null)}
           style={{
             "text-align": "center",
             "font-size": "0.8rem",
             "margin-bottom": "8px",
+            cursor: "pointer",
             color: flash()!.startsWith("Error")
               ? "var(--danger)"
               : "var(--success)",

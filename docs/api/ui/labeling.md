@@ -31,7 +31,7 @@ Options:
 ## Panels
 
 - **Label** -- Form with date/time pickers, `CoreLabel` dropdown, confidence slider, and user ID input.
-- **Recent** -- Quick-label with preset durations (now / 1 / 5 / 10 / 15 / 30 / 60 min) or a custom duration input supporting seconds, minutes, hours, and days. "now" creates a point label at the current moment; other values label the corresponding trailing window. The "Extend until next label" checkbox (on by default) sets `extend_forward=true` on the new label; when the *next* label is created, this label's `end_ts` is automatically stretched to meet the next label's `start_ts`, producing contiguous coverage without gaps. Shows a live ActivityWatch summary when available. A compact "Last: *Label* Nm ago" indicator below the buttons provides continuity context without requiring the full history view.
+- **Recent** -- Quick-label with preset durations (now / 1 / 5 / 10 / 15 / 30 / 60 min) or a custom duration input supporting seconds, minutes, hours, and days. "now" creates a point label at the current moment; other values label the corresponding trailing window. The "Extend until next label" checkbox (on by default) sets `extend_forward=true` on the new label; when the *next* label is created, this label's `end_ts` is automatically stretched to meet the next label's `start_ts`, producing contiguous coverage without gaps. Shows a live ActivityWatch summary when available. A compact "Last: *Label* Nm ago" indicator below the buttons provides continuity context without requiring the full history view. After a successful label, a brief "Saved" flash appears (click to dismiss instantly); the grid stays open for rapid consecutive labeling.
 - **Queue** -- Pending `LabelRequest` items sorted by confidence (lowest first). Shows time range, predicted label, confidence, and reason.
 
 ## Live Features
@@ -66,6 +66,7 @@ The UI is a SolidJS single-page application served by a FastAPI backend:
   - `initial_app` -- once on startup when the first dominant app is detected: `app`, `ts`. Allows the UI to prompt the user to label the pre-start period that would otherwise be unlabeled.
   - `prediction` -- on app transition without a suggestion: `label`, `confidence`, `ts`, `mapped_label`, `current_app`. Reserved for actual model outputs; manual labels no longer use this event type.
   - `label_created` -- when a label with `extend_forward=true` is created via `POST /api/labels`: `label`, `confidence`, `ts` (end), `start_ts`, `extend_forward`. Replaces the former `prediction` event with `provenance: "manual"`.
+  - `suggestion_cleared` -- published after every successful label save (via `POST /api/labels` or `POST /api/notification/accept`): `reason` (e.g. `"label_saved"`). Clients clear the active suggestion on receipt. The frontend also applies a 10-minute TTL: if no new `suggest_label` event replaces it, the suggestion auto-dismisses.
   - `suggest_label` -- on app transition with model suggestion: `suggested`, `confidence`, `reason`, `old_label`, `block_start`, `block_end`.
   - `prompt_label` -- on task transition with labeling prompt: `prev_app`, `new_app`, `block_start`, `block_end`, `duration_min`, `suggested_label`, `suggested_confidence`.
   - `show_label_grid` -- triggered by `POST /api/window/show-label-grid`: `type` (`"show_label_grid"`, no other fields).
