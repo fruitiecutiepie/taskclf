@@ -195,13 +195,15 @@ def create_app(
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-        await bus.publish({
-            "type": "prediction",
-            "label": span.label,
-            "confidence": span.confidence if span.confidence is not None else 1.0,
-            "ts": span.end_ts.isoformat(),
-            "mapped_label": span.label,
-        })
+        if span.extend_forward:
+            await bus.publish({
+                "type": "prediction",
+                "label": span.label,
+                "confidence": span.confidence if span.confidence is not None else 1.0,
+                "ts": span.end_ts.isoformat(),
+                "mapped_label": span.label,
+                "provenance": "manual",
+            })
 
         return LabelResponse(
             start_ts=span.start_ts.isoformat(),
