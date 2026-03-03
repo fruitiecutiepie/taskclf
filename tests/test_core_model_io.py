@@ -2,7 +2,10 @@
 
 Covers: TC-MODEL-001 (write files), TC-MODEL-002 (missing metadata),
 TC-MODEL-003 (schema hash mismatch), TC-MODEL-004 (label set mismatch),
-TC-MODEL-RUN-001/002 (generate_run_id).
+TC-MODEL-RUN-001/002 (generate_run_id),
+TC-MODEL-006 (FileExistsError on duplicate run dir),
+TC-MODEL-007/008 (cat_encoders round-trip and None fallback),
+TC-MODEL-009/010 (build_metadata reject_threshold and dataset_hash).
 """
 
 from __future__ import annotations
@@ -11,19 +14,22 @@ import datetime as dt
 import json
 import re
 import shutil
+from unittest.mock import patch
 
+import numpy as np
 import pandas as pd
 import pytest
 from pydantic import ValidationError
 
 from taskclf.core.model_io import (
+    ModelMetadata,
     build_metadata,
     generate_run_id,
     load_model_bundle,
     save_model_bundle,
 )
 from taskclf.core.schema import FeatureSchemaV1
-from taskclf.core.types import LabelSpan
+from taskclf.core.types import LABEL_SET_V1, LabelSpan
 from taskclf.features.build import generate_dummy_features
 from taskclf.labels.projection import project_blocks_to_windows
 from taskclf.train.dataset import split_by_time
@@ -261,3 +267,86 @@ class TestGenerateRunId:
         """TC-MODEL-RUN-002: two calls produce different IDs (probabilistic)."""
         ids = {generate_run_id() for _ in range(20)}
         assert len(ids) > 1
+
+
+class TestSaveModelBundleFileExistsError:
+    """TC-MODEL-006: save_model_bundle raises FileExistsError for duplicate run dir."""
+
+    def test_duplicate_run_dir_raises(self, trained_bundle, tmp_path) -> None:
+        fixed_run_id = "2025-01-01_000000_run-9999"
+        (tmp_path / fixed_run_id).mkdir()
+
+        with patch("taskclf.core.model_io.generate_run_id", return_value=fixed_run_id):
+            with pytest.raises(FileExistsError, match="already exists"):
+                save_model_bundle(
+                    trained_bundle["model"],
+                    trained_bundle["metadata"],
+                    trained_bundle["metrics"],
+                    trained_bundle["cm_df"],
+                    tmp_path,
+                )
+
+
+class TestLoadCatEncodersRoundTrip:
+    """TC-MODEL-007/008: cat_encoders round-trip and None fallback."""
+
+    def test_cat_encoders_round_trip(self, trained_bundle) -> None:
+        """TC-MODEL-007: cat_encoders present in bundle are loaded correctly."""
+        _, _, cat_encoders = load_model_bundle(trained_bundle["run_dir"])
+
+        assert cat_encoders is not None
+        assert isinstance(cat_encoders, dict)
+        assert len(cat_encoders) > 0
+
+        enc_path = trained_bundle["run_dir"] / "categorical_encoders.json"
+        saved_vocab = json.loads(enc_path.read_text())
+        for col, classes in saved_vocab.items():
+            assert col in cat_encoders
+            np.testing.assert_array_equal(cat_encoders[col].classes_, np.array(classes))
+
+    def test_cat_encoders_absent_returns_none(self, tmp_path, trained_bundle) -> None:
+        """TC-MODEL-008: missing categorical_encoders.json returns None."""
+        run_dir = tmp_path / "no_encoders_run"
+        run_dir.mkdir()
+        shutil.copy(trained_bundle["run_dir"] / "model.txt", run_dir / "model.txt")
+        shutil.copy(trained_bundle["run_dir"] / "metadata.json", run_dir / "metadata.json")
+
+        _, _, cat_encoders = load_model_bundle(run_dir)
+        assert cat_encoders is None
+
+
+class TestBuildMetadataParams:
+    """TC-MODEL-009/010: build_metadata reject_threshold and dataset_hash."""
+
+    def test_reject_threshold_round_trips(self) -> None:
+        """TC-MODEL-009: explicit reject_threshold is stored in metadata."""
+        metadata = build_metadata(
+            label_set=sorted(LABEL_SET_V1),
+            train_date_from=dt.date(2025, 6, 14),
+            train_date_to=dt.date(2025, 6, 15),
+            params={"num_leaves": 31},
+            dataset_hash="hash_abc",
+            reject_threshold=0.42,
+        )
+        assert metadata.reject_threshold == 0.42
+
+    def test_reject_threshold_default_none(self) -> None:
+        metadata = build_metadata(
+            label_set=sorted(LABEL_SET_V1),
+            train_date_from=dt.date(2025, 6, 14),
+            train_date_to=dt.date(2025, 6, 15),
+            params={},
+            dataset_hash="hash_abc",
+        )
+        assert metadata.reject_threshold is None
+
+    def test_dataset_hash_round_trips(self) -> None:
+        """TC-MODEL-010: dataset_hash is stored in metadata."""
+        metadata = build_metadata(
+            label_set=sorted(LABEL_SET_V1),
+            train_date_from=dt.date(2025, 6, 14),
+            train_date_to=dt.date(2025, 6, 15),
+            params={},
+            dataset_hash="my_custom_hash_xyz",
+        )
+        assert metadata.dataset_hash == "my_custom_hash_xyz"

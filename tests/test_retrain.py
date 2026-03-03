@@ -18,6 +18,7 @@ Covers:
 - TC-RETRAIN-016: pipeline updates active pointer on promotion
 - TC-RETRAIN-020..025: check_calibrator_update_due
 - TC-RETRAIN-026..030: find_latest_model isolated
+- TC-RETRAIN-031..036: TrainParams, DatasetSnapshot, RegressionGate constructor tests
 """
 
 from __future__ import annotations
@@ -36,8 +37,11 @@ from taskclf.labels.store import generate_dummy_labels
 from taskclf.train.evaluate import EvaluationReport
 from taskclf.model_registry import read_active
 from taskclf.train.retrain import (
+    DatasetSnapshot,
     RetrainConfig,
+    RegressionGate,
     RegressionResult,
+    TrainParams,
     check_calibrator_update_due,
     check_candidate_gates,
     check_regression_gates,
@@ -599,3 +603,76 @@ class TestFindLatestModel:
     def test_nonexistent_directory(self, tmp_path: Path) -> None:
         """TC-RETRAIN-030: non-existent directory returns None."""
         assert find_latest_model(tmp_path / "does_not_exist") is None
+
+
+class TestTrainParamsConstructor:
+    """TC-RETRAIN-031/032: TrainParams defaults and custom values."""
+
+    def test_defaults(self) -> None:
+        """TC-RETRAIN-031: TrainParams() uses configured defaults."""
+        from taskclf.core.defaults import DEFAULT_NUM_BOOST_ROUND
+
+        params = TrainParams()
+        assert params.num_boost_round == DEFAULT_NUM_BOOST_ROUND
+        assert params.class_weight == "balanced"
+
+    def test_custom_values(self) -> None:
+        """TC-RETRAIN-032: TrainParams with explicit overrides."""
+        params = TrainParams(num_boost_round=500, class_weight="none")
+        assert params.num_boost_round == 500
+        assert params.class_weight == "none"
+
+
+class TestDatasetSnapshotConstructor:
+    """TC-RETRAIN-033/034: DatasetSnapshot construction and immutability."""
+
+    def test_construction(self) -> None:
+        """TC-RETRAIN-033: DatasetSnapshot stores all fields."""
+        snap = DatasetSnapshot(
+            dataset_hash="abc123",
+            row_count=1000,
+            date_from="2025-06-01",
+            date_to="2025-06-30",
+            user_count=3,
+            class_distribution={"Build": 400, "Write": 300, "BreakIdle": 300},
+        )
+        assert snap.dataset_hash == "abc123"
+        assert snap.row_count == 1000
+        assert snap.date_from == "2025-06-01"
+        assert snap.date_to == "2025-06-30"
+        assert snap.user_count == 3
+        assert snap.class_distribution["Build"] == 400
+
+    def test_frozen_immutability(self) -> None:
+        """TC-RETRAIN-034: DatasetSnapshot is frozen (immutable)."""
+        snap = DatasetSnapshot(
+            dataset_hash="abc",
+            row_count=10,
+            date_from="2025-01-01",
+            date_to="2025-01-31",
+            user_count=1,
+            class_distribution={"Build": 10},
+        )
+        with pytest.raises(Exception):
+            snap.row_count = 999  # type: ignore[misc]
+
+
+class TestRegressionGateConstructor:
+    """TC-RETRAIN-035/036: RegressionGate construction and immutability."""
+
+    def test_construction(self) -> None:
+        """TC-RETRAIN-035: RegressionGate stores name, passed, detail."""
+        gate = RegressionGate(
+            name="macro_f1",
+            passed=True,
+            detail="challenger 0.85 >= champion 0.80",
+        )
+        assert gate.name == "macro_f1"
+        assert gate.passed is True
+        assert "0.85" in gate.detail
+
+    def test_frozen_immutability(self) -> None:
+        """TC-RETRAIN-036: RegressionGate is frozen (immutable)."""
+        gate = RegressionGate(name="test", passed=False, detail="fail")
+        with pytest.raises(Exception):
+            gate.passed = True  # type: ignore[misc]

@@ -8,6 +8,7 @@ Covers:
 - TC-TAX-005: Default taxonomy identity mapping
 - TC-TAX-006: CLI taxonomy validate / show / init
 - TC-TAX-007: Batch inference integration with taxonomy
+- TC-TAX-008..010: TaxonomyDisplay defaults, custom values, frozen
 """
 
 from __future__ import annotations
@@ -30,6 +31,7 @@ from taskclf.infer.taxonomy import (
     FALLBACK_BUCKET_NAME,
     TaxonomyBucket,
     TaxonomyConfig,
+    TaxonomyDisplay,
     TaxonomyResolver,
     TaxonomyResult,
     default_taxonomy,
@@ -527,3 +529,31 @@ class TestBatchInferenceIntegration:
         assert result.exit_code == 0, result.output
         df = pd.read_csv(out_dir / "predictions.csv")
         assert "mapped_label" not in df.columns
+
+
+class TestTaxonomyDisplay:
+    """TC-TAX-008..010: TaxonomyDisplay defaults, custom values, frozen."""
+
+    def test_defaults(self) -> None:
+        """TC-TAX-008: TaxonomyDisplay() uses sensible defaults."""
+        display = TaxonomyDisplay()
+        assert display.show_core_labels is False
+        assert display.default_view == "mapped"
+        assert display.color_theme == "default"
+
+    def test_custom_values(self) -> None:
+        """TC-TAX-009: TaxonomyDisplay with explicit overrides."""
+        display = TaxonomyDisplay(
+            show_core_labels=True,
+            default_view="core",
+            color_theme="dark",
+        )
+        assert display.show_core_labels is True
+        assert display.default_view == "core"
+        assert display.color_theme == "dark"
+
+    def test_frozen_immutability(self) -> None:
+        """TC-TAX-010: TaxonomyDisplay is frozen (immutable)."""
+        display = TaxonomyDisplay()
+        with pytest.raises(Exception):
+            display.show_core_labels = True  # type: ignore[misc]

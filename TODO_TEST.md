@@ -1008,3 +1008,107 @@ TC-CFG-002 as_dict includes custom keys alongside user_id and username).
 
 **Status:** Covered by `tests/test_core_config.py` (1 test:
 TC-CFG-003 update with whitespace-only username raises ValueError).
+
+---
+---
+
+# TODO — Model IO Test Coverage
+
+Missing tests identified by auditing `src/taskclf/core/model_io.py` against
+`tests/test_core_model_io.py`.
+
+**Already tested:**
+- `save_model_bundle` — writes model, metadata, metrics, confusion matrix, categorical encoders
+- `load_model_bundle` — missing metadata, schema hash mismatch, label set mismatch, validation flags
+- `build_metadata` — data provenance default
+- `generate_run_id` — format and uniqueness
+
+---
+
+### ~~57. `core.model_io` — `save_model_bundle()` FileExistsError path untested~~ DONE
+
+**Status:** Covered by `tests/test_core_model_io.py::TestSaveModelBundleFileExistsError` (1 test:
+TC-MODEL-006 pre-created run dir triggers FileExistsError).
+
+---
+
+### ~~58. `core.model_io` — `load_model_bundle()` cat_encoders round-trip untested~~ DONE
+
+**Status:** Covered by `tests/test_core_model_io.py::TestLoadCatEncodersRoundTrip` (2 tests:
+TC-MODEL-007 cat_encoders present in bundle are loaded with correct classes,
+TC-MODEL-008 missing categorical_encoders.json returns None).
+
+---
+
+### ~~59. `core.model_io` — `build_metadata()` reject_threshold and dataset_hash untested~~ DONE
+
+**Status:** Covered by `tests/test_core_model_io.py::TestBuildMetadataParams` (3 tests:
+TC-MODEL-009 explicit reject_threshold stored in metadata,
+reject_threshold defaults to None,
+TC-MODEL-010 dataset_hash round-trips).
+
+---
+---
+
+# TODO — Retrain Model Test Coverage
+
+Missing constructor/validation tests identified by auditing
+`src/taskclf/train/retrain.py` Pydantic models against `tests/test_retrain.py`.
+
+**Already tested:**
+- `RetrainConfig` — load_retrain_config YAML round-trip
+- `RegressionResult` — via check_regression_gates / check_candidate_gates
+- `RetrainResult` — via run_retrain_pipeline
+
+---
+
+### ~~60. `train.retrain` — `TrainParams`, `DatasetSnapshot`, `RegressionGate` no dedicated constructor tests~~ DONE
+
+**Status:** Covered by `tests/test_retrain.py` (6 tests):
+- `TestTrainParamsConstructor` (2 tests: TC-RETRAIN-031 defaults match DEFAULT_NUM_BOOST_ROUND,
+  TC-RETRAIN-032 custom num_boost_round and class_weight)
+- `TestDatasetSnapshotConstructor` (2 tests: TC-RETRAIN-033 all fields stored,
+  TC-RETRAIN-034 frozen immutability)
+- `TestRegressionGateConstructor` (2 tests: TC-RETRAIN-035 name/passed/detail stored,
+  TC-RETRAIN-036 frozen immutability)
+
+---
+---
+
+# TODO — Taxonomy Test Coverage
+
+Missing tests identified by auditing `src/taskclf/infer/taxonomy.py` against
+`tests/test_infer_taxonomy.py`.
+
+**Already tested:**
+- `TaxonomyBucket` — validation of core_labels and hex color
+- `TaxonomyConfig` — YAML round-trip, resolver, batch, default taxonomy
+- `TaxonomyReject` — used via TaxonomyConfig
+- `TaxonomyResolver` — single/batch resolution
+- CLI commands — validate/show/init
+
+---
+
+### ~~61. `infer.taxonomy` — `TaxonomyDisplay` no dedicated test~~ DONE
+
+**Status:** Covered by `tests/test_infer_taxonomy.py::TestTaxonomyDisplay` (3 tests:
+TC-TAX-008 defaults (show_core_labels=False, default_view="mapped", color_theme="default"),
+TC-TAX-009 custom values (show_core_labels=True, default_view="core", color_theme="dark"),
+TC-TAX-010 frozen immutability).
+
+---
+---
+
+# TODO — Remaining Known Gaps
+
+### 62. `infer.online` — `run_online_loop()` no direct test
+
+**CLI functions:** `src/taskclf/infer/online.py:225-516`
+**Existing coverage:** Only mocked in `tests/test_cli_commands.py::TestInferOnline`
+(CLI wiring only — `run_online_loop` is patched out). `OnlinePredictor` is tested
+in `tests/test_infer_online.py`.
+
+**Note:** Complex integration function requiring extensive mocking of ActivityWatch
+REST client, model loading, and polling loop. Component-level coverage
+(`OnlinePredictor`, `_append_prediction_csv`, `ActiveModelReloader`) is adequate.
+CLI argument parsing is tested. Full loop integration test deferred.
