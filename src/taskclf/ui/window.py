@@ -74,7 +74,7 @@ class WindowAPI:
             return
         self._cancel_timer("_label_hide_timer")
         self._label_visible = True
-        self._reposition_children()
+        self._reposition_label()
         try:
             self._label_window.show()
         except Exception:
@@ -111,7 +111,7 @@ class WindowAPI:
                 self._panel_window.show()
             except Exception:
                 logger.debug("Could not show panel", exc_info=True)
-            self._reposition_children()
+            self._position_panel()
 
     def _do_hide_panel(self) -> None:
         self._panel_hide_timer = None
@@ -140,11 +140,11 @@ class WindowAPI:
             setattr(self, timer_attr, None)
 
     def _on_main_window_moved(self) -> None:
-        """Reposition child windows when the main window is dragged."""
-        self._reposition_children()
+        """Reposition the label grid when the main window is dragged."""
+        self._reposition_label()
 
-    def _reposition_children(self) -> None:
-        """Place label grid below pill (right-aligned), panel to the left."""
+    def _reposition_label(self) -> None:
+        """Place label grid below pill, right-aligned."""
         if self._window is None:
             return
         try:
@@ -153,13 +153,21 @@ class WindowAPI:
                     self._window.x + _COMPACT_SIZE[0] - _LABEL_SIZE[0],
                     self._window.y + _COMPACT_SIZE[1] + 4,
                 )
-            if self._panel_visible and self._panel_window is not None:
-                self._panel_window.move(
-                    self._window.x - _PANEL_SIZE[0] - 4,
-                    self._window.y,
-                )
         except Exception:
-            logger.debug("Could not reposition child windows", exc_info=True)
+            logger.debug("Could not reposition label window", exc_info=True)
+
+    def _position_panel(self) -> None:
+        """Place panel below pill (and below label grid if visible)."""
+        if self._window is None or self._panel_window is None:
+            return
+        try:
+            right_x = self._window.x + _COMPACT_SIZE[0]
+            y = self._window.y + _COMPACT_SIZE[1] + 4
+            if self._label_visible:
+                y += _LABEL_SIZE[1] + 4
+            self._panel_window.move(right_x - _PANEL_SIZE[0], y)
+        except Exception:
+            logger.debug("Could not position panel window", exc_info=True)
 
     @property
     def visible(self) -> bool:
@@ -230,8 +238,8 @@ def run_window(
     )
     api.bind_label(label)
 
-    panel_x = (x - _PANEL_SIZE[0] - 4) if x is not None else 0
-    panel_y = y if y is not None else 16
+    panel_x = (x + _COMPACT_SIZE[0] - _PANEL_SIZE[0]) if x is not None else 0
+    panel_y = (y + _COMPACT_SIZE[1] + 4) if y is not None else 50
     panel = webview.create_window(
         "taskclf-panel",
         url=f"http://127.0.0.1:{port}?view=panel",

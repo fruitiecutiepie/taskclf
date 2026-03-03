@@ -89,11 +89,33 @@ const PanelApp: Component = () => {
           width: inBrowser ? `${CONTENT_W}px` : "100%",
           ...(inBrowser
             ? { "max-height": `${PANEL_MAX_H}px` }
-            : { height: "100vh" }),
+            : { height: "100vh", display: "flex", "flex-direction": "column" }),
           overflow: "auto",
           padding: "4px",
         }}
       >
+        <Show when={!inBrowser}>
+          <div
+            class="pywebview-drag-region"
+            style={{
+              height: "10px",
+              cursor: "grab",
+              "flex-shrink": "0",
+              display: "flex",
+              "justify-content": "center",
+              "align-items": "center",
+            }}
+          >
+            <div
+              style={{
+                width: "32px",
+                height: "3px",
+                "border-radius": "2px",
+                background: "rgba(255,255,255,0.15)",
+              }}
+            />
+          </div>
+        </Show>
         <StatePanel
           status={ws.connectionStatus}
           latestStatus={ws.latestStatus}
