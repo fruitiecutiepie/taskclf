@@ -479,6 +479,26 @@ train_app = typer.Typer()
 app.add_typer(train_app, name="train")
 
 
+def _load_real_labels(
+    data_dir: str,
+    start: dt.date,
+    end: dt.date,
+) -> list:
+    """Load label spans from disk, filtered to the given date range."""
+    from taskclf.labels.store import read_label_spans
+
+    labels_path = Path(data_dir) / "labels_v1" / "labels.parquet"
+    if not labels_path.exists():
+        return []
+
+    all_spans = read_label_spans(labels_path)
+    start_dt = dt.datetime(start.year, start.month, start.day, tzinfo=dt.timezone.utc)
+    end_dt = dt.datetime(
+        end.year, end.month, end.day, 23, 59, 59, tzinfo=dt.timezone.utc
+    )
+    return [s for s in all_spans if s.end_ts >= start_dt and s.start_ts <= end_dt]
+
+
 @train_app.command("build-dataset")
 def train_build_dataset_cmd(
     date_from: str = typer.Option(..., "--from", help="Start date (YYYY-MM-DD)"),
@@ -505,11 +525,18 @@ def train_build_dataset_cmd(
     all_labels: list = []
     current = start
 
+    if not synthetic:
+        all_labels = _load_real_labels(data_dir, start, end)
+        typer.echo(f"Loaded {len(all_labels)} label spans from disk")
+        if not all_labels:
+            typer.echo("WARNING: no label spans found — labeled dataset will be empty", err=True)
+
     while current <= end:
         if synthetic:
             rows = generate_dummy_features(current, n_rows=60)
             df = pd.DataFrame([r.model_dump() for r in rows])
             labels = generate_dummy_labels(current, n_rows=60)
+            all_labels.extend(labels)
         else:
             parquet_path = Path(data_dir) / f"features_v1/date={current.isoformat()}" / "features.parquet"
             if not parquet_path.exists():
@@ -517,10 +544,8 @@ def train_build_dataset_cmd(
                 current += dt.timedelta(days=1)
                 continue
             df = read_parquet(parquet_path)
-            labels = generate_dummy_labels(current, n_rows=len(df))
 
         all_features.append(df)
-        all_labels.extend(labels)
         current += dt.timedelta(days=1)
 
     if not all_features:
@@ -571,14 +596,21 @@ def train_lgbm_cmd(
     end = dt.date.fromisoformat(date_to)
 
     all_features: list[pd.DataFrame] = []
-    all_labels = []
+    all_labels: list = []
     current = start
+
+    if not synthetic:
+        all_labels = _load_real_labels(data_dir, start, end)
+        typer.echo(f"Loaded {len(all_labels)} label spans from disk")
+        if not all_labels:
+            typer.echo("WARNING: no label spans found — labeled dataset will be empty", err=True)
 
     while current <= end:
         if synthetic:
             rows = generate_dummy_features(current, n_rows=60)
             df = pd.DataFrame([r.model_dump() for r in rows])
             labels = generate_dummy_labels(current, n_rows=60)
+            all_labels.extend(labels)
         else:
             parquet_path = Path(data_dir) / f"features_v1/date={current.isoformat()}" / "features.parquet"
             if not parquet_path.exists():
@@ -586,10 +618,8 @@ def train_lgbm_cmd(
                 current += dt.timedelta(days=1)
                 continue
             df = read_parquet(parquet_path)
-            labels = generate_dummy_labels(current, n_rows=len(df))
 
         all_features.append(df)
-        all_labels.extend(labels)
         current += dt.timedelta(days=1)
 
     if not all_features:
@@ -680,11 +710,19 @@ def train_evaluate_cmd(
     all_features: list[pd.DataFrame] = []
     all_labels: list = []
     current = start
+
+    if not synthetic:
+        all_labels = _load_real_labels(data_dir, start, end)
+        typer.echo(f"Loaded {len(all_labels)} label spans from disk")
+        if not all_labels:
+            typer.echo("WARNING: no label spans found — labeled dataset will be empty", err=True)
+
     while current <= end:
         if synthetic:
             rows = generate_dummy_features(current, n_rows=60)
             df = pd.DataFrame([r.model_dump() for r in rows])
             labels = generate_dummy_labels(current, n_rows=60)
+            all_labels.extend(labels)
         else:
             parquet_path = Path(data_dir) / f"features_v1/date={current.isoformat()}" / "features.parquet"
             if not parquet_path.exists():
@@ -692,9 +730,7 @@ def train_evaluate_cmd(
                 current += dt.timedelta(days=1)
                 continue
             df = read_parquet(parquet_path)
-            labels = generate_dummy_labels(current, n_rows=len(df))
         all_features.append(df)
-        all_labels.extend(labels)
         current += dt.timedelta(days=1)
 
     if not all_features:
@@ -826,11 +862,19 @@ def train_tune_reject_cmd(
     all_features: list[pd.DataFrame] = []
     all_labels: list = []
     current = start
+
+    if not synthetic:
+        all_labels = _load_real_labels(data_dir, start, end)
+        typer.echo(f"Loaded {len(all_labels)} label spans from disk")
+        if not all_labels:
+            typer.echo("WARNING: no label spans found — labeled dataset will be empty", err=True)
+
     while current <= end:
         if synthetic:
             rows = generate_dummy_features(current, n_rows=60)
             df = pd.DataFrame([r.model_dump() for r in rows])
             labels = generate_dummy_labels(current, n_rows=60)
+            all_labels.extend(labels)
         else:
             parquet_path = Path(data_dir) / f"features_v1/date={current.isoformat()}" / "features.parquet"
             if not parquet_path.exists():
@@ -838,9 +882,7 @@ def train_tune_reject_cmd(
                 current += dt.timedelta(days=1)
                 continue
             df = read_parquet(parquet_path)
-            labels = generate_dummy_labels(current, n_rows=len(df))
         all_features.append(df)
-        all_labels.extend(labels)
         current += dt.timedelta(days=1)
 
     if not all_features:
@@ -855,7 +897,7 @@ def train_tune_reject_cmd(
         raise typer.Exit(code=1)
 
     splits = split_by_time(labeled_df)
-    val_df = splits["val"]
+    val_df = labeled_df.iloc[splits["val"]].reset_index(drop=True)
     if val_df.empty:
         typer.echo("Validation split is empty — using full dataset.", err=True)
         val_df = labeled_df
@@ -929,14 +971,19 @@ def train_calibrate_cmd(
     all_features: list[pd.DataFrame] = []
     all_labels: list = []
     current = start
+
+    if not synthetic:
+        all_labels = _load_real_labels(data_dir, start, end)
+        typer.echo(f"Loaded {len(all_labels)} label spans from disk")
+        if not all_labels:
+            typer.echo("WARNING: no label spans found — labeled dataset will be empty", err=True)
+
     while current <= end:
         if synthetic:
-            from taskclf.features.build import generate_dummy_features
-            from taskclf.labels.store import generate_dummy_labels
-
             rows = generate_dummy_features(current, n_rows=60)
             df = pd.DataFrame([r.model_dump() for r in rows])
             labels = generate_dummy_labels(current, n_rows=60)
+            all_labels.extend(labels)
         else:
             parquet_path = Path(data_dir) / f"features_v1/date={current.isoformat()}" / "features.parquet"
             if not parquet_path.exists():
@@ -944,10 +991,8 @@ def train_calibrate_cmd(
                 current += dt.timedelta(days=1)
                 continue
             df = read_parquet(parquet_path)
-            labels = generate_dummy_labels(current, n_rows=len(df))
 
         all_features.append(df)
-        all_labels.extend(labels)
         current += dt.timedelta(days=1)
 
     if not all_features:
@@ -1056,11 +1101,19 @@ def train_retrain_cmd(
     all_features: list[pd.DataFrame] = []
     all_labels: list = []
     current = start
+
+    if not synthetic:
+        all_labels = _load_real_labels(data_dir, start, end)
+        typer.echo(f"Loaded {len(all_labels)} label spans from disk")
+        if not all_labels:
+            typer.echo("WARNING: no label spans found — labeled dataset will be empty", err=True)
+
     while current <= end:
         if synthetic:
             rows = generate_dummy_features(current, n_rows=60)
             df = pd.DataFrame([r.model_dump() for r in rows])
             labels = generate_dummy_labels(current, n_rows=60)
+            all_labels.extend(labels)
         else:
             parquet_path = Path(data_dir) / f"features_v1/date={current.isoformat()}" / "features.parquet"
             if not parquet_path.exists():
@@ -1068,9 +1121,8 @@ def train_retrain_cmd(
                 current += dt.timedelta(days=1)
                 continue
             df = read_parquet(parquet_path)
-            labels = generate_dummy_labels(current, n_rows=len(df))
+
         all_features.append(df)
-        all_labels.extend(labels)
         current += dt.timedelta(days=1)
 
     if not all_features:
@@ -1752,11 +1804,19 @@ def infer_compare_cmd(
     all_features: list[pd.DataFrame] = []
     all_labels: list = []
     current = start
+
+    if not synthetic:
+        all_labels = _load_real_labels(data_dir, start, end)
+        typer.echo(f"Loaded {len(all_labels)} label spans from disk")
+        if not all_labels:
+            typer.echo("WARNING: no label spans found — labeled dataset will be empty", err=True)
+
     while current <= end:
         if synthetic:
             rows = generate_dummy_features(current, n_rows=60)
             df = pd.DataFrame([r.model_dump() for r in rows])
             labels = generate_dummy_labels(current, n_rows=60)
+            all_labels.extend(labels)
         else:
             parquet_path = Path(data_dir) / f"features_v1/date={current.isoformat()}" / "features.parquet"
             if not parquet_path.exists():
@@ -1764,9 +1824,7 @@ def infer_compare_cmd(
                 current += dt.timedelta(days=1)
                 continue
             df = read_parquet(parquet_path)
-            labels = generate_dummy_labels(current, n_rows=len(df))
         all_features.append(df)
-        all_labels.extend(labels)
         current += dt.timedelta(days=1)
 
     if not all_features:
