@@ -1,5 +1,5 @@
-import { type Accessor, type Component, Show } from "solid-js";
-import type { ConnectionStatus, LabelSuggestion, Prediction, StatusEvent, TrayState, WSStats } from "../lib/ws";
+import { type Accessor, type Component } from "solid-js";
+import type { ConnectionStatus, LabelSuggestion, Prediction, StatusEvent, TrayState } from "../lib/ws";
 import { LABEL_COLORS } from "./StatePanel";
 import { LiveBadgeConnectionStatus } from "./LiveBadgeConnectionStatus";
 
@@ -9,8 +9,6 @@ export const LiveBadge: Component<{
   latestPrediction: Accessor<Prediction | null>;
   latestTrayState: Accessor<TrayState | null>;
   activeSuggestion: Accessor<LabelSuggestion | null>;
-  wsStats: Accessor<WSStats>;
-  compact?: boolean;
   onTogglePanel?: () => void;
   onShowLabel?: () => void;
   onHideLabel?: () => void;
@@ -18,11 +16,6 @@ export const LiveBadge: Component<{
   const predictionLabel = () => {
     const pred = props.latestPrediction();
     return pred ? pred.mapped_label || pred.label : null;
-  };
-
-  const displayConfidence = () => {
-    const pred = props.latestPrediction();
-    return pred ? pred.confidence : null;
   };
 
   const predColor = () => {
@@ -56,12 +49,6 @@ export const LiveBadge: Component<{
         onMouseLeave={() => props.onHideLabel?.()}
       >
         {predictionLabel() ?? "Unknown Label"}
-        <Show when={!props.compact && displayConfidence() !== null}>
-          {" "}
-          <span style={{ opacity: 0.9 }}>
-            {Math.round(displayConfidence()! * 100)}%
-          </span>
-        </Show>
       </span>
       <LiveBadgeConnectionStatus
         status={props.status}

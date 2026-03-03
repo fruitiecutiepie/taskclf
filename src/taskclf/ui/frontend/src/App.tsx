@@ -210,8 +210,6 @@ const App: Component = () => {
               latestPrediction={ws.latestPrediction}
               latestTrayState={ws.latestTrayState}
               activeSuggestion={ws.activeSuggestion}
-              wsStats={ws.wsStats}
-              compact={!hovering()}
               onTogglePanel={inBrowser ? browserTogglePanel : undefined}
               onShowLabel={inBrowser ? undefined : showLabel}
               onHideLabel={inBrowser ? undefined : hideLabel}
