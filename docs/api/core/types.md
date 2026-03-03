@@ -29,7 +29,7 @@ label.  Gold labels and weak labels share this structure.
 | `label` | `str` | Task-type label from `LABEL_SET_V1`. |
 | `provenance` | `str` | Origin tag, e.g. `"manual"` or `"weak:app_rule"`. |
 | `user_id` | `str \| None` | User who created this label (optional, default `None`). |
-| `confidence` | `float \| None` | Labeler confidence 0-1 (optional, default `None`). |
+| `confidence` | `float \| None` | Labeler confidence 0-1 (optional, default `None`). `NaN` is coerced to `None`. |
 
 ## TitlePolicy
 

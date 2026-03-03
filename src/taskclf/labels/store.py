@@ -65,7 +65,12 @@ def read_label_spans(path: Path) -> list[LabelSpan]:
         List of validated ``LabelSpan`` instances.
     """
     df = read_parquet(path)
-    return [LabelSpan.model_validate(row) for row in df.to_dict(orient="records")]
+    records = df.to_dict(orient="records")
+    for row in records:
+        for k, v in row.items():
+            if isinstance(v, float) and pd.isna(v):
+                row[k] = None
+    return [LabelSpan.model_validate(row) for row in records]
 
 
 def import_labels_from_csv(path: Path) -> list[LabelSpan]:

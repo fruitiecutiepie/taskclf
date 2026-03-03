@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import math
 from datetime import datetime
 from enum import StrEnum
 from typing import Final, Protocol, runtime_checkable
 
-from pydantic import BaseModel, Field, ValidationInfo, model_validator
+from pydantic import BaseModel, Field, ValidationInfo, field_validator, model_validator
 
 
 @runtime_checkable
@@ -228,6 +229,14 @@ class LabelSpan(BaseModel, frozen=True):
     confidence: float | None = Field(
         default=None, ge=0.0, le=1.0, description="Labeler confidence (0-1)."
     )
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def _nan_confidence_to_none(cls, v: object) -> object:
+        if isinstance(v, float) and math.isnan(v):
+            return None
+        return v
+
     extend_forward: bool = Field(
         default=False,
         description="When true, this label extends forward until the next label is created.",

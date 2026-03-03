@@ -204,6 +204,7 @@ def labels_add_block_cmd(
 
     start_ts = dt.datetime.fromisoformat(start)
     end_ts = dt.datetime.fromisoformat(end)
+    effective_confidence = confidence if confidence is not None else 1.0
 
     span = LabelSpan(
         start_ts=start_ts,
@@ -211,7 +212,7 @@ def labels_add_block_cmd(
         label=label,
         provenance="manual",
         user_id=user_id,
-        confidence=confidence,
+        confidence=effective_confidence,
     )
 
     features_dfs: list[pd.DataFrame] = []
@@ -355,13 +356,14 @@ def labels_label_now_cmd(
                 table.add_row(f"App: {app_info['app_id']}", f"{app_info['buckets']} buckets")
             console.print(table)
 
+    effective_confidence = confidence if confidence is not None else 1.0
     span = LabelSpan(
         start_ts=start_ts,
         end_ts=end_ts,
         label=label,
         provenance="manual",
         user_id=user_id,
-        confidence=confidence,
+        confidence=effective_confidence,
     )
 
     labels_path = Path(data_dir) / "labels_v1" / "labels.parquet"
@@ -373,7 +375,7 @@ def labels_label_now_cmd(
 
     typer.echo(
         f"Labeled: {label} [{start_ts:%H:%M} → {end_ts:%H:%M} UTC] "
-        f"user={user_id} confidence={confidence}"
+        f"user={user_id} confidence={effective_confidence}"
     )
 
 

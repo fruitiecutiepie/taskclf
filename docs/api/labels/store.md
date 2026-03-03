@@ -7,7 +7,7 @@ Label span I/O, validation, and synthetic label generation.
 | Function | Description |
 |----------|-------------|
 | `write_label_spans` | Serialize spans to parquet |
-| `read_label_spans` | Deserialize spans from parquet |
+| `read_label_spans` | Deserialize spans from parquet (converts `NaN` values to `None` for nullable fields) |
 | `import_labels_from_csv` | Read spans from CSV (supports optional `user_id` and `confidence` columns) |
 | `append_label_span` | Append a single span to an existing parquet file with overlap validation; if the previous same-user label has `extend_forward=True`, its `end_ts` is stretched to the new span's `start_ts` for contiguous coverage |
 | `update_label_span` | Change the label on an existing span identified by its `start_ts` and `end_ts`; validates the new label against `LABEL_SET_V1` |

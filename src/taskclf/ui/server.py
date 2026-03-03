@@ -191,7 +191,7 @@ def create_app(
                 label=body.label,
                 provenance="manual",
                 user_id=uid,
-                confidence=body.confidence,
+                confidence=body.confidence if body.confidence is not None else 1.0,
                 extend_forward=body.extend_forward,
             )
         except (ValueError, Exception) as exc:
