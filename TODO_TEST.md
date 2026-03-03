@@ -339,36 +339,13 @@ Missing tests identified by auditing `docs/api/features/` against
 
 ## High Priority — Completely untested public functions
 
-### 10. `features.windows` — `compute_rolling_app_switches()` untested
-**File:** `src/taskclf/features/windows.py:54-75`
-**Tests:** `tests/test_features_windows.py` (only covers `app_switch_count_in_window`)
+### ~~10. `features.windows` — `compute_rolling_app_switches()` untested~~ DONE
 
-```python
-def compute_rolling_app_switches(
-    sorted_events: Sequence[Event],
-    sorted_buckets: Sequence[dt.datetime],
-    window_minutes: int = DEFAULT_APP_SWITCH_WINDOW_MINUTES,
-    bucket_seconds: int = DEFAULT_BUCKET_SECONDS,
-) -> list[int]:
-```
-
-Convenience wrapper that calls `app_switch_count_in_window` for each bucket.
-Zero test coverage.
-
-| Test case | Expected |
-|---|---|
-| 3 buckets, 4 apps spread across them | List of 3 ints matching per-bucket switch counts |
-| Single bucket | List with one element |
-| Empty `sorted_buckets` | Empty list |
-| Empty `sorted_events` | All-zero list (one 0 per bucket) |
-| Custom `window_minutes` (e.g. 15) | Wider window captures more switches |
-| Custom `bucket_seconds` (e.g. 300) | Correct window end (`bucket_ts + 300s`) |
-
-Also missing from `app_switch_count_in_window` tests:
-- Custom `window_minutes` parameter
-- Custom `bucket_seconds` parameter
-
-Suggested test IDs: `TC-FEAT-WIN-001` through `TC-FEAT-WIN-006`.
+**Status:** Covered by `tests/test_features_windows.py`:
+- `TestComputeRollingAppSwitches` (6 tests: 3 buckets/4 apps, single bucket,
+  empty buckets, empty events, custom `window_minutes`, custom `bucket_seconds`)
+- `TestAppSwitchCountInWindow` extended with 4 new tests (events before window,
+  events after window, custom `window_minutes`, custom `bucket_seconds`)
 
 ---
 
@@ -430,36 +407,13 @@ Suggested test IDs: `TC-FEAT-BUILD-010` through `TC-FEAT-BUILD-013`.
 
 ## Medium Priority — Edge cases missing in tested modules
 
-### 13. `features.text` — `title_hash_bucket()` edge cases untested
-**File:** `src/taskclf/features/text.py:31-56`
-**Tests:** `tests/test_features_text.py` (only tests default `n_buckets=256` with valid hex)
+### ~~13. `features.text` — `title_hash_bucket()` edge cases untested~~ DONE
 
-```python
-def title_hash_bucket(title_hash: str, n_buckets: int = 256) -> int:
-    if n_buckets < 1:
-        raise ValueError(f"n_buckets must be >= 1, got {n_buckets}")
-    try:
-        return int(title_hash, 16) % n_buckets
-    except ValueError:
-        return abs(hash(title_hash)) % n_buckets
-```
-
-| Test case | Expected |
-|---|---|
-| `n_buckets=0` | Raises `ValueError` |
-| `n_buckets=-1` | Raises `ValueError` |
-| Non-hex input (e.g. `"not-hex-string"`) | Falls back to `hash()`, returns `int` in `[0, n_buckets)` |
-| Custom `n_buckets=10` | Result in `[0, 10)` |
-| `n_buckets=1` | Always returns `0` |
-
-Missing from `featurize_title` tests:
-
-| Test case | Expected |
-|---|---|
-| Empty string title | Returns 12-char hex (no crash) |
-| Different salts, same title | Different hashes |
-
-Suggested test IDs: `TC-FEAT-TEXT-001` through `TC-FEAT-TEXT-007`.
+**Status:** Covered by `tests/test_features_text.py`:
+- `TestTitleHashBucket` (5 tests: `n_buckets=0` raises, `n_buckets=-1` raises,
+  non-hex fallback, custom `n_buckets=10`, `n_buckets=1` always returns 0)
+- `TestFeaturizeTitle` extended (2 new tests: empty string title, different
+  salts produce different hashes)
 
 ---
 
@@ -525,16 +479,11 @@ Suggested test IDs: `TC-FEAT-DOM-001` through `TC-FEAT-DOM-002`.
 
 ---
 
-### 18. `features.windows` — `app_switch_count_in_window()` edge cases
-**File:** `src/taskclf/features/windows.py:18-51`
-**Tests:** `tests/test_features_windows.py`
+### ~~18. `features.windows` — `app_switch_count_in_window()` edge cases~~ DONE
 
-| Test case | Expected |
-|---|---|
-| Events entirely before the window | Returns `0` |
-| Events entirely after the window | Returns `0` |
-
-Suggested test IDs: `TC-FEAT-WIN-007` through `TC-FEAT-WIN-008`.
+**Status:** Covered by `tests/test_features_windows.py::TestAppSwitchCountInWindow`
+(2 new tests: events entirely before window, events entirely after window).
+Also covered: custom `window_minutes` and `bucket_seconds` parameters.
 
 ---
 ---
@@ -555,7 +504,7 @@ Missing tests identified by auditing `docs/api/train/` against
 | `train.lgbm` | `test_train_evaluate.py` (6 tests for `compute_sample_weights` + `train_lgbm`) | `encode_categoricals`, `prepare_xy` untested directly |
 | `train.calibrate` | `test_calibration.py` (12+ tests) | Well covered — eligibility, temperature/isotonic fitting, `fit_calibrator_store` |
 | `train.evaluate` | `test_train_evaluate.py` (9 tests), `test_tune_reject.py` (4 tests) | Well covered — `evaluate_model`, acceptance checks, `tune_reject_threshold`, `write_evaluation_artifacts` |
-| `train.retrain` | `test_retrain.py` (16+ tests) | Well covered but `check_calibrator_update_due` has zero coverage |
+| `train.retrain` | `test_retrain.py` (27+ tests) | Well covered — `check_calibrator_update_due` (6 tests) and `find_latest_model` (5 tests) now covered |
 
 ---
 
@@ -620,65 +569,21 @@ Suggested test IDs: `TC-TRAIN-LGBM-006` through `TC-TRAIN-LGBM-011`.
 
 ---
 
-### 36. `train.retrain` — `check_calibrator_update_due()` untested
-**File:** `src/taskclf/train/retrain.py:220-249`
-**Tests:** not imported or tested in any test file (verified: not in
-`test_retrain.py` imports)
+### ~~36. `train.retrain` — `check_calibrator_update_due()` untested~~ DONE
 
-```python
-def check_calibrator_update_due(
-    calibrator_store_dir: Path,
-    cadence_days: int = DEFAULT_CALIBRATOR_UPDATE_CADENCE_DAYS,
-) -> bool:
-```
-
-Reads `store.json` in the calibrator directory, parses the
-`created_at` timestamp, and returns `True` if the store is older
-than `cadence_days`.  Gracefully returns `True` on missing file,
-missing field, malformed JSON, or unparseable timestamps.
-
-| Test case | Expected |
-|---|---|
-| No `store.json` file | Returns `True` (update due) |
-| Fresh `store.json` (created now) | Returns `False` (not due) |
-| Stale `store.json` (older than cadence) | Returns `True` |
-| Missing `created_at` field in JSON | Returns `True` |
-| Malformed JSON in `store.json` | Returns `True` (graceful error handling) |
-| Custom `cadence_days=1` with 2-day-old store | Returns `True` |
-
-**Setup note:** Create `store.json` with
-`{"created_at": "<iso-timestamp>", ...}` in a `tmp_path` directory.
-Backdate `created_at` to simulate staleness (same pattern as
-`test_retrain.py::TestCheckRetrainDue.test_stale_model_is_due`).
-
-Suggested test IDs: `TC-RETRAIN-020` through `TC-RETRAIN-025`.
+**Status:** Covered by `tests/test_retrain.py::TestCheckCalibratorUpdateDue` (6 tests:
+no store.json, fresh store, stale store, missing `created_at`, malformed JSON,
+custom `cadence_days=1` with 2-day-old store).
 
 ---
 
 ## Low Priority — Indirect-only coverage
 
-### 37. `train.retrain` — `find_latest_model()` no isolated test
-**File:** `src/taskclf/train/retrain.py:152-184`
-**Tests:** used inside `test_retrain.py::TestRetrainPipeline` pipeline
-tests but never tested in isolation
+### ~~37. `train.retrain` — `find_latest_model()` no isolated test~~ DONE
 
-```python
-def find_latest_model(models_dir: Path) -> Path | None:
-```
-
-Scans `models_dir` for subdirectories with `metadata.json`, picks
-the one with the latest `created_at` timestamp.  Skips unreadable
-metadata files.
-
-| Test case | Expected |
-|---|---|
-| Empty directory | Returns `None` |
-| Single model bundle | Returns that path |
-| Multiple bundles with different `created_at` | Returns the latest |
-| Bundle with unreadable `metadata.json` | Skipped gracefully, other bundles still found |
-| Directory does not exist | Returns `None` (the `is_dir()` guard) |
-
-Suggested test IDs: `TC-RETRAIN-026` through `TC-RETRAIN-030`.
+**Status:** Covered by `tests/test_retrain.py::TestFindLatestModel` (5 tests:
+empty directory, single bundle, multiple bundles returns latest, unreadable
+metadata skipped, non-existent directory).
 
 ---
 ---
@@ -996,7 +901,7 @@ Missing tests identified by auditing `docs/api/infer/` against
 `tests/test_infer_*.py` and `src/taskclf/infer/*.py`.
 
 **Existing test files:**
-- `tests/test_infer_smooth.py` — `rolling_majority`, `segmentize`
+- `tests/test_infer_smooth.py` — `rolling_majority` (6 tests), `segmentize` (6 tests), `flap_rate` (6 tests)
 - `tests/test_infer_pipeline.py` — `WindowPrediction`, calibrators
   (identity + temperature), CSV output, `merge_short_segments`,
   `OnlinePredictor` with calibrator, batch inference with calibrator
@@ -1223,39 +1128,15 @@ Suggested test IDs: `TC-BATCH-001` through `TC-BATCH-009`.
 
 ---
 
-### 22. `infer.smooth` — `flap_rate()` untested
-**File:** `src/taskclf/infer/smooth.py:121-136`
-**Doc:** `docs/api/infer/smooth.md`
-**Existing tests:** `tests/test_infer_smooth.py` (covers `rolling_majority`
-and `segmentize` only).
+### ~~22. `infer.smooth` — `flap_rate()` untested~~ DONE
 
-```python
-def flap_rate(labels: Sequence[str]) -> float:
-```
-
-| Test case | Expected |
-|---|---|
-| All same labels | `0.0` |
-| All different labels (e.g. `[A, B, C, D]`) | `3/4 = 0.75` |
-| Single element | `0.0` |
-| Empty sequence | `0.0` |
-| Alternating `[A, B, A, B, A]` | `4/5 = 0.8` |
-| Two labels `[A, A, A, B, B]` | `1/5 = 0.2` |
-
-Also missing from `rolling_majority` and `segmentize` tests:
-
-| Function | Test case | Expected |
-|---|---|---|
-| `rolling_majority` | Empty list | `[]` |
-| `rolling_majority` | Single element | Same element returned |
-| `rolling_majority` | All identical labels | All same label returned |
-| `rolling_majority` | Tie-breaking (original label preserved) | When counts tie, original label kept |
-| `rolling_majority` | `window=1` (no smoothing) | Output equals input |
-| `segmentize` | Mismatched lengths | Raises `ValueError` |
-| `segmentize` | Empty inputs | Returns `[]` |
-| `segmentize` | Single bucket | One segment with `bucket_count=1` |
-
-Suggested test IDs: `TC-SMOOTH-001` through `TC-SMOOTH-014`.
+**Status:** Covered by `tests/test_infer_smooth.py`:
+- `TestFlapRate` (6 tests: all same, all different, single element, empty,
+  alternating, two runs)
+- `TestRollingMajority` extended (5 new tests: empty list, single element,
+  all identical, tie-breaking preserves original, `window=1` no smoothing)
+- `TestSegmentize` extended (3 new tests: mismatched lengths raises, empty
+  inputs, single bucket)
 
 ---
 

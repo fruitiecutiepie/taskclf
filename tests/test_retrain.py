@@ -16,6 +16,8 @@ Covers:
 - TC-RETRAIN-014: check_candidate_gates standalone
 - TC-RETRAIN-015: champion resolved from active pointer
 - TC-RETRAIN-016: pipeline updates active pointer on promotion
+- TC-RETRAIN-020..025: check_calibrator_update_due
+- TC-RETRAIN-026..030: find_latest_model isolated
 """
 
 from __future__ import annotations
@@ -36,6 +38,7 @@ from taskclf.model_registry import read_active
 from taskclf.train.retrain import (
     RetrainConfig,
     RegressionResult,
+    check_calibrator_update_due,
     check_candidate_gates,
     check_regression_gates,
     check_retrain_due,
@@ -503,3 +506,96 @@ class TestCandidateGates:
 
         assert comparative_names == {"macro_f1_no_regression"}
         assert comparative_names.isdisjoint(candidate_names)
+
+
+# ---------------------------------------------------------------------------
+# TC-RETRAIN-020..025: check_calibrator_update_due
+# ---------------------------------------------------------------------------
+
+
+class TestCheckCalibratorUpdateDue:
+    def test_no_store_file(self, tmp_path: Path) -> None:
+        """TC-RETRAIN-020: missing store.json → update due."""
+        assert check_calibrator_update_due(tmp_path) is True
+
+    def test_fresh_store(self, tmp_path: Path) -> None:
+        """TC-RETRAIN-021: freshly created store → not due."""
+        store = tmp_path / "store.json"
+        store.write_text(json.dumps({"created_at": dt.datetime.now(dt.UTC).isoformat()}))
+        assert check_calibrator_update_due(tmp_path) is False
+
+    def test_stale_store(self, tmp_path: Path) -> None:
+        """TC-RETRAIN-022: store older than cadence → due."""
+        old = dt.datetime.now(dt.UTC) - dt.timedelta(days=30)
+        store = tmp_path / "store.json"
+        store.write_text(json.dumps({"created_at": old.isoformat()}))
+        assert check_calibrator_update_due(tmp_path) is True
+
+    def test_missing_created_at(self, tmp_path: Path) -> None:
+        """TC-RETRAIN-023: store.json without created_at → due."""
+        store = tmp_path / "store.json"
+        store.write_text(json.dumps({"method": "temperature"}))
+        assert check_calibrator_update_due(tmp_path) is True
+
+    def test_malformed_json(self, tmp_path: Path) -> None:
+        """TC-RETRAIN-024: malformed JSON in store.json → due."""
+        store = tmp_path / "store.json"
+        store.write_text("{bad json!!!")
+        assert check_calibrator_update_due(tmp_path) is True
+
+    def test_custom_cadence(self, tmp_path: Path) -> None:
+        """TC-RETRAIN-025: custom cadence_days=1 with 2-day-old store → due."""
+        old = dt.datetime.now(dt.UTC) - dt.timedelta(days=2)
+        store = tmp_path / "store.json"
+        store.write_text(json.dumps({"created_at": old.isoformat()}))
+        assert check_calibrator_update_due(tmp_path, cadence_days=1) is True
+
+
+# ---------------------------------------------------------------------------
+# TC-RETRAIN-026..030: find_latest_model (isolated)
+# ---------------------------------------------------------------------------
+
+
+class TestFindLatestModel:
+    def test_empty_directory(self, tmp_path: Path) -> None:
+        """TC-RETRAIN-026: empty directory returns None."""
+        assert find_latest_model(tmp_path) is None
+
+    def test_single_bundle(self, tmp_path: Path) -> None:
+        """TC-RETRAIN-027: single valid bundle is returned."""
+        run = tmp_path / "run_001"
+        run.mkdir()
+        (run / "metadata.json").write_text(json.dumps({
+            "created_at": "2025-07-01T00:00:00",
+        }))
+        result = find_latest_model(tmp_path)
+        assert result == run
+
+    def test_multiple_bundles_returns_latest(self, tmp_path: Path) -> None:
+        """TC-RETRAIN-028: with multiple bundles, the latest is returned."""
+        for i, ts in enumerate(["2025-07-01T00:00:00", "2025-07-03T00:00:00", "2025-07-02T00:00:00"]):
+            run = tmp_path / f"run_{i:03d}"
+            run.mkdir()
+            (run / "metadata.json").write_text(json.dumps({"created_at": ts}))
+        result = find_latest_model(tmp_path)
+        assert result is not None
+        assert result.name == "run_001"
+
+    def test_unreadable_metadata_skipped(self, tmp_path: Path) -> None:
+        """TC-RETRAIN-029: bundle with unreadable metadata is skipped."""
+        bad_run = tmp_path / "bad_run"
+        bad_run.mkdir()
+        (bad_run / "metadata.json").write_text("not valid json")
+
+        good_run = tmp_path / "good_run"
+        good_run.mkdir()
+        (good_run / "metadata.json").write_text(json.dumps({
+            "created_at": "2025-07-01T00:00:00",
+        }))
+
+        result = find_latest_model(tmp_path)
+        assert result == good_run
+
+    def test_nonexistent_directory(self, tmp_path: Path) -> None:
+        """TC-RETRAIN-030: non-existent directory returns None."""
+        assert find_latest_model(tmp_path / "does_not_exist") is None

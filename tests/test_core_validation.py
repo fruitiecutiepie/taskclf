@@ -170,6 +170,62 @@ class TestDistributionWarnings:
         warns = [f for f in report.warnings if f.check == "constant_column" and f.column == "keys_per_min"]
         assert len(warns) == 1
 
+    def test_dominant_value_warns(self) -> None:
+        """8a: column with 95% identical values emits dominant_value warning."""
+        base = dt.datetime(2025, 6, 15, 10, 0)
+        rows = [_base_row(ts=base + dt.timedelta(minutes=i)) for i in range(100)]
+        for r in rows[:95]:
+            r["keys_per_min"] = 42.0
+        for i, r in enumerate(rows[95:], start=1):
+            r["keys_per_min"] = float(i)
+        report = validate_feature_dataframe(_make_df(rows))
+        warns = [f for f in report.warnings if f.check == "dominant_value" and f.column == "keys_per_min"]
+        assert len(warns) == 1
+
+    def test_no_dominant_value_at_80_percent(self) -> None:
+        """8a: column with 80% identical values does not emit dominant_value warning."""
+        base = dt.datetime(2025, 6, 15, 10, 0)
+        rows = [_base_row(ts=base + dt.timedelta(minutes=i)) for i in range(100)]
+        for r in rows[:80]:
+            r["keys_per_min"] = 42.0
+        for i, r in enumerate(rows[80:], start=1):
+            r["keys_per_min"] = float(i)
+        report = validate_feature_dataframe(_make_df(rows))
+        warns = [f for f in report.warnings if f.check == "dominant_value" and f.column == "keys_per_min"]
+        assert len(warns) == 0
+
+
+class TestSessionBoundary:
+    def test_small_gap_warns(self) -> None:
+        """8b: session change with <=60s gap emits session_boundary warning."""
+        rows = [
+            _base_row(ts=dt.datetime(2025, 6, 15, 10, 0), session_id="s1"),
+            _base_row(ts=dt.datetime(2025, 6, 15, 10, 1), session_id="s2"),
+        ]
+        report = validate_feature_dataframe(_make_df(rows))
+        warns = [f for f in report.warnings if f.check == "session_boundary"]
+        assert len(warns) == 1
+
+    def test_large_gap_no_warning(self) -> None:
+        """8b: session change with 300s gap does not emit warning."""
+        rows = [
+            _base_row(ts=dt.datetime(2025, 6, 15, 10, 0), session_id="s1"),
+            _base_row(ts=dt.datetime(2025, 6, 15, 10, 5), session_id="s2"),
+        ]
+        report = validate_feature_dataframe(_make_df(rows))
+        warns = [f for f in report.warnings if f.check == "session_boundary"]
+        assert len(warns) == 0
+
+    def test_same_session_no_warning(self) -> None:
+        """8b: same session throughout does not emit warning."""
+        rows = [
+            _base_row(ts=dt.datetime(2025, 6, 15, 10, i), session_id="s1")
+            for i in range(5)
+        ]
+        report = validate_feature_dataframe(_make_df(rows))
+        warns = [f for f in report.warnings if f.check == "session_boundary"]
+        assert len(warns) == 0
+
 
 class TestClassBalance:
     def test_imbalanced_class_warns(self) -> None:

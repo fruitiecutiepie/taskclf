@@ -1,13 +1,15 @@
-"""Tests for model bundle persistence: save, load, schema gate.
+"""Tests for model bundle persistence: save, load, schema gate, run ID generation.
 
 Covers: TC-MODEL-001 (write files), TC-MODEL-002 (missing metadata),
-TC-MODEL-003 (schema hash mismatch), TC-MODEL-004 (label set mismatch).
+TC-MODEL-003 (schema hash mismatch), TC-MODEL-004 (label set mismatch),
+TC-MODEL-RUN-001/002 (generate_run_id).
 """
 
 from __future__ import annotations
 
 import datetime as dt
 import json
+import re
 import shutil
 
 import pandas as pd
@@ -16,6 +18,7 @@ from pydantic import ValidationError
 
 from taskclf.core.model_io import (
     build_metadata,
+    generate_run_id,
     load_model_bundle,
     save_model_bundle,
 )
@@ -246,3 +249,15 @@ class TestDataProvenance:
             dataset_hash="abc123",
         )
         assert metadata.data_provenance == "real"
+
+
+class TestGenerateRunId:
+    def test_format_matches_pattern(self) -> None:
+        """TC-MODEL-RUN-001: run ID matches YYYY-MM-DD_HHMMSS_run-XXXX."""
+        run_id = generate_run_id()
+        assert re.fullmatch(r"\d{4}-\d{2}-\d{2}_\d{6}_run-\d{4}", run_id)
+
+    def test_two_calls_differ(self) -> None:
+        """TC-MODEL-RUN-002: two calls produce different IDs (probabilistic)."""
+        ids = {generate_run_id() for _ in range(20)}
+        assert len(ids) > 1
