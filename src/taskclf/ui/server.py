@@ -181,6 +181,15 @@ def create_app(
             append_label_span(span, labels_path)
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+        await bus.publish({
+            "type": "prediction",
+            "label": span.label,
+            "confidence": span.confidence if span.confidence is not None else 1.0,
+            "ts": span.end_ts.isoformat(),
+            "mapped_label": span.label,
+        })
+
         return LabelResponse(
             start_ts=span.start_ts.isoformat(),
             end_ts=span.end_ts.isoformat(),
