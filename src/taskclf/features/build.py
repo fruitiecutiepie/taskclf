@@ -307,7 +307,7 @@ def build_features_from_aw_events(
         rolling_5=DEFAULT_ROLLING_WINDOW_5,
         rolling_15=DEFAULT_ROLLING_WINDOW_15,
     )
-    title_counts: dict[str, int] = defaultdict(int)
+    session_title_counts: dict[dt.datetime, dict[str, int]] = defaultdict(lambda: defaultdict(int))
 
     rows: list[FeatureRow] = []
     for bucket_ts in sorted_buckets:
@@ -347,7 +347,7 @@ def build_features_from_aw_events(
 
         # Title clustering (item 39)
         title_hash = dominant_ev.window_title_hash
-        title_counts[title_hash] += 1
+        session_title_counts[cur_session][title_hash] += 1
         w_title_bucket = title_hash_bucket(title_hash, DEFAULT_TITLE_HASH_BUCKETS)
 
         # Domain classification (item 38)
@@ -396,7 +396,7 @@ def build_features_from_aw_events(
                 event_density=input_agg["event_density"],
                 domain_category=domain_cat,
                 window_title_bucket=w_title_bucket,
-                title_repeat_count_session=title_counts[title_hash],
+                title_repeat_count_session=session_title_counts[cur_session][title_hash],
                 keys_per_min_rolling_5=dyn["keys_per_min_rolling_5"],
                 keys_per_min_rolling_15=dyn["keys_per_min_rolling_15"],
                 mouse_distance_rolling_5=dyn["mouse_distance_rolling_5"],

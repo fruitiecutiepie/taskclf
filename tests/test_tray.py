@@ -83,9 +83,11 @@ class TestActivityTransitionDetection:
         monitor.check_transition("us.zoom.xos", _now=_t(180))
         assert len(transitions) == 1
 
-        prev, new, _start, _end = transitions[0]
+        prev, new, start, end = transitions[0]
         assert prev == "com.apple.Terminal"
         assert new == "us.zoom.xos"
+        assert start == _t(0)
+        assert end == _t(60)
         assert monitor.current_app == "us.zoom.xos"
 
     def test_no_transition_if_app_flips_back(self) -> None:
@@ -169,7 +171,10 @@ class TestActivityTransitionDetection:
         monitor.check_transition("us.zoom.xos", _now=_t(90))   # candidate, duration=90
         monitor.check_transition("us.zoom.xos", _now=_t(180))  # duration=180 >= 180, fires
         assert len(transitions) == 1
-        assert transitions[0][1] == "us.zoom.xos"
+        prev, new, start, end = transitions[0]
+        assert new == "us.zoom.xos"
+        assert start == _t(0)
+        assert end == _t(90)
 
 
 class TestLabelFromTray:
@@ -234,6 +239,30 @@ class TestLabelFromTray:
 
         loaded = read_label_spans(labels_path)
         assert len(loaded) == 3
+
+    def test_none_user_overlaps_concrete_user(self, tmp_path: Path) -> None:
+        """A span with user_id=None must overlap-check against concrete user spans."""
+        labels_path = tmp_path / "labels.parquet"
+        now = dt.datetime(2026, 2, 26, 15, 0, 0)
+
+        span1 = LabelSpan(
+            start_ts=now - dt.timedelta(minutes=10),
+            end_ts=now,
+            label="Build",
+            provenance="manual",
+            user_id="alice",
+        )
+        append_label_span(span1, labels_path)
+
+        span2 = LabelSpan(
+            start_ts=now - dt.timedelta(minutes=5),
+            end_ts=now + dt.timedelta(minutes=5),
+            label="Meet",
+            provenance="weak:app_rule",
+            user_id=None,
+        )
+        with pytest.raises(ValueError, match="overlaps"):
+            append_label_span(span2, labels_path)
 
 
 # ---------------------------------------------------------------------------
@@ -750,6 +779,29 @@ class TestPauseResume:
         monitor._publish_status("app1")
         assert monitor._poll_count == 2
         assert monitor.current_app == "app1"
+
+    def test_pause_resume_does_not_corrupt_elapsed(self) -> None:
+        """After a long pause, elapsed should not include the pause gap."""
+        transitions: list = []
+        monitor = ActivityMonitor(
+            poll_seconds=60, transition_minutes=3,
+            on_transition=lambda *a: transitions.append(a),
+        )
+
+        monitor.check_transition("app1", _now=_t(0))
+        monitor.check_transition("app2", _now=_t(60))
+        assert monitor._candidate_app == "app2"
+        assert monitor._candidate_duration == 60
+
+        monitor.pause()
+        # Simulate 30 minutes passing while paused
+        monitor.resume()
+
+        # After resume, _last_check_time is None so elapsed defaults
+        # to poll_seconds (60), not the 1800s pause gap.
+        monitor.check_transition("app2", _now=_t(1860))
+        assert monitor._candidate_duration == 120
+        assert len(transitions) == 0
 
     def test_tray_toggle_pause(self, tmp_path: Path) -> None:
         """TrayLabeler._toggle_pause toggles the monitor's paused state."""

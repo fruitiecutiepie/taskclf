@@ -122,12 +122,15 @@ def import_labels_from_csv(path: Path) -> list[LabelSpan]:
 
 
 def _same_user(a: LabelSpan, b: LabelSpan) -> bool:
-    """True when both spans belong to the same user (or both have no user)."""
-    if a.user_id is None and b.user_id is None:
+    """True when spans could belong to the same user.
+
+    A ``None`` user_id acts as a wildcard matching any user, consistent
+    with how :func:`~taskclf.labels.projection.project_blocks_to_windows`
+    treats None-user spans.
+    """
+    if a.user_id is None or b.user_id is None:
         return True
-    if a.user_id is not None and b.user_id is not None:
-        return a.user_id == b.user_id
-    return False
+    return a.user_id == b.user_id
 
 
 def append_label_span(span: LabelSpan, path: Path) -> Path:

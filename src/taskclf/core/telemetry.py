@@ -6,6 +6,7 @@ Stores only aggregate statistics -- never raw content.
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -182,12 +183,15 @@ class TelemetryStore:
         line = snapshot.model_dump_json() + "\n"
 
         path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = Path(tempfile.mktemp(dir=self._dir, suffix=".tmp"))
+        fd, tmp_str = tempfile.mkstemp(dir=self._dir, suffix=".tmp")
+        tmp = Path(tmp_str)
         try:
             existing = path.read_text() if path.exists() else ""
-            tmp.write_text(existing + line)
+            os.write(fd, (existing + line).encode())
+            os.close(fd)
             tmp.replace(path)
         except BaseException:
+            os.close(fd)
             tmp.unlink(missing_ok=True)
             raise
         return path

@@ -7,6 +7,8 @@ privacy invariant (see ``AGENTS.md``).
 
 from __future__ import annotations
 
+import hashlib
+
 from taskclf.core.hashing import salted_hash
 
 
@@ -35,7 +37,7 @@ def title_hash_bucket(title_hash: str, n_buckets: int = 256) -> int:
     feature that tree-based or embedding models can consume directly.
 
     If *title_hash* is not valid hex (e.g. from test data), falls back
-    to Python's built-in ``hash()`` for deterministic bucketing.
+    to a SHA-256 digest for deterministic bucketing.
 
     Args:
         title_hash: Hex string produced by :func:`featurize_title`
@@ -53,4 +55,4 @@ def title_hash_bucket(title_hash: str, n_buckets: int = 256) -> int:
     try:
         return int(title_hash, 16) % n_buckets
     except ValueError:
-        return abs(hash(title_hash)) % n_buckets
+        return int.from_bytes(hashlib.sha256(title_hash.encode()).digest()[:8], "big") % n_buckets

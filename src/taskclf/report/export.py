@@ -27,6 +27,10 @@ def _check_no_sensitive_fields(data: dict) -> None:
             )
         if isinstance(data[key], dict):
             _check_no_sensitive_fields(data[key])
+        elif isinstance(data[key], list):
+            for item in data[key]:
+                if isinstance(item, dict):
+                    _check_no_sensitive_fields(item)
 
 
 def export_report_json(report: DailyReport, path: Path) -> Path:

@@ -50,9 +50,11 @@ def _send_desktop_notification(title: str, message: str, timeout: int = 10) -> N
     serves as a backup for when no browser client is connected.
     """
     if platform.system() == "Darwin":
+        safe_title = title.replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ")
+        safe_message = message.replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ")
         script = (
-            f'display notification "{message}" '
-            f'with title "{title}"'
+            f'display notification "{safe_message}" '
+            f'with title "{safe_title}"'
         )
         try:
             subprocess.run(
@@ -117,6 +119,7 @@ class ActivityMonitor:
         self._current_app_since: dt.datetime | None = None
         self._candidate_app: str | None = None
         self._candidate_duration: int = 0
+        self._candidate_first_seen: dt.datetime | None = None
         self._last_check_time: dt.datetime | None = None
 
         self._bucket_id: str | None = None
@@ -211,22 +214,25 @@ class ActivityMonitor:
                 self._candidate_duration += elapsed
                 if self._candidate_duration >= self._transition_threshold:
                     block_start = self._current_app_since or now
-                    block_end = now - dt.timedelta(seconds=self._candidate_duration)
+                    block_end = self._candidate_first_seen or now
                     prev = self._current_app
 
                     self._current_app = dominant_app
                     self._current_app_since = block_end
                     self._candidate_app = None
                     self._candidate_duration = 0
+                    self._candidate_first_seen = None
 
                     if self._on_transition is not None:
                         self._on_transition(prev, dominant_app, block_start, block_end)
             else:
                 self._candidate_app = dominant_app
                 self._candidate_duration = elapsed
+                self._candidate_first_seen = now
         else:
             self._candidate_app = None
             self._candidate_duration = 0
+            self._candidate_first_seen = None
 
     def _publish_status(
         self, dominant_app: str, *, state: str = "collecting",
@@ -288,6 +294,7 @@ class ActivityMonitor:
 
     def resume(self) -> None:
         """Resume monitoring after a pause."""
+        self._last_check_time = None
         self._paused.clear()
 
     @property

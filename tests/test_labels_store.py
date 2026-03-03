@@ -301,10 +301,11 @@ class TestSameUser:
         assert _same_user(a, b) is False
 
     def test_one_none_one_set(self) -> None:
+        """None user_id acts as wildcard — matches any concrete user."""
         a = _span((9, 0), (9, 5), user_id=None)
         b = _span((10, 0), (10, 5), user_id="u1")
-        assert _same_user(a, b) is False
-        assert _same_user(b, a) is False
+        assert _same_user(a, b) is True
+        assert _same_user(b, a) is True
 
 
 class TestExtendForward:

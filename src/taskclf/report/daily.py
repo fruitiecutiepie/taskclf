@@ -6,6 +6,7 @@ into a :class:`DailyReport` suitable for time-tracking summaries.
 
 from __future__ import annotations
 
+import math
 import statistics
 from collections import defaultdict
 from typing import Sequence
@@ -64,7 +65,7 @@ class DailyReport(BaseModel, frozen=True):
 def _build_context_switch_stats(
     app_switch_counts: Sequence[float | int | None],
 ) -> ContextSwitchStats | None:
-    valid = [int(v) for v in app_switch_counts if v is not None]
+    valid = [int(v) for v in app_switch_counts if v is not None and not (isinstance(v, float) and math.isnan(v))]
     if not valid:
         return None
     return ContextSwitchStats(

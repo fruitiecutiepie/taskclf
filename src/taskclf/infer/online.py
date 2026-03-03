@@ -98,7 +98,7 @@ class OnlinePredictor:
                 if str_val in set(le.classes_):
                     return float(le.transform([str_val])[0])
             return -1.0
-        return float(value) if value is not None else 0.0
+        return float(value) if value is not None else float("nan")
 
     def predict_bucket(self, row: FeatureRow) -> WindowPrediction:
         """Predict a single bucket and return a full :class:`WindowPrediction`.
