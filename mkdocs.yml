@@ -1,5 +1,17 @@
 site_name: taskclf
 site_description: Task Type Classifier from Local Activity Signals
+site_url: https://fruitiecutiepie.github.io/taskclf/
+site_author: fruitiecutiepie
+copyright: Copyright &copy; 2026 fruitiecutiepie
+repo_url: https://github.com/fruitiecutiepie/taskclf
+repo_name: fruitiecutiepie/taskclf
+edit_uri: edit/master/docs/
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/fruitiecutiepie/taskclf
+  generator: false
 
 theme:
   name: material
@@ -24,6 +36,7 @@ theme:
     - search.suggest
     - search.highlight
     - content.code.copy
+    - content.action.edit
 
 plugins:
   - search
