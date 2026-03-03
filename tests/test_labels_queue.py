@@ -71,6 +71,68 @@ class TestEnqueueDrift:
         assert queue.all_items[0].reason == "drift"
 
 
+class TestEnqueueDriftEdgeCases:
+    """TC-LABEL-QD-001..003: edge cases for enqueue_drift."""
+
+    def test_dedup_same_bucket(self, tmp_path: Path) -> None:
+        """TC-LABEL-QD-001: re-enqueuing the same bucket returns 0."""
+        queue = ActiveLabelingQueue(tmp_path / "q.json")
+        bucket = {
+            "user_id": "u1",
+            "bucket_start_ts": dt.datetime(2025, 6, 15, 10, 0),
+            "bucket_end_ts": dt.datetime(2025, 6, 15, 10, 1),
+            "predicted_label": "Build",
+            "confidence": 0.4,
+        }
+        first = queue.enqueue_drift([bucket])
+        assert first == 1
+
+        second = queue.enqueue_drift([bucket])
+        assert second == 0
+        assert len(queue.all_items) == 1
+
+    def test_missing_optional_fields(self, tmp_path: Path) -> None:
+        """TC-LABEL-QD-002: omitting predicted_label and confidence → None."""
+        queue = ActiveLabelingQueue(tmp_path / "q.json")
+        bucket = {
+            "user_id": "u1",
+            "bucket_start_ts": dt.datetime(2025, 6, 15, 10, 0),
+            "bucket_end_ts": dt.datetime(2025, 6, 15, 10, 1),
+        }
+        added = queue.enqueue_drift([bucket])
+        assert added == 1
+        item = queue.all_items[0]
+        assert item.confidence is None
+        assert item.predicted_label is None
+
+    def test_mixed_new_and_existing(self, tmp_path: Path) -> None:
+        """TC-LABEL-QD-003: only new buckets are counted."""
+        queue = ActiveLabelingQueue(tmp_path / "q.json")
+        existing = {
+            "user_id": "u1",
+            "bucket_start_ts": dt.datetime(2025, 6, 15, 10, 0),
+            "bucket_end_ts": dt.datetime(2025, 6, 15, 10, 1),
+        }
+        queue.enqueue_drift([existing])
+
+        mixed = [
+            existing,
+            {
+                "user_id": "u1",
+                "bucket_start_ts": dt.datetime(2025, 6, 15, 10, 1),
+                "bucket_end_ts": dt.datetime(2025, 6, 15, 10, 2),
+            },
+            {
+                "user_id": "u1",
+                "bucket_start_ts": dt.datetime(2025, 6, 15, 10, 2),
+                "bucket_end_ts": dt.datetime(2025, 6, 15, 10, 3),
+            },
+        ]
+        added = queue.enqueue_drift(mixed)
+        assert added == 2
+        assert len(queue.all_items) == 3
+
+
 class TestGetPending:
     def test_respects_limit(self, tmp_path: Path) -> None:
         queue = ActiveLabelingQueue(tmp_path / "q.json")

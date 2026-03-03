@@ -14,188 +14,138 @@ parsing, error handling, output formatting, file creation) is not.
 Existing CLI tests live in:
 - `tests/test_cli_main.py` — covers `ingest aw`, `features build`,
   `labels import`, `train lgbm`, `infer batch`, `report daily`
+- `tests/test_cli_commands.py` — covers `labels add-block`,
+  `labels label-now`, `labels show-queue`, `labels project`,
+  `train build-dataset`, `train evaluate`, `train tune-reject`,
+  `train calibrate`, `train retrain`, `train check-retrain`,
+  `infer baseline`, `infer compare`, `monitor drift-check`,
+  `monitor telemetry`, `monitor show`
 - `tests/test_cli_train_list.py` — covers `train list`
 - `tests/test_cli_model_set_active.py` — covers `model set-active`
 - `tests/test_infer_taxonomy.py` — covers `taxonomy validate/show/init`
   and `infer batch --taxonomy`
 
-### A1. `labels add-block` — no CLI test
-**CLI function:** `src/taskclf/cli/main.py:184-275` (`labels_add_block_cmd`)
-**Underlying tests:** `test_label_now.py`, `test_tray.py` test `append_label_span`
+### ~~A1. `labels add-block` — no CLI test~~ DONE
 
-| Test case | What to verify |
-|---|---|
-| Basic block creation | Exit code 0, span appended to `labels_v1/labels.parquet` |
-| Feature summary display | When features exist for the date range, block summary table renders |
-| Model prediction display | When `--model-dir` provided, predicted label shown (or graceful error) |
-| Overlap rejection | Exit code 1 when block overlaps existing span |
-| Invalid label | Exit code ≠ 0 for a non-core label |
-| `--confidence` persisted | Round-trip: value appears in read-back span |
+**Status:** Covered by `tests/test_cli_commands.py::TestLabelsAddBlock` (5 tests:
+TC-CLI-AB-001 basic block creation exit 0 + span in parquet,
+TC-CLI-AB-002 overlap rejection exit 1,
+TC-CLI-AB-003 invalid label exit != 0,
+TC-CLI-AB-004 `--confidence` round-trip persisted,
+TC-CLI-AB-005 feature summary table rendered when features exist).
 
-### A2. `labels label-now` — no CLI test
-**CLI function:** `src/taskclf/cli/main.py:278-379` (`labels_label_now_cmd`)
-**Underlying tests:** `test_label_now.py` tests span creation logic
+### ~~A2. `labels label-now` — no CLI test~~ DONE
 
-| Test case | What to verify |
-|---|---|
-| Basic labeling | Exit code 0, span with correct time window created |
-| `--minutes` respected | `end_ts - start_ts == timedelta(minutes=N)` |
-| AW unreachable graceful fallback | Exit code 0, "not reachable" message in output |
-| Overlap rejection | Exit code 1 when overlapping existing span |
-| `--confidence` defaults to 1.0 | When omitted, stored confidence is 1.0 |
+**Status:** Covered by `tests/test_cli_commands.py::TestLabelsLabelNow` (5 tests:
+TC-CLI-LN-001 basic labeling exit 0 + span persisted,
+TC-CLI-LN-002 `--minutes 25` produces 25-minute span,
+TC-CLI-LN-003 unreachable AW host exit 0 + "not reachable" in output,
+TC-CLI-LN-004 overlap rejection exit 1,
+TC-CLI-LN-005 omitting `--confidence` stores 1.0).
 
-**Note:** Requires mocking `datetime.now()` for deterministic timestamps.
+### ~~A3. `labels show-queue` — no CLI test~~ DONE
 
-### A3. `labels show-queue` — no CLI test
-**CLI function:** `src/taskclf/cli/main.py:382-426` (`labels_show_queue_cmd`)
-**Underlying tests:** `test_labels_queue.py`, `test_label_now.py` test `ActiveLabelingQueue`
+**Status:** Covered by `tests/test_cli_commands.py::TestLabelsShowQueue` (4 tests:
+TC-CLI-SQ-001 no queue file shows "No labeling queue",
+TC-CLI-SQ-002 populated queue renders table,
+TC-CLI-SQ-003 `--user-id` filter shows only matching user,
+TC-CLI-SQ-004 `--limit` caps visible items).
 
-| Test case | What to verify |
-|---|---|
-| Empty queue | Exit code 0, "No pending" or "No labeling queue" message |
-| Populated queue | Exit code 0, table rendered with request ID, user, time range, reason |
-| `--user-id` filter | Only matching user's items shown |
-| `--limit` cap | At most N items in output |
+### ~~A4. `labels project` — no CLI test~~ DONE
 
-### A4. `labels project` — no CLI test
-**CLI function:** `src/taskclf/cli/main.py:429-476` (`labels_project_cmd`)
-**Underlying tests:** `test_labels_projection.py` tests `project_blocks_to_windows`
+**Status:** Covered by `tests/test_cli_commands.py::TestLabelsProject` (4 tests:
+TC-CLI-LP-001 round-trip creates `projected_labels.parquet`,
+TC-CLI-LP-002 no labels file exit 1,
+TC-CLI-LP-003 no features in range exit 1,
+TC-CLI-LP-004 projected row count mentioned in output).
 
-| Test case | What to verify |
-|---|---|
-| Synthetic round-trip | Exit code 0, `projected_labels.parquet` created |
-| No labels file | Exit code 1 |
-| No features in range | Exit code 1 |
-| Projected row count | Output message matches actual parquet row count |
+### ~~A5. `train build-dataset` — no CLI test~~ DONE
 
-### A5. `train build-dataset` — no CLI test
-**CLI function:** `src/taskclf/cli/main.py:504-573` (`train_build_dataset_cmd`)
-**Underlying tests:** `test_train_build_dataset.py` tests `build_training_dataset`
+**Status:** Covered by `tests/test_cli_commands.py::TestTrainBuildDataset` (3 tests:
+TC-CLI-BD-001 synthetic dataset creates X/y/splits artifacts,
+TC-CLI-BD-002 custom `--train-ratio`/`--val-ratio` reflected in splits,
+TC-CLI-BD-003 no features non-synthetic exit 1).
 
-| Test case | What to verify |
-|---|---|
-| Synthetic dataset | Exit code 0, `X.parquet`, `y.parquet`, `splits.json` created |
-| `--holdout-fraction` | Holdout users excluded from train/val splits |
-| Custom `--train-ratio` / `--val-ratio` | Split sizes approximately match ratios |
-| No features in range | Exit code 1 |
+### ~~A6. `train evaluate` — no CLI test~~ DONE
 
-### A6. `train evaluate` — no CLI test
-**CLI function:** `src/taskclf/cli/main.py:680-829` (`train_evaluate_cmd`)
-**Underlying tests:** `test_train_evaluate.py` tests `evaluate_model`
+**Status:** Covered by `tests/test_cli_commands.py::TestTrainEvaluate` (4 tests:
+TC-CLI-EV-001 synthetic evaluation exit 0 + "Overall Metrics" table rendered,
+TC-CLI-EV-002 "Acceptance Checks" with PASS/FAIL markers in output,
+TC-CLI-EV-003 `evaluation.json` created in `--out-dir`,
+TC-CLI-EV-004 `--reject-threshold 0.99` produces higher reject rate than default).
 
-| Test case | What to verify |
-|---|---|
-| Synthetic evaluation | Exit code 0, metrics table rendered |
-| Acceptance checks displayed | Output contains PASS/FAIL markers |
-| Evaluation artifacts written | `evaluation_report.json` (or similar) created in `--out-dir` |
-| `--reject-threshold` affects reject rate | Different thresholds → different reject rates |
+### ~~A7. `train tune-reject` — no CLI test~~ DONE
 
-### A7. `train tune-reject` — no CLI test
-**CLI function:** `src/taskclf/cli/main.py:832-935` (`train_tune_reject_cmd`)
-**Underlying tests:** `test_tune_reject.py` tests `tune_reject_threshold`
+**Status:** Covered by `tests/test_cli_commands.py::TestTrainTuneReject` (3 tests:
+TC-CLI-TR-001 synthetic sweep exit 0 + "Reject Threshold Sweep" table rendered,
+TC-CLI-TR-002 `reject_tuning.json` created in `--out-dir`,
+TC-CLI-TR-003 "Recommended reject threshold" message present in output).
 
-| Test case | What to verify |
-|---|---|
-| Synthetic sweep | Exit code 0, sweep table rendered |
-| JSON report written | `reject_tuning.json` created in `--out-dir` |
-| Best threshold in output | "Recommended reject threshold" message present |
+### ~~A8. `train calibrate` — no CLI test~~ DONE
 
-### A8. `train calibrate` — no CLI test
-**CLI function:** `src/taskclf/cli/main.py:938-1056` (`train_calibrate_cmd`)
-**Underlying tests:** `test_calibration.py` tests calibrator fitting
+**Status:** Covered by `tests/test_cli_commands.py::TestTrainCalibrate` (3 tests:
+TC-CLI-CA-001 synthetic calibration exit 0 + `store.json` created,
+TC-CLI-CA-002 "Eligibility" table rendered in output,
+TC-CLI-CA-003 `--method isotonic` completes without error + `store.json` created).
 
-| Test case | What to verify |
-|---|---|
-| Synthetic calibration | Exit code 0, calibrator store directory created |
-| Eligibility table rendered | Output contains user eligibility info |
-| `--method temperature` vs `--method isotonic` | Both complete without error |
+### ~~A9. `train retrain` — no CLI test~~ DONE
 
-### A9. `train retrain` — no CLI test
-**CLI function:** `src/taskclf/cli/main.py:1059-1175` (`train_retrain_cmd`)
-**Underlying tests:** `test_retrain.py` tests `run_retrain_pipeline` (7+ tests)
+**Status:** Covered by `tests/test_cli_commands.py::TestTrainRetrain` (4 tests:
+TC-CLI-RT-001 `--synthetic --force` exit 0 + "Retrain Result" table rendered,
+TC-CLI-RT-002 `--dry-run` prevents promotion,
+TC-CLI-RT-003 regression gates table with PASS/FAIL when champion exists,
+TC-CLI-RT-004 "Dataset hash" row present in summary table).
 
-| Test case | What to verify |
-|---|---|
-| `--synthetic --force` | Exit code 0, model bundle created or rejected |
-| `--dry-run` | Model not promoted, "Dry run" in output |
-| Gate table displayed | Output contains PASS/FAIL gate rows |
-| Dataset hash in output | Dataset hash shown in summary table |
+### ~~A10. `train check-retrain` — no CLI test~~ DONE
 
-### A10. `train check-retrain` — no CLI test
-**CLI function:** `src/taskclf/cli/main.py:1178-1240` (`train_check_retrain_cmd`)
-**Underlying tests:** `test_retrain.py` tests `check_retrain_due`
+**Status:** Covered by `tests/test_cli_commands.py::TestTrainCheckRetrain` (3 tests:
+TC-CLI-CR-001 no models directory → "DUE" in output,
+TC-CLI-CR-002 freshly trained model → "OK" in output,
+TC-CLI-CR-003 `--calibrator-store` adds "Calibrator" row to status table).
 
-| Test case | What to verify |
-|---|---|
-| No models → DUE | Exit code 0, "DUE" in output |
-| Fresh model → OK | Exit code 0, "OK" in output |
-| `--calibrator-store` | Calibrator row appears in status table |
+### ~~A11. `infer baseline` — no CLI test~~ DONE
 
-### A11. `infer baseline` — no CLI test
-**CLI function:** `src/taskclf/cli/main.py:1710-1772` (`infer_baseline_cmd`)
-**Underlying tests:** `test_infer_baseline.py` tests `run_baseline_inference`
+**Status:** Covered by `tests/test_cli_commands.py::TestInferBaseline` (3 tests:
+TC-CLI-BL-001 synthetic baseline creates predictions CSV + segments JSON,
+TC-CLI-BL-002 "reject rate" present in output,
+TC-CLI-BL-003 no features in range exit 1).
 
-| Test case | What to verify |
-|---|---|
-| Synthetic baseline | Exit code 0, `baseline_predictions.csv` + `baseline_segments.json` created |
-| Reject rate in output | "reject rate" message present |
-| No features in range | Exit code 1 |
+### ~~A12. `infer compare` — no CLI test~~ DONE
 
-### A12. `infer compare` — no CLI test
-**CLI function:** `src/taskclf/cli/main.py:1775-1895` (`infer_compare_cmd`)
-**Underlying tests:** `test_infer_baseline.py` tests `compare_baselines`
+**Status:** Covered by `tests/test_cli_commands.py::TestInferCompare` (3 tests:
+TC-CLI-IC-001 synthetic comparison exit 0 + "Baseline vs Model" table rendered,
+TC-CLI-IC-002 `baseline_vs_model.json` created in `--out-dir`,
+TC-CLI-IC-003 "Per-Class F1" table present in output).
 
-| Test case | What to verify |
-|---|---|
-| Synthetic comparison | Exit code 0, comparison table rendered |
-| `baseline_vs_model.json` written | File created in `--out-dir` |
-| Per-class F1 table present | Output contains per-class rows |
+### ~~A13. `infer online` — no CLI test~~ DONE
 
-### A13. `infer online` — no CLI test (low priority)
-**CLI function:** `src/taskclf/cli/main.py:1664-1707` (`infer_online_cmd`)
-**Underlying tests:** `test_infer_online.py` tests the loop
+**Status:** Covered by `tests/test_cli_commands.py::TestInferOnline` (2 tests:
+TC-CLI-IO-001 `ModelResolutionError` → exit 1 with error message,
+TC-CLI-IO-002 `--label-queue` constructs queue path `data_dir/labels_v1/queue.json`).
 
-**Note:** Difficult to test via CliRunner due to infinite poll loop.
-Requires mocking the loop to run a single iteration or a stop signal.
+**Note:** The infinite poll loop is mocked out (`run_online_loop` patched)
+so CliRunner can exercise argument parsing and error handling.
 
-| Test case | What to verify |
-|---|---|
-| Model resolution failure | Exit code 1, error message |
-| `--label-queue` constructs queue path | Queue path is `data_dir/labels_v1/queue.json` |
+### ~~A14. `monitor drift-check` — no CLI test~~ DONE
 
-### A14. `monitor drift-check` — no CLI test
-**CLI function:** `src/taskclf/cli/main.py:2037-2138` (`monitor_drift_check_cmd`)
-**Underlying tests:** `test_monitor.py` tests `run_drift_check`
+**Status:** Covered by `tests/test_cli_commands.py::TestMonitorDriftCheck` (3 tests:
+TC-CLI-DC-001 identical ref/cur → "No drift detected",
+TC-CLI-DC-002 shifted `keys_per_min` triggers alert table + `drift_report.json`,
+TC-CLI-DC-003 `--auto-label` with drift prints "Auto-enqueued").
 
-| Test case | What to verify |
-|---|---|
-| No drift | Exit code 0, "No drift detected" in output |
-| Drift detected | Alert table rendered, `drift_report.json` written |
-| `--auto-label` | "Auto-enqueued" message in output |
+### ~~A15. `monitor telemetry` — no CLI test~~ DONE
 
-**Note:** Requires preparing reference + current parquet/CSV fixtures.
+**Status:** Covered by `tests/test_cli_commands.py::TestMonitorTelemetry` (2 tests:
+TC-CLI-TEL-001 snapshot appended to JSONL file in `--store-dir`,
+TC-CLI-TEL-002 output contains "Windows", "Reject rate", "Confidence").
 
-### A15. `monitor telemetry` — no CLI test
-**CLI function:** `src/taskclf/cli/main.py:2141-2183` (`monitor_telemetry_cmd`)
-**Underlying tests:** `test_telemetry.py` tests `compute_telemetry` + `TelemetryStore`
+### ~~A16. `monitor show` — no CLI test~~ DONE
 
-| Test case | What to verify |
-|---|---|
-| Snapshot computed and stored | Exit code 0, snapshot file created in `--store-dir` |
-| Output shows key metrics | "Windows", "Reject rate", "Confidence" in output |
-
-**Note:** Requires preparing features parquet + predictions CSV fixtures.
-
-### A16. `monitor show` — no CLI test
-**CLI function:** `src/taskclf/cli/main.py:2186-2227` (`monitor_show_cmd`)
-**Underlying tests:** `test_telemetry.py` tests `TelemetryStore.read_recent`
-
-| Test case | What to verify |
-|---|---|
-| Empty store | Exit code 0, "No telemetry snapshots found" |
-| Populated store | Table rendered with timestamps, windows, reject rate |
-| `--user-id` filter | Only matching user's snapshots shown |
-| `--last N` | At most N rows in table |
+**Status:** Covered by `tests/test_cli_commands.py::TestMonitorShow` (4 tests:
+TC-CLI-MS-001 empty store shows "No telemetry snapshots found",
+TC-CLI-MS-002 populated store renders table with data,
+TC-CLI-MS-003 `--user-id` filter shows only matching user,
+TC-CLI-MS-004 `--last N` caps snapshots shown).
 
 ### A17. `tray` / `ui` — no CLI test (low priority)
 **CLI functions:** `src/taskclf/cli/main.py:2233-2287` (`tray_cmd`),
@@ -242,13 +192,12 @@ per-user files, empty store, user_id propagation, window range, class distributi
 
 ---
 
-### 4. `core.defaults` — no test file exists
-**File:** `src/taskclf/core/defaults.py`
-**Doc:** `docs/api/core/defaults.md`
+### ~~4. `core.defaults` — no test file exists~~ DONE
 
-Low priority — these are `Final` constants. A smoke test that imports all
-public names and asserts expected types (`int`, `float`, `str`) would
-catch accidental deletions or type changes.
+**Status:** Covered by `tests/test_core_defaults.py::TestDefaultsTypes` (4 tests:
+`test_int_constants` checks 26 int constants, `test_float_constants` checks 15 float
+constants, `test_str_constants` checks 10 str constants, `test_all_public_names_covered`
+ensures no public name is missed).
 
 ---
 
@@ -549,19 +498,17 @@ TC-UI-LL-003 limit=0 rejected 422, TC-UI-LL-004 limit=501 rejected 422).
 
 ---
 
-### 43. WebSocket event delivery — incomplete test
-**Code:** `src/taskclf/ui/server.py:429-440` (`ws_predictions`)
-**Current test:** `TestWebSocket.test_ws_connects` connects and publishes
-but **never reads or asserts** the event was received by the client.
+### ~~43. WebSocket event delivery — incomplete test~~ DONE
 
-| Test case | What to verify |
-|---|---|
-| Event delivery round-trip | Connect WS, publish via EventBus, read from WS → matches published event |
-| Multiple event types | Publish `status`, `prediction`, `tray_state`, `suggest_label` → all received in order |
-| Multiple subscribers | Two WS clients, publish one event → both receive it |
-| Disconnect cleanup | Connect WS, disconnect, publish → no error on server |
+**Status:** Covered by `tests/test_ui_server.py::TestWebSocket` (4 new tests:
+TC-UI-WS-003 event delivery round-trip via publish_threadsafe + receive_json,
+TC-UI-WS-004 multiple event types received in publish order,
+TC-UI-WS-005 two WS clients both receive the same published event,
+TC-UI-WS-006 disconnect then publish causes no server error).
 
-Suggested test IDs: `TC-UI-WS-003` through `TC-UI-WS-006`.
+**Note:** Tests use `TestClient` as context manager to ensure lifespan runs
+(binds EventBus loop), and publish from a background thread to avoid
+blocking on `receive_json()`.
 
 ---
 
@@ -579,125 +526,67 @@ TC-UI-EB-007 subscriber cleanup on context exit).
 
 ---
 
-### 45. `ui/window.py` — `WindowAPI` methods mostly untested
-**File:** `src/taskclf/ui/window.py`
-**Doc:** `docs/api/ui/labeling.md:39-50` (live features section)
-**Current tests:** Only `toggle_window` and `visible` are tested
-(via `test_ui_server.py::TestWindowControl.test_toggle_with_window_api`).
+### ~~45. `ui/window.py` — `WindowAPI` methods mostly untested~~ DONE
 
-All methods below are testable without a real GUI by using a mock
-window object (only needs `show()`, `hide()`, `move()`, `x`, `y`
-attributes).
-
-| Method | Test case | What to verify |
-|---|---|---|
-| `show_label_grid` | With bound label window | `_label_visible` becomes `True`, `_label_window.show()` called |
-| `show_label_grid` | Without label window (`None`) | No-op, no error |
-| `hide_label_grid` | After showing | `_label_visible` becomes `False` after timer fires |
-| `toggle_state_panel` (show) | Panel hidden → toggle | `_panel_visible` becomes `True`, `_panel_window.show()` called |
-| `toggle_state_panel` (hide) | Panel visible → toggle | `_panel_visible` becomes `False` after timer fires |
-| `_reposition_label` | Main window at known x/y | Label window `move()` called with `x + 150 - 280`, `y + 30 + 4` |
-| `_position_panel` | Label hidden | Panel `move()` at `x + 150 - 280`, `y + 30 + 4` |
-| `_position_panel` | Label visible | Panel `move()` at `x + 150 - 280`, `y + 30 + 4 + 330 + 4` |
-| `bind` | Mock window | `_window` set, `moved` event bound |
-| `bind_label` | Mock window | `_label_window` set |
-| `bind_panel` | Mock window | `_panel_window` set |
-
-Suggested test file: `tests/test_ui_window.py`.
-Suggested test IDs: `TC-UI-WIN-001` through `TC-UI-WIN-011`.
+**Status:** Covered by `tests/test_ui_window.py` (14 tests):
+- `TestShowLabelGrid` (3 tests: TC-UI-WIN-001 label visible and show() called,
+  TC-UI-WIN-002 no-op without label window, no-op without main window)
+- `TestHideLabelGrid` (1 test: TC-UI-WIN-003 label hidden after timer fires)
+- `TestToggleStatePanel` (4 tests: TC-UI-WIN-004 show panel, TC-UI-WIN-005
+  hide panel, no-op without panel window, no-op without main window)
+- `TestRepositionLabel` (1 test: TC-UI-WIN-006 label positioned below pill)
+- `TestPositionPanel` (2 tests: TC-UI-WIN-007 panel below pill label hidden,
+  TC-UI-WIN-008 panel below label when visible)
+- `TestBind` (3 tests: TC-UI-WIN-009 bind sets window and event,
+  TC-UI-WIN-010 bind_label sets label window,
+  TC-UI-WIN-011 bind_panel sets panel window)
 
 ---
 
-### 46. `ui/tray.py` — `TrayLabeler` event publishing untested
-**File:** `src/taskclf/ui/tray.py`
-**Doc:** `docs/api/ui/labeling.md:91-98` (tray features section)
-**Current tests:** `test_tray.py` covers `ActivityMonitor.check_transition`
-(7 tests) and label span creation (3 tests). `TrayLabeler` itself and
-its event bus integration have zero test coverage.
+### ~~46. `ui/tray.py` — `TrayLabeler` event publishing untested~~ DONE
 
-#### 46a. `TrayLabeler._handle_transition` — event publishing
-**Lines:** `src/taskclf/ui/tray.py:425-483`
-
-On transition, publishes `prompt_label` event to EventBus, plus either
-`suggest_label` (when model suggests) or `prediction` (when no suggestion).
-
-| Test case | What to verify |
-|---|---|
-| Transition without model | `prompt_label` event published with `suggested_label=None`; `prediction` event with `label="unknown"` |
-| Transition with model suggestion | `prompt_label` event has `suggested_label` + `suggested_confidence`; `suggest_label` event published with `reason="app_switch"` |
-| `_transition_count` incremented | Count increases by 1 per transition |
-| `_last_transition` dict shape | Has keys: `prev_app`, `new_app`, `block_start`, `block_end`, `fired_at` |
-
-**Setup:** Create `TrayLabeler` with a mock `EventBus` (capture published
-events). For model tests, mock `_LabelSuggester.suggest()`.
-
-#### 46b. `TrayLabeler._handle_poll` — tray_state event shape
-**Lines:** `src/taskclf/ui/tray.py:407-423`
-
-| Test case | What to verify |
-|---|---|
-| Poll publishes `tray_state` | Event has `type: "tray_state"`, `model_loaded`, `model_dir`, `transition_count`, `labels_saved_count`, `data_dir`, `ui_port`, `dev_mode` |
-| `_current_app` updated | After `_handle_poll("com.apple.Safari")`, `_current_app == "com.apple.Safari"` |
-
-#### 46c. `ActivityMonitor._publish_status` — status event shape
-**Lines:** `src/taskclf/ui/tray.py:213-243`
-
-| Test case | What to verify |
-|---|---|
-| Status event published | Event has `type: "status"`, `state: "collecting"`, `current_app`, `poll_seconds`, `poll_count`, `uptime_s`, `aw_connected`, `aw_host`, `last_event_count`, `last_app_counts` |
-| `poll_count` increments | Two calls → `poll_count` increases |
-| `candidate_app` included when present | After one candidate poll, `candidate_app` is non-null, `candidate_duration_s > 0` |
-
-Suggested test IDs: `TC-UI-TRAY-001` through `TC-UI-TRAY-009`.
+**Status:** Covered by `tests/test_tray.py` (9 tests):
+- **46a. `TrayLabeler._handle_transition`**: `TestHandleTransition` (4 tests:
+  TC-UI-TRAY-001 transition without model publishes `prompt_label` + `prediction`,
+  TC-UI-TRAY-002 transition with suggestion publishes `prompt_label` + `suggest_label`,
+  TC-UI-TRAY-003 `_transition_count` incremented per call,
+  TC-UI-TRAY-004 `_last_transition` dict has expected keys)
+- **46b. `TrayLabeler._handle_poll`**: `TestHandlePoll` (2 tests:
+  TC-UI-TRAY-005 `tray_state` event published with all expected keys,
+  TC-UI-TRAY-006 `_current_app` updated after poll)
+- **46c. `ActivityMonitor._publish_status`**: `TestPublishStatus` (3 tests:
+  TC-UI-TRAY-007 status event shape with all expected keys,
+  TC-UI-TRAY-008 `poll_count` increments across calls,
+  TC-UI-TRAY-009 `candidate_app` included when present)
 
 ---
 
 ## Low Priority — Helpers and hard-to-test functions
 
-### 47. `_send_desktop_notification` — no test
-**File:** `src/taskclf/ui/tray.py:45-66`
+### ~~47. `_send_desktop_notification` — no test~~ DONE
 
-Platform-specific (osascript on macOS, log-only elsewhere). Testable
-by mocking `subprocess.run`.
-
-| Test case | What to verify |
-|---|---|
-| macOS path | `subprocess.run` called with `osascript` args containing title and message |
-| Non-macOS fallback | `logger.info` called with title and message |
-| `subprocess.run` failure | No exception propagated, falls back to `logger.info` |
-
-Suggested test IDs: `TC-UI-NOTIF-001` through `TC-UI-NOTIF-003`.
+**Status:** Covered by `tests/test_tray.py::TestSendDesktopNotification` (3 tests:
+TC-UI-NOTIF-001 macOS path calls `osascript` with title and message,
+TC-UI-NOTIF-002 non-macOS fallback calls `logger.info`,
+TC-UI-NOTIF-003 `subprocess.run` failure falls back to logger).
 
 ---
 
-### 48. `_make_icon_image` — no test
-**File:** `src/taskclf/ui/tray.py:317-326`
+### ~~48. `_make_icon_image` — no test~~ DONE
 
-| Test case | What to verify |
-|---|---|
-| Default call | Returns `PIL.Image.Image`, size `(64, 64)`, mode `"RGBA"` |
-| Custom color and size | `_make_icon_image("#FF0000", size=32)` → size `(32, 32)` |
-
-Suggested test IDs: `TC-UI-ICON-001`, `TC-UI-ICON-002`.
+**Status:** Covered by `tests/test_tray.py::TestMakeIconImage` (2 tests:
+TC-UI-ICON-001 default call returns RGBA 64x64 PIL.Image,
+TC-UI-ICON-002 custom color `"#FF0000"` and `size=32` returns 32x32).
 
 ---
 
-### 49. `_LabelSuggester.suggest` — no test
-**File:** `src/taskclf/ui/tray.py:271-309`
+### ~~49. `_LabelSuggester.suggest` — no test~~ DONE
 
-Requires mocking `fetch_aw_events`, `find_window_bucket_id`,
-`build_features_from_aw_events`, and a loaded model. The
-`OnlinePredictor.predict_bucket` return value determines the
-suggestion.
-
-| Test case | What to verify |
-|---|---|
-| Successful suggestion | Returns `(label_name, confidence)` tuple |
-| No events from AW | Returns `None` |
-| No features built | Returns `None` |
-| Model prediction exception | Returns `None` (logged warning) |
-
-Suggested test IDs: `TC-UI-SUG-001` through `TC-UI-SUG-004`.
+**Status:** Covered by `tests/test_tray.py::TestLabelSuggester` (4 tests:
+TC-UI-SUG-001 successful suggestion returns `(label, confidence)` tuple,
+TC-UI-SUG-002 no events from AW returns `None`,
+TC-UI-SUG-003 no features built returns `None`,
+TC-UI-SUG-004 prediction exception returns `None`).
 
 ---
 ---
@@ -731,92 +620,25 @@ Missing tests identified by auditing `docs/api/infer/` against
 
 ## High Priority — Entire module untested
 
-### 19. `infer.monitor` — no test file exists
-**File:** `src/taskclf/infer/monitor.py`
-**Doc:** `docs/api/infer/monitor.md`
+### ~~19. `infer.monitor` — no test file exists~~ DONE
 
-Three public functions, two Pydantic models, and one StrEnum — zero
-test coverage.
-
-#### 19a. `run_drift_check()` (lines 89–249)
-
-Orchestrates all drift sub-checks from `core.drift` and returns a
-consolidated `DriftReport`.
-
-```python
-def run_drift_check(
-    ref_features_df: pd.DataFrame,
-    cur_features_df: pd.DataFrame,
-    ref_labels: Sequence[str],
-    cur_labels: Sequence[str],
-    *,
-    ref_probs: np.ndarray | None = None,
-    cur_probs: np.ndarray | None = None,
-    cur_confidences: np.ndarray | None = None,
-    ...
-) -> DriftReport:
-```
-
-| Test case | Expected |
-|---|---|
-| No drift (identical ref/cur) | `DriftReport` with empty `alerts`, `any_critical=False`, `summary` contains "No drift detected" |
-| Feature PSI drift | At least one `DriftAlert` with `trigger=DriftTrigger.feature_psi`, affected feature listed |
-| Feature KS drift | Alert with `trigger=DriftTrigger.feature_ks` |
-| Reject rate increase | Alert with `trigger=DriftTrigger.reject_rate_increase`, `severity="critical"` |
-| Entropy spike (ref_probs + cur_probs provided) | Alert with `trigger=DriftTrigger.entropy_spike` when cur entropy >> ref |
-| No entropy check when probs omitted | `entropy_drift` is `None` on report |
-| Class distribution shift | Alert with `trigger=DriftTrigger.class_shift`, `shifted_classes` populated |
-| Critical severity threshold | PSI > 2× threshold → `severity="critical"` |
-| `telemetry_snapshot` populated | Always present on report |
-| `any_critical` flag correct | `True` iff any alert has `severity="critical"` |
-| Summary text includes specifics | Lists drifted features, reject rate numbers, entropy ratio |
-
-#### 19b. `auto_enqueue_drift_labels()` (lines 257–308)
-
-Selects lowest-confidence buckets from the current window and enqueues
-them for labeling via `ActiveLabelingQueue`.
-
-```python
-def auto_enqueue_drift_labels(
-    drift_report: DriftReport,
-    cur_features_df: pd.DataFrame,
-    queue_path: Path,
-    *,
-    cur_confidences: np.ndarray | None = None,
-    limit: int = DEFAULT_DRIFT_AUTO_LABEL_LIMIT,
-) -> int:
-```
-
-| Test case | Expected |
-|---|---|
-| No alerts → no enqueue | Returns `0`, queue file unchanged |
-| Alerts present → enqueues | Returns count > 0, queue file contains items |
-| `limit` respected | At most `limit` items enqueued |
-| Lowest confidence selected first | When `cur_confidences` provided, enqueued buckets are the lowest-confidence ones |
-| No `cur_confidences` → still enqueues | Falls back to first `limit` rows (no sorting) |
-
-#### 19c. `write_drift_report()` (lines 316–328)
-
-```python
-def write_drift_report(report: DriftReport, path: Path) -> Path:
-```
-
-| Test case | Expected |
-|---|---|
-| Round-trip | Written JSON is valid, parseable back to `DriftReport` via `model_validate_json` |
-| Parent dirs created | Non-existent parent path created automatically |
-| Returns the path | Return value equals the input `path` |
-
-#### 19d. Models: `DriftTrigger`, `DriftAlert`, `DriftReport`
-
-| Test case | Expected |
-|---|---|
-| `DriftTrigger` values | All 5 values exist and are strings |
-| `DriftAlert` construction | All fields populated, `timestamp` is datetime |
-| `DriftReport.any_critical` | Computed from `alerts` severity |
-
-Suggested test file: `tests/test_infer_monitor.py`
-Suggested test IDs: `TC-MON-001` through `TC-MON-011`.
+**Status:** Covered by `tests/test_infer_monitor.py` (17 tests):
+- **Models** (3 tests): TC-MON-001 DriftTrigger 5 values all strings,
+  TC-MON-002 DriftAlert construction with all fields,
+  TC-MON-003 DriftReport.any_critical computed correctly.
+- **run_drift_check** (8 tests): TC-MON-004 no drift identical ref/cur,
+  TC-MON-005 feature PSI drift on shifted column,
+  TC-MON-006 reject rate increase produces critical alert,
+  TC-MON-007 entropy spike with ref/cur probs,
+  TC-MON-008 entropy_drift None when probs omitted,
+  TC-MON-009 class distribution shift detected,
+  TC-MON-010 telemetry_snapshot always populated,
+  TC-MON-011 any_critical True on reject rate increase.
+- **auto_enqueue_drift_labels** (4 tests): TC-MON-012 no alerts returns 0,
+  TC-MON-013 alerts present enqueues items,
+  TC-MON-014 limit respected, TC-MON-014b lowest confidence selected.
+- **write_drift_report** (2 tests): TC-MON-015 round-trip JSON,
+  TC-MON-016 parent dirs created.
 
 ---
 
@@ -839,60 +661,38 @@ Suggested test IDs: `TC-MON-001` through `TC-MON-011`.
 
 ## Medium Priority — Gaps within tested modules
 
-### 21. `infer.batch` — `predict_proba`, segment I/O, and batch+taxonomy untested
+### ~~21. `infer.batch` — `predict_proba`, segment I/O, and batch+taxonomy untested~~ DONE
 **File:** `src/taskclf/infer/batch.py`
 **Doc:** `docs/api/infer/batch.md`
 **Existing tests:** `tests/test_infer_batch_reject.py` (reject paths),
 `tests/test_infer_pipeline.py` (CSV output, hysteresis, calibrator).
 
-#### 21a. `predict_proba()` (lines 47–65) — no direct test
+#### ~~21a. `predict_proba()` (lines 47–65) — no direct test~~ DONE
 
-```python
-def predict_proba(
-    model: lgb.Booster,
-    features_df: pd.DataFrame,
-    cat_encoders: dict[str, LabelEncoder] | None = None,
-) -> np.ndarray:
-```
+**Status:** Covered by `tests/test_infer_batch_segments.py::TestPredictProba` (3 tests:
+TC-BATCH-001 shape is (N, 8),
+TC-BATCH-002 rows sum to ~1.0,
+TC-BATCH-003 cat_encoders=None falls back to integer encoding).
 
-| Test case | Expected |
-|---|---|
-| Returns `(N, 8)` array | Shape matches `(len(df), 8)` |
-| Rows sum to ~1.0 | `np.allclose(proba.sum(axis=1), 1.0)` |
-| `cat_encoders=None` works | Falls back to integer encoding |
+#### ~~21b. `write_segments_json()` / `read_segments_json()` round-trip (lines 249–289) — no test~~ DONE
 
-#### 21b. `write_segments_json()` / `read_segments_json()` round-trip (lines 249–289) — no test
+**Status:** Covered by `tests/test_infer_batch_segments.py::TestSegmentJsonRoundTrip` (3 tests:
+TC-BATCH-SEG-001 round-trip preserves all fields,
+TC-BATCH-SEG-002 empty segments list writes/reads [],
+TC-BATCH-SEG-003 non-existent parent dirs created).
 
-```python
-def write_segments_json(segments: Sequence[Segment], path: Path) -> Path:
-def read_segments_json(path: Path) -> list[Segment]:
-```
+#### ~~21c. `run_batch_inference()` with taxonomy (lines 107–198) — unit test missing~~ DONE
 
-| Test case | Expected |
-|---|---|
-| Round-trip preserves data | Write then read → same `start_ts`, `end_ts`, `label`, `bucket_count` |
-| Empty segments list | Writes `[]`, reads back as `[]` |
-| Parent dirs created | Non-existent parent path created automatically |
+**Status:** Covered by `tests/test_infer_batch_segments.py::TestRunBatchInferenceTaxonomy` (3 tests:
+TC-BATCH-004 taxonomy populates mapped_labels with correct length,
+TC-BATCH-005 taxonomy populates mapped_probs with dicts summing to ~1.0,
+TC-BATCH-006 without taxonomy mapped_labels and mapped_probs are None).
 
-#### 21c. `run_batch_inference()` with taxonomy (lines 107–198) — unit test missing
+#### ~~21d. `run_batch_inference()` with `calibrator_store` — no test~~ DONE
 
-CLI integration tested in `test_infer_taxonomy.py`, but no direct unit
-test for `run_batch_inference(..., taxonomy=config)`.
-
-| Test case | Expected |
-|---|---|
-| Taxonomy populates `mapped_labels` | `result.mapped_labels` is not `None`, length matches input |
-| Taxonomy populates `mapped_probs` | `result.mapped_probs` is not `None`, each dict sums to ~1.0 |
-| Without taxonomy | `mapped_labels` and `mapped_probs` are `None` |
-
-#### 21d. `run_batch_inference()` with `calibrator_store` — no test
-
-| Test case | Expected |
-|---|---|
-| Per-user calibration applied | `result.core_probs` differs from uncalibrated run when store has per-user calibrators |
-| `user_id` column required | DataFrame without `user_id` falls back to single calibrator |
-
-Suggested test IDs: `TC-BATCH-001` through `TC-BATCH-009`.
+**Status:** Covered by `tests/test_infer_batch_segments.py::TestRunBatchInferenceCalibratorStore` (2 tests:
+TC-BATCH-007 per-user calibration changes core_probs vs identity,
+TC-BATCH-008 user_id column dispatches per-user calibrators).
 
 ---
 
@@ -908,46 +708,27 @@ Suggested test IDs: `TC-BATCH-001` through `TC-BATCH-009`.
 
 ---
 
-### 23. `infer.resolve` — `ActiveModelReloader` reload path untested
-**File:** `src/taskclf/infer/resolve.py:99-163`
-**Doc:** `docs/api/infer/online.md`
-**Existing tests:** `tests/test_infer_resolve.py` covers no-change and
-interval-guard paths only.
+### ~~23. `infer.resolve` — `ActiveModelReloader` reload path untested~~ DONE
 
-`ActiveModelReloader.check_reload()` when mtime changes (lines 130–162):
-
-| Test case | Expected |
-|---|---|
-| Mtime changes → successful reload | Returns `(model, metadata, cat_encoders)` tuple |
-| Mtime changes → load fails | Returns `None`, logs warning, current model kept |
-| `_last_mtime` updated after successful reload | Subsequent check with same mtime returns `None` |
-| No `active.json` file | `_current_mtime()` returns `None`, no reload |
-
-**Setup:** Write a model bundle to `tmp_path/models/`, create
-`active.json`, construct `ActiveModelReloader` with
-`check_interval_s=0`, then modify `active.json` mtime (e.g. write new
-pointer) before calling `check_reload()`.
-
-Suggested test IDs: `TC-RELOAD-001` through `TC-RELOAD-004`.
+**Status:** Covered by `tests/test_infer_resolve.py::TestActiveModelReloader` (4 new tests):
+- TC-RELOAD-001 mtime change triggers successful reload (mocked `load_model_bundle`)
+- TC-RELOAD-002 mtime change + load failure returns None (no model file)
+- TC-RELOAD-003 `_last_mtime` updated after reload (second check returns None)
+- TC-RELOAD-004 missing `active.json` → `_current_mtime()` is None, no reload
 
 ---
 
-### 24. `infer.online` — `OnlinePredictor` with taxonomy and calibrator store untested
-**File:** `src/taskclf/infer/online.py`
-**Doc:** `docs/api/infer/online.md`
-**Existing tests:** `tests/test_infer_online.py` (basic predict/segments),
-`tests/test_infer_pipeline.py` (calibrator integration, CSV output).
+### ~~24. `infer.online` — `OnlinePredictor` with taxonomy and calibrator store untested~~ DONE
 
-| Test case | Expected |
-|---|---|
-| `OnlinePredictor` with `taxonomy` | `prediction.mapped_label_name` comes from taxonomy buckets, not core labels |
-| `OnlinePredictor` with `taxonomy` — `mapped_probs` | `mapped_probs` keys are bucket names, values sum to ~1.0 |
-| `OnlinePredictor` with `calibrator_store` | Per-user calibration applied (different `user_id` → potentially different confidence) |
-| `_encode_value` for categorical column | Known value → encoded int; unknown value → `-1.0` |
-| `_encode_value` for numerical `None` | Returns `0.0` |
-| `get_segments` after rejected predictions | Segments use `MIXED_UNKNOWN` label |
-
-Suggested test IDs: `TC-ONLINE-001` through `TC-ONLINE-006`.
+**Status:** Covered by `tests/test_infer_online.py` (6 new tests):
+- **TestOnlinePredictorTaxonomy** (2 tests: TC-ONLINE-001 mapped_label_name comes from
+  taxonomy bucket names, TC-ONLINE-002 mapped_probs keys are bucket names summing to ~1.0)
+- **TestOnlinePredictorCalibratorStore** (1 test: TC-ONLINE-003 per-user calibration
+  via CalibratorStore changes confidence vs identity)
+- **TestEncodeValue** (2 tests: TC-ONLINE-004 known categorical value returns encoded
+  int and unknown returns -1.0, TC-ONLINE-005 non-categorical None returns 0.0)
+- **TestOnlinePredictorRejectSegments** (1 test: TC-ONLINE-006 rejected predictions
+  produce segments with MIXED_UNKNOWN label)
 
 ---
 
@@ -961,29 +742,16 @@ TC-PRED-004 core_label_id>7, TC-PRED-005 frozen model immutability).
 
 ## Low Priority
 
-### 26. `infer.baseline` — `_safe_float()` and custom thresholds untested
-**File:** `src/taskclf/infer/baseline.py`
-**Existing tests:** `tests/test_infer_baseline.py` (comprehensive rule
-coverage, all using default thresholds).
+### ~~26. `infer.baseline` — `_safe_float()` and custom thresholds untested~~ DONE
 
-#### 26a. `_safe_float()` (lines 35–45) — internal but non-trivial
-
-| Test case | Expected |
-|---|---|
-| `None` | Returns `default` |
-| `float('nan')` | Returns `default` |
-| Valid float | Returns that float |
-| Non-numeric string `"abc"` | Returns `default` |
-| Integer `42` | Returns `42.0` |
-
-#### 26b. Custom threshold parameters
-
-| Test case | Expected |
-|---|---|
-| `classify_single_row(row, idle_active_threshold=100.0)` | Row with `active_seconds_any=50` is NOT idle (would be idle at default 5.0) |
-| `run_baseline_inference(df, scroll_high=100.0)` | Browser+high-scroll row is NOT ReadResearch (threshold too high) |
-
-Suggested test IDs: `TC-BASE-001` through `TC-BASE-007`.
+**Status:** Covered by `tests/test_infer_baseline.py` (7 new tests):
+- `TestSafeFloat` (5 tests: TC-BASE-001 None returns default,
+  TC-BASE-002 NaN returns default, TC-BASE-003 valid float returned,
+  TC-BASE-004 non-numeric string returns default,
+  TC-BASE-005 integer coerced to float)
+- `TestCustomThresholds` (2 tests: TC-BASE-006 lowered idle threshold
+  prevents BreakIdle classification, TC-BASE-007 raised scroll_high
+  prevents ReadResearch classification via `run_baseline_inference`)
 
 ---
 ---
@@ -1051,44 +819,27 @@ DailyReport.total_minutes, TC-RPT-VAL-003 negative DailyReport.segments_count).
 
 ## Low Priority — Minor gaps
 
-### 25. Export functions — parent directory creation
-**Files:** `src/taskclf/report/export.py` — all three export functions
-call `path.parent.mkdir(parents=True, exist_ok=True)`.
-**Tests:** All existing tests use `tmp_path` (already exists).
+### ~~25. Export functions — parent directory creation~~ DONE
 
-| Test case | Expected |
-|---|---|
-| `export_report_json` with nested non-existent parent (`tmp_path / "a/b/report.json"`) | Directories created, file written |
-| Same for `export_report_csv` | Directories created |
-| Same for `export_report_parquet` | Directories created |
+**Status:** Covered by `tests/test_report.py::TestExportParentDirCreation` (3 tests:
+TC-RPT-MKDIR-001 export_report_json with nested path creates dirs,
+TC-RPT-MKDIR-002 export_report_csv with nested path creates dirs,
+TC-RPT-MKDIR-003 export_report_parquet with nested path creates dirs).
 
-Suggested test IDs: `TC-RPT-MKDIR-001` through `TC-RPT-MKDIR-003`.
+### ~~26. `_breakdown_to_rows()` — row content correctness~~ DONE
 
-### 26. `_breakdown_to_rows()` — row content correctness
-**File:** `src/taskclf/report/export.py:54-74`
-**Tests:** Row counts and label sets are checked; per-row `minutes`
-values and sort order are not.
+**Status:** Covered by `tests/test_report.py::TestBreakdownToRows` (3 tests:
+TC-RPT-ROWS-001 core rows sorted alphabetically by label,
+TC-RPT-ROWS-002 minutes values match core_breakdown rounded to 2dp,
+TC-RPT-ROWS-003 date propagated into every row).
 
-| Test case | Expected |
-|---|---|
-| Core rows sorted alphabetically by label | Rows in `sorted()` order |
-| `minutes` values match `core_breakdown` | Each row's `minutes` equals `round(core_breakdown[label], 2)` |
-| `date` propagated into every row | All rows have `report.date` |
+### ~~27. Export value correctness in CSV and Parquet~~ DONE
 
-Suggested test IDs: `TC-RPT-ROWS-001` through `TC-RPT-ROWS-003`.
-
-### 27. Export value correctness in CSV and Parquet
-**Tests:** `TestExportCsv` and `TestExportParquet` check row counts
-and column names but not the actual `minutes` values or `date` field.
-
-| Test case | Expected |
-|---|---|
-| CSV: `minutes` column values match `core_breakdown` | Float comparison per row |
-| Parquet: `minutes` column values match `core_breakdown` | Same |
-| CSV: `date` column matches `report.date` | All rows equal |
-| Parquet: `date` column matches `report.date` | All rows equal |
-
-Suggested test IDs: `TC-RPT-CSVVAL-001` through `TC-RPT-CSVVAL-004`.
+**Status:** Covered by `tests/test_report.py::TestExportValueCorrectness` (4 tests:
+TC-RPT-CSVVAL-001 CSV minutes match core_breakdown,
+TC-RPT-CSVVAL-002 CSV date matches report.date in all rows,
+TC-RPT-CSVVAL-003 Parquet minutes match core_breakdown,
+TC-RPT-CSVVAL-004 Parquet date matches report.date in all rows).
 
 ---
 ---
@@ -1140,51 +891,27 @@ TC-LABEL-CSV-003 invalid label value raises ValidationError).
 
 ---
 
-### 31. `labels.store.generate_label_summary()` — missing edge cases
-**File:** `src/taskclf/labels/store.py:255-316`
-**Tests:** `test_labels_store.py::TestGenerateLabelSummary` (2 tests:
-empty window + populated window)
+### ~~31. `labels.store.generate_label_summary()` — missing edge cases~~ DONE
 
-The function handles missing columns gracefully (`app_id` → empty
-`top_apps`, `session_id` → `session_count=0`, input columns → `None`
-means). These defensive branches are untested.
-
-| Test case | Setup | Expected |
-|---|---|---|
-| No `app_id` column | DataFrame without `app_id` | `top_apps == []` |
-| No `session_id` column | DataFrame without `session_id` | `session_count == 0` |
-| No input rate columns | DataFrame without `keys_per_min`, `clicks_per_min`, `scroll_events_per_min` | All mean values are `None` |
-| All columns present but all NaN in rate columns | Rate columns filled with `float('nan')` | Mean values are `None` (`.dropna()` produces empty series) |
-
-Suggested test IDs: `TC-LABEL-SUM-001` through `TC-LABEL-SUM-004`.
+**Status:** Covered by `tests/test_labels_store.py::TestGenerateLabelSummaryEdgeCases` (4 tests:
+TC-LABEL-SUM-001 no app_id column → top_apps == [],
+TC-LABEL-SUM-002 no session_id column → session_count == 0,
+TC-LABEL-SUM-003 no input rate columns → all means None,
+TC-LABEL-SUM-004 rate columns all NaN → means None).
 
 ---
 
-### 32. `labels.queue.enqueue_drift()` — missing edge cases
-**File:** `src/taskclf/labels/queue.py:148-186`
-**Tests:** `test_labels_queue.py::TestEnqueueDrift` (1 test: basic add)
+### ~~32. `labels.queue.enqueue_drift()` — missing edge cases~~ DONE
 
-Missing deduplication test and missing-optional-fields test.
-
-| Test case | Setup | Expected |
-|---|---|---|
-| Dedup: same bucket re-enqueued | Call `enqueue_drift` twice with same bucket | Second call returns `0`, total items still `1` |
-| Missing optional fields | Dict without `predicted_label` or `confidence` | `LabelRequest` created with `confidence=None`, `predicted_label=None` |
-| Mixed: some new, some existing | Enqueue 3, then enqueue 4 (2 overlap) | Returns `2` (only new ones added) |
-
-Suggested test IDs: `TC-LABEL-QD-001` through `TC-LABEL-QD-003`.
+**Status:** Covered by `tests/test_labels_queue.py::TestEnqueueDriftEdgeCases` (3 tests:
+TC-LABEL-QD-001 dedup same bucket re-enqueued returns 0,
+TC-LABEL-QD-002 missing optional fields → confidence/predicted_label None,
+TC-LABEL-QD-003 mixed new/existing returns only new count).
 
 ---
 
-### 33. `labels.projection.project_blocks_to_windows()` — missing branch coverage
-**File:** `src/taskclf/labels/projection.py:19-99`
-**Tests:** `test_labels_projection.py` (11 tests, thorough for main rules)
+### ~~33. `labels.projection.project_blocks_to_windows()` — missing branch coverage~~ DONE
 
-Two code branches have no dedicated test:
-
-| Test case | Setup | Expected |
-|---|---|---|
-| Auto-derived `bucket_end_ts` | Features DataFrame **without** a `bucket_end_ts` column | Column auto-derived from `bucket_start_ts + bucket_seconds`; projection still works correctly |
-| Same-label multi-block covering | Two blocks with **identical** labels both fully cover a window | Window is labeled (not dropped), since only **conflicting** labels cause drops |
-
-Suggested test IDs: `TC-LABEL-PROJ-001`, `TC-LABEL-PROJ-002`.
+**Status:** Covered by `tests/test_labels_projection.py` (2 new tests:
+TC-LABEL-PROJ-001 auto-derived `bucket_end_ts` when column is missing,
+TC-LABEL-PROJ-002 same-label multi-block covering labels window correctly).

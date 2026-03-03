@@ -6,12 +6,14 @@ Covers:
 - TC-RES-003: Active points to missing → falls back
 - TC-RES-004: Explicit --model-dir overrides everything
 - TC-RES-005: No models at all → raises ModelResolutionError
+- TC-RELOAD-001..004: ActiveModelReloader reload paths
 """
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -242,4 +244,81 @@ class TestActiveModelReloader:
         _write_bundle(models_dir / "bundle_a", _VALID_METADATA, _VALID_METRICS)
 
         reloader = ActiveModelReloader(models_dir, check_interval_s=9999)
+        assert reloader.check_reload() is None
+
+    @patch("taskclf.infer.resolve.load_model_bundle")
+    def test_reload_on_mtime_change(
+        self, mock_load: MagicMock, tmp_path: Path,
+    ) -> None:
+        """TC-RELOAD-001: mtime change triggers successful reload."""
+        models_dir = tmp_path / "models"
+        _write_bundle(models_dir / "bundle_a", _VALID_METADATA, _VALID_METRICS)
+        active_bundle = list_bundles(models_dir)[0]
+        write_active_atomic(models_dir, active_bundle, SelectionPolicy())
+
+        reloader = ActiveModelReloader(models_dir, check_interval_s=0)
+
+        fake_model = MagicMock(name="booster")
+        fake_encoders = {"col": MagicMock()}
+        mock_load.return_value = (fake_model, _VALID_METADATA, fake_encoders)
+
+        active_path = models_dir / "active.json"
+        active_path.write_text(active_path.read_text())
+
+        result = reloader.check_reload()
+
+        assert result is not None
+        model, metadata, encoders = result
+        assert model is fake_model
+        assert metadata is _VALID_METADATA
+        assert encoders is fake_encoders
+
+    def test_reload_fails_returns_none(self, tmp_path: Path) -> None:
+        """TC-RELOAD-002: mtime change + load failure returns None."""
+        models_dir = tmp_path / "models"
+        bundle_dir = models_dir / "bundle_a"
+        _write_bundle(bundle_dir, _VALID_METADATA, _VALID_METRICS)
+        active_bundle = list_bundles(models_dir)[0]
+        write_active_atomic(models_dir, active_bundle, SelectionPolicy())
+
+        reloader = ActiveModelReloader(models_dir, check_interval_s=0)
+
+        active_path = models_dir / "active.json"
+        active_path.write_text(active_path.read_text())
+
+        result = reloader.check_reload()
+
+        assert result is None
+
+    @patch("taskclf.infer.resolve.load_model_bundle")
+    def test_last_mtime_updated_after_reload(
+        self, mock_load: MagicMock, tmp_path: Path,
+    ) -> None:
+        """TC-RELOAD-003: after successful reload, same mtime returns None."""
+        models_dir = tmp_path / "models"
+        _write_bundle(models_dir / "bundle_a", _VALID_METADATA, _VALID_METRICS)
+        active_bundle = list_bundles(models_dir)[0]
+        write_active_atomic(models_dir, active_bundle, SelectionPolicy())
+
+        reloader = ActiveModelReloader(models_dir, check_interval_s=0)
+
+        mock_load.return_value = (MagicMock(), _VALID_METADATA, None)
+
+        active_path = models_dir / "active.json"
+        active_path.write_text(active_path.read_text())
+
+        first = reloader.check_reload()
+        assert first is not None
+
+        second = reloader.check_reload()
+        assert second is None
+
+    def test_no_active_json_mtime_is_none(self, tmp_path: Path) -> None:
+        """TC-RELOAD-004: missing active.json → _current_mtime() is None."""
+        models_dir = tmp_path / "models"
+        models_dir.mkdir(parents=True)
+
+        reloader = ActiveModelReloader(models_dir, check_interval_s=0)
+
+        assert reloader._current_mtime() is None
         assert reloader.check_reload() is None

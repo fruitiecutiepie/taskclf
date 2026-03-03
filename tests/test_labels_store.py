@@ -189,6 +189,55 @@ class TestGenerateLabelSummary:
         assert summary["mean_keys_per_min"] is not None
 
 
+class TestGenerateLabelSummaryEdgeCases:
+    """TC-LABEL-SUM-001..004: edge cases for generate_label_summary."""
+
+    def _base_df(self, **extra_cols: object) -> pd.DataFrame:
+        base = dt.datetime(2025, 6, 15, 10, 0)
+        data: dict[str, object] = {
+            "bucket_start_ts": [base + dt.timedelta(minutes=i) for i in range(5)],
+        }
+        data.update(extra_cols)
+        return pd.DataFrame(data)
+
+    def test_no_app_id_column(self) -> None:
+        """TC-LABEL-SUM-001: missing app_id → top_apps == []."""
+        df = self._base_df(session_id=["s1"] * 5)
+        base = dt.datetime(2025, 6, 15, 10, 0)
+        summary = generate_label_summary(df, base, base + dt.timedelta(minutes=5))
+        assert summary["top_apps"] == []
+        assert summary["total_buckets"] == 5
+
+    def test_no_session_id_column(self) -> None:
+        """TC-LABEL-SUM-002: missing session_id → session_count == 0."""
+        df = self._base_df(app_id=["com.apple.Terminal"] * 5)
+        base = dt.datetime(2025, 6, 15, 10, 0)
+        summary = generate_label_summary(df, base, base + dt.timedelta(minutes=5))
+        assert summary["session_count"] == 0
+
+    def test_no_input_rate_columns(self) -> None:
+        """TC-LABEL-SUM-003: missing rate columns → all means are None."""
+        df = self._base_df(app_id=["com.apple.Terminal"] * 5)
+        base = dt.datetime(2025, 6, 15, 10, 0)
+        summary = generate_label_summary(df, base, base + dt.timedelta(minutes=5))
+        assert summary["mean_keys_per_min"] is None
+        assert summary["mean_clicks_per_min"] is None
+        assert summary["mean_scroll_per_min"] is None
+
+    def test_rate_columns_all_nan(self) -> None:
+        """TC-LABEL-SUM-004: rate columns all NaN → means are None."""
+        df = self._base_df(
+            keys_per_min=[float("nan")] * 5,
+            clicks_per_min=[float("nan")] * 5,
+            scroll_events_per_min=[float("nan")] * 5,
+        )
+        base = dt.datetime(2025, 6, 15, 10, 0)
+        summary = generate_label_summary(df, base, base + dt.timedelta(minutes=5))
+        assert summary["mean_keys_per_min"] is None
+        assert summary["mean_clicks_per_min"] is None
+        assert summary["mean_scroll_per_min"] is None
+
+
 class TestImportLabelsFromCsvWithOptionalColumns:
     def test_csv_with_user_id_and_confidence(self, tmp_path: Path) -> None:
         csv = tmp_path / "labels.csv"

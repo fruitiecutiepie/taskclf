@@ -339,6 +339,88 @@ class TestWebSocket:
             time.sleep(0.1)
             ws.close()
 
+    def test_event_delivery_roundtrip(self, data_dir: Path) -> None:
+        """TC-UI-WS-003: publish via EventBus, read from WS, verify match."""
+        import threading
+
+        bus = EventBus()
+        app = create_app(data_dir=data_dir, event_bus=bus)
+        event = {"type": "status", "state": "collecting", "current_app": "Terminal"}
+
+        with TestClient(app) as client, client.websocket_connect("/ws/predictions") as ws:
+            threading.Thread(
+                target=lambda: (
+                    __import__("time").sleep(0.05),
+                    bus.publish_threadsafe(event),
+                ),
+            ).start()
+            received = ws.receive_json()
+            assert received == event
+
+    def test_multiple_event_types_in_order(self, data_dir: Path) -> None:
+        """TC-UI-WS-004: multiple event types received in publish order."""
+        import threading, time
+
+        bus = EventBus()
+        app = create_app(data_dir=data_dir, event_bus=bus)
+        events = [
+            {"type": "status", "state": "idle"},
+            {"type": "prediction", "label": "Build", "confidence": 0.9},
+            {"type": "tray_state", "model_loaded": True},
+            {"type": "suggest_label", "reason": "app_switch"},
+        ]
+
+        def _publish_all() -> None:
+            time.sleep(0.05)
+            for ev in events:
+                bus.publish_threadsafe(ev)
+
+        with TestClient(app) as client, client.websocket_connect("/ws/predictions") as ws:
+            threading.Thread(target=_publish_all).start()
+            received = [ws.receive_json() for _ in events]
+            assert received == events
+
+    def test_multiple_subscribers(self, data_dir: Path) -> None:
+        """TC-UI-WS-005: two WS clients both receive the same event."""
+        import threading
+
+        bus = EventBus()
+        app = create_app(data_dir=data_dir, event_bus=bus)
+        event = {"type": "prediction", "label": "Write"}
+
+        with TestClient(app) as client:
+            with (
+                client.websocket_connect("/ws/predictions") as ws1,
+                client.websocket_connect("/ws/predictions") as ws2,
+            ):
+                threading.Thread(
+                    target=lambda: (
+                        __import__("time").sleep(0.05),
+                        bus.publish_threadsafe(event),
+                    ),
+                ).start()
+                r1 = ws1.receive_json()
+                r2 = ws2.receive_json()
+                assert r1 == event
+                assert r2 == event
+
+    def test_disconnect_no_server_error(self, data_dir: Path) -> None:
+        """TC-UI-WS-006: disconnect then publish causes no server error."""
+        import time
+
+        bus = EventBus()
+        app = create_app(data_dir=data_dir, event_bus=bus)
+
+        with TestClient(app) as client:
+            with client.websocket_connect("/ws/predictions") as ws:
+                ws.close()
+
+            bus.publish_threadsafe({"type": "status", "state": "idle"})
+            time.sleep(0.1)
+
+            resp = client.get("/api/config/labels")
+            assert resp.status_code == 200
+
 
 # ---------------------------------------------------------------------------
 # PUT /api/labels  (Item 34)

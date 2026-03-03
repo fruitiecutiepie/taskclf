@@ -1,7 +1,8 @@
 """Tests for labels.projection: strict block-to-window label projection.
 
 Covers: full containment, partial overlap drop, multi-block overlap drop,
-user_id filtering, empty inputs, and the complete round-trip expectation.
+user_id filtering, empty inputs, the complete round-trip expectation,
+auto-derived bucket_end_ts, and same-label multi-block covering.
 """
 
 from __future__ import annotations
@@ -216,3 +217,53 @@ class TestRoundTrip:
         assert len(result) == 4
         labels = list(result["label"])
         assert labels == ["Build", "Build", "Debug", "Debug"]
+
+
+class TestAutoDerivedBucketEndTs:
+    """TC-LABEL-PROJ-001: bucket_end_ts auto-derived when column is missing."""
+
+    def test_projection_works_without_bucket_end_ts(self) -> None:
+        t0 = dt.datetime(2025, 6, 15, 10, 0)
+        starts = [t0, t0 + dt.timedelta(minutes=1)]
+        df = pd.DataFrame({
+            "user_id": ["u1", "u1"],
+            "bucket_start_ts": starts,
+            "session_id": ["sess-1", "sess-1"],
+        })
+        assert "bucket_end_ts" not in df.columns
+
+        span = LabelSpan(
+            start_ts=t0 - dt.timedelta(minutes=1),
+            end_ts=t0 + dt.timedelta(minutes=5),
+            label="Build",
+            provenance="manual",
+        )
+        result = project_blocks_to_windows(df, [span])
+        assert len(result) == 2
+        assert list(result["label"]) == ["Build", "Build"]
+        assert "bucket_end_ts" in result.columns
+
+
+class TestSameLabelMultiBlock:
+    """TC-LABEL-PROJ-002: two blocks with the same label both covering a window."""
+
+    def test_same_label_not_dropped(self) -> None:
+        t0 = dt.datetime(2025, 6, 15, 10, 0)
+        features = _make_features([t0])
+        spans = [
+            LabelSpan(
+                start_ts=t0,
+                end_ts=t0 + dt.timedelta(minutes=2),
+                label="Build",
+                provenance="manual",
+            ),
+            LabelSpan(
+                start_ts=t0,
+                end_ts=t0 + dt.timedelta(minutes=2),
+                label="Build",
+                provenance="weak",
+            ),
+        ]
+        result = project_blocks_to_windows(features, spans)
+        assert len(result) == 1
+        assert result["label"].iloc[0] == "Build"

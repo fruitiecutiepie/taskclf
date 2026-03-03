@@ -1,7 +1,8 @@
 """Tests for the rule-based baseline classifier.
 
 Covers: rule correctness, priority ordering, acceptance gates, integration
-with smoothing/segmentization, and reject-rate computation.
+with smoothing/segmentization, reject-rate computation, _safe_float edge cases,
+and custom threshold parameters.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from taskclf.core.defaults import (
 from taskclf.core.metrics import compare_baselines, reject_rate
 from taskclf.core.types import CoreLabel
 from taskclf.infer.baseline import (
+    _safe_float,
     classify_single_row,
     predict_baseline,
     run_baseline_inference,
@@ -336,3 +338,69 @@ class TestMetrics:
         assert result["oracle"]["macro_f1"] >= result["baseline"]["macro_f1"]
         assert result["baseline"]["reject_rate"] > 0
         assert result["oracle"]["reject_rate"] == 0.0
+
+
+# ── _safe_float direct tests ──────────────────────────────────────────────
+
+
+class TestSafeFloat:
+    def test_none_returns_default(self) -> None:
+        """TC-BASE-001"""
+        assert _safe_float(None) == 0.0
+        assert _safe_float(None, default=5.0) == 5.0
+
+    def test_nan_returns_default(self) -> None:
+        """TC-BASE-002"""
+        assert _safe_float(float("nan")) == 0.0
+        assert _safe_float(float("nan"), default=-1.0) == -1.0
+
+    def test_valid_float(self) -> None:
+        """TC-BASE-003"""
+        assert _safe_float(3.14) == 3.14
+        assert _safe_float(-2.5) == -2.5
+        assert _safe_float(0.0) == 0.0
+
+    def test_non_numeric_string_returns_default(self) -> None:
+        """TC-BASE-004"""
+        assert _safe_float("abc") == 0.0
+        assert _safe_float("abc", default=99.0) == 99.0
+
+    def test_integer_coerced_to_float(self) -> None:
+        """TC-BASE-005"""
+        assert _safe_float(42) == 42.0
+        assert isinstance(_safe_float(42), float)
+
+
+# ── Custom threshold parameters ───────────────────────────────────────────
+
+
+class TestCustomThresholds:
+    def test_lowered_idle_threshold_prevents_idle_classification(self) -> None:
+        """TC-BASE-006: lowering idle_active_threshold below the row's value
+        prevents BreakIdle classification (row is no longer considered idle)."""
+        row = _make_row(active_seconds_any=3.0, max_idle_run_seconds=2.0)
+        default_label = classify_single_row(row)
+        assert default_label == CoreLabel.BreakIdle
+
+        custom_label = classify_single_row(
+            row, idle_active_threshold=2.0, idle_run_threshold=100.0,
+        )
+        assert custom_label != CoreLabel.BreakIdle
+
+    def test_high_scroll_threshold_prevents_read_classification(self) -> None:
+        """TC-BASE-007: raising scroll_high above the row's scroll value
+        prevents ReadResearch classification."""
+        base_ts = dt.datetime(2025, 6, 15, 10, 0)
+        df = _make_df([{
+            "bucket_start_ts": base_ts,
+            "bucket_end_ts": base_ts + dt.timedelta(minutes=1),
+            "is_browser": True,
+            "scroll_events_per_min": 8.0,
+            "keys_per_min": 3.0,
+        }])
+
+        default_labels, _ = run_baseline_inference(df)
+        assert default_labels[0] == CoreLabel.ReadResearch
+
+        custom_labels, _ = run_baseline_inference(df, scroll_high=100.0)
+        assert custom_labels[0] != CoreLabel.ReadResearch

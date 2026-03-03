@@ -2,7 +2,8 @@
 
 Also covers: TC-RPT-SENS-001..004 (_check_no_sensitive_fields),
 TC-RPT-GUARD-001..003 (export functions reject sensitive data),
-TC-RPT-DAILY-001..003, TC-RPT-CTX-001..004, TC-RPT-VAL-001..003.
+TC-RPT-DAILY-001..003, TC-RPT-CTX-001..004, TC-RPT-VAL-001..003,
+TC-RPT-ROWS-001..003 (_breakdown_to_rows), TC-RPT-CSVVAL-001..004.
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ from taskclf.report.daily import (
     build_daily_report,
 )
 from taskclf.report.export import (
+    _breakdown_to_rows,
     _check_no_sensitive_fields,
     export_report_csv,
     export_report_json,
@@ -499,3 +501,117 @@ class TestReportModelValidation:
                 core_breakdown={"Build": 5.0},
                 segments_count=-1,
             )
+
+
+# ---------------------------------------------------------------------------
+# Export functions — parent directory creation (item 25)
+# ---------------------------------------------------------------------------
+
+
+class TestExportParentDirCreation:
+    """TC-RPT-MKDIR-001..003: export functions create nested parent dirs."""
+
+    def test_json_creates_parent_dirs(self, tmp_path: Path) -> None:
+        """TC-RPT-MKDIR-001: nested non-existent parents created for JSON."""
+        report = _basic_report()
+        out = tmp_path / "a" / "b" / "report.json"
+        export_report_json(report, out)
+        assert out.exists()
+
+    def test_csv_creates_parent_dirs(self, tmp_path: Path) -> None:
+        """TC-RPT-MKDIR-002: nested non-existent parents created for CSV."""
+        report = _basic_report()
+        out = tmp_path / "x" / "y" / "report.csv"
+        export_report_csv(report, out)
+        assert out.exists()
+
+    def test_parquet_creates_parent_dirs(self, tmp_path: Path) -> None:
+        """TC-RPT-MKDIR-003: nested non-existent parents created for Parquet."""
+        report = _basic_report()
+        out = tmp_path / "p" / "q" / "report.parquet"
+        export_report_parquet(report, out)
+        assert out.exists()
+
+
+# ---------------------------------------------------------------------------
+# _breakdown_to_rows() — row content correctness (item 26)
+# ---------------------------------------------------------------------------
+
+
+class TestBreakdownToRows:
+    """TC-RPT-ROWS-001..003: _breakdown_to_rows content correctness."""
+
+    def test_core_rows_sorted_alphabetically(self) -> None:
+        """TC-RPT-ROWS-001: core rows are sorted by label name."""
+        report = _basic_report()
+        rows = _breakdown_to_rows(report)
+        core_labels = [r["label"] for r in rows if r["label_type"] == "core"]
+        assert core_labels == sorted(core_labels)
+
+    def test_minutes_match_core_breakdown(self) -> None:
+        """TC-RPT-ROWS-002: each row's minutes equals the rounded breakdown value."""
+        report = _basic_report()
+        rows = _breakdown_to_rows(report)
+        for row in rows:
+            label = row["label"]
+            assert row["minutes"] == round(report.core_breakdown[label], 2)
+
+    def test_date_propagated(self) -> None:
+        """TC-RPT-ROWS-003: report.date appears in every row."""
+        report = _basic_report()
+        rows = _breakdown_to_rows(report)
+        assert len(rows) > 0
+        assert all(r["date"] == report.date for r in rows)
+
+
+# ---------------------------------------------------------------------------
+# Export value correctness — CSV and Parquet (item 27)
+# ---------------------------------------------------------------------------
+
+
+class TestExportValueCorrectness:
+    """TC-RPT-CSVVAL-001..004: exported minutes and date values match the report."""
+
+    def test_csv_minutes_match_breakdown(self, tmp_path: Path) -> None:
+        """TC-RPT-CSVVAL-001: CSV minutes column matches core_breakdown."""
+        report = _basic_report()
+        out = tmp_path / "report.csv"
+        export_report_csv(report, out)
+
+        with open(out) as f:
+            rows = list(csv.DictReader(f))
+
+        for row in rows:
+            expected = round(report.core_breakdown[row["label"]], 2)
+            assert float(row["minutes"]) == pytest.approx(expected)
+
+    def test_csv_date_matches_report(self, tmp_path: Path) -> None:
+        """TC-RPT-CSVVAL-002: CSV date column matches report.date in all rows."""
+        report = _basic_report()
+        out = tmp_path / "report.csv"
+        export_report_csv(report, out)
+
+        with open(out) as f:
+            rows = list(csv.DictReader(f))
+
+        assert all(row["date"] == report.date for row in rows)
+
+    def test_parquet_minutes_match_breakdown(self, tmp_path: Path) -> None:
+        """TC-RPT-CSVVAL-003: Parquet minutes column matches core_breakdown."""
+        report = _basic_report()
+        out = tmp_path / "report.parquet"
+        export_report_parquet(report, out)
+
+        df = pd.read_parquet(out)
+        for _, row in df.iterrows():
+            expected = round(report.core_breakdown[row["label"]], 2)
+            assert row["minutes"] == pytest.approx(expected)
+
+    def test_parquet_date_matches_report(self, tmp_path: Path) -> None:
+        """TC-RPT-CSVVAL-004: Parquet date column matches report.date in all rows."""
+        report = _basic_report()
+        out = tmp_path / "report.parquet"
+        export_report_parquet(report, out)
+
+        df = pd.read_parquet(out)
+        assert all(d == report.date for d in df["date"])
