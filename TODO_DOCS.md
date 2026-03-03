@@ -198,3 +198,34 @@ All five cross-reference gaps have been fixed:
 | `docs/api/infer/monitor.md` | Linked `core.drift` to `docs/api/core/drift.md` |
 | `docs/api/infer/monitor.md` | Linked "telemetry store" to `docs/api/core/telemetry.md` |
 | `docs/api/infer/baseline.md` | Linked `core.defaults` to `docs/api/core/defaults.md` |
+
+---
+
+## 6. Thin Doc Pages (round 2)
+
+Audit found 13 additional pages that contain only a heading, one-line
+description, and `:::` autodoc directive — no narrative, usage
+examples, field tables, or architectural notes.
+
+### Core
+
+| Page | Status |
+|------|--------|
+| ~~`docs/api/core/schema.md`~~ | **DONE** — expanded with `FeatureSchemaV1` overview, 40-column registry grouped by role (6 tables), `validate_row` / `validate_dataframe` docs with dtype-kind mapping table, usage examples, cross-refs |
+| ~~`docs/api/core/metrics.md`~~ | **DONE** — expanded with 10-function overview table, function-by-function sections for `compute_metrics`, `class_distribution`, `confusion_matrix_df`, `per_class_metrics`, `reject_rate`, `compare_baselines`, `per_user_metrics`, `calibration_curve_data`, `user_stratification_report`, `reject_rate_by_group`, return-value tables, usage examples, cross-refs |
+| `docs/api/core/hashing.md` | Pending |
+| `docs/api/core/store.md` | Pending |
+| `docs/api/core/time.md` | Pending |
+| `docs/api/core/logging.md` | Pending |
+| `docs/api/core/defaults.md` | Pending |
+
+### Features
+
+| Page | Status |
+|------|--------|
+| ~~`docs/api/features/build.md`~~ | **DONE** — expanded with pipeline overview, data flow diagram, `build_features_from_aw_events` parameter table and dominant-app algorithm, sub-module invocation table, `generate_dummy_features` and `build_features_for_date` sections, cross-refs |
+| ~~`docs/api/features/windows.md`~~ | **DONE** — expanded with `app_switch_count_in_window` parameter table, look-back window explanation, `compute_rolling_app_switches` batch helper, usage examples, cross-refs |
+| `docs/api/features/sessions.md` | Pending |
+| `docs/api/features/domain.md` | Pending |
+| `docs/api/features/dynamics.md` | Pending |
+| `docs/api/features/text.md` | Pending |
