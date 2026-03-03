@@ -262,18 +262,13 @@ export const LabelRecent: Component = () => {
       <Show when={status()}>
         <div
           style={{
+            "text-align": "center",
+            "font-size": "0.8rem",
             "margin-top": "12px",
-            padding: "10px 16px",
-            "border-radius": "var(--radius)",
-            background:
-              status()!.type === "success"
-                ? "rgba(34,197,94,0.15)"
-                : "rgba(239,68,68,0.15)",
             color:
               status()!.type === "success"
                 ? "var(--success)"
                 : "var(--danger)",
-            "font-size": "0.9rem",
           }}
         >
           {status()!.msg}

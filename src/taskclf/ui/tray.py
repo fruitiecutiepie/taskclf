@@ -475,6 +475,7 @@ class TrayLabeler:
                     "ts": block_end.isoformat(),
                     "mapped_label": "unknown",
                     "current_app": new_app,
+                    "provenance": "model",
                 })
 
     def _send_notification(

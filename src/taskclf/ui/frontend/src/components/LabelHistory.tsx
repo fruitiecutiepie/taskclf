@@ -260,7 +260,7 @@ const LabelRow: Component<{
             border: "1px solid #2a2a3a",
           }}
         >
-          <ActivityContext timeRange={() => timeRange()} />
+          <ActivityContext timeRange={() => timeRange()} showEmpty />
 
           <Show when={props.flash}>
             <div

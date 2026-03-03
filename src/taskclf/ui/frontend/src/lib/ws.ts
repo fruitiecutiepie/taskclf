@@ -7,6 +7,7 @@ export interface Prediction {
   ts: string;
   mapped_label: string;
   current_app?: string;
+  provenance?: "manual" | "model";
 }
 
 export interface LabelSuggestion {

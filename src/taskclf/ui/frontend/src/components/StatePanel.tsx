@@ -405,7 +405,7 @@ export const StatePanel: Component<{
       </Section>
 
       <Section
-        title="Last Prediction"
+        title={pred()?.provenance === "manual" ? "Last Label" : "Last Prediction"}
         summary={predSummary()}
         summaryColor={predSummaryColor()}
         defaultOpen
@@ -414,6 +414,11 @@ export const StatePanel: Component<{
           when={pred()}
           fallback={<Row label="status" value="no prediction yet" dim />}
         >
+          <Row
+            label="provenance"
+            value={pred()!.provenance ?? "unknown"}
+            dim
+          />
           <Row
             label="label"
             value={pred()!.label}
