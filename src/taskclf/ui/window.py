@@ -107,11 +107,11 @@ class WindowAPI:
         else:
             self._cancel_timer("_panel_hide_timer")
             self._panel_visible = True
-            self._reposition_children()
             try:
                 self._panel_window.show()
             except Exception:
                 logger.debug("Could not show panel", exc_info=True)
+            self._reposition_children()
 
     def _do_hide_panel(self) -> None:
         self._panel_hide_timer = None
