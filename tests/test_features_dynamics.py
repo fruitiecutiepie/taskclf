@@ -127,3 +127,36 @@ class TestDynamicsTracker:
         assert results[0]["keys_per_min_rolling_5"] is None
         assert results[1]["keys_per_min_rolling_5"] == 20.0
         assert results[3]["keys_per_min_delta"] is None  # prev was None
+
+
+# ---------------------------------------------------------------------------
+# TC-FEAT-DYN-001 through TC-FEAT-DYN-003: compute_batch edge cases
+# ---------------------------------------------------------------------------
+
+
+class TestComputeBatchEdgeCases:
+    def test_empty_lists(self) -> None:
+        """TC-FEAT-DYN-001: empty input lists return empty output."""
+        results = DynamicsTracker.compute_batch([], [], [])
+        assert results == []
+
+    def test_single_element(self) -> None:
+        """TC-FEAT-DYN-002: single-element lists produce one dict with all deltas None."""
+        results = DynamicsTracker.compute_batch([50.0], [3.0], [200.0])
+        assert len(results) == 1
+        assert results[0]["keys_per_min_delta"] is None
+        assert results[0]["clicks_per_min_delta"] is None
+        assert results[0]["mouse_distance_delta"] is None
+        assert results[0]["keys_per_min_rolling_5"] == 50.0
+
+    def test_custom_rolling_15(self) -> None:
+        """TC-FEAT-DYN-003: custom rolling_15 parameter is respected."""
+        keys = [10.0, 20.0, 30.0, 40.0, 50.0]
+        clicks = [1.0, 2.0, 3.0, 4.0, 5.0]
+        mouse = [100.0, 200.0, 300.0, 400.0, 500.0]
+
+        results = DynamicsTracker.compute_batch(
+            keys, clicks, mouse, rolling_15=3,
+        )
+        assert len(results) == 5
+        assert results[2]["keys_per_min_rolling_15"] == 20.0  # mean(10,20,30) with window=3

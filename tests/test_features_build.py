@@ -1,6 +1,8 @@
-"""Tests for features.build: generate_dummy_features and build_features_for_date.
+"""Tests for features.build: generate_dummy_features, build_features_for_date,
+and _aggregate_input_for_bucket.
 
-Covers: TC-FEAT-BUILD-001 through TC-FEAT-BUILD-013.
+Covers: TC-FEAT-BUILD-001 through TC-FEAT-BUILD-013,
+        TC-FEAT-AGG-001 through TC-FEAT-AGG-006.
 """
 
 from __future__ import annotations
@@ -10,9 +12,14 @@ from pathlib import Path
 
 import pandas as pd
 
-from taskclf.core.defaults import DEFAULT_DUMMY_ROWS
+from taskclf.adapters.activitywatch.types import AWInputEvent
+from taskclf.core.defaults import DEFAULT_BUCKET_SECONDS, DEFAULT_DUMMY_ROWS
 from taskclf.core.schema import FeatureSchemaV1
-from taskclf.features.build import build_features_for_date, generate_dummy_features
+from taskclf.features.build import (
+    _aggregate_input_for_bucket,
+    build_features_for_date,
+    generate_dummy_features,
+)
 
 _DATE = dt.date(2025, 6, 15)
 
@@ -110,3 +117,105 @@ class TestBuildFeaturesForDate:
         result = build_features_for_date(_DATE, tmp_path)
         df = pd.read_parquet(result)
         assert len(df) == DEFAULT_DUMMY_ROWS
+
+
+# ---------------------------------------------------------------------------
+# Helpers for _aggregate_input_for_bucket tests
+# ---------------------------------------------------------------------------
+
+_BUCKET_TS = dt.datetime(2025, 6, 15, 10, 0, 0)
+
+
+def _input_ev(
+    ts: dt.datetime,
+    duration: float = 5.0,
+    presses: int = 0,
+    clicks: int = 0,
+    delta_x: int = 0,
+    delta_y: int = 0,
+    scroll_x: int = 0,
+    scroll_y: int = 0,
+) -> AWInputEvent:
+    return AWInputEvent(
+        timestamp=ts,
+        duration_seconds=duration,
+        presses=presses,
+        clicks=clicks,
+        delta_x=delta_x,
+        delta_y=delta_y,
+        scroll_x=scroll_x,
+        scroll_y=scroll_y,
+    )
+
+
+class TestAggregateInputForBucket:
+    """TC-FEAT-AGG-001 through TC-FEAT-AGG-006."""
+
+    def test_empty_bucket_input(self) -> None:
+        """TC-FEAT-AGG-001: empty input returns all None values."""
+        result = _aggregate_input_for_bucket(_BUCKET_TS, [], DEFAULT_BUCKET_SECONDS)
+        for key, val in result.items():
+            assert val is None, f"Expected None for '{key}', got {val}"
+
+    def test_single_active_event(self) -> None:
+        """TC-FEAT-AGG-002: single active event produces positive occupancy."""
+        ev = _input_ev(_BUCKET_TS, duration=5.0, presses=10, clicks=2)
+        result = _aggregate_input_for_bucket(_BUCKET_TS, [ev], DEFAULT_BUCKET_SECONDS)
+
+        assert result["active_seconds_any"] > 0
+        assert result["active_seconds_keyboard"] > 0
+        assert result["active_seconds_mouse"] > 0
+        assert result["max_idle_run_seconds"] == 0.0
+
+    def test_mixed_active_idle_events(self) -> None:
+        """TC-FEAT-AGG-003: max_idle_run_seconds equals longest idle run."""
+        events = [
+            _input_ev(_BUCKET_TS, duration=5.0, presses=5),
+            _input_ev(
+                _BUCKET_TS + dt.timedelta(seconds=5),
+                duration=10.0,
+                presses=0, clicks=0,
+            ),
+            _input_ev(
+                _BUCKET_TS + dt.timedelta(seconds=15),
+                duration=3.0,
+                presses=0, clicks=0,
+            ),
+            _input_ev(
+                _BUCKET_TS + dt.timedelta(seconds=18),
+                duration=5.0, presses=8,
+            ),
+        ]
+        result = _aggregate_input_for_bucket(_BUCKET_TS, events, DEFAULT_BUCKET_SECONDS)
+
+        assert result["max_idle_run_seconds"] == 13.0
+
+    def test_keyboard_only(self) -> None:
+        """TC-FEAT-AGG-004: only keyboard activity means mouse seconds is 0."""
+        ev = _input_ev(_BUCKET_TS, duration=5.0, presses=20)
+        result = _aggregate_input_for_bucket(_BUCKET_TS, [ev], DEFAULT_BUCKET_SECONDS)
+
+        assert result["active_seconds_keyboard"] > 0
+        assert result["active_seconds_mouse"] == 0.0
+
+    def test_mouse_only(self) -> None:
+        """TC-FEAT-AGG-005: only mouse activity means keyboard seconds is 0."""
+        ev = _input_ev(_BUCKET_TS, duration=5.0, clicks=3, delta_x=100, delta_y=50)
+        result = _aggregate_input_for_bucket(_BUCKET_TS, [ev], DEFAULT_BUCKET_SECONDS)
+
+        assert result["active_seconds_mouse"] > 0
+        assert result["active_seconds_keyboard"] == 0.0
+
+    def test_event_density_formula(self) -> None:
+        """TC-FEAT-AGG-006: event_density = active_event_count / active_seconds_any."""
+        events = [
+            _input_ev(_BUCKET_TS, duration=10.0, presses=5),
+            _input_ev(
+                _BUCKET_TS + dt.timedelta(seconds=10),
+                duration=10.0, clicks=2,
+            ),
+        ]
+        result = _aggregate_input_for_bucket(_BUCKET_TS, events, DEFAULT_BUCKET_SECONDS)
+
+        expected_density = round(2 / result["active_seconds_any"], 4)
+        assert result["event_density"] == expected_density

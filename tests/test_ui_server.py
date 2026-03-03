@@ -7,12 +7,15 @@ WebSocket broadcast is tested via the EventBus integration.
 from __future__ import annotations
 
 import datetime as dt
+import json
+import uuid
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 from taskclf.core.types import LabelSpan
+from taskclf.labels.queue import ActiveLabelingQueue, LabelRequest
 from taskclf.labels.store import append_label_span
 from taskclf.ui.events import EventBus
 from taskclf.ui.server import create_app
@@ -335,3 +338,377 @@ class TestWebSocket:
             import time
             time.sleep(0.1)
             ws.close()
+
+
+# ---------------------------------------------------------------------------
+# PUT /api/labels  (Item 34)
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateLabel:
+    """TC-UI-UPD-001 through TC-UI-UPD-004."""
+
+    def _create_label(self, client: TestClient) -> None:
+        client.post("/api/labels", json={
+            "start_ts": "2026-02-27T09:00:00",
+            "end_ts": "2026-02-27T10:00:00",
+            "label": "Build",
+        })
+
+    def test_happy_path_update(self, client: TestClient) -> None:
+        """TC-UI-UPD-001: POST then PUT with new label -> 200, label changed."""
+        self._create_label(client)
+        resp = client.put("/api/labels", json={
+            "start_ts": "2026-02-27T09:00:00",
+            "end_ts": "2026-02-27T10:00:00",
+            "label": "Write",
+        })
+        assert resp.status_code == 200
+        assert resp.json()["label"] == "Write"
+
+    def test_404_no_matching_span(self, client: TestClient) -> None:
+        """TC-UI-UPD-002: PUT with non-existent timestamps -> 404."""
+        self._create_label(client)
+        resp = client.put("/api/labels", json={
+            "start_ts": "2026-02-27T11:00:00",
+            "end_ts": "2026-02-27T12:00:00",
+            "label": "Write",
+        })
+        assert resp.status_code == 404
+
+    def test_422_invalid_timestamp(self, client: TestClient) -> None:
+        """TC-UI-UPD-003: Malformed start_ts -> 422."""
+        resp = client.put("/api/labels", json={
+            "start_ts": "not-a-date",
+            "end_ts": "2026-02-27T10:00:00",
+            "label": "Write",
+        })
+        assert resp.status_code == 422
+
+    def test_updated_label_persisted(self, client: TestClient) -> None:
+        """TC-UI-UPD-004: PUT then GET -> updated label visible."""
+        self._create_label(client)
+        client.put("/api/labels", json={
+            "start_ts": "2026-02-27T09:00:00",
+            "end_ts": "2026-02-27T10:00:00",
+            "label": "Debug",
+        })
+        labels = client.get("/api/labels").json()
+        assert len(labels) == 1
+        assert labels[0]["label"] == "Debug"
+
+
+# ---------------------------------------------------------------------------
+# DELETE /api/labels  (Item 35)
+# ---------------------------------------------------------------------------
+
+
+class TestDeleteLabel:
+    """TC-UI-DEL-001 through TC-UI-DEL-004."""
+
+    def _create_label(self, client: TestClient, start: str, end: str, label: str = "Build") -> None:
+        resp = client.post("/api/labels", json={
+            "start_ts": start,
+            "end_ts": end,
+            "label": label,
+        })
+        assert resp.status_code == 201
+
+    def test_happy_path_delete(self, client: TestClient) -> None:
+        """TC-UI-DEL-001: POST then DELETE -> 200, status deleted."""
+        self._create_label(client, "2026-02-27T09:00:00", "2026-02-27T10:00:00")
+        resp = client.request("DELETE", "/api/labels", json={
+            "start_ts": "2026-02-27T09:00:00",
+            "end_ts": "2026-02-27T10:00:00",
+        })
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "deleted"}
+
+    def test_404_no_matching_span(self, client: TestClient) -> None:
+        """TC-UI-DEL-002: DELETE with non-existent timestamps -> 404."""
+        self._create_label(client, "2026-02-27T09:00:00", "2026-02-27T10:00:00")
+        resp = client.request("DELETE", "/api/labels", json={
+            "start_ts": "2026-02-27T11:00:00",
+            "end_ts": "2026-02-27T12:00:00",
+        })
+        assert resp.status_code == 404
+
+    def test_span_removed_from_storage(self, client: TestClient) -> None:
+        """TC-UI-DEL-003: POST, DELETE, then GET -> empty list."""
+        self._create_label(client, "2026-02-27T09:00:00", "2026-02-27T10:00:00")
+        client.request("DELETE", "/api/labels", json={
+            "start_ts": "2026-02-27T09:00:00",
+            "end_ts": "2026-02-27T10:00:00",
+        })
+        labels = client.get("/api/labels").json()
+        assert labels == []
+
+    def test_422_invalid_timestamp(self, client: TestClient) -> None:
+        """TC-UI-DEL-004: Malformed timestamps -> 422."""
+        resp = client.request("DELETE", "/api/labels", json={
+            "start_ts": "garbage",
+            "end_ts": "2026-02-27T10:00:00",
+        })
+        assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# POST /api/queue/{request_id}/done  (Item 36)
+# ---------------------------------------------------------------------------
+
+
+def _seed_queue(queue_path: Path) -> str:
+    """Write a single pending item to the queue JSON and return its request_id."""
+    rid = str(uuid.uuid4())
+    item = {
+        "request_id": rid,
+        "user_id": "u1",
+        "bucket_start_ts": "2026-02-27T09:00:00+00:00",
+        "bucket_end_ts": "2026-02-27T09:01:00+00:00",
+        "reason": "low_confidence",
+        "confidence": 0.3,
+        "predicted_label": "Build",
+        "created_at": "2026-02-27T08:00:00+00:00",
+        "status": "pending",
+    }
+    queue_path.parent.mkdir(parents=True, exist_ok=True)
+    queue_path.write_text(json.dumps([item]))
+    return rid
+
+
+class TestMarkQueueDone:
+    """TC-UI-QD-001 through TC-UI-QD-004."""
+
+    def test_mark_labeled(self, data_dir: Path, client: TestClient) -> None:
+        """TC-UI-QD-001: Mark existing item 'labeled'."""
+        rid = _seed_queue(data_dir / "labels_v1" / "queue.json")
+        resp = client.post(f"/api/queue/{rid}/done", json={"status": "labeled"})
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "labeled"}
+
+    def test_mark_skipped(self, data_dir: Path, client: TestClient) -> None:
+        """TC-UI-QD-002: Mark existing item 'skipped'."""
+        rid = _seed_queue(data_dir / "labels_v1" / "queue.json")
+        resp = client.post(f"/api/queue/{rid}/done", json={"status": "skipped"})
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "skipped"}
+
+    def test_not_found_id(self, data_dir: Path, client: TestClient) -> None:
+        """TC-UI-QD-003: Non-existent request_id -> not_found."""
+        _seed_queue(data_dir / "labels_v1" / "queue.json")
+        resp = client.post("/api/queue/nonexistent-id/done", json={"status": "labeled"})
+        assert resp.json() == {"status": "not_found"}
+
+    def test_no_queue_file(self, client: TestClient) -> None:
+        """TC-UI-QD-004: No queue file -> not_found."""
+        resp = client.post("/api/queue/any-id/done", json={"status": "labeled"})
+        assert resp.json() == {"status": "not_found"}
+
+
+# ---------------------------------------------------------------------------
+# GET /api/config/user  (Item 37)
+# ---------------------------------------------------------------------------
+
+
+class TestGetUserConfig:
+    """TC-UI-CU-001 through TC-UI-CU-002."""
+
+    def test_returns_default_config(self, client: TestClient) -> None:
+        """TC-UI-CU-001: Returns user_id (UUID) and username."""
+        resp = client.get("/api/config/user")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "user_id" in data
+        assert "username" in data
+        uuid.UUID(data["user_id"])  # validates it's a real UUID
+
+    def test_user_id_stable_across_requests(self, client: TestClient) -> None:
+        """TC-UI-CU-002: Two GETs return the same user_id."""
+        id1 = client.get("/api/config/user").json()["user_id"]
+        id2 = client.get("/api/config/user").json()["user_id"]
+        assert id1 == id2
+
+
+# ---------------------------------------------------------------------------
+# PUT /api/config/user  (Item 38)
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateUserConfig:
+    """TC-UI-CU-003 through TC-UI-CU-006."""
+
+    def test_update_username(self, client: TestClient) -> None:
+        """TC-UI-CU-003: PUT username -> 200, response has new username."""
+        resp = client.put("/api/config/user", json={"username": "alice"})
+        assert resp.status_code == 200
+        assert resp.json()["username"] == "alice"
+
+    def test_persisted_across_requests(self, client: TestClient) -> None:
+        """TC-UI-CU-004: PUT then GET -> same username."""
+        client.put("/api/config/user", json={"username": "bob"})
+        resp = client.get("/api/config/user")
+        assert resp.json()["username"] == "bob"
+
+    def test_empty_body_noop(self, client: TestClient) -> None:
+        """TC-UI-CU-005: PUT {} -> 200, config unchanged."""
+        original = client.get("/api/config/user").json()
+        resp = client.put("/api/config/user", json={})
+        assert resp.status_code == 200
+        after = client.get("/api/config/user").json()
+        assert after == original
+
+    def test_user_id_unchanged_after_update(self, client: TestClient) -> None:
+        """TC-UI-CU-006: PUT with username, user_id stays the same."""
+        original_id = client.get("/api/config/user").json()["user_id"]
+        client.put("/api/config/user", json={"username": "carol"})
+        new_id = client.get("/api/config/user").json()["user_id"]
+        assert new_id == original_id
+
+
+# ---------------------------------------------------------------------------
+# POST /api/notification/accept  (Item 39)
+# ---------------------------------------------------------------------------
+
+
+class TestNotificationAccept:
+    """TC-UI-NA-001 through TC-UI-NA-005."""
+
+    def test_accept_valid_suggestion(self, client: TestClient) -> None:
+        """TC-UI-NA-001: Accept -> 200, provenance is 'suggestion'."""
+        resp = client.post("/api/notification/accept", json={
+            "block_start": "2026-02-27T09:00:00",
+            "block_end": "2026-02-27T10:00:00",
+            "label": "Build",
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["provenance"] == "suggestion"
+        assert data["start_ts"] == "2026-02-27T09:00:00"
+        assert data["end_ts"] == "2026-02-27T10:00:00"
+
+    def test_invalid_label_422(self, client: TestClient) -> None:
+        """TC-UI-NA-002: Invalid label -> 422."""
+        resp = client.post("/api/notification/accept", json={
+            "block_start": "2026-02-27T09:00:00",
+            "block_end": "2026-02-27T10:00:00",
+            "label": "NotReal",
+        })
+        assert resp.status_code == 422
+
+    def test_invalid_timestamps_422(self, client: TestClient) -> None:
+        """TC-UI-NA-003: Malformed ISO timestamps -> 422."""
+        resp = client.post("/api/notification/accept", json={
+            "block_start": "not-a-date",
+            "block_end": "2026-02-27T10:00:00",
+            "label": "Build",
+        })
+        assert resp.status_code == 422
+
+    def test_overlap_409(self, client: TestClient) -> None:
+        """TC-UI-NA-004: Overlap with existing span -> 409."""
+        client.post("/api/labels", json={
+            "start_ts": "2026-02-27T09:00:00",
+            "end_ts": "2026-02-27T10:00:00",
+            "label": "Build",
+        })
+        resp = client.post("/api/notification/accept", json={
+            "block_start": "2026-02-27T09:30:00",
+            "block_end": "2026-02-27T10:30:00",
+            "label": "Write",
+        })
+        assert resp.status_code == 409
+
+    def test_label_persisted(self, client: TestClient) -> None:
+        """TC-UI-NA-005: Accept, then GET -> label visible."""
+        client.post("/api/notification/accept", json={
+            "block_start": "2026-02-27T09:00:00",
+            "block_end": "2026-02-27T10:00:00",
+            "label": "Build",
+        })
+        labels = client.get("/api/labels").json()
+        assert len(labels) == 1
+        assert labels[0]["provenance"] == "suggestion"
+
+
+# ---------------------------------------------------------------------------
+# POST /api/notification/skip  (Item 40)
+# ---------------------------------------------------------------------------
+
+
+class TestNotificationSkip:
+    """TC-UI-NS-001."""
+
+    def test_skip_returns_ok(self, client: TestClient) -> None:
+        resp = client.post("/api/notification/skip")
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "skipped"}
+
+
+# ---------------------------------------------------------------------------
+# POST /api/window/show-label-grid  (Item 41)
+# ---------------------------------------------------------------------------
+
+
+class TestShowLabelGrid:
+    """TC-UI-WS-001 through TC-UI-WS-002."""
+
+    def test_without_window_api(self, client: TestClient) -> None:
+        """TC-UI-WS-001: No window_api -> still returns ok."""
+        resp = client.post("/api/window/show-label-grid")
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "ok"}
+
+    def test_with_window_api(self, data_dir: Path) -> None:
+        """TC-UI-WS-002: With window_api -> show_label_grid() called."""
+        from unittest.mock import MagicMock
+
+        mock_api = MagicMock()
+        mock_api.visible = True
+        app = create_app(data_dir=data_dir, event_bus=EventBus(), window_api=mock_api)
+        tc = TestClient(app)
+
+        resp = tc.post("/api/window/show-label-grid")
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "ok"}
+        mock_api.show_label_grid.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# GET /api/labels — limit parameter  (Item 42)
+# ---------------------------------------------------------------------------
+
+
+class TestLabelsLimit:
+    """TC-UI-LL-001 through TC-UI-LL-004."""
+
+    def _seed_labels(self, client: TestClient, count: int = 3) -> None:
+        for i in range(count):
+            client.post("/api/labels", json={
+                "start_ts": f"2026-02-27T{8 + i:02d}:00:00",
+                "end_ts": f"2026-02-27T{8 + i:02d}:30:00",
+                "label": "Build",
+            })
+
+    def test_limit_1(self, client: TestClient) -> None:
+        """TC-UI-LL-001: limit=1 with 3 labels -> exactly 1."""
+        self._seed_labels(client, 3)
+        resp = client.get("/api/labels", params={"limit": 1})
+        assert resp.status_code == 200
+        assert len(resp.json()) == 1
+
+    def test_limit_500(self, client: TestClient) -> None:
+        """TC-UI-LL-002: limit=500 -> no error, returns all."""
+        self._seed_labels(client, 3)
+        resp = client.get("/api/labels", params={"limit": 500})
+        assert resp.status_code == 200
+        assert len(resp.json()) == 3
+
+    def test_limit_0_rejected(self, client: TestClient) -> None:
+        """TC-UI-LL-003: limit=0 violates ge=1 -> 422."""
+        resp = client.get("/api/labels", params={"limit": 0})
+        assert resp.status_code == 422
+
+    def test_limit_501_rejected(self, client: TestClient) -> None:
+        """TC-UI-LL-004: limit=501 violates le=500 -> 422."""
+        resp = client.get("/api/labels", params={"limit": 501})
+        assert resp.status_code == 422

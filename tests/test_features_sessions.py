@@ -142,3 +142,12 @@ class TestSessionStartForBucket:
         ]
         result = session_start_for_bucket(dt.datetime(2026, 2, 23, 10, 30, 0), starts)
         assert result == starts[0]
+
+    def test_bucket_before_all_sessions(self) -> None:
+        """TC-FEAT-SESS-001: bucket_ts before all session starts returns first session."""
+        starts = [
+            dt.datetime(2026, 2, 23, 10, 0, 0),
+            dt.datetime(2026, 2, 23, 12, 0, 0),
+        ]
+        result = session_start_for_bucket(dt.datetime(2026, 2, 23, 8, 0, 0), starts)
+        assert result == starts[0]

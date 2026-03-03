@@ -53,3 +53,13 @@ class TestClassifyDomain:
         assert classify_domain("news.ycombinator.com") == "news"
         assert classify_domain("techcrunch.com") == "news"
         assert classify_domain("bbc.com") == "news"
+
+    def test_leading_trailing_whitespace(self) -> None:
+        """TC-FEAT-DOM-001: leading/trailing whitespace stripped before lookup."""
+        assert classify_domain(" github.com ") == "code_hosting"
+        assert classify_domain("  google.com  ") == "search"
+
+    def test_deep_subdomain(self) -> None:
+        """TC-FEAT-DOM-002: 3+ level subdomains match on parent domain."""
+        assert classify_domain("a.b.github.com") == "code_hosting"
+        assert classify_domain("x.y.z.youtube.com") == "video"

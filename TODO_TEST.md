@@ -350,65 +350,38 @@ row count matches DEFAULT_DUMMY_ROWS).
 
 ---
 
-### 14. `features.build` — `_aggregate_input_for_bucket()` no direct unit tests
-**File:** `src/taskclf/features/build.py:154-219`
-**Tests:** only exercised indirectly via `build_features_from_aw_events` in `test_features_from_aw.py`
+### ~~14. `features.build` — `_aggregate_input_for_bucket()` no direct unit tests~~ DONE
 
-Private function, but complex enough to warrant direct testing for
-occupancy calculation (`active_seconds_keyboard/mouse/any`),
-`max_idle_run_seconds` tracking, and `event_density`.
-
-| Test case | Expected |
-|---|---|
-| Empty `bucket_input` | All values `None` (matches `_INPUT_NULL_FIELDS`) |
-| Single active input event | `active_seconds_any > 0`, `max_idle_run_seconds == 0.0` |
-| Mixed active/idle events | `max_idle_run_seconds` equals longest idle run |
-| Only keyboard activity (no mouse) | `active_seconds_keyboard > 0`, `active_seconds_mouse == 0.0` |
-| Only mouse activity (no keyboard) | `active_seconds_mouse > 0`, `active_seconds_keyboard == 0.0` |
-| `event_density` formula | `active_event_count / active_seconds_any` |
-
-Suggested test IDs: `TC-FEAT-AGG-001` through `TC-FEAT-AGG-006`.
+**Status:** Covered by `tests/test_features_build.py::TestAggregateInputForBucket` (6 tests:
+TC-FEAT-AGG-001 empty bucket returns all None, TC-FEAT-AGG-002 single active event
+produces positive occupancy, TC-FEAT-AGG-003 mixed active/idle events max idle run,
+TC-FEAT-AGG-004 keyboard only, TC-FEAT-AGG-005 mouse only,
+TC-FEAT-AGG-006 event_density formula).
 
 ---
 
 ## Low Priority — Minor edge case gaps
 
-### 15. `features.dynamics` — `compute_batch()` edge cases
-**File:** `src/taskclf/features/dynamics.py:115-140`
-**Tests:** `tests/test_features_dynamics.py` (tested with 5-element and 4-element lists)
+### ~~15. `features.dynamics` — `compute_batch()` edge cases~~ DONE
 
-| Test case | Expected |
-|---|---|
-| Empty lists `([], [], [])` | Returns empty list |
-| Single-element lists | One dict, all deltas `None` |
-| Custom `rolling_15` parameter | Rolling-15 window uses the custom value |
-
-Suggested test IDs: `TC-FEAT-DYN-001` through `TC-FEAT-DYN-003`.
+**Status:** Covered by `tests/test_features_dynamics.py::TestComputeBatchEdgeCases` (3 tests:
+TC-FEAT-DYN-001 empty lists return empty, TC-FEAT-DYN-002 single element all deltas None,
+TC-FEAT-DYN-003 custom rolling_15 parameter respected).
 
 ---
 
-### 16. `features.sessions` — `session_start_for_bucket()` edge case
-**File:** `src/taskclf/features/sessions.py:52-69`
-**Tests:** `tests/test_features_sessions.py`
+### ~~16. `features.sessions` — `session_start_for_bucket()` edge case~~ DONE
 
-| Test case | Expected |
-|---|---|
-| `bucket_ts` before all session starts | Returns first session start (the `max(idx, 0)` guard) |
-
-Suggested test ID: `TC-FEAT-SESS-001`.
+**Status:** Covered by `tests/test_features_sessions.py::TestSessionStartForBucket::test_bucket_before_all_sessions`
+(TC-FEAT-SESS-001: bucket_ts before all session starts returns first session start).
 
 ---
 
-### 17. `features.domain` — `classify_domain()` edge cases
-**File:** `src/taskclf/features/domain.py:109-138`
-**Tests:** `tests/test_features_domain.py`
+### ~~17. `features.domain` — `classify_domain()` edge cases~~ DONE
 
-| Test case | Expected |
-|---|---|
-| Leading/trailing whitespace on real domain (e.g. `" github.com "`) | `"code_hosting"` (`.strip()` handles it) |
-| Deep subdomain (3+ levels, e.g. `"a.b.github.com"`) | `"code_hosting"` (parent match on `"github.com"`) |
-
-Suggested test IDs: `TC-FEAT-DOM-001` through `TC-FEAT-DOM-002`.
+**Status:** Covered by `tests/test_features_domain.py::TestClassifyDomain` (2 new tests:
+TC-FEAT-DOM-001 leading/trailing whitespace stripped before lookup,
+TC-FEAT-DOM-002 deep subdomain 3+ levels matches parent domain).
 
 ---
 
@@ -443,62 +416,26 @@ Missing tests identified by auditing `docs/api/train/` against
 
 ## Medium Priority — Direct unit tests missing
 
-### 34. `train.lgbm` — `encode_categoricals()` no direct test
-**File:** `src/taskclf/train/lgbm.py:69-103`
-**Tests:** only exercised indirectly through `train_lgbm` in
-`test_train_evaluate.py`
+### ~~34. `train.lgbm` — `encode_categoricals()` no direct test~~ DONE
 
-```python
-def encode_categoricals(
-    df: pd.DataFrame,
-    cat_encoders: dict[str, LabelEncoder] | None = None,
-) -> tuple[pd.DataFrame, dict[str, LabelEncoder]]:
-```
-
-Two code paths: (1) `cat_encoders=None` fits new `LabelEncoder`s for
-each column in `CATEGORICAL_COLUMNS` (`app_id`, `app_category`,
-`domain_category`, `user_id`); (2) pre-fitted encoders map known
-values to integers and unknown values to `-1`.
-
-| Test case | Expected |
-|---|---|
-| `cat_encoders=None` (fit new) | Returns encoders keyed by all 4 `CATEGORICAL_COLUMNS`; encoded columns are integer dtype |
-| Pre-fitted encoder reuse | Same input → same integer codes as fitting run |
-| Unknown value at inference | Value not seen during fit → encoded as `-1` |
-| Output shape preserved | Encoded DataFrame has same number of rows and columns as input |
-| Non-categorical columns untouched | Numeric feature columns are unchanged |
-
-Suggested test IDs: `TC-TRAIN-LGBM-001` through `TC-TRAIN-LGBM-005`.
+**Status:** Covered by `tests/test_train_lgbm.py::TestEncodeCategoricals` (5 tests:
+TC-TRAIN-LGBM-001 fit new encoders for all 4 CATEGORICAL_COLUMNS,
+TC-TRAIN-LGBM-002 pre-fitted encoder reuse produces identical codes,
+TC-TRAIN-LGBM-003 unknown value maps to -1,
+TC-TRAIN-LGBM-004 output shape preserved,
+TC-TRAIN-LGBM-005 non-categorical columns untouched).
 
 ---
 
-### 35. `train.lgbm` — `prepare_xy()` no direct test
-**File:** `src/taskclf/train/lgbm.py:106-138`
-**Tests:** only exercised indirectly through `train_lgbm`
+### ~~35. `train.lgbm` — `prepare_xy()` no direct test~~ DONE
 
-```python
-def prepare_xy(
-    df: pd.DataFrame,
-    label_encoder: LabelEncoder | None = None,
-    cat_encoders: dict[str, LabelEncoder] | None = None,
-) -> tuple[np.ndarray, np.ndarray, LabelEncoder, dict[str, LabelEncoder]]:
-```
-
-Extracts feature matrix `X` (shape `(n, len(FEATURE_COLUMNS))`) and
-encoded label vector `y` (shape `(n,)`).  Categorical columns are
-integer-encoded via `encode_categoricals`, numeric `NaN`s are filled
-with `0`, and labels default to `sorted(LABEL_SET_V1)` encoding.
-
-| Test case | Expected |
-|---|---|
-| Output shapes | `X.shape == (n_rows, len(FEATURE_COLUMNS))`, `y.shape == (n_rows,)` |
-| NaN fill | `NaN` in numeric features → `0` in `X` |
-| Label encoding default | `label_encoder.classes_` == `sorted(LABEL_SET_V1)` (8 classes) |
-| Pre-fitted encoder reuse | Passing `label_encoder` and `cat_encoders` → same objects returned |
-| Unknown label raises | Label not in `LABEL_SET_V1` → `ValueError` from `LabelEncoder.transform` |
-| `X` dtype | `np.float64` |
-
-Suggested test IDs: `TC-TRAIN-LGBM-006` through `TC-TRAIN-LGBM-011`.
+**Status:** Covered by `tests/test_train_lgbm.py::TestPrepareXY` (6 tests:
+TC-TRAIN-LGBM-006 output shapes correct,
+TC-TRAIN-LGBM-007 NaN in numeric features filled with 0,
+TC-TRAIN-LGBM-008 default label_encoder uses sorted(LABEL_SET_V1) with 8 classes,
+TC-TRAIN-LGBM-009 pre-fitted encoders returned as same objects,
+TC-TRAIN-LGBM-010 unknown label raises ValueError,
+TC-TRAIN-LGBM-011 X dtype is float64).
 
 ---
 
@@ -527,9 +464,13 @@ Missing tests identified by auditing `docs/api/ui/labeling.md` against
 `tests/test_ui_server.py`, `tests/test_tray.py`, and `src/taskclf/ui/`.
 
 **Existing test files:**
-- `tests/test_ui_server.py` — covers label CRUD (GET/POST), queue (GET empty),
-  config/labels, feature summary (empty), AW live (fallback), window toggle/state,
-  extend_forward (7 tests), WebSocket connect
+- `tests/test_ui_server.py` — covers label CRUD (GET/POST/PUT/DELETE), queue (GET empty,
+  POST mark done), config/labels, config/user (GET/PUT), feature summary (empty),
+  AW live (fallback), window toggle/state, show-label-grid, notification accept/skip,
+  labels limit parameter, extend_forward (7 tests), WebSocket connect
+- `tests/test_ui_events.py` — covers `EventBus` publish/subscribe delivery,
+  multiple subscribers, dead subscriber eviction, publish_threadsafe variants,
+  subscriber cleanup (7 tests)
 - `tests/test_tray.py` — covers `ActivityMonitor.check_transition` (7 tests),
   label span creation via tray callbacks (3 tests)
 
@@ -537,131 +478,74 @@ Missing tests identified by auditing `docs/api/ui/labeling.md` against
 
 ## High Priority — Untested REST endpoints
 
-### 34. `PUT /api/labels` — no test
-**Code:** `src/taskclf/ui/server.py:224-241` (`update_label`)
-**Doc:** `docs/api/ui/labeling.md:59` — "Changes the label on an existing
-span identified by `start_ts` + `end_ts`. Returns 404 if no matching
-span exists."
+### ~~34. `PUT /api/labels` — no test~~ DONE
 
-| Test case | What to verify |
-|---|---|
-| Happy path (update existing label) | POST a span, then PUT with new label → 200, label changed in GET response |
-| 404 when no matching span | PUT with timestamps that don't match any existing span → 404 |
-| Invalid timestamp format | Malformed `start_ts` or `end_ts` → 422 |
-| Verify updated label persisted | PUT, then GET /api/labels → updated label visible |
-
-Suggested test IDs: `TC-UI-UPD-001` through `TC-UI-UPD-004`.
+**Status:** Covered by `tests/test_ui_server.py::TestUpdateLabel` (4 tests:
+TC-UI-UPD-001 happy path update, TC-UI-UPD-002 404 no match,
+TC-UI-UPD-003 422 invalid timestamp, TC-UI-UPD-004 updated label persisted via GET).
 
 ---
 
-### 35. `DELETE /api/labels` — no test
-**Code:** `src/taskclf/ui/server.py:245-256` (`delete_label`)
-**Doc:** `docs/api/ui/labeling.md:60` — "Removes a span identified by
-`start_ts` + `end_ts`. Returns 404 if no matching span exists."
+### ~~35. `DELETE /api/labels` — no test~~ DONE
 
-| Test case | What to verify |
-|---|---|
-| Happy path (delete existing label) | POST a span, then DELETE → 200, `{"status": "deleted"}` |
-| 404 when no matching span | DELETE with non-existent timestamps → 404 |
-| Span removed from storage | POST, DELETE, then GET /api/labels → empty list |
-| Invalid timestamp format | Malformed timestamps → 422 |
-
-Suggested test IDs: `TC-UI-DEL-001` through `TC-UI-DEL-004`.
+**Status:** Covered by `tests/test_ui_server.py::TestDeleteLabel` (4 tests:
+TC-UI-DEL-001 happy path delete, TC-UI-DEL-002 404 no match,
+TC-UI-DEL-003 span removed from storage, TC-UI-DEL-004 422 invalid timestamp).
 
 ---
 
-### 36. `POST /api/queue/{request_id}/done` — no test
-**Code:** `src/taskclf/ui/server.py:280-288` (`mark_queue_done`)
+### ~~36. `POST /api/queue/{request_id}/done` — no test~~ DONE
 
-| Test case | What to verify |
-|---|---|
-| Mark existing item "labeled" | Pre-populate queue, POST `/api/queue/<id>/done` with `{"status": "labeled"}` → `{"status": "labeled"}` |
-| Mark existing item "skipped" | Same with `{"status": "skipped"}` → `{"status": "skipped"}` |
-| Non-existent request_id | POST with unknown ID → `{"status": "not_found"}` |
-| No queue file | POST without queue file → `{"status": "not_found"}` |
-
-Suggested test IDs: `TC-UI-QD-001` through `TC-UI-QD-004`.
+**Status:** Covered by `tests/test_ui_server.py::TestMarkQueueDone` (4 tests:
+TC-UI-QD-001 mark labeled, TC-UI-QD-002 mark skipped,
+TC-UI-QD-003 non-existent request_id, TC-UI-QD-004 no queue file).
 
 ---
 
-### 37. `GET /api/config/user` — no test
-**Code:** `src/taskclf/ui/server.py:352-357` (`get_user_config`)
+### ~~37. `GET /api/config/user` — no test~~ DONE
 
-| Test case | What to verify |
-|---|---|
-| Returns default config | GET → 200, response has `user_id` (UUID) and `username` |
-| `user_id` is stable across requests | Two GETs return the same `user_id` |
-
-Suggested test IDs: `TC-UI-CU-001`, `TC-UI-CU-002`.
+**Status:** Covered by `tests/test_ui_server.py::TestGetUserConfig` (2 tests:
+TC-UI-CU-001 returns default config with UUID, TC-UI-CU-002 user_id stable across requests).
 
 ---
 
-### 38. `PUT /api/config/user` — no test
-**Code:** `src/taskclf/ui/server.py:359-370` (`update_user_config`)
+### ~~38. `PUT /api/config/user` — no test~~ DONE
 
-| Test case | What to verify |
-|---|---|
-| Update username | PUT `{"username": "alice"}` → 200, response `username == "alice"` |
-| Persisted across requests | PUT, then GET → same username |
-| Empty body (no-op) | PUT `{}` → 200, config unchanged |
-| `user_id` unchanged after update | PUT with `username`, `user_id` stays the same |
-
-Suggested test IDs: `TC-UI-CU-003` through `TC-UI-CU-006`.
+**Status:** Covered by `tests/test_ui_server.py::TestUpdateUserConfig` (4 tests:
+TC-UI-CU-003 update username, TC-UI-CU-004 persisted across requests,
+TC-UI-CU-005 empty body no-op, TC-UI-CU-006 user_id unchanged after update).
 
 ---
 
-### 39. `POST /api/notification/accept` — no test
-**Code:** `src/taskclf/ui/server.py:401-425` (`notification_accept`)
-**Doc:** `docs/api/ui/labeling.md:51` — suggestion banner accept action.
+### ~~39. `POST /api/notification/accept` — no test~~ DONE
 
-| Test case | What to verify |
-|---|---|
-| Accept valid suggestion | POST with `block_start`, `block_end`, `label` → 201, provenance is `"suggestion"` |
-| Invalid label | POST with `label: "NotReal"` → 422 |
-| Invalid timestamps | POST with malformed ISO timestamps → 422 |
-| Overlap with existing span | Create a span first, then accept overlapping suggestion → 409 |
-| Label persisted | Accept, then GET /api/labels → accepted label visible |
-
-Suggested test IDs: `TC-UI-NA-001` through `TC-UI-NA-005`.
+**Status:** Covered by `tests/test_ui_server.py::TestNotificationAccept` (5 tests:
+TC-UI-NA-001 accept valid suggestion with provenance="suggestion",
+TC-UI-NA-002 invalid label 422, TC-UI-NA-003 invalid timestamps 422,
+TC-UI-NA-004 overlap 409, TC-UI-NA-005 label persisted via GET).
 
 ---
 
-### 40. `POST /api/notification/skip` — no test
-**Code:** `src/taskclf/ui/server.py:396-399` (`notification_skip`)
+### ~~40. `POST /api/notification/skip` — no test~~ DONE
 
-| Test case | What to verify |
-|---|---|
-| Skip returns ok | POST → 200, `{"status": "skipped"}` |
-
-Suggested test ID: `TC-UI-NS-001`.
+**Status:** Covered by `tests/test_ui_server.py::TestNotificationSkip` (1 test:
+TC-UI-NS-001 skip returns `{"status": "skipped"}`).
 
 ---
 
-### 41. `POST /api/window/show-label-grid` — no test
-**Code:** `src/taskclf/ui/server.py:387-392` (`window_show_label_grid`)
+### ~~41. `POST /api/window/show-label-grid` — no test~~ DONE
 
-| Test case | What to verify |
-|---|---|
-| Without window_api | POST → 200, `{"status": "ok"}` (broadcasts event only) |
-| With window_api | POST → 200, `show_label_grid()` called on window_api |
-
-Suggested test IDs: `TC-UI-WS-001`, `TC-UI-WS-002`.
+**Status:** Covered by `tests/test_ui_server.py::TestShowLabelGrid` (2 tests:
+TC-UI-WS-001 without window_api returns ok,
+TC-UI-WS-002 with window_api calls `show_label_grid()`).
 
 ---
 
-### 42. `GET /api/labels` — `limit` parameter untested
-**Code:** `src/taskclf/ui/server.py:166` — `limit: int = Query(50, ge=1, le=500)`
+### ~~42. `GET /api/labels` — `limit` parameter untested~~ DONE
 
-Existing tests never pass an explicit `limit` value.
-
-| Test case | What to verify |
-|---|---|
-| `limit=1` with 3 labels | Response contains exactly 1 label |
-| `limit=500` | No error, returns all (up to 500) |
-| `limit=0` | 422 (violates `ge=1`) |
-| `limit=501` | 422 (violates `le=500`) |
-
-Suggested test IDs: `TC-UI-LL-001` through `TC-UI-LL-004`.
+**Status:** Covered by `tests/test_ui_server.py::TestLabelsLimit` (4 tests:
+TC-UI-LL-001 limit=1, TC-UI-LL-002 limit=500,
+TC-UI-LL-003 limit=0 rejected 422, TC-UI-LL-004 limit=501 rejected 422).
 
 ---
 
@@ -683,25 +567,15 @@ Suggested test IDs: `TC-UI-WS-003` through `TC-UI-WS-006`.
 
 ## Medium Priority — Untested supporting modules
 
-### 44. `ui/events.py` — `EventBus` has no dedicated test file
-**File:** `src/taskclf/ui/events.py`
-**Doc:** `docs/api/ui/labeling.md:61` (architecture section)
+### ~~44. `ui/events.py` — `EventBus` has no dedicated test file~~ DONE
 
-`EventBus` is used by `test_ui_server.py` as a fixture dependency but
-its own behavior is never directly tested.
-
-| Test case | What to verify |
-|---|---|
-| Publish → subscribe delivery | `publish()` an event, `subscribe()` context manager yields queue, `queue.get()` returns event |
-| Multiple subscribers | Two `subscribe()` contexts, one publish → both queues receive event |
-| Dead subscriber eviction | Fill a subscriber queue to capacity (256), publish one more → full queue evicted from `_subscribers` |
-| `publish_threadsafe` with bound loop | Call from a thread, event appears in subscriber queue |
-| `publish_threadsafe` with no loop bound | Call before `bind_loop()` → no error, no-op |
-| `publish_threadsafe` with closed loop | Bind loop, close it, call → no error, no-op |
-| Subscriber cleanup on context exit | Exit `subscribe()` context → queue removed from `_subscribers` |
-
-Suggested test file: `tests/test_ui_events.py`.
-Suggested test IDs: `TC-UI-EB-001` through `TC-UI-EB-007`.
+**Status:** Covered by `tests/test_ui_events.py` (7 tests:
+TC-UI-EB-001 publish/subscribe delivery, TC-UI-EB-002 multiple subscribers,
+TC-UI-EB-003 dead subscriber eviction on full queue,
+TC-UI-EB-004 publish_threadsafe with bound loop,
+TC-UI-EB-005 publish_threadsafe with no loop (no-op),
+TC-UI-EB-006 publish_threadsafe with closed loop (no-op),
+TC-UI-EB-007 subscriber cleanup on context exit).
 
 ---
 
@@ -838,6 +712,8 @@ Missing tests identified by auditing `docs/api/infer/` against
 - `tests/test_infer_pipeline.py` — `WindowPrediction`, calibrators
   (identity + temperature), CSV output, `merge_short_segments`,
   `OnlinePredictor` with calibrator, batch inference with calibrator
+- `tests/test_infer_calibration.py` — `IsotonicCalibrator` (6 tests),
+  `CalibratorStore` (6 tests), `save_calibrator_store`/`load_calibrator_store` (5 tests)
 - `tests/test_infer_online.py` — `OnlinePredictor` predict/segments,
   session tracking
 - `tests/test_infer_batch_reject.py` — `predict_labels` reject,
@@ -944,61 +820,20 @@ Suggested test IDs: `TC-MON-001` through `TC-MON-011`.
 
 ---
 
-### 20. `infer.calibration` — `IsotonicCalibrator`, `CalibratorStore`, and store persistence untested
-**File:** `src/taskclf/infer/calibration.py`
-**Doc:** `docs/api/infer/calibration.md`
-**Existing tests:** `tests/test_infer_pipeline.py` covers
-`IdentityCalibrator` (3 tests), `TemperatureCalibrator` (6 tests),
-`save_calibrator`/`load_calibrator` for identity + temperature (3 tests).
+### ~~20. `infer.calibration` — `IsotonicCalibrator`, `CalibratorStore`, and store persistence untested~~ DONE
 
-#### 20a. `IsotonicCalibrator` (lines 82–115) — no tests
-
-Per-class isotonic regression calibrator. Wraps one
-`sklearn.isotonic.IsotonicRegression` per class.
-
-| Test case | Expected |
-|---|---|
-| 1D calibrate | Input shape `(8,)` → output shape `(8,)`, sums to 1.0 |
-| 2D calibrate | Input shape `(N, 8)` → output shape `(N, 8)`, each row sums to 1.0 |
-| Empty regressors raises | `ValueError("regressors list must not be empty")` |
-| `n_classes` property | Returns `len(regressors)` |
-| Satisfies `Calibrator` protocol | `isinstance(IsotonicCalibrator(...), Calibrator)` is `True` |
-| Save/load round-trip | `save_calibrator` → `load_calibrator` → same predictions as original |
-
-**Setup:** Create fitted `IsotonicRegression` instances by calling
-`.fit()` with synthetic `[0.0, 0.5, 1.0]` arrays.
-
-#### 20b. `CalibratorStore` (lines 118–172) — no tests
-
-Per-user calibrator registry with global fallback.
-
-| Test case | Expected |
-|---|---|
-| `get_calibrator` returns per-user when present | For known user_id, returns that user's calibrator |
-| `get_calibrator` falls back to global | For unknown user_id, returns global calibrator |
-| `calibrate_batch` applies per-user row-by-row | Different users get different calibrations |
-| `calibrate_batch` shape preserved | Input `(N, K)` → output `(N, K)` |
-| `user_ids` property | Returns sorted list of per-user keys |
-| Empty `user_calibrators` | All users fall back to global |
-
-#### 20c. `save_calibrator_store()` / `load_calibrator_store()` (lines 265–326) — no tests
-
-```python
-def save_calibrator_store(store: CalibratorStore, path: Path) -> Path:
-def load_calibrator_store(path: Path) -> CalibratorStore:
-```
-
-| Test case | Expected |
-|---|---|
-| Round-trip with temperature global + 2 per-user | Loaded store has same global + per-user calibrators |
-| Round-trip with isotonic global | Isotonic calibrator survives serialization |
-| Directory layout | `path/store.json`, `path/global.json`, `path/users/<uid>.json` |
-| `store.json` metadata | Contains `method`, `user_count`, `user_ids` |
-| Empty per-user dict | No `users/` directory created, still loads fine |
-
-Suggested test file: extend `tests/test_infer_pipeline.py` or create
-`tests/test_infer_calibration.py`.
-Suggested test IDs: `TC-CAL-001` through `TC-CAL-017`.
+**Status:** Covered by `tests/test_infer_calibration.py` (17 tests):
+- **IsotonicCalibrator** (6 tests): TC-CAL-001 1D calibrate sums to 1.0,
+  TC-CAL-002 2D calibrate rows sum to 1.0, TC-CAL-003 empty regressors raises,
+  TC-CAL-004 n_classes property, TC-CAL-005 satisfies Calibrator protocol,
+  TC-CAL-006 save/load round-trip preserves predictions.
+- **CalibratorStore** (6 tests): TC-CAL-007 get per-user calibrator,
+  TC-CAL-008 fallback to global, TC-CAL-009 calibrate_batch per-user,
+  TC-CAL-010 shape preserved, TC-CAL-011 user_ids sorted,
+  TC-CAL-012 empty user_calibrators fallback.
+- **Store persistence** (5 tests): TC-CAL-013 round-trip temperature + 2 per-user,
+  TC-CAL-014 round-trip isotonic global, TC-CAL-015 directory layout,
+  TC-CAL-016 store.json metadata, TC-CAL-017 empty per-user dict.
 
 ---
 
