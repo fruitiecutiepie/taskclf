@@ -35,10 +35,12 @@ _INPUT_TYPE = "os.hid.input"
 
 
 def _parse_timestamp(raw: str) -> datetime:
-    """Parse an ISO-8601 timestamp from AW into a naive-UTC datetime."""
+    """Parse an ISO-8601 timestamp from AW into a timezone-aware UTC datetime."""
     ts = datetime.fromisoformat(raw)
     if ts.tzinfo is not None:
-        ts = ts.astimezone(timezone.utc).replace(tzinfo=None)
+        ts = ts.astimezone(timezone.utc)
+    else:
+        ts = ts.replace(tzinfo=timezone.utc)
     return ts
 
 

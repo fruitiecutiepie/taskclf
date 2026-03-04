@@ -77,7 +77,7 @@ class TestBuildFeaturesFromAWEvents:
         ts = dt.datetime(2026, 2, 23, 10, 0, 45)
         events = [_make_event(ts)]
         rows = build_features_from_aw_events(events)
-        assert rows[0].bucket_start_ts == dt.datetime(2026, 2, 23, 10, 0, 0)
+        assert rows[0].bucket_start_ts == dt.datetime(2026, 2, 23, 10, 0, 0, tzinfo=dt.timezone.utc)
 
     def test_multiple_events_same_bucket(self) -> None:
         base = dt.datetime(2026, 2, 23, 10, 0, 0)

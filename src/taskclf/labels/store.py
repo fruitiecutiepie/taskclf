@@ -275,9 +275,14 @@ def generate_label_summary(
         ``mean_clicks_per_min``, ``mean_scroll_per_min``,
         ``total_buckets``, ``session_count``.
     """
-    mask = (features_df["bucket_start_ts"] >= start_ts) & (
-        features_df["bucket_start_ts"] < end_ts
-    )
+    col = features_df["bucket_start_ts"]
+    col_is_utc = hasattr(col.dtype, "tz") and col.dtype.tz is not None
+    if col_is_utc:
+        _start = pd.Timestamp(start_ts, tz="UTC") if start_ts.tzinfo is None else pd.Timestamp(start_ts).tz_convert("UTC")
+        _end = pd.Timestamp(end_ts, tz="UTC") if end_ts.tzinfo is None else pd.Timestamp(end_ts).tz_convert("UTC")
+    else:
+        _start, _end = start_ts, end_ts
+    mask = (col >= _start) & (col < _end)
     window = features_df.loc[mask]
 
     if window.empty:

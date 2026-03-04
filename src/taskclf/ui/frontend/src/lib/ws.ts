@@ -22,7 +22,7 @@ export interface LabelSuggestion {
 
 export interface StatusEvent {
   type: "status";
-  state: "idle" | "collecting" | "predicting";
+  state: "idle" | "collecting" | "predicting" | "paused";
   current_app: string;
   current_app_since: string | null;
   candidate_app: string | null;
@@ -60,6 +60,7 @@ export interface TrayState {
   data_dir: string;
   ui_port: number;
   dev_mode: boolean;
+  paused: boolean;
 }
 
 export interface ShowLabelGridEvent {
@@ -82,6 +83,23 @@ export interface SuggestionClearedEvent {
   reason: string;
 }
 
+export interface NoModelTransitionEvent {
+  type: "no_model_transition";
+  current_app: string;
+  ts: string;
+  block_start: string;
+  block_end: string;
+}
+
+export interface LabelCreatedEvent {
+  type: "label_created";
+  label: string;
+  confidence: number;
+  ts: string;
+  start_ts: string;
+  extend_forward: boolean;
+}
+
 export type WSEvent =
   | Prediction
   | LabelSuggestion
@@ -89,7 +107,9 @@ export type WSEvent =
   | TrayState
   | ShowLabelGridEvent
   | PromptLabelEvent
-  | SuggestionClearedEvent;
+  | SuggestionClearedEvent
+  | NoModelTransitionEvent
+  | LabelCreatedEvent;
 
 export type ConnectionStatus = "connecting" | "connected" | "disconnected";
 
@@ -230,6 +250,29 @@ export function useWebSocket() {
             break;
           case "prompt_label":
             setLatestPrompt(data);
+            setWsStats((prev) => ({
+              ...prev,
+              messageCount: prev.messageCount + 1,
+              lastMessageAt: now,
+            }));
+            break;
+          case "label_created":
+            setLatestPrediction({
+              type: "prediction",
+              label: data.label,
+              confidence: data.confidence,
+              ts: data.ts,
+              mapped_label: data.label,
+              provenance: "manual",
+            });
+            setWsStats((prev) => ({
+              ...prev,
+              messageCount: prev.messageCount + 1,
+              predictionCount: prev.predictionCount + 1,
+              lastMessageAt: now,
+            }));
+            break;
+          case "no_model_transition":
             setWsStats((prev) => ({
               ...prev,
               messageCount: prev.messageCount + 1,

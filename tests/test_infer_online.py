@@ -10,6 +10,7 @@ Covers:
 - OnlinePredictor with calibrator_store (TC-ONLINE-003)
 - _encode_value (TC-ONLINE-004, TC-ONLINE-005)
 - OnlinePredictor reject segments (TC-ONLINE-006)
+- run_online_loop single-poll integration (TC-ONLINE-007)
 """
 
 from __future__ import annotations
@@ -33,7 +34,7 @@ from taskclf.infer.taxonomy import TaxonomyBucket, TaxonomyConfig
 
 _VALID_LABELS = LABEL_SET_V1 | {MIXED_UNKNOWN}
 from taskclf.features.build import build_features_from_aw_events, generate_dummy_features
-from taskclf.infer.online import OnlinePredictor
+from taskclf.infer.online import OnlinePredictor, run_online_loop
 from taskclf.infer.prediction import WindowPrediction
 from taskclf.train.lgbm import CATEGORICAL_COLUMNS
 
@@ -300,3 +301,90 @@ class TestOnlinePredictorRejectSegments:
         assert len(segments) >= 1
         for seg in segments:
             assert seg.label == MIXED_UNKNOWN
+
+
+# ---------------------------------------------------------------------------
+# run_online_loop integration
+# ---------------------------------------------------------------------------
+
+
+class TestRunOnlineLoop:
+    def test_run_online_loop_single_poll_writes_outputs(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        trained_model_dir: Path,
+    ) -> None:
+        """TC-ONLINE-007: single poll produces predictions/segments and exits cleanly."""
+        rows = generate_dummy_features(dt.date(2026, 3, 4), n_rows=1)
+        event_ts = dt.datetime(2026, 3, 4, 12, 0, tzinfo=dt.timezone.utc)
+        aw_event = AWEvent(
+            timestamp=event_ts,
+            duration_seconds=60.0,
+            app_id="org.mozilla.firefox",
+            window_title_hash="hash-123",
+            is_browser=True,
+            is_editor=False,
+            is_terminal=False,
+            app_category="browser",
+        )
+
+        fetch_calls: dict[str, dt.datetime | str] = {}
+        build_calls: dict[str, dt.datetime | int | None] = {}
+
+        monkeypatch.setattr(
+            "taskclf.adapters.activitywatch.client.find_window_bucket_id",
+            lambda aw_host: "aw-test-window",
+        )
+        monkeypatch.setattr(
+            "taskclf.adapters.activitywatch.client.find_input_bucket_id",
+            lambda aw_host: None,
+        )
+
+        def fake_fetch_aw_events(aw_host, bucket_id, window_start, window_end, title_salt):
+            fetch_calls["aw_host"] = aw_host
+            fetch_calls["bucket_id"] = bucket_id
+            fetch_calls["window_start"] = window_start
+            fetch_calls["window_end"] = window_end
+            return [aw_event]
+
+        monkeypatch.setattr(
+            "taskclf.adapters.activitywatch.client.fetch_aw_events",
+            fake_fetch_aw_events,
+        )
+
+        def fake_build_features_from_aw_events(events, **kwargs):
+            build_calls["session_start"] = kwargs.get("session_start")
+            build_calls["bucket_seconds"] = kwargs.get("bucket_seconds")
+            return rows
+
+        monkeypatch.setattr(
+            "taskclf.features.build.build_features_from_aw_events",
+            fake_build_features_from_aw_events,
+        )
+
+        sleep_calls = {"count": 0}
+
+        def fake_sleep(_seconds: float) -> None:
+            sleep_calls["count"] += 1
+            raise KeyboardInterrupt()
+
+        monkeypatch.setattr("taskclf.infer.online.time.sleep", fake_sleep)
+
+        run_online_loop(
+            model_dir=trained_model_dir,
+            aw_host="http://aw.local",
+            poll_seconds=1,
+            smooth_window=1,
+            out_dir=tmp_path,
+            bucket_seconds=60,
+        )
+
+        pred_path = tmp_path / "predictions.csv"
+        seg_path = tmp_path / "segments.json"
+
+        assert pred_path.exists()
+        assert seg_path.exists()
+        assert fetch_calls["bucket_id"] == "aw-test-window"
+        assert build_calls["session_start"] == aw_event.timestamp
+        assert sleep_calls["count"] == 1

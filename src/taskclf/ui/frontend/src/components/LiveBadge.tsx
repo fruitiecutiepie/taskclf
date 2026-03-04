@@ -18,6 +18,13 @@ export const LiveBadge: Component<{
     return pred ? pred.mapped_label || pred.label : null;
   };
 
+  const noModel = () => {
+    const tray = props.latestTrayState();
+    return tray !== null && !tray.model_loaded;
+  };
+
+  const badgeText = () => predictionLabel() ?? (noModel() ? "No Model" : "Unknown Label");
+
   const predColor = () => {
     const l = predictionLabel();
     return l ? LABEL_COLORS[l] ?? "#555" : "#333";
@@ -48,7 +55,7 @@ export const LiveBadge: Component<{
         onMouseEnter={() => props.onShowLabel?.()}
         onMouseLeave={() => props.onHideLabel?.()}
       >
-        {predictionLabel() ?? "Unknown Label"}
+        {badgeText()}
       </span>
       <LiveBadgeConnectionStatus
         status={props.status}

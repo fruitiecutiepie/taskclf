@@ -53,7 +53,7 @@ function formatDuration(seconds: number): string {
 function formatTime(iso: string | null | undefined): string {
   if (!iso) return "—";
   try {
-    const d = new Date(iso.includes("Z") || iso.includes("+") ? iso : iso + "Z");
+    const d = new Date(iso);
     return d.toLocaleTimeString([], {
       hour: "2-digit",
       minute: "2-digit",

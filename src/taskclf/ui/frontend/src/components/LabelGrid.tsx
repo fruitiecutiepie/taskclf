@@ -33,8 +33,12 @@ interface LabelGridProps {
   prediction?: Accessor<Prediction | null>;
 }
 
+function parseISODate(iso: string): Date {
+  return new Date(iso);
+}
+
 function timeAgo(iso: string): string {
-  const d = new Date(iso.includes("Z") || iso.includes("+") ? iso : iso + "Z");
+  const d = parseISODate(iso);
   const mins = Math.round((Date.now() - d.getTime()) / 60_000);
   if (mins < 1) return "just now";
   if (mins < 60) return `${mins}m ago`;
@@ -92,14 +96,27 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
     applyCustom(v, customUnit());
   }
 
+  function computeNowStart(now: Date): Date {
+    const ll = lastLabel();
+    if (ll?.end_ts) {
+      const lastEnd = parseISODate(ll.end_ts);
+      if (now.getTime() - lastEnd.getTime() >= 60_000) {
+        return lastEnd;
+      }
+    }
+    return new Date(now.getTime() - 60_000);
+  }
+
   async function labelNow(label: string) {
     const mins = selectedMinutes();
     const now = new Date();
-    const start = new Date(now.getTime() - Math.max(mins * 60_000, 1_000));
+    const start = mins === 0
+      ? computeNowStart(now)
+      : new Date(now.getTime() - mins * 60_000);
     try {
       await createLabel({
-        start_ts: start.toISOString().slice(0, -1),
-        end_ts: now.toISOString().slice(0, -1),
+        start_ts: start.toISOString(),
+        end_ts: now.toISOString(),
         label,
         confidence: confPercent() / 100,
         extend_forward: extendFwd(),
@@ -108,7 +125,24 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
       setLabelVersion((v) => v + 1);
       setTimeout(() => setFlash(null), 1500);
     } catch (err: any) {
-      setFlash(`Error: ${err.message}`);
+      const msg: string = err.message ?? "";
+      const jsonMatch = msg.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          const parsed = JSON.parse(jsonMatch[0]);
+          const overlap = parsed.detail ?? parsed;
+          if (overlap.conflicting_start_ts && overlap.conflicting_end_ts) {
+            const cs = parseISODate(overlap.conflicting_start_ts);
+            const ce = parseISODate(overlap.conflicting_end_ts);
+            const fmt = (d: Date) =>
+              d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+            setFlash(`Error: Overlaps ${fmt(cs)}\u2013${fmt(ce)}`);
+            setTimeout(() => setFlash(null), 4000);
+            return;
+          }
+        } catch { /* fall through to generic error */ }
+      }
+      setFlash(`Error: ${msg}`);
       setTimeout(() => setFlash(null), 3000);
     }
   }
@@ -166,7 +200,14 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
                 transition: "all 0.1s ease",
               }}
             >
-              {m === 0 ? "now" : `${m}m`}
+              {m === 0 ? (() => {
+                const ll = lastLabel();
+                if (ll?.end_ts) {
+                  const ago = Math.round((Date.now() - parseISODate(ll.end_ts).getTime()) / 60_000);
+                  if (ago >= 1) return `now (${ago >= 60 ? `${Math.floor(ago / 60)}h${ago % 60 ? ` ${ago % 60}m` : ""}` : `${ago}m`})`;
+                }
+                return "now";
+              })() : `${m}m`}
             </button>
           )}
         </For>

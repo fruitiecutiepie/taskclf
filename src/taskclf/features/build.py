@@ -65,7 +65,7 @@ def generate_dummy_features(
     """
     rows: list[FeatureRow] = []
     day_of_week = date.weekday()
-    session_start = dt.datetime(date.year, date.month, date.day, 9, 0)
+    session_start = dt.datetime(date.year, date.month, date.day, 9, 0, tzinfo=dt.timezone.utc)
     sid = stable_hash(f"{user_id}:{session_start.isoformat()}")
 
     tracker = DynamicsTracker()
@@ -74,7 +74,7 @@ def generate_dummy_features(
     for i in range(n_rows):
         hour = 9 + (i * 8 // max(n_rows, 1))
         minute = (i * 7) % 60
-        ts = dt.datetime(date.year, date.month, date.day, hour, minute)
+        ts = dt.datetime(date.year, date.month, date.day, hour, minute, tzinfo=dt.timezone.utc)
         end_ts = ts + dt.timedelta(seconds=DEFAULT_BUCKET_SECONDS)
 
         app_id, is_browser, is_editor, is_terminal, app_category = _DUMMY_APPS[

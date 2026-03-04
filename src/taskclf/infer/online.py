@@ -382,7 +382,7 @@ def run_online_loop(
                     )
                     print(f"Model reloaded (schema={new_metadata.schema_hash})")
 
-            now = datetime.now(timezone.utc).replace(tzinfo=None)
+            now = datetime.now(timezone.utc)
             window_start = now - timedelta(seconds=poll_seconds)
 
             try:

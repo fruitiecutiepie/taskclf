@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field
 from taskclf.core.config import UserConfig
 from taskclf.core.defaults import DEFAULT_AW_HOST, DEFAULT_DATA_DIR, DEFAULT_TITLE_SALT
 from taskclf.core.store import read_parquet
+from taskclf.core.time import to_naive_utc
 from taskclf.core.types import CoreLabel, LabelSpan
 from taskclf.labels.queue import ActiveLabelingQueue
 from taskclf.labels.store import (
@@ -129,6 +130,16 @@ class OverlapErrorDetail(BaseModel):
     conflicting_end_ts: str | None = None
 
 
+def _utc_iso(ts: dt.datetime) -> str:
+    """Format a datetime as ISO-8601 with explicit UTC timezone suffix."""
+    if ts.tzinfo is None:
+        return ts.isoformat() + "+00:00"
+    return ts.astimezone(dt.timezone.utc).isoformat()
+
+
+_to_naive_utc = to_naive_utc
+
+
 _OVERLAP_RE = re.compile(
     r"Span \[(.+?), (.+?)\) overlaps \[(.+?), (.+?)\) for user",
 )
@@ -222,8 +233,8 @@ def create_app(
         spans.sort(key=lambda s: s.start_ts, reverse=True)
         return [
             LabelResponse(
-                start_ts=s.start_ts.isoformat(),
-                end_ts=s.end_ts.isoformat(),
+                start_ts=_utc_iso(s.start_ts),
+                end_ts=_utc_iso(s.end_ts),
                 label=s.label,
                 provenance=s.provenance,
                 user_id=s.user_id,
@@ -238,8 +249,8 @@ def create_app(
         uid = body.user_id if body.user_id is not None else user_config.user_id
         try:
             span = LabelSpan(
-                start_ts=dt.datetime.fromisoformat(body.start_ts),
-                end_ts=dt.datetime.fromisoformat(body.end_ts),
+                start_ts=_to_naive_utc(dt.datetime.fromisoformat(body.start_ts)),
+                end_ts=_to_naive_utc(dt.datetime.fromisoformat(body.end_ts)),
                 label=body.label,
                 provenance="manual",
                 user_id=uid,
@@ -266,14 +277,14 @@ def create_app(
                 "type": "label_created",
                 "label": span.label,
                 "confidence": span.confidence if span.confidence is not None else 1.0,
-                "ts": span.end_ts.isoformat(),
-                "start_ts": span.start_ts.isoformat(),
+                "ts": _utc_iso(span.end_ts),
+                "start_ts": _utc_iso(span.start_ts),
                 "extend_forward": True,
             })
 
         return LabelResponse(
-            start_ts=span.start_ts.isoformat(),
-            end_ts=span.end_ts.isoformat(),
+            start_ts=_utc_iso(span.start_ts),
+            end_ts=_utc_iso(span.end_ts),
             label=span.label,
             provenance=span.provenance,
             user_id=span.user_id,
@@ -284,8 +295,8 @@ def create_app(
     @app.put("/api/labels")
     async def update_label(body: LabelUpdateRequest) -> LabelResponse:
         try:
-            start = dt.datetime.fromisoformat(body.start_ts)
-            end = dt.datetime.fromisoformat(body.end_ts)
+            start = _to_naive_utc(dt.datetime.fromisoformat(body.start_ts))
+            end = _to_naive_utc(dt.datetime.fromisoformat(body.end_ts))
         except (ValueError, Exception) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         try:
@@ -293,8 +304,8 @@ def create_app(
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         return LabelResponse(
-            start_ts=span.start_ts.isoformat(),
-            end_ts=span.end_ts.isoformat(),
+            start_ts=_utc_iso(span.start_ts),
+            end_ts=_utc_iso(span.end_ts),
             label=span.label,
             provenance=span.provenance,
             user_id=span.user_id,
@@ -305,8 +316,8 @@ def create_app(
     @app.delete("/api/labels")
     async def delete_label(body: LabelDeleteRequest) -> dict[str, str]:
         try:
-            start = dt.datetime.fromisoformat(body.start_ts)
-            end = dt.datetime.fromisoformat(body.end_ts)
+            start = _to_naive_utc(dt.datetime.fromisoformat(body.start_ts))
+            end = _to_naive_utc(dt.datetime.fromisoformat(body.end_ts))
         except (ValueError, Exception) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         try:
@@ -327,8 +338,8 @@ def create_app(
             QueueItemResponse(
                 request_id=r.request_id,
                 user_id=r.user_id,
-                bucket_start_ts=r.bucket_start_ts.isoformat(),
-                bucket_end_ts=r.bucket_end_ts.isoformat(),
+                bucket_start_ts=_utc_iso(r.bucket_start_ts),
+                bucket_end_ts=_utc_iso(r.bucket_end_ts),
                 reason=r.reason,
                 confidence=r.confidence,
                 predicted_label=r.predicted_label,
@@ -356,8 +367,8 @@ def create_app(
     ) -> FeatureSummaryResponse:
         import pandas as pd
 
-        start_ts = dt.datetime.fromisoformat(start)
-        end_ts = dt.datetime.fromisoformat(end)
+        start_ts = _to_naive_utc(dt.datetime.fromisoformat(start))
+        end_ts = _to_naive_utc(dt.datetime.fromisoformat(end))
 
         frames: list[pd.DataFrame] = []
         current = start_ts.date()
@@ -390,8 +401,8 @@ def create_app(
                 find_window_bucket_id,
             )
 
-            start_ts = dt.datetime.fromisoformat(start)
-            end_ts = dt.datetime.fromisoformat(end)
+            start_ts = _to_naive_utc(dt.datetime.fromisoformat(start))
+            end_ts = _to_naive_utc(dt.datetime.fromisoformat(end))
 
             bucket_id = find_window_bucket_id(aw_host)
             events = fetch_aw_events(aw_host, bucket_id, start_ts, end_ts, title_salt=title_salt)
@@ -463,8 +474,8 @@ def create_app(
         uid = user_config.user_id
         try:
             span = LabelSpan(
-                start_ts=dt.datetime.fromisoformat(body.block_start),
-                end_ts=dt.datetime.fromisoformat(body.block_end),
+                start_ts=_to_naive_utc(dt.datetime.fromisoformat(body.block_start)),
+                end_ts=_to_naive_utc(dt.datetime.fromisoformat(body.block_end)),
                 label=body.label,
                 provenance="suggestion",
                 user_id=uid,
@@ -486,8 +497,8 @@ def create_app(
 
         logger.info("Accepted suggested label: %s (%s → %s)", body.label, body.block_start, body.block_end)
         return LabelResponse(
-            start_ts=span.start_ts.isoformat(),
-            end_ts=span.end_ts.isoformat(),
+            start_ts=_utc_iso(span.start_ts),
+            end_ts=_utc_iso(span.end_ts),
             label=span.label,
             provenance=span.provenance,
             user_id=span.user_id,

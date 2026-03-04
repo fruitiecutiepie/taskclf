@@ -176,7 +176,7 @@ class TestRawEventToAWEvent:
             "data": {"app": "Code", "title": "main.py"},
         }
         ev = _raw_event_to_aw_event(raw, title_salt=SALT)
-        assert ev.timestamp == datetime(2026, 2, 23, 10, 0, 0)
+        assert ev.timestamp == datetime(2026, 2, 23, 10, 0, 0, tzinfo=timezone.utc)
 
 
 # ---------------------------------------------------------------------------

@@ -5,7 +5,7 @@ import { ActivityContext, type TimeRange } from "./ActivityContext";
 import { LABEL_COLORS } from "./StatePanel";
 
 function parseDate(iso: string): Date {
-  return new Date(iso.includes("Z") || iso.includes("+") ? iso : iso + "Z");
+  return new Date(iso);
 }
 
 function isToday(d: Date): boolean {
@@ -188,16 +188,8 @@ const LabelRow: Component<{
   const [confirmDelete, setConfirmDelete] = createSignal(false);
 
   const timeRange = (): TimeRange | null => ({
-    start: new Date(
-      props.lbl.start_ts.includes("Z") || props.lbl.start_ts.includes("+")
-        ? props.lbl.start_ts
-        : props.lbl.start_ts + "Z",
-    ).toISOString(),
-    end: new Date(
-      props.lbl.end_ts.includes("Z") || props.lbl.end_ts.includes("+")
-        ? props.lbl.end_ts
-        : props.lbl.end_ts + "Z",
-    ).toISOString(),
+    start: new Date(props.lbl.start_ts).toISOString(),
+    end: new Date(props.lbl.end_ts).toISOString(),
   });
 
   return (

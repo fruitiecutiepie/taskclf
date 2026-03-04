@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import StrEnum
 from typing import Final, Protocol, runtime_checkable
 
@@ -186,6 +186,16 @@ class FeatureRow(BaseModel, frozen=True):
         exclude=True,
         description="Raw window title; only accepted when title_policy=RAW_WINDOW_TITLE_OPT_IN.",
     )
+
+    @field_validator("bucket_start_ts", "bucket_end_ts", mode="before")
+    @classmethod
+    def _ensure_aware_utc(cls, v: object) -> object:
+        """Tag naive datetimes as UTC; convert non-UTC aware datetimes."""
+        if isinstance(v, datetime):
+            if v.tzinfo is None:
+                return v.replace(tzinfo=timezone.utc)
+            return v.astimezone(timezone.utc)
+        return v
 
     @model_validator(mode="before")
     @classmethod

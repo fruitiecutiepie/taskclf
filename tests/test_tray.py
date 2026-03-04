@@ -33,8 +33,8 @@ from taskclf.ui.tray import (
 
 
 def _t(seconds: int) -> dt.datetime:
-    """Return a test timestamp offset by *seconds* from a fixed epoch."""
-    return dt.datetime(2026, 3, 1, 10, 0, 0) + dt.timedelta(seconds=seconds)
+    """Return a test timestamp offset by *seconds* from a fixed epoch (UTC-aware)."""
+    return dt.datetime(2026, 3, 1, 10, 0, 0, tzinfo=dt.timezone.utc) + dt.timedelta(seconds=seconds)
 
 
 class TestActivityTransitionDetection:
@@ -289,8 +289,8 @@ def _make_tray_labeler(
     )
 
 
-_BLOCK_START = dt.datetime(2026, 3, 1, 10, 0, 0)
-_BLOCK_END = dt.datetime(2026, 3, 1, 10, 15, 0)
+_BLOCK_START = dt.datetime(2026, 3, 1, 10, 0, 0, tzinfo=dt.timezone.utc)
+_BLOCK_END = dt.datetime(2026, 3, 1, 10, 15, 0, tzinfo=dt.timezone.utc)
 
 
 # ---------------------------------------------------------------------------
@@ -490,7 +490,7 @@ class TestPublishStatus:
         monitor = ActivityMonitor(
             poll_seconds=30, transition_minutes=3, event_bus=bus,
         )
-        monitor._started_at = dt.datetime(2026, 3, 1, 9, 0, 0)
+        monitor._started_at = dt.datetime(2026, 3, 1, 9, 0, 0, tzinfo=dt.timezone.utc)
 
         monitor._publish_status("com.apple.Terminal")
 
@@ -513,7 +513,7 @@ class TestPublishStatus:
         monitor = ActivityMonitor(
             poll_seconds=60, transition_minutes=3, event_bus=bus,
         )
-        monitor._started_at = dt.datetime(2026, 3, 1, 9, 0, 0)
+        monitor._started_at = dt.datetime(2026, 3, 1, 9, 0, 0, tzinfo=dt.timezone.utc)
 
         monitor._publish_status("app1")
         monitor._publish_status("app1")
@@ -528,7 +528,7 @@ class TestPublishStatus:
         monitor = ActivityMonitor(
             poll_seconds=60, transition_minutes=3, event_bus=bus,
         )
-        monitor._started_at = dt.datetime(2026, 3, 1, 9, 0, 0)
+        monitor._started_at = dt.datetime(2026, 3, 1, 9, 0, 0, tzinfo=dt.timezone.utc)
         monitor._candidate_app = "us.zoom.xos"
         monitor._candidate_duration = 120
 
@@ -752,7 +752,7 @@ class TestPauseResume:
         monitor = ActivityMonitor(
             poll_seconds=60, transition_minutes=3, event_bus=bus,
         )
-        monitor._started_at = dt.datetime(2026, 3, 1, 9, 0, 0)
+        monitor._started_at = dt.datetime(2026, 3, 1, 9, 0, 0, tzinfo=dt.timezone.utc)
 
         monitor._publish_status("app1", state="paused")
 
@@ -765,7 +765,7 @@ class TestPauseResume:
         monitor = ActivityMonitor(
             poll_seconds=60, transition_minutes=3, event_bus=bus,
         )
-        monitor._started_at = dt.datetime(2026, 3, 1, 9, 0, 0)
+        monitor._started_at = dt.datetime(2026, 3, 1, 9, 0, 0, tzinfo=dt.timezone.utc)
 
         monitor._publish_status("app1")
 
@@ -779,7 +779,7 @@ class TestPauseResume:
             poll_seconds=60, transition_minutes=2,
             event_bus=bus, on_transition=lambda *a: transitions.append(a),
         )
-        monitor._started_at = dt.datetime(2026, 3, 1, 9, 0, 0)
+        monitor._started_at = dt.datetime(2026, 3, 1, 9, 0, 0, tzinfo=dt.timezone.utc)
 
         monitor._publish_status("app1")
         monitor.check_transition("app1", _now=_t(0))

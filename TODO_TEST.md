@@ -1099,16 +1099,7 @@ TC-TAX-010 frozen immutability).
 ---
 ---
 
-# TODO — Remaining Known Gaps
+### ~~62. `infer.online` — `run_online_loop()` direct test~~ DONE
 
-### 62. `infer.online` — `run_online_loop()` no direct test
-
-**CLI functions:** `src/taskclf/infer/online.py:225-516`
-**Existing coverage:** Only mocked in `tests/test_cli_commands.py::TestInferOnline`
-(CLI wiring only — `run_online_loop` is patched out). `OnlinePredictor` is tested
-in `tests/test_infer_online.py`.
-
-**Note:** Complex integration function requiring extensive mocking of ActivityWatch
-REST client, model loading, and polling loop. Component-level coverage
-(`OnlinePredictor`, `_append_prediction_csv`, `ActiveModelReloader`) is adequate.
-CLI argument parsing is tested. Full loop integration test deferred.
+**Status:** Covered by `tests/test_infer_online.py::TestRunOnlineLoop::test_run_online_loop_single_poll_writes_outputs`
+(TC-ONLINE-007: stubbed AW client + single poll → predictions.csv and segments.json written; session_start propagated).

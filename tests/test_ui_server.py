@@ -190,7 +190,7 @@ class TestExtendForwardAPI:
         labels = client.get("/api/labels").json()
         assert len(labels) == 2
         build = [l for l in labels if l["label"] == "Build"][0]
-        assert build["end_ts"] == "2026-02-27T10:29:00"
+        assert build["end_ts"] == "2026-02-27T10:29:00+00:00"
 
     def test_extend_forward_off_no_extension(self, client: TestClient) -> None:
         body1 = {
@@ -211,7 +211,7 @@ class TestExtendForwardAPI:
 
         labels = client.get("/api/labels").json()
         build = [l for l in labels if l["label"] == "Build"][0]
-        assert build["end_ts"] == "2026-02-27T10:00:00"
+        assert build["end_ts"] == "2026-02-27T10:00:00+00:00"
 
     def test_extend_forward_flag_on_previous_not_request(self, client: TestClient) -> None:
         """Extension is driven by the *previous* label's flag, not the current request."""
@@ -233,7 +233,7 @@ class TestExtendForwardAPI:
 
         labels = client.get("/api/labels").json()
         build = [l for l in labels if l["label"] == "Build"][0]
-        assert build["end_ts"] == "2026-02-27T10:29:00"
+        assert build["end_ts"] == "2026-02-27T10:29:00+00:00"
 
     def test_extend_forward_defaults_to_false(self, client: TestClient) -> None:
         body1 = {
@@ -252,7 +252,7 @@ class TestExtendForwardAPI:
 
         labels = client.get("/api/labels").json()
         build = [l for l in labels if l["label"] == "Build"][0]
-        assert build["end_ts"] == "2026-02-27T10:00:00"
+        assert build["end_ts"] == "2026-02-27T10:00:00+00:00"
 
     def test_extend_forward_201_response_correct(self, client: TestClient) -> None:
         body1 = {
@@ -276,8 +276,8 @@ class TestExtendForwardAPI:
         data = resp.json()
         assert data["label"] == "Debug"
         assert data["provenance"] == "manual"
-        assert data["start_ts"] == "2026-02-27T10:29:00"
-        assert data["end_ts"] == "2026-02-27T10:30:00"
+        assert data["start_ts"] == "2026-02-27T10:29:00+00:00"
+        assert data["end_ts"] == "2026-02-27T10:30:00+00:00"
         assert data["extend_forward"] is True
 
     def test_extend_forward_response_flag_persisted(self, client: TestClient) -> None:
@@ -665,8 +665,8 @@ class TestNotificationAccept:
         assert resp.status_code == 200
         data = resp.json()
         assert data["provenance"] == "suggestion"
-        assert data["start_ts"] == "2026-02-27T09:00:00"
-        assert data["end_ts"] == "2026-02-27T10:00:00"
+        assert data["start_ts"] == "2026-02-27T09:00:00+00:00"
+        assert data["end_ts"] == "2026-02-27T10:00:00+00:00"
 
     def test_invalid_label_422(self, client: TestClient) -> None:
         """TC-UI-NA-002: Invalid label -> 422."""
@@ -1027,8 +1027,8 @@ class TestLabelCreatedEvent:
             assert received["type"] == "label_created"
             assert received["label"] == "Build"
             assert received["extend_forward"] is True
-            assert received["start_ts"] == "2026-02-27T09:00:00"
-            assert received["ts"] == "2026-02-27T10:00:00"
+            assert received["start_ts"] == "2026-02-27T09:00:00+00:00"
+            assert received["ts"] == "2026-02-27T10:00:00+00:00"
             assert "provenance" not in received
             assert "mapped_label" not in received
 
@@ -1163,3 +1163,143 @@ class TestSuggestionCleared:
             received = ws.receive_json()
             assert received["type"] == "status"
             assert received["state"] == "sentinel"
+
+
+# ---------------------------------------------------------------------------
+# UTC helper functions  (Item 17)
+# ---------------------------------------------------------------------------
+
+
+class TestUtcHelpers:
+    """Direct unit tests for _utc_iso() and _to_naive_utc()."""
+
+    def test_utc_iso_naive_appends_offset(self) -> None:
+        from taskclf.ui.server import _utc_iso
+
+        naive = dt.datetime(2026, 3, 1, 12, 0, 0)
+        assert _utc_iso(naive) == "2026-03-01T12:00:00+00:00"
+
+    def test_utc_iso_aware_utc_passthrough(self) -> None:
+        from taskclf.ui.server import _utc_iso
+
+        aware = dt.datetime(2026, 3, 1, 12, 0, 0, tzinfo=dt.timezone.utc)
+        assert _utc_iso(aware) == "2026-03-01T12:00:00+00:00"
+
+    def test_utc_iso_aware_non_utc_converts(self) -> None:
+        from taskclf.ui.server import _utc_iso
+
+        ist = dt.timezone(dt.timedelta(hours=5, minutes=30))
+        aware = dt.datetime(2026, 3, 1, 17, 30, 0, tzinfo=ist)
+        assert _utc_iso(aware) == "2026-03-01T12:00:00+00:00"
+
+    def test_to_naive_utc_naive_passthrough(self) -> None:
+        from taskclf.ui.server import _to_naive_utc
+
+        naive = dt.datetime(2026, 3, 1, 12, 0, 0)
+        result = _to_naive_utc(naive)
+        assert result == naive
+        assert result.tzinfo is None
+
+    def test_to_naive_utc_aware_utc_strips(self) -> None:
+        from taskclf.ui.server import _to_naive_utc
+
+        aware = dt.datetime(2026, 3, 1, 12, 0, 0, tzinfo=dt.timezone.utc)
+        result = _to_naive_utc(aware)
+        assert result == dt.datetime(2026, 3, 1, 12, 0, 0)
+        assert result.tzinfo is None
+
+    def test_to_naive_utc_aware_non_utc_converts_then_strips(self) -> None:
+        from taskclf.ui.server import _to_naive_utc
+
+        ist = dt.timezone(dt.timedelta(hours=5, minutes=30))
+        aware = dt.datetime(2026, 3, 1, 17, 30, 0, tzinfo=ist)
+        result = _to_naive_utc(aware)
+        assert result == dt.datetime(2026, 3, 1, 12, 0, 0)
+        assert result.tzinfo is None
+
+
+# ---------------------------------------------------------------------------
+# Aware timestamp round-trip  (Item 17)
+# ---------------------------------------------------------------------------
+
+
+class TestAwareTimestampRoundTrip:
+    """Verify the server accepts aware timestamps from the frontend and
+    returns +00:00 suffixed ISO strings in all responses."""
+
+    def test_z_suffixed_timestamps_accepted(self, client: TestClient) -> None:
+        """Frontend sends Z-suffixed ISO strings after the item-17 fix."""
+        resp = client.post("/api/labels", json={
+            "start_ts": "2026-02-27T09:00:00Z",
+            "end_ts": "2026-02-27T10:00:00Z",
+            "label": "Build",
+        })
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["start_ts"] == "2026-02-27T09:00:00+00:00"
+        assert data["end_ts"] == "2026-02-27T10:00:00+00:00"
+
+    def test_z_suffixed_persisted_correctly(self, client: TestClient) -> None:
+        """Labels created with Z-suffixed timestamps appear in GET /api/labels."""
+        client.post("/api/labels", json={
+            "start_ts": "2026-02-27T09:00:00Z",
+            "end_ts": "2026-02-27T10:00:00Z",
+            "label": "Build",
+        })
+        labels = client.get("/api/labels").json()
+        assert len(labels) == 1
+        assert labels[0]["start_ts"] == "2026-02-27T09:00:00+00:00"
+        assert labels[0]["end_ts"] == "2026-02-27T10:00:00+00:00"
+
+    def test_offset_timestamps_normalized(self, client: TestClient) -> None:
+        """Non-UTC aware timestamps are converted to UTC for storage."""
+        resp = client.post("/api/labels", json={
+            "start_ts": "2026-02-27T14:30:00+05:30",
+            "end_ts": "2026-02-27T15:30:00+05:30",
+            "label": "Build",
+        })
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["start_ts"] == "2026-02-27T09:00:00+00:00"
+        assert data["end_ts"] == "2026-02-27T10:00:00+00:00"
+
+    def test_naive_timestamps_still_accepted(self, client: TestClient) -> None:
+        """Backward compat: naive timestamps (no tz suffix) still work."""
+        resp = client.post("/api/labels", json={
+            "start_ts": "2026-02-27T09:00:00",
+            "end_ts": "2026-02-27T10:00:00",
+            "label": "Build",
+        })
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["start_ts"] == "2026-02-27T09:00:00+00:00"
+        assert data["end_ts"] == "2026-02-27T10:00:00+00:00"
+
+    def test_update_with_aware_timestamps(self, client: TestClient) -> None:
+        """PUT /api/labels accepts aware timestamps for matching."""
+        client.post("/api/labels", json={
+            "start_ts": "2026-02-27T09:00:00",
+            "end_ts": "2026-02-27T10:00:00",
+            "label": "Build",
+        })
+        resp = client.put("/api/labels", json={
+            "start_ts": "2026-02-27T09:00:00+00:00",
+            "end_ts": "2026-02-27T10:00:00+00:00",
+            "label": "Debug",
+        })
+        assert resp.status_code == 200
+        assert resp.json()["label"] == "Debug"
+
+    def test_delete_with_aware_timestamps(self, client: TestClient) -> None:
+        """DELETE /api/labels accepts aware timestamps for matching."""
+        client.post("/api/labels", json={
+            "start_ts": "2026-02-27T09:00:00",
+            "end_ts": "2026-02-27T10:00:00",
+            "label": "Build",
+        })
+        resp = client.request("DELETE", "/api/labels", json={
+            "start_ts": "2026-02-27T09:00:00+00:00",
+            "end_ts": "2026-02-27T10:00:00+00:00",
+        })
+        assert resp.status_code == 200
+        assert client.get("/api/labels").json() == []

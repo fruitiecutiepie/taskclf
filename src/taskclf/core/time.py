@@ -13,22 +13,36 @@ from typing import Sequence
 from taskclf.core.defaults import DEFAULT_BUCKET_SECONDS
 
 
+def to_naive_utc(ts: datetime) -> datetime:
+    """Normalize a datetime to naive UTC.
+
+    Aware datetimes are converted to UTC then stripped of tzinfo.
+    Naive datetimes are returned as-is (assumed to already represent UTC).
+
+    This is the canonical conversion for timestamps entering the feature
+    pipeline or Parquet storage, where the naive-UTC convention is used.
+    """
+    if ts.tzinfo is not None:
+        return ts.astimezone(timezone.utc).replace(tzinfo=None)
+    return ts
+
+
 def align_to_bucket(
     ts: datetime,
     bucket_seconds: int = DEFAULT_BUCKET_SECONDS,
 ) -> datetime:
     """Floor *ts* to the nearest bucket boundary.
 
-    If *ts* is timezone-aware it is first converted to UTC; the returned
-    datetime is always a naive UTC value (consistent with how feature rows
-    store ``bucket_start_ts``).
+    If *ts* is timezone-aware it is first converted to UTC.  Naive
+    datetimes are assumed to represent UTC.  The returned datetime is
+    always a **timezone-aware** UTC value (``tzinfo=timezone.utc``).
 
     Args:
         ts: Timestamp to align.
         bucket_seconds: Bucket width in seconds (default 60).
 
     Returns:
-        A naive UTC datetime whose POSIX epoch is a multiple of
+        A timezone-aware UTC datetime whose POSIX epoch is a multiple of
         *bucket_seconds*.
     """
     if ts.tzinfo is not None:
@@ -36,7 +50,7 @@ def align_to_bucket(
 
     epoch = int(ts.replace(tzinfo=timezone.utc).timestamp())
     aligned_epoch = (epoch // bucket_seconds) * bucket_seconds
-    return datetime.fromtimestamp(aligned_epoch, tz=timezone.utc).replace(tzinfo=None)
+    return datetime.fromtimestamp(aligned_epoch, tz=timezone.utc)
 
 
 def generate_bucket_range(
@@ -54,7 +68,7 @@ def generate_bucket_range(
         bucket_seconds: Bucket width in seconds (default 60).
 
     Returns:
-        Sorted list of naive-UTC bucket-start datetimes.
+        Sorted list of timezone-aware UTC bucket-start datetimes.
     """
     cur = align_to_bucket(start, bucket_seconds)
     end_aligned = align_to_bucket(end, bucket_seconds)

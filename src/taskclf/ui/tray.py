@@ -159,7 +159,7 @@ class ActivityMonitor:
                 self._last_app_counts = {}
                 return None
 
-        now = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+        now = dt.datetime.now(dt.timezone.utc)
         start = now - dt.timedelta(seconds=self._poll_seconds)
         try:
             events = fetch_aw_events(
@@ -194,7 +194,7 @@ class ActivityMonitor:
             dominant_app: The current dominant foreground application.
             _now: Override for the current time (testing only).
         """
-        now = _now or dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+        now = _now or dt.datetime.now(dt.timezone.utc)
         elapsed = (
             int((now - self._last_check_time).total_seconds())
             if self._last_check_time is not None
@@ -237,7 +237,7 @@ class ActivityMonitor:
     def _publish_status(
         self, dominant_app: str, *, state: str = "collecting",
     ) -> None:
-        now = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+        now = dt.datetime.now(dt.timezone.utc)
         self._last_poll_ts = now
         self._poll_count += 1
 
@@ -270,7 +270,7 @@ class ActivityMonitor:
 
     def run(self) -> None:
         """Blocking poll loop. Call from a daemon thread."""
-        self._started_at = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+        self._started_at = dt.datetime.now(dt.timezone.utc)
         while not self._stop.is_set():
             if self._paused.is_set():
                 app = self._current_app or "unknown"
@@ -505,7 +505,7 @@ class TrayLabeler:
             "new_app": new_app,
             "block_start": block_start.isoformat(),
             "block_end": block_end.isoformat(),
-            "fired_at": dt.datetime.now(dt.timezone.utc).replace(tzinfo=None).isoformat(),
+            "fired_at": dt.datetime.now(dt.timezone.utc).isoformat(),
         }
 
         suggestion = None

@@ -40,11 +40,20 @@ def app_switch_count_in_window(
     window_start = bucket_ts - dt.timedelta(minutes=window_minutes)
     window_end = bucket_ts + dt.timedelta(seconds=bucket_seconds)
 
+    def _epoch(ts: dt.datetime) -> float:
+        if ts.tzinfo is None:
+            return ts.replace(tzinfo=dt.timezone.utc).timestamp()
+        return ts.timestamp()
+
+    ws_epoch = _epoch(window_start)
+    we_epoch = _epoch(window_end)
+
     apps: set[str] = set()
     for ev in events:
-        if ev.timestamp < window_start:
+        ev_epoch = _epoch(ev.timestamp)
+        if ev_epoch < ws_epoch:
             continue
-        if ev.timestamp >= window_end:
+        if ev_epoch >= we_epoch:
             break
         apps.add(ev.app_id)
 

@@ -293,12 +293,13 @@ def labels_label_now_cmd(
     from rich.table import Table
 
     from taskclf.core.store import read_parquet
+    from taskclf.core.time import to_naive_utc
     from taskclf.core.types import LabelSpan
     from taskclf.labels.store import append_label_span, generate_label_summary
 
     console = Console()
 
-    end_ts = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+    end_ts = dt.datetime.now(dt.timezone.utc)
     start_ts = end_ts - dt.timedelta(minutes=minutes)
 
     console.print(
@@ -329,11 +330,15 @@ def labels_label_now_cmd(
     except Exception as exc:
         console.print(f"[dim]ActivityWatch not reachable ({exc}); skipping live summary.[/dim]")
 
+    # Normalize to naive UTC for feature/label pipeline compatibility
+    start_ts_naive = to_naive_utc(start_ts)
+    end_ts_naive = to_naive_utc(end_ts)
+
     # On-disk feature summary (best-effort)
     features_dfs: list[pd.DataFrame] = []
     data_path = Path(data_dir)
-    current_date = start_ts.date()
-    while current_date <= end_ts.date():
+    current_date = start_ts_naive.date()
+    while current_date <= end_ts_naive.date():
         fp = data_path / f"features_v1/date={current_date.isoformat()}" / "features.parquet"
         if fp.exists():
             features_dfs.append(read_parquet(fp))
@@ -341,7 +346,7 @@ def labels_label_now_cmd(
 
     if features_dfs:
         feat_df = pd.concat(features_dfs, ignore_index=True)
-        summary = generate_label_summary(feat_df, start_ts, end_ts)
+        summary = generate_label_summary(feat_df, start_ts_naive, end_ts_naive)
         if summary["total_buckets"] > 0:
             table = Table(title="Feature Summary")
             table.add_column("Metric", style="bold")
@@ -358,8 +363,8 @@ def labels_label_now_cmd(
 
     effective_confidence = confidence if confidence is not None else 1.0
     span = LabelSpan(
-        start_ts=start_ts,
-        end_ts=end_ts,
+        start_ts=start_ts_naive,
+        end_ts=end_ts_naive,
         label=label,
         provenance="manual",
         user_id=user_id,
