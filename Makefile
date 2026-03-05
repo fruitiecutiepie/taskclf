@@ -47,7 +47,7 @@ print('$(CURRENT_VERSION) -> $(NEW_VERSION)')"
 	uv lock
 	git add pyproject.toml uv.lock
 	git commit -m "bump v$(NEW_VERSION)"
-	git tag v$(NEW_VERSION)
+	git tag -a v$(NEW_VERSION) -m "v$(NEW_VERSION)"
 endef
 
 bump-patch:
