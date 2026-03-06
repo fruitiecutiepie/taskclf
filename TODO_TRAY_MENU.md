@@ -108,6 +108,21 @@ Implemented in `_check_retrain()` callback + "Check Retrain" menu item in Model 
 
 ---
 
+## Known Gaps
+
+### Model submenu does not refresh after retrain
+
+pystray builds the menu once at startup. After `taskclf train retrain` creates a
+new bundle (e.g. `models/run_20260307_143022/`), the Model submenu still shows
+the old list. The user must restart the tray to see the new model.
+
+**Note:** "Reload Model" does not help here — it re-reads the *currently loaded*
+bundle's directory from disk, but a retrain produces a *new* directory.
+
+See `TODO_DYNAMIC_MODEL_MENU.md` for the proposed fix.
+
+---
+
 ## Proposed Menu Structure
 
 After all items are implemented:
