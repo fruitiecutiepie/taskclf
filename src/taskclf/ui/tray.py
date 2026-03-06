@@ -272,6 +272,9 @@ class ActivityMonitor:
 
     def run(self) -> None:
         """Blocking poll loop. Call from a daemon thread."""
+        if self._event_bus is not None:
+            if not self._event_bus.wait_ready(timeout=30):
+                logger.warning("EventBus loop not bound after 30s, starting anyway")
         self._started_at = dt.datetime.now(dt.timezone.utc)
         while not self._stop.is_set():
             if self._paused.is_set():
@@ -279,15 +282,12 @@ class ActivityMonitor:
                 self._publish_status(app, state="paused")
             else:
                 dominant = self._poll_dominant_app()
+                app = dominant or self._current_app or "unknown"
+                if self._on_poll is not None:
+                    self._on_poll(app)
+                self._publish_status(app)
                 if dominant is not None:
-                    if self._on_poll is not None:
-                        self._on_poll(dominant)
-                    self._publish_status(dominant)
                     self.check_transition(dominant)
-                else:
-                    self._publish_status(
-                        self._current_app or "unknown", state="collecting",
-                    )
             self._stop.wait(timeout=self._poll_seconds)
 
     def stop(self) -> None:

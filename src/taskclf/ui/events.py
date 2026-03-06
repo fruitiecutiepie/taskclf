@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -23,10 +24,20 @@ class EventBus:
         self._subscribers: set[asyncio.Queue[dict[str, Any]]] = set()
         self._lock = asyncio.Lock()
         self._loop: asyncio.AbstractEventLoop | None = None
+        self._ready = threading.Event()
 
     def bind_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         """Bind to the running event loop (call once at startup)."""
         self._loop = loop
+        self._ready.set()
+
+    def wait_ready(self, timeout: float = 30) -> bool:
+        """Block until :meth:`bind_loop` has been called.
+
+        Returns ``True`` if the loop was bound within *timeout* seconds.
+        Safe to call from any thread.
+        """
+        return self._ready.wait(timeout=timeout)
 
     async def publish(self, event: dict[str, Any]) -> None:
         """Broadcast *event* to all current subscribers.
