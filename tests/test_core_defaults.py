@@ -5,6 +5,8 @@ Catches accidental deletions or type regressions.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from taskclf.core import defaults
 
 
@@ -83,11 +85,24 @@ class TestDefaultsTypes:
             value = getattr(defaults, name)
             assert isinstance(value, str), f"{name} should be str, got {type(value)}"
 
+    def test_path_constants_are_absolute(self) -> None:
+        path_names = [
+            "DEFAULT_OUT_DIR",
+            "DEFAULT_DATA_DIR",
+            "DEFAULT_RAW_AW_DIR",
+            "DEFAULT_MODELS_DIR",
+            "DEFAULT_TELEMETRY_DIR",
+        ]
+        for name in path_names:
+            value = getattr(defaults, name)
+            assert Path(value).is_absolute(), f"{name} should be absolute, got {value!r}"
+
     def test_all_public_names_covered(self) -> None:
         """Every non-dunder, non-import name in the module is checked above."""
+        _imports = {"Final", "annotations", "taskclf_home"}
         public = {
             n for n in dir(defaults)
-            if not n.startswith("_") and n != "Final" and n != "annotations"
+            if not n.startswith("_") and n not in _imports
         }
         covered = {
             "DEFAULT_BUCKET_SECONDS", "DEFAULT_POLL_SECONDS",

@@ -46,7 +46,7 @@ Primary outcomes:
 ---
 
 ## Repo Map (what goes where)
-- `src/taskclf/core/` — schemas, invariants, hashing, bucketization, storage, model IO, metrics
+- `src/taskclf/core/` — schemas, invariants, hashing, bucketization, storage, model IO, metrics, path resolution
 - `src/taskclf/adapters/` — ActivityWatch, OS input collectors (counts only), normalization
 - `src/taskclf/features/` — event -> bucketed feature rows, rolling windows, title featurization
 - `src/taskclf/labels/` — label spans format, validation, import/export, weak-label rules (optional)

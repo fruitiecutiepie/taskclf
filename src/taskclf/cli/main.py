@@ -145,7 +145,7 @@ app.add_typer(features_app, name="features")
 @features_app.command("build")
 def features_build(
     date: str = typer.Option(..., help="Date in YYYY-MM-DD format"),
-    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory"),
+    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory (derived from TASKCLF_HOME)"),
 ) -> None:
     """Build per-minute feature rows for a given date and write to parquet."""
     from taskclf.features.build import build_features_for_date
@@ -163,7 +163,7 @@ app.add_typer(labels_app, name="labels")
 @labels_app.command("import")
 def labels_import_cmd(
     file: str = typer.Option(..., "--file", help="Path to labels CSV (start_ts, end_ts, label, provenance)"),
-    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory"),
+    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory (derived from TASKCLF_HOME)"),
 ) -> None:
     """Import label spans from a CSV file and write to parquet."""
     from taskclf.labels.store import import_labels_from_csv, write_label_spans
@@ -188,7 +188,7 @@ def labels_add_block_cmd(
     label: str = typer.Option(..., "--label", help="Core label (Build, Debug, Review, Write, ReadResearch, Communicate, Meet, BreakIdle)"),
     user_id: str = typer.Option("default-user", "--user-id", help="User ID for this label"),
     confidence: float | None = typer.Option(None, "--confidence", min=0.0, max=1.0, help="Labeler confidence (0-1)"),
-    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory"),
+    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory (derived from TASKCLF_HOME)"),
     model_dir: str | None = typer.Option(None, "--model-dir", help="Model bundle directory (for predicted label display)"),
 ) -> None:
     """Create a manual label block for a time range."""
@@ -283,7 +283,7 @@ def labels_label_now_cmd(
     confidence: float | None = typer.Option(None, "--confidence", min=0.0, max=1.0, help="Labeler confidence (0-1)"),
     aw_host: str = typer.Option(DEFAULT_AW_HOST, "--aw-host", help="ActivityWatch server URL for live summary"),
     title_salt: str = typer.Option(DEFAULT_TITLE_SALT, "--title-salt", help="Salt for hashing window titles"),
-    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory"),
+    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory (derived from TASKCLF_HOME)"),
 ) -> None:
     """Label the last N minutes with a single command (no timestamps needed)."""
     from collections import Counter
@@ -388,7 +388,7 @@ def labels_label_now_cmd(
 def labels_show_queue_cmd(
     user_id: str | None = typer.Option(None, "--user-id", help="Filter to a specific user"),
     limit: int = typer.Option(10, "--limit", help="Maximum items to show"),
-    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory"),
+    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory (derived from TASKCLF_HOME)"),
 ) -> None:
     """Show pending items in the active labeling queue."""
     from rich.console import Console
@@ -435,7 +435,7 @@ def labels_show_queue_cmd(
 def labels_project_cmd(
     date_from: str = typer.Option(..., "--from", help="Start date (YYYY-MM-DD)"),
     date_to: str = typer.Option(..., "--to", help="End date (YYYY-MM-DD, inclusive)"),
-    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory"),
+    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory (derived from TASKCLF_HOME)"),
     out_dir: str = typer.Option(DEFAULT_DATA_DIR, "--out-dir", help="Output directory for projected labels"),
 ) -> None:
     """Project label blocks onto feature windows using strict containment rules."""
@@ -511,7 +511,7 @@ def train_build_dataset_cmd(
     date_from: str = typer.Option(..., "--from", help="Start date (YYYY-MM-DD)"),
     date_to: str = typer.Option(..., "--to", help="End date (YYYY-MM-DD, inclusive)"),
     synthetic: bool = typer.Option(False, "--synthetic", help="Generate dummy features + labels"),
-    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory"),
+    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory (derived from TASKCLF_HOME)"),
     out_dir: str = typer.Option(DEFAULT_DATA_DIR, "--out-dir", help="Output directory for X/y/splits"),
     holdout_fraction: float = typer.Option(0.0, "--holdout-fraction", help="Fraction of users to hold out for test"),
     train_ratio: float = typer.Option(0.70, "--train-ratio", help="Chronological train fraction per user"),
@@ -583,8 +583,8 @@ def train_lgbm_cmd(
     date_from: str = typer.Option(..., "--from", help="Start date (YYYY-MM-DD)"),
     date_to: str = typer.Option(..., "--to", help="End date (YYYY-MM-DD, inclusive)"),
     synthetic: bool = typer.Option(False, "--synthetic", help="Generate dummy features + labels instead of reading from disk"),
-    models_dir: str = typer.Option(DEFAULT_MODELS_DIR, help="Base directory for model bundles"),
-    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory"),
+    models_dir: str = typer.Option(DEFAULT_MODELS_DIR, help="Base directory for model bundles (derived from TASKCLF_HOME)"),
+    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory (derived from TASKCLF_HOME)"),
     num_boost_round: int = typer.Option(DEFAULT_NUM_BOOST_ROUND, help="Number of boosting rounds"),
     class_weight: str = typer.Option("balanced", "--class-weight", help="Class-weight strategy: 'balanced' (inverse-frequency) or 'none'"),
 ) -> None:
@@ -688,7 +688,7 @@ def train_evaluate_cmd(
     date_from: str = typer.Option(..., "--from", help="Start date (YYYY-MM-DD)"),
     date_to: str = typer.Option(..., "--to", help="End date (YYYY-MM-DD, inclusive)"),
     synthetic: bool = typer.Option(False, "--synthetic", help="Generate dummy features + labels"),
-    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory"),
+    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory (derived from TASKCLF_HOME)"),
     out_dir: str = typer.Option(DEFAULT_OUT_DIR, help="Output directory for evaluation artifacts"),
     holdout_fraction: float = typer.Option(0.0, "--holdout-fraction", help="Fraction of users held out for unseen-user evaluation"),
     reject_threshold: float = typer.Option(DEFAULT_REJECT_THRESHOLD, "--reject-threshold", help="Max-probability below which prediction is rejected"),
@@ -840,7 +840,7 @@ def train_tune_reject_cmd(
     date_from: str = typer.Option(..., "--from", help="Start date (YYYY-MM-DD)"),
     date_to: str = typer.Option(..., "--to", help="End date (YYYY-MM-DD, inclusive)"),
     synthetic: bool = typer.Option(False, "--synthetic", help="Generate dummy features + labels"),
-    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory"),
+    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory (derived from TASKCLF_HOME)"),
     out_dir: str = typer.Option(DEFAULT_OUT_DIR, help="Output directory for tuning report"),
 ) -> None:
     """Sweep reject thresholds on a validation set and recommend the best one."""
@@ -946,7 +946,7 @@ def train_calibrate_cmd(
     date_from: str = typer.Option(..., "--from", help="Start date (YYYY-MM-DD)"),
     date_to: str = typer.Option(..., "--to", help="End date (YYYY-MM-DD, inclusive)"),
     synthetic: bool = typer.Option(False, "--synthetic", help="Generate dummy features + labels"),
-    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory"),
+    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory (derived from TASKCLF_HOME)"),
     out: str = typer.Option(DEFAULT_OUT_DIR + "/calibrator_store", "--out", help="Output directory for calibrator store"),
     method: str = typer.Option(DEFAULT_CALIBRATION_METHOD, "--method", help="Calibration method: 'temperature' or 'isotonic'"),
     min_windows: int = typer.Option(DEFAULT_MIN_LABELED_WINDOWS, "--min-windows", help="Minimum labeled windows for per-user calibration"),
@@ -1067,8 +1067,8 @@ def train_retrain_cmd(
     date_from: str | None = typer.Option(None, "--from", help="Start date (YYYY-MM-DD); defaults to lookback from today"),
     date_to: str | None = typer.Option(None, "--to", help="End date (YYYY-MM-DD, inclusive); defaults to today"),
     synthetic: bool = typer.Option(False, "--synthetic", help="Generate dummy features + labels"),
-    models_dir: str = typer.Option(DEFAULT_MODELS_DIR, help="Base directory for model bundles"),
-    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory"),
+    models_dir: str = typer.Option(DEFAULT_MODELS_DIR, help="Base directory for model bundles (derived from TASKCLF_HOME)"),
+    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory (derived from TASKCLF_HOME)"),
     out_dir: str = typer.Option(DEFAULT_OUT_DIR, help="Output directory for evaluation artifacts"),
     force: bool = typer.Option(False, "--force", help="Skip cadence check and retrain immediately"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Evaluate but do not promote"),
@@ -1183,7 +1183,7 @@ def train_retrain_cmd(
 @train_app.command("check-retrain")
 def train_check_retrain_cmd(
     config: str | None = typer.Option(None, "--config", help="Path to retrain YAML config"),
-    models_dir: str = typer.Option(DEFAULT_MODELS_DIR, help="Base directory for model bundles"),
+    models_dir: str = typer.Option(DEFAULT_MODELS_DIR, help="Base directory for model bundles (derived from TASKCLF_HOME)"),
     calibrator_store: str | None = typer.Option(None, "--calibrator-store", help="Path to calibrator store directory"),
 ) -> None:
     """Check whether retraining or calibrator update is due (read-only)."""
@@ -1247,7 +1247,7 @@ def train_check_retrain_cmd(
 
 @train_app.command("list")
 def train_list_cmd(
-    models_dir: str = typer.Option(DEFAULT_MODELS_DIR, help="Base directory for model bundles"),
+    models_dir: str = typer.Option(DEFAULT_MODELS_DIR, help="Base directory for model bundles (derived from TASKCLF_HOME)"),
     sort: str = typer.Option("macro_f1", "--sort", help="Sort column: macro_f1|weighted_f1|created_at"),
     eligible_only: bool = typer.Option(False, "--eligible", help="Show only eligible bundles (compatible schema + label set)"),
     schema_hash: str | None = typer.Option(None, "--schema-hash", help="Filter to bundles matching this schema hash (default: current runtime hash)"),
@@ -1383,7 +1383,7 @@ app.add_typer(model_app, name="model")
 @model_app.command("set-active")
 def model_set_active_cmd(
     model_id: str = typer.Option(..., "--model-id", help="Model bundle directory name (under models/)"),
-    models_dir: str = typer.Option(DEFAULT_MODELS_DIR, "--models-dir", help="Base directory for model bundles"),
+    models_dir: str = typer.Option(DEFAULT_MODELS_DIR, "--models-dir", help="Base directory for model bundles (derived from TASKCLF_HOME)"),
 ) -> None:
     """Manually set the active model pointer (rollback / override)."""
     from rich.console import Console
@@ -1539,7 +1539,7 @@ def infer_batch_cmd(
     date_from: str = typer.Option(..., "--from", help="Start date (YYYY-MM-DD)"),
     date_to: str = typer.Option(..., "--to", help="End date (YYYY-MM-DD, inclusive)"),
     synthetic: bool = typer.Option(False, "--synthetic", help="Generate dummy features instead of reading from disk"),
-    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory"),
+    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory (derived from TASKCLF_HOME)"),
     out_dir: str = typer.Option(DEFAULT_OUT_DIR, help="Output directory for predictions and segments"),
     smooth_window: int = typer.Option(DEFAULT_SMOOTH_WINDOW, help="Rolling majority smoothing window size"),
     reject_threshold: float = typer.Option(DEFAULT_REJECT_THRESHOLD, "--reject-threshold", help="Max-probability below which prediction is rejected as Mixed/Unknown"),
@@ -1717,7 +1717,7 @@ def infer_baseline_cmd(
     date_from: str = typer.Option(..., "--from", help="Start date (YYYY-MM-DD)"),
     date_to: str = typer.Option(..., "--to", help="End date (YYYY-MM-DD, inclusive)"),
     synthetic: bool = typer.Option(False, "--synthetic", help="Generate dummy features instead of reading from disk"),
-    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory"),
+    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory (derived from TASKCLF_HOME)"),
     out_dir: str = typer.Option(DEFAULT_OUT_DIR, help="Output directory for predictions and segments"),
     smooth_window: int = typer.Option(DEFAULT_SMOOTH_WINDOW, help="Rolling majority smoothing window size"),
 ) -> None:
@@ -1783,7 +1783,7 @@ def infer_compare_cmd(
     date_from: str = typer.Option(..., "--from", help="Start date (YYYY-MM-DD)"),
     date_to: str = typer.Option(..., "--to", help="End date (YYYY-MM-DD, inclusive)"),
     synthetic: bool = typer.Option(False, "--synthetic", help="Generate dummy features + labels"),
-    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory"),
+    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory (derived from TASKCLF_HOME)"),
     out_dir: str = typer.Option(DEFAULT_OUT_DIR, help="Output directory for comparison report"),
 ) -> None:
     """Compare rule baseline vs ML model on labeled data."""
@@ -2242,7 +2242,7 @@ def tray_cmd(
     aw_host: str = typer.Option(DEFAULT_AW_HOST, "--aw-host", help="ActivityWatch server URL"),
     poll_seconds: int = typer.Option(DEFAULT_POLL_SECONDS, "--poll-seconds", help="Seconds between polling iterations"),
     title_salt: str = typer.Option(DEFAULT_TITLE_SALT, "--title-salt", help="Salt for hashing window titles"),
-    data_dir: str | None = typer.Option(None, "--data-dir", help="Processed data directory (default: data/processed; ephemeral in --dev)"),
+    data_dir: str | None = typer.Option(None, "--data-dir", help="Processed data directory (default: TASKCLF_HOME/data/processed; ephemeral in --dev)"),
     transition_minutes: int = typer.Option(DEFAULT_TRANSITION_MINUTES, "--transition-minutes", help="Minutes a new app must persist before prompting to label"),
     port: int = typer.Option(8741, "--port", help="Port for the embedded web UI server"),
     dev: bool = typer.Option(False, "--dev", help="Start Vite dev server for frontend hot reload"),
@@ -2306,7 +2306,7 @@ def ui_serve_cmd(
     aw_host: str = typer.Option(DEFAULT_AW_HOST, "--aw-host", help="ActivityWatch server URL"),
     poll_seconds: int = typer.Option(DEFAULT_POLL_SECONDS, "--poll-seconds", help="Seconds between AW polling iterations"),
     title_salt: str = typer.Option(DEFAULT_TITLE_SALT, "--title-salt", help="Salt for hashing window titles"),
-    data_dir: str | None = typer.Option(None, "--data-dir", help="Processed data directory (default: data/processed; ephemeral in --dev)"),
+    data_dir: str | None = typer.Option(None, "--data-dir", help="Processed data directory (default: TASKCLF_HOME/data/processed; ephemeral in --dev)"),
     transition_minutes: int = typer.Option(DEFAULT_TRANSITION_MINUTES, "--transition-minutes", help="Minutes a new app must persist before suggesting a label"),
     browser: bool = typer.Option(False, "--browser", help="Open in browser instead of native window"),
     dev: bool = typer.Option(False, "--dev", help="Start Vite dev server for frontend hot reload"),

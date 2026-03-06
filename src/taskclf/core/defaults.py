@@ -2,11 +2,20 @@
 
 Every project-wide magic number / string lives here.
 Import these instead of hard-coding values in function signatures or CLI options.
+
+Path constants (``DEFAULT_DATA_DIR``, ``DEFAULT_MODELS_DIR``, etc.) are
+absolute paths derived from :func:`taskclf.core.paths.taskclf_home`.
+Set the ``TASKCLF_HOME`` environment variable to override the base
+directory; see :mod:`taskclf.core.paths` for the full resolution order.
 """
 
 from __future__ import annotations
 
 from typing import Final
+
+from taskclf.core.paths import taskclf_home
+
+_HOME = taskclf_home()
 
 # ── Timing / buckets ──
 DEFAULT_BUCKET_SECONDS: Final[int] = 60
@@ -19,11 +28,11 @@ DEFAULT_ROLLING_WINDOW_5: Final[int] = 5
 DEFAULT_ROLLING_WINDOW_15: Final[int] = 15
 DEFAULT_TITLE_HASH_BUCKETS: Final[int] = 256
 
-# ── Paths ──
-DEFAULT_OUT_DIR: Final[str] = "artifacts"
-DEFAULT_DATA_DIR: Final[str] = "data/processed"
-DEFAULT_RAW_AW_DIR: Final[str] = "data/raw/aw"
-DEFAULT_MODELS_DIR: Final[str] = "models"
+# ── Paths (absolute, derived from TASKCLF_HOME) ──
+DEFAULT_OUT_DIR: Final[str] = str(_HOME / "artifacts")
+DEFAULT_DATA_DIR: Final[str] = str(_HOME / "data" / "processed")
+DEFAULT_RAW_AW_DIR: Final[str] = str(_HOME / "data" / "raw" / "aw")
+DEFAULT_MODELS_DIR: Final[str] = str(_HOME / "models")
 
 # ── ActivityWatch ──
 DEFAULT_AW_HOST: Final[str] = "http://localhost:5600"
@@ -70,7 +79,7 @@ DEFAULT_CLASS_SHIFT_THRESHOLD: Final[float] = 0.15
 DEFAULT_DRIFT_REFERENCE_DAYS: Final[int] = 7
 DEFAULT_DRIFT_WINDOW_DAYS: Final[int] = 7
 DEFAULT_DRIFT_AUTO_LABEL_LIMIT: Final[int] = 50
-DEFAULT_TELEMETRY_DIR: Final[str] = "artifacts/telemetry"
+DEFAULT_TELEMETRY_DIR: Final[str] = str(_HOME / "artifacts" / "telemetry")
 DEFAULT_PSI_BINS: Final[int] = 10
 
 # ── Retraining ──

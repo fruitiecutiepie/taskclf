@@ -14,6 +14,8 @@ install through daily reports.
 
 ## Installation
 
+### Development (local checkout)
+
 ```bash
 uv sync
 uv run taskclf --help
@@ -30,6 +32,31 @@ train     Train a classifier
 infer     Run batch or online inference
 report    Generate daily summaries
 ```
+
+### Global install
+
+```bash
+uv tool install taskclf
+taskclf --help
+```
+
+When installed globally, all data/model/artifact paths default to a
+platform-specific home directory.  Override it with `TASKCLF_HOME`:
+
+```bash
+export TASKCLF_HOME=~/my-taskclf   # optional, customise the root
+taskclf tray
+```
+
+| Priority | Source | Default |
+|---|---|---|
+| 1 | `TASKCLF_HOME` env var | *(user-defined)* |
+| 2 | macOS | `~/Library/Application Support/taskclf/` |
+| 3 | Linux (XDG) | `~/.local/share/taskclf/` |
+| 4 | Windows | `%LOCALAPPDATA%/taskclf/` |
+
+CLI options like `--data-dir` and `--models-dir` still override the
+defaults when provided.
 
 ---
 
@@ -380,6 +407,9 @@ choosing "Label Last N min" with a label from the submenu.
 
 ## Directory conventions
 
+All paths below are relative to `TASKCLF_HOME` (see
+[Installation](#installation) for resolution order).
+
 | Directory | Contents |
 |---|---|
 | `data/raw/aw/` | Normalized window events from AW exports (by date) |
@@ -387,3 +417,5 @@ choosing "Label Last N min" with a label from the submenu.
 | `data/processed/` | Versioned feature and label datasets |
 | `models/` | Model bundles (one directory per training run, never overwritten) |
 | `artifacts/` | Predictions, segments, reports, evaluation outputs |
+| `artifacts/telemetry/` | Drift and telemetry data |
+| `configs/` | Configuration files (e.g. `retrain.yaml`) |
