@@ -1,5 +1,10 @@
-.PHONY: lint test typecheck docs-serve docs-build ci ui-build ui-dev \
+.PHONY: install lint test typecheck docs-serve docs-build ci ui-build ui-dev \
        version bump-patch bump-minor bump-major
+
+NPM := npm --prefix src/taskclf/ui/frontend
+
+install:
+	uv sync & $(NPM) ci & wait
 
 lint:
 	uv run ruff check .
@@ -17,10 +22,10 @@ docs-build:
 	uv run --group docs zensical build
 
 ui-build:
-	cd src/taskclf/ui/frontend && npm ci && npm run build
+	$(NPM) ci && $(NPM) run build
 
 ui-dev:
-	cd src/taskclf/ui/frontend && npm run dev
+	$(NPM) run dev
 
 ci: lint test
 

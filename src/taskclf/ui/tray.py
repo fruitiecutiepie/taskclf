@@ -41,6 +41,8 @@ from taskclf.ui.events import EventBus
 
 logger = logging.getLogger(__name__)
 
+_VITE_DEV_PORT = 5173
+
 
 def _send_desktop_notification(title: str, message: str, timeout: int = 10) -> None:
     """Best-effort passive desktop notification (secondary fallback).
@@ -630,8 +632,8 @@ class TrayLabeler:
         if self._browser:
             import webbrowser
 
-            ui_port = 5173 if (self._dev and self._vite_proc is not None
-                               and self._vite_proc.poll() is None) else self._ui_port
+            ui_port = _VITE_DEV_PORT if (self._dev and self._vite_proc is not None
+                                        and self._vite_proc.poll() is None) else self._ui_port
             webbrowser.open(f"http://127.0.0.1:{ui_port}")
             return
 
@@ -658,7 +660,7 @@ class TrayLabeler:
 
         Returns:
             The effective UI port (may differ from ``self._ui_port`` when
-            ``--dev`` starts a Vite proxy on port 5173).
+            ``--dev`` starts a Vite dev server on ``_VITE_DEV_PORT``).
         """
         import os
 
@@ -701,13 +703,17 @@ class TrayLabeler:
                 print("Installing frontend dependencies…")
                 subprocess.run(["npm", "install"], cwd=frontend_dir, check=True)
 
-            vite_env = {**os.environ, "TASKCLF_PORT": str(self._ui_port)}
+            vite_env = {
+                **os.environ,
+                "TASKCLF_PORT": str(self._ui_port),
+                "TASKCLF_DEV_PORT": str(_VITE_DEV_PORT),
+            }
             self._vite_proc = subprocess.Popen(
                 ["npm", "run", "dev"],
                 cwd=frontend_dir,
                 env=vite_env,
             )
-            ui_port = 5173
+            ui_port = _VITE_DEV_PORT
             print(f"Vite dev server → http://127.0.0.1:{ui_port} (hot reload)")
 
             for _attempt in range(30):

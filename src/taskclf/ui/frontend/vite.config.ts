@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import solidPlugin from "vite-plugin-solid";
 
 const apiPort = process.env.TASKCLF_PORT || "8741";
+const devPort = Number(process.env.TASKCLF_DEV_PORT) || 5173;
 
 export default defineConfig({
   plugins: [solidPlugin()],
@@ -12,6 +13,8 @@ export default defineConfig({
   },
   server: {
     host: "127.0.0.1",
+    port: devPort,
+    strictPort: true,
     proxy: {
       "/api": `http://127.0.0.1:${apiPort}`,
       "/ws": { target: `ws://127.0.0.1:${apiPort}`, ws: true },
