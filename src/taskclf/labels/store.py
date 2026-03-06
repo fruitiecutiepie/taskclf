@@ -165,6 +165,49 @@ def _same_user(a: LabelSpan, b: LabelSpan) -> bool:
     return a.user_id == b.user_id
 
 
+def merge_label_spans(
+    existing: Sequence[LabelSpan],
+    imported: Sequence[LabelSpan],
+) -> list[LabelSpan]:
+    """Merge *imported* spans into *existing*, deduplicating and checking overlaps.
+
+    Deduplication key is ``(start_ts, end_ts, user_id)``; when a
+    collision occurs the imported span wins (newer provenance).
+
+    Args:
+        existing: Currently stored label spans.
+        imported: Newly imported label spans.
+
+    Returns:
+        Merged list of ``LabelSpan`` instances, sorted by ``start_ts``.
+
+    Raises:
+        ValueError: If the merged set contains overlapping spans for
+            the same user.
+    """
+    by_key: dict[tuple, LabelSpan] = {}
+    for s in existing:
+        by_key[(s.start_ts, s.end_ts, s.user_id)] = s
+    for s in imported:
+        by_key[(s.start_ts, s.end_ts, s.user_id)] = s
+
+    merged = sorted(by_key.values(), key=lambda s: s.start_ts)
+
+    for i, a in enumerate(merged):
+        for j, b in enumerate(merged):
+            if i >= j:
+                continue
+            if not _same_user(a, b):
+                continue
+            if a.start_ts < b.end_ts and b.start_ts < a.end_ts:
+                raise ValueError(
+                    f"Span [{a.start_ts}, {a.end_ts}) overlaps "
+                    f"[{b.start_ts}, {b.end_ts}) for user {a.user_id!r}"
+                )
+
+    return merged
+
+
 def append_label_span(span: LabelSpan, path: Path) -> Path:
     """Append a single label span to an existing (or new) parquet file.
 

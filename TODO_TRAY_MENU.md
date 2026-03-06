@@ -7,6 +7,7 @@ Current menu:
 - Pause / Resume (dynamic)
 - ---
 - Label Stats (notification)
+- Import Labels (file picker + merge/overwrite)
 - Export Labels
 - ---
 - Status (notification)
@@ -29,27 +30,15 @@ Implemented in `_label_stats()` callback + `GET /api/labels/stats` endpoint.
 
 ---
 
-### 2. Import Labels
+### ~~2. Import Labels~~ DONE
 
-**What:** "Import Labels" menu item that opens a file picker for a CSV and imports it via `import_labels_from_csv()` + `write_label_spans()`.
+Implemented in `_import_labels()` callback + `POST /api/labels/import` endpoint.
 
-**Why:** Counterpart to the existing "Export Labels". Makes sharing bidirectional from the tray — a collaborator exports their labels, sends the CSV, and you import it without touching the CLI.
-
-**Implementation:**
-- Mirror `_export_labels()` structure: tkinter `askopenfilename` with `filetypes=[("CSV files", "*.csv")]`.
-- Call `import_labels_from_csv(chosen_path)` to validate.
-- **Merge strategy decision needed:** currently `import_labels_from_csv` returns `list[LabelSpan]` and the CLI's `labels import` command overwrites the entire parquet via `write_label_spans()`. For the tray, appending (via `append_label_span` per span) is safer but slower and may conflict. Options:
-  - (a) Overwrite (matches CLI behavior, simple, but destructive).
-  - (b) Append each span (safe but O(n^2) overlap checks).
-  - (c) Merge: read existing + imported, deduplicate by `(start_ts, end_ts, user_id)`, check overlaps, write merged set.
-- Notify on success ("Imported N labels from file.csv") or failure ("Import failed: ...").
-- Add `POST /api/labels/import` endpoint accepting multipart CSV upload.
-
-**Touches:**
-- `src/taskclf/ui/tray.py` — add `_import_labels()` callback and menu item
-- `src/taskclf/ui/server.py` — add `POST /api/labels/import` endpoint
-- `tests/test_tray.py` — test import success / failure / cancel
-- `docs/api/ui/labeling.md` — document menu item and endpoint
+- Tray menu item opens a file picker for a CSV, then asks the user to choose merge or overwrite strategy via a tkinter messagebox.
+- **Merge** deduplicates by `(start_ts, end_ts, user_id)` (imported wins on collision), validates no overlaps in the merged set, writes the result. Uses `merge_label_spans()` in `labels/store.py`.
+- **Overwrite** replaces all existing labels with the imported set.
+- REST endpoint accepts multipart `file` + `strategy` form field (default `"merge"`). Returns `{status, imported, total, strategy}`. 409 on overlap conflicts during merge, 422 on invalid CSV.
+- Tests: `TestImportLabels` in `tests/test_tray.py` (6 tests: merge, overwrite, cancel file, cancel strategy, bad CSV, menu structure), `TestImportLabels` in `tests/test_ui_server.py` (7 tests: merge, overwrite, overlap 409, dedup, invalid CSV, invalid strategy, default strategy).
 
 ---
 
@@ -141,7 +130,7 @@ Open Dashboard          (default / left-click)
 Pause / Resume          (dynamic)
 ─────────────────────
 Label Stats             (notification)       ✅ DONE
-Import Labels           (file picker)
+Import Labels           (file picker)         ✅ DONE
 Export Labels           (file picker)
 ─────────────────────
 Model ►                 (submenu)

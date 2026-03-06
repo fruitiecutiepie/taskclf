@@ -1252,6 +1252,213 @@ class TestTrayMenuExportLabels:
 
 
 # ---------------------------------------------------------------------------
+# Import Labels  (Item 2)
+# ---------------------------------------------------------------------------
+
+
+class TestImportLabels:
+    """Tests for TrayLabeler._import_labels tray callback."""
+
+    def _write_csv(self, path: Path, rows: list[dict]) -> None:
+        import csv
+        fieldnames = list(rows[0].keys())
+        with open(path, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(rows)
+
+    def _sample_csv_rows(self) -> list[dict]:
+        return [
+            {
+                "start_ts": "2026-03-01 09:00:00",
+                "end_ts": "2026-03-01 09:30:00",
+                "label": "Build",
+                "provenance": "manual",
+            },
+            {
+                "start_ts": "2026-03-01 10:00:00",
+                "end_ts": "2026-03-01 10:30:00",
+                "label": "Meet",
+                "provenance": "manual",
+            },
+        ]
+
+    def test_import_success_merge(self, tmp_path: Path) -> None:
+        """Import with merge strategy adds new labels alongside existing."""
+        import sys
+        from taskclf.labels.store import write_label_spans
+
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+
+        labels_dir = tmp_path / "labels_v1"
+        labels_dir.mkdir(parents=True)
+        existing_span = LabelSpan(
+            start_ts=dt.datetime(2026, 3, 1, 8, 0),
+            end_ts=dt.datetime(2026, 3, 1, 8, 30),
+            label="Write",
+            provenance="manual",
+        )
+        write_label_spans([existing_span], labels_dir / "labels.parquet")
+
+        csv_file = tmp_path / "import.csv"
+        self._write_csv(csv_file, self._sample_csv_rows())
+
+        mock_tk = MagicMock()
+        mock_tk.filedialog.askopenfilename.return_value = str(csv_file)
+        mock_tk.messagebox.askyesnocancel.return_value = True  # merge
+
+        with (
+            patch.dict(sys.modules, {
+                "tkinter": mock_tk,
+                "tkinter.filedialog": mock_tk.filedialog,
+                "tkinter.messagebox": mock_tk.messagebox,
+            }),
+            patch.object(labeler, "_notify") as mock_notify,
+        ):
+            labeler._import_labels()
+
+        mock_notify.assert_called_once()
+        msg = mock_notify.call_args[0][0]
+        assert "imported" in msg.lower()
+        assert "2" in msg
+
+        loaded = read_label_spans(labels_dir / "labels.parquet")
+        assert len(loaded) == 3
+
+    def test_import_success_overwrite(self, tmp_path: Path) -> None:
+        """Import with overwrite strategy replaces all existing labels."""
+        import sys
+        from taskclf.labels.store import write_label_spans
+
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+
+        labels_dir = tmp_path / "labels_v1"
+        labels_dir.mkdir(parents=True)
+        existing_span = LabelSpan(
+            start_ts=dt.datetime(2026, 3, 1, 8, 0),
+            end_ts=dt.datetime(2026, 3, 1, 8, 30),
+            label="Write",
+            provenance="manual",
+        )
+        write_label_spans([existing_span], labels_dir / "labels.parquet")
+
+        csv_file = tmp_path / "import.csv"
+        self._write_csv(csv_file, self._sample_csv_rows())
+
+        mock_tk = MagicMock()
+        mock_tk.filedialog.askopenfilename.return_value = str(csv_file)
+        mock_tk.messagebox.askyesnocancel.return_value = False  # overwrite
+
+        with (
+            patch.dict(sys.modules, {
+                "tkinter": mock_tk,
+                "tkinter.filedialog": mock_tk.filedialog,
+                "tkinter.messagebox": mock_tk.messagebox,
+            }),
+            patch.object(labeler, "_notify") as mock_notify,
+        ):
+            labeler._import_labels()
+
+        mock_notify.assert_called_once()
+        assert "imported" in mock_notify.call_args[0][0].lower()
+
+        loaded = read_label_spans(labels_dir / "labels.parquet")
+        assert len(loaded) == 2
+        labels = {s.label for s in loaded}
+        assert "Write" not in labels
+
+    def test_import_cancel_file_dialog(self, tmp_path: Path) -> None:
+        """Canceling the file dialog performs no import."""
+        import sys
+
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+
+        mock_tk = MagicMock()
+        mock_tk.filedialog.askopenfilename.return_value = ""
+
+        with (
+            patch.dict(sys.modules, {
+                "tkinter": mock_tk,
+                "tkinter.filedialog": mock_tk.filedialog,
+                "tkinter.messagebox": mock_tk.messagebox,
+            }),
+            patch.object(labeler, "_notify") as mock_notify,
+        ):
+            labeler._import_labels()
+
+        mock_notify.assert_not_called()
+        mock_tk.messagebox.askyesnocancel.assert_not_called()
+
+    def test_import_cancel_strategy_dialog(self, tmp_path: Path) -> None:
+        """Canceling the strategy dialog performs no import."""
+        import sys
+
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+
+        csv_file = tmp_path / "import.csv"
+        self._write_csv(csv_file, self._sample_csv_rows())
+
+        mock_tk = MagicMock()
+        mock_tk.filedialog.askopenfilename.return_value = str(csv_file)
+        mock_tk.messagebox.askyesnocancel.return_value = None  # cancel
+
+        with (
+            patch.dict(sys.modules, {
+                "tkinter": mock_tk,
+                "tkinter.filedialog": mock_tk.filedialog,
+                "tkinter.messagebox": mock_tk.messagebox,
+            }),
+            patch.object(labeler, "_notify") as mock_notify,
+        ):
+            labeler._import_labels()
+
+        mock_notify.assert_not_called()
+
+    def test_import_failure_bad_csv(self, tmp_path: Path) -> None:
+        """Invalid CSV (missing columns) notifies failure."""
+        import sys
+
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+
+        csv_file = tmp_path / "bad.csv"
+        csv_file.write_text("col_a,col_b\n1,2\n")
+
+        mock_tk = MagicMock()
+        mock_tk.filedialog.askopenfilename.return_value = str(csv_file)
+        mock_tk.messagebox.askyesnocancel.return_value = True
+
+        with (
+            patch.dict(sys.modules, {
+                "tkinter": mock_tk,
+                "tkinter.filedialog": mock_tk.filedialog,
+                "tkinter.messagebox": mock_tk.messagebox,
+            }),
+            patch.object(labeler, "_notify") as mock_notify,
+        ):
+            labeler._import_labels()
+
+        mock_notify.assert_called_once()
+        assert "failed" in mock_notify.call_args[0][0].lower()
+
+    def test_build_menu_contains_import_labels(self, tmp_path: Path) -> None:
+        """Menu structure includes Import Labels item."""
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+        menu = labeler._build_menu()
+        labels = [
+            item.text if isinstance(item.text, str) else item.text(None)
+            for item in menu.items
+            if hasattr(item, "text") and item.text is not None
+        ]
+        assert "Import Labels" in labels
+
+
+# ---------------------------------------------------------------------------
 # Label Stats  (Item 1)
 # ---------------------------------------------------------------------------
 

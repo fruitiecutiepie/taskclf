@@ -16,7 +16,7 @@ from pathlib import Path
 from collections.abc import Callable
 from typing import Any, Literal
 
-from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Form, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -32,8 +32,11 @@ from taskclf.labels.store import (
     delete_label_span,
     export_labels_to_csv,
     generate_label_summary,
+    import_labels_from_csv,
+    merge_label_spans,
     read_label_spans,
     update_label_span,
+    write_label_spans,
 )
 from taskclf.ui.events import EventBus
 
@@ -130,6 +133,13 @@ class LabelStatsResponse(BaseModel):
     count: int
     total_minutes: float
     breakdown: dict[str, float]
+
+
+class LabelImportResponse(BaseModel):
+    status: str
+    imported: int
+    total: int
+    strategy: str
 
 
 class OverlapErrorDetail(BaseModel):
@@ -381,6 +391,62 @@ def create_app(
         return LabelStatsResponse(
             date=target.isoformat(), count=len(day_spans),
             total_minutes=total, breakdown=breakdown,
+        )
+
+    @app.post("/api/labels/import")
+    async def import_labels(
+        file: UploadFile,
+        strategy: str = Form("merge"),
+    ) -> LabelImportResponse:
+        """Import label spans from an uploaded CSV file.
+
+        Accepts ``strategy`` of ``"merge"`` (deduplicate and combine
+        with existing labels) or ``"overwrite"`` (replace all labels).
+        """
+        import tempfile
+
+        if strategy not in ("merge", "overwrite"):
+            raise HTTPException(
+                status_code=422,
+                detail=f"Invalid strategy {strategy!r}; must be 'merge' or 'overwrite'",
+            )
+
+        with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as tmp:
+            tmp.write(await file.read())
+            tmp_path = Path(tmp.name)
+
+        try:
+            imported = import_labels_from_csv(tmp_path)
+        except ValueError as exc:
+            tmp_path.unlink(missing_ok=True)
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except Exception as exc:
+            tmp_path.unlink(missing_ok=True)
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        finally:
+            tmp_path.unlink(missing_ok=True)
+
+        if strategy == "overwrite":
+            labels_path.parent.mkdir(parents=True, exist_ok=True)
+            write_label_spans(imported, labels_path)
+            total = len(imported)
+        else:
+            existing: list = []
+            if labels_path.exists():
+                existing = read_label_spans(labels_path)
+            try:
+                merged = merge_label_spans(existing, imported)
+            except ValueError as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+            labels_path.parent.mkdir(parents=True, exist_ok=True)
+            write_label_spans(merged, labels_path)
+            total = len(merged)
+
+        return LabelImportResponse(
+            status="ok",
+            imported=len(imported),
+            total=total,
+            strategy=strategy,
         )
 
     # -- REST: queue ----------------------------------------------------------

@@ -592,6 +592,7 @@ class TrayLabeler:
             ),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Label Stats", self._label_stats),
+            pystray.MenuItem("Import Labels", self._import_labels),
             pystray.MenuItem("Export Labels", self._export_labels),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Status", self._show_status),
@@ -640,6 +641,70 @@ class TrayLabeler:
         except ValueError as exc:
             self._notify(f"Export failed: {exc}")
             logger.warning("Label export failed: %s", exc)
+
+    def _import_labels(self, *_args: Any) -> None:
+        from taskclf.labels.store import (
+            import_labels_from_csv,
+            merge_label_spans,
+            read_label_spans,
+            write_label_spans,
+        )
+
+        csv_path: Path | None = None
+        strategy: str | None = None
+        try:
+            import tkinter as tk
+            from tkinter import filedialog, messagebox
+
+            root = tk.Tk()
+            root.withdraw()
+            chosen = filedialog.askopenfilename(
+                filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+                title="Import Labels",
+            )
+            if not chosen:
+                root.destroy()
+                return
+            csv_path = Path(chosen)
+
+            answer = messagebox.askyesnocancel(
+                "Import Strategy",
+                "Merge with existing labels?\n\n"
+                "Yes = merge (keep existing, add new)\n"
+                "No = overwrite (replace all labels)",
+                parent=root,
+            )
+            root.destroy()
+            if answer is None:
+                return
+            strategy = "merge" if answer else "overwrite"
+        except Exception:
+            logger.debug("tkinter unavailable for import dialog")
+            self._notify("Import failed: no file dialog available")
+            return
+
+        try:
+            imported = import_labels_from_csv(csv_path)
+        except (ValueError, Exception) as exc:
+            self._notify(f"Import failed: {exc}")
+            logger.warning("Label import failed: %s", exc)
+            return
+
+        try:
+            if strategy == "overwrite":
+                write_label_spans(imported, self._labels_path)
+            else:
+                existing: list = []
+                if self._labels_path.exists():
+                    existing = read_label_spans(self._labels_path)
+                merged = merge_label_spans(existing, imported)
+                write_label_spans(merged, self._labels_path)
+
+            self._notify(f"Imported {len(imported)} labels from {csv_path.name}")
+            logger.info("Imported %d labels from %s (strategy=%s)", len(imported), csv_path, strategy)
+        except ValueError as exc:
+            self._notify(f"Import failed: {exc}")
+            logger.warning("Label import failed: %s", exc)
 
     def _label_stats(self, *_args: Any) -> None:
         """Show a notification with today's labeling progress."""

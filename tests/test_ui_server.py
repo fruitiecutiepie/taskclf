@@ -1361,3 +1361,157 @@ class TestLabelStats:
         data = resp.json()
         today = dt.datetime.now(dt.timezone.utc).date().isoformat()
         assert data["date"] == today
+
+
+# ---------------------------------------------------------------------------
+# POST /api/labels/import  (Item 2)
+# ---------------------------------------------------------------------------
+
+
+def _make_csv_bytes(rows: list[dict]) -> bytes:
+    """Build CSV bytes from a list of dicts for upload testing."""
+    import csv
+    import io
+
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=list(rows[0].keys()))
+    writer.writeheader()
+    writer.writerows(rows)
+    return buf.getvalue().encode()
+
+
+_IMPORT_ROWS = [
+    {
+        "start_ts": "2026-03-01 09:00:00",
+        "end_ts": "2026-03-01 09:30:00",
+        "label": "Build",
+        "provenance": "manual",
+    },
+    {
+        "start_ts": "2026-03-01 10:00:00",
+        "end_ts": "2026-03-01 10:30:00",
+        "label": "Meet",
+        "provenance": "manual",
+    },
+]
+
+
+class TestImportLabels:
+    """Tests for POST /api/labels/import endpoint."""
+
+    def test_import_merge_happy_path(self, client: TestClient) -> None:
+        """Merge preserves existing labels and adds new ones."""
+        client.post("/api/labels", json={
+            "start_ts": "2026-03-01T08:00:00",
+            "end_ts": "2026-03-01T08:30:00",
+            "label": "Write",
+        })
+
+        csv_bytes = _make_csv_bytes(_IMPORT_ROWS)
+        resp = client.post(
+            "/api/labels/import",
+            files={"file": ("labels.csv", csv_bytes, "text/csv")},
+            data={"strategy": "merge"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "ok"
+        assert data["imported"] == 2
+        assert data["total"] == 3
+        assert data["strategy"] == "merge"
+
+        labels = client.get("/api/labels").json()
+        assert len(labels) == 3
+
+    def test_import_overwrite_happy_path(self, client: TestClient) -> None:
+        """Overwrite replaces all existing labels with the imported ones."""
+        client.post("/api/labels", json={
+            "start_ts": "2026-03-01T08:00:00",
+            "end_ts": "2026-03-01T08:30:00",
+            "label": "Write",
+        })
+
+        csv_bytes = _make_csv_bytes(_IMPORT_ROWS)
+        resp = client.post(
+            "/api/labels/import",
+            files={"file": ("labels.csv", csv_bytes, "text/csv")},
+            data={"strategy": "overwrite"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "ok"
+        assert data["imported"] == 2
+        assert data["total"] == 2
+        assert data["strategy"] == "overwrite"
+
+        labels = client.get("/api/labels").json()
+        assert len(labels) == 2
+        label_names = {l["label"] for l in labels}
+        assert "Write" not in label_names
+
+    def test_import_merge_overlap_409(self, client: TestClient) -> None:
+        """Merge fails with 409 when imported spans overlap existing ones."""
+        client.post("/api/labels", json={
+            "start_ts": "2026-03-01T09:10:00",
+            "end_ts": "2026-03-01T09:40:00",
+            "label": "Debug",
+        })
+
+        csv_bytes = _make_csv_bytes(_IMPORT_ROWS)
+        resp = client.post(
+            "/api/labels/import",
+            files={"file": ("labels.csv", csv_bytes, "text/csv")},
+            data={"strategy": "merge"},
+        )
+        assert resp.status_code == 409
+
+    def test_import_merge_deduplicates(self, client: TestClient) -> None:
+        """Duplicate spans (same start_ts, end_ts, user_id) are deduplicated."""
+        csv_bytes = _make_csv_bytes(_IMPORT_ROWS)
+        client.post(
+            "/api/labels/import",
+            files={"file": ("labels.csv", csv_bytes, "text/csv")},
+            data={"strategy": "merge"},
+        )
+
+        csv_bytes_2 = _make_csv_bytes(_IMPORT_ROWS)
+        resp = client.post(
+            "/api/labels/import",
+            files={"file": ("labels2.csv", csv_bytes_2, "text/csv")},
+            data={"strategy": "merge"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["total"] == 2
+
+        labels = client.get("/api/labels").json()
+        assert len(labels) == 2
+
+    def test_import_invalid_csv_422(self, client: TestClient) -> None:
+        """CSV with missing required columns returns 422."""
+        bad_csv = b"col_a,col_b\n1,2\n"
+        resp = client.post(
+            "/api/labels/import",
+            files={"file": ("bad.csv", bad_csv, "text/csv")},
+            data={"strategy": "merge"},
+        )
+        assert resp.status_code == 422
+
+    def test_import_invalid_strategy_422(self, client: TestClient) -> None:
+        """Invalid strategy value returns 422."""
+        csv_bytes = _make_csv_bytes(_IMPORT_ROWS)
+        resp = client.post(
+            "/api/labels/import",
+            files={"file": ("labels.csv", csv_bytes, "text/csv")},
+            data={"strategy": "invalid"},
+        )
+        assert resp.status_code == 422
+
+    def test_import_default_strategy_is_merge(self, client: TestClient) -> None:
+        """Omitting strategy defaults to merge."""
+        csv_bytes = _make_csv_bytes(_IMPORT_ROWS)
+        resp = client.post(
+            "/api/labels/import",
+            files={"file": ("labels.csv", csv_bytes, "text/csv")},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["strategy"] == "merge"
