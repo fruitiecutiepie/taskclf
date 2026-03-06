@@ -1249,3 +1249,304 @@ class TestTrayMenuExportLabels:
             labeler._export_labels()
 
         mock_notify.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Label Stats  (Item 1)
+# ---------------------------------------------------------------------------
+
+
+class TestLabelStats:
+    """Tests for TrayLabeler._label_stats notification."""
+
+    def test_no_file_notifies_no_labels(self, tmp_path: Path) -> None:
+        """When the labels file doesn't exist, show 'No labels yet'."""
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+
+        with patch.object(labeler, "_notify") as mock_notify:
+            labeler._label_stats()
+
+        mock_notify.assert_called_once()
+        assert "no labels" in mock_notify.call_args[0][0].lower()
+
+    def test_no_labels_today(self, tmp_path: Path) -> None:
+        """Labels exist but none from today → 'no labels yet'."""
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+
+        labels_dir = tmp_path / "labels_v1"
+        labels_dir.mkdir(parents=True)
+        yesterday = dt.datetime(2020, 1, 1, 10, 0, 0)
+        span = LabelSpan(
+            start_ts=yesterday,
+            end_ts=yesterday + dt.timedelta(minutes=10),
+            label="Build",
+            provenance="manual",
+        )
+        from taskclf.labels.store import write_label_spans
+        write_label_spans([span], labels_dir / "labels.parquet")
+
+        with patch.object(labeler, "_notify") as mock_notify:
+            labeler._label_stats()
+
+        mock_notify.assert_called_once()
+        assert "no labels" in mock_notify.call_args[0][0].lower()
+
+    def test_today_labels_summary(self, tmp_path: Path) -> None:
+        """Labels from today produce a summary with count, time, breakdown."""
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+
+        labels_dir = tmp_path / "labels_v1"
+        labels_dir.mkdir(parents=True)
+
+        now = dt.datetime.now(dt.timezone.utc)
+        today = now.replace(tzinfo=None)
+        base = dt.datetime(today.year, today.month, today.day, 9, 0, 0)
+        spans = [
+            LabelSpan(
+                start_ts=base,
+                end_ts=base + dt.timedelta(minutes=45),
+                label="Build",
+                provenance="manual",
+            ),
+            LabelSpan(
+                start_ts=base + dt.timedelta(minutes=45),
+                end_ts=base + dt.timedelta(minutes=65),
+                label="Meet",
+                provenance="manual",
+            ),
+        ]
+        from taskclf.labels.store import write_label_spans
+        write_label_spans(spans, labels_dir / "labels.parquet")
+
+        with patch.object(labeler, "_notify") as mock_notify:
+            labeler._label_stats()
+
+        mock_notify.assert_called_once()
+        msg = mock_notify.call_args[0][0]
+        assert "2 labels" in msg
+        assert "Build" in msg
+        assert "Meet" in msg
+        assert "45m" in msg
+        assert "20m" in msg
+
+
+# ---------------------------------------------------------------------------
+# Open Data Directory  (Item 4)
+# ---------------------------------------------------------------------------
+
+
+class TestOpenDataDir:
+    """Tests for TrayLabeler._open_data_dir."""
+
+    @patch("taskclf.ui.tray.subprocess.Popen")
+    @patch("taskclf.ui.tray.platform.system", return_value="Darwin")
+    def test_macos_calls_open(
+        self, _mock_sys: MagicMock, mock_popen: MagicMock, tmp_path: Path,
+    ) -> None:
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+        labeler._open_data_dir()
+
+        mock_popen.assert_called_once_with(["open", str(tmp_path)])
+
+    @patch("taskclf.ui.tray.subprocess.Popen")
+    @patch("taskclf.ui.tray.platform.system", return_value="Linux")
+    def test_linux_calls_xdg_open(
+        self, _mock_sys: MagicMock, mock_popen: MagicMock, tmp_path: Path,
+    ) -> None:
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+        labeler._open_data_dir()
+
+        mock_popen.assert_called_once_with(["xdg-open", str(tmp_path)])
+
+    @patch("taskclf.ui.tray.subprocess.Popen", side_effect=OSError("no open"))
+    @patch("taskclf.ui.tray.platform.system", return_value="Darwin")
+    def test_fallback_notifies_path_on_error(
+        self, _mock_sys: MagicMock, _mock_popen: MagicMock, tmp_path: Path,
+    ) -> None:
+        """When Popen fails, fall back to a notification showing the path."""
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+
+        with patch.object(labeler, "_notify") as mock_notify:
+            labeler._open_data_dir()
+
+        mock_notify.assert_called_once()
+        assert str(tmp_path) in mock_notify.call_args[0][0]
+
+
+# ---------------------------------------------------------------------------
+# Reload Model  (Item 5)
+# ---------------------------------------------------------------------------
+
+
+class TestReloadModel:
+    """Tests for TrayLabeler._reload_model."""
+
+    def test_no_model_dir_notifies(self, tmp_path: Path) -> None:
+        """Without model_dir, notify 'No model directory configured'."""
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+        assert labeler._model_dir is None
+
+        with patch.object(labeler, "_notify") as mock_notify:
+            labeler._reload_model()
+
+        mock_notify.assert_called_once()
+        assert "no model" in mock_notify.call_args[0][0].lower()
+
+    def test_reload_success(self, tmp_path: Path) -> None:
+        """Successful reload updates _suggester and notifies."""
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+        labeler._model_dir = tmp_path / "models" / "run_test"
+
+        mock_suggester = MagicMock()
+        mock_suggester._predictor._metadata.schema_hash = "abc123"
+
+        with (
+            patch("taskclf.ui.tray._LabelSuggester", return_value=mock_suggester) as mock_cls,
+            patch.object(labeler, "_notify") as mock_notify,
+        ):
+            labeler._reload_model()
+
+        mock_cls.assert_called_once_with(labeler._model_dir)
+        assert labeler._suggester is mock_suggester
+        assert labeler._model_schema_hash == "abc123"
+        mock_notify.assert_called_once()
+        assert "reloaded" in mock_notify.call_args[0][0].lower()
+
+    def test_reload_failure_keeps_old_model(self, tmp_path: Path) -> None:
+        """On failure, keep old _suggester and notify error."""
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+        labeler._model_dir = tmp_path / "models" / "run_test"
+        old_suggester = MagicMock()
+        labeler._suggester = old_suggester
+
+        with (
+            patch("taskclf.ui.tray._LabelSuggester", side_effect=RuntimeError("bad model")),
+            patch.object(labeler, "_notify") as mock_notify,
+        ):
+            labeler._reload_model()
+
+        assert labeler._suggester is old_suggester
+        mock_notify.assert_called_once()
+        assert "failed" in mock_notify.call_args[0][0].lower()
+
+
+# ---------------------------------------------------------------------------
+# Connection Status  (Item 6)
+# ---------------------------------------------------------------------------
+
+
+class TestShowStatus:
+    """Tests for TrayLabeler._show_status."""
+
+    def test_status_notification_content(self, tmp_path: Path) -> None:
+        """Status notification contains AW, polls, transitions, labels, model info."""
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+        labeler._monitor._poll_count = 42
+        labeler._transition_count = 3
+        labeler._labels_saved_count = 7
+
+        with patch.object(labeler, "_notify") as mock_notify:
+            labeler._show_status()
+
+        mock_notify.assert_called_once()
+        msg = mock_notify.call_args[0][0]
+        assert "AW: disconnected" in msg
+        assert "Polls: 42" in msg
+        assert "Transitions: 3" in msg
+        assert "Labels: 7" in msg
+        assert "Model: none" in msg
+
+    def test_status_connected_with_model(self, tmp_path: Path) -> None:
+        """Status shows 'connected' when bucket_id is set and model name."""
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+        labeler._monitor._bucket_id = "aw-watcher-window_test"
+        labeler._model_dir = Path("models/run_20260301")
+
+        with patch.object(labeler, "_notify") as mock_notify:
+            labeler._show_status()
+
+        msg = mock_notify.call_args[0][0]
+        assert "AW: connected" in msg
+        assert "Model: run_20260301" in msg
+
+    def test_status_paused(self, tmp_path: Path) -> None:
+        """Status includes '(paused)' when monitoring is paused."""
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+        labeler._monitor.pause()
+
+        with patch.object(labeler, "_notify") as mock_notify:
+            labeler._show_status()
+
+        msg = mock_notify.call_args[0][0]
+        assert "(paused)" in msg
+
+
+# ---------------------------------------------------------------------------
+# Build menu includes new items
+# ---------------------------------------------------------------------------
+
+
+class TestBuildMenuEnhancements:
+    """Verify the updated menu structure includes new items."""
+
+    def test_menu_contains_new_items(self, tmp_path: Path) -> None:
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+        menu = labeler._build_menu()
+
+        labels = []
+        for item in menu.items:
+            if hasattr(item, "text") and item.text is not None:
+                text = item.text if isinstance(item.text, str) else item.text(None)
+                if text:
+                    labels.append(text)
+
+        assert "Label Stats" in labels
+        assert "Status" in labels
+        assert "Open Data Folder" in labels
+        assert "Reload Model" in labels
+        assert "Export Labels" in labels
+
+    def test_reload_model_disabled_without_model_dir(self, tmp_path: Path) -> None:
+        """Reload Model is disabled when no model_dir is configured."""
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+        assert labeler._model_dir is None
+
+        menu = labeler._build_menu()
+        reload_item = None
+        for item in menu.items:
+            if hasattr(item, "text") and item.text == "Reload Model":
+                reload_item = item
+                break
+
+        assert reload_item is not None
+        assert reload_item.enabled is False
+
+    def test_reload_model_enabled_with_model_dir(self, tmp_path: Path) -> None:
+        """Reload Model is enabled when model_dir is configured."""
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+        labeler._model_dir = Path("models/run_test")
+
+        menu = labeler._build_menu()
+        reload_item = None
+        for item in menu.items:
+            if hasattr(item, "text") and item.text == "Reload Model":
+                reload_item = item
+                break
+
+        assert reload_item is not None
+        assert reload_item.enabled is True

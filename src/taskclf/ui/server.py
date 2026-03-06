@@ -125,6 +125,13 @@ class NotificationAcceptRequest(BaseModel):
     label: str = Field(description="Suggested label to accept")
 
 
+class LabelStatsResponse(BaseModel):
+    date: str
+    count: int
+    total_minutes: float
+    breakdown: dict[str, float]
+
+
 class OverlapErrorDetail(BaseModel):
     error: str
     conflicting_start_ts: str | None = None
@@ -348,6 +355,32 @@ def create_app(
             io.BytesIO(csv_bytes),
             media_type="text/csv",
             headers={"Content-Disposition": "attachment; filename=labels_export.csv"},
+        )
+
+    @app.get("/api/labels/stats")
+    async def label_stats(
+        date: str | None = Query(None, description="ISO-8601 date (defaults to today UTC)"),
+    ) -> LabelStatsResponse:
+        """Return labeling stats for a given day."""
+        target = (
+            dt.date.fromisoformat(date) if date
+            else dt.datetime.now(dt.timezone.utc).date()
+        )
+        if not labels_path.exists():
+            return LabelStatsResponse(
+                date=target.isoformat(), count=0,
+                total_minutes=0.0, breakdown={},
+            )
+        spans = read_label_spans(labels_path)
+        day_spans = [s for s in spans if s.start_ts.date() == target]
+        breakdown: dict[str, float] = {}
+        for s in day_spans:
+            mins = round((s.end_ts - s.start_ts).total_seconds() / 60, 1)
+            breakdown[s.label] = round(breakdown.get(s.label, 0) + mins, 1)
+        total = round(sum(breakdown.values()), 1)
+        return LabelStatsResponse(
+            date=target.isoformat(), count=len(day_spans),
+            total_minutes=total, breakdown=breakdown,
         )
 
     # -- REST: queue ----------------------------------------------------------

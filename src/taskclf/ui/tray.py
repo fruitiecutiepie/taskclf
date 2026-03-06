@@ -590,7 +590,16 @@ class TrayLabeler:
                 lambda _: "Resume" if self._monitor.is_paused else "Pause",
                 self._on_pause_menu,
             ),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem("Label Stats", self._label_stats),
             pystray.MenuItem("Export Labels", self._export_labels),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem("Status", self._show_status),
+            pystray.MenuItem("Open Data Folder", self._open_data_dir),
+            pystray.MenuItem(
+                "Reload Model", self._reload_model,
+                enabled=lambda _: self._model_dir is not None,
+            ),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Quit", self._quit),
         )
@@ -631,6 +640,91 @@ class TrayLabeler:
         except ValueError as exc:
             self._notify(f"Export failed: {exc}")
             logger.warning("Label export failed: %s", exc)
+
+    def _label_stats(self, *_args: Any) -> None:
+        """Show a notification with today's labeling progress."""
+        from taskclf.labels.store import read_label_spans
+
+        if not self._labels_path.exists():
+            self._notify("No labels yet")
+            return
+
+        try:
+            spans = read_label_spans(self._labels_path)
+        except Exception as exc:
+            self._notify(f"Could not read labels: {exc}")
+            return
+
+        today = dt.datetime.now(dt.timezone.utc).date()
+        today_spans = [
+            s for s in spans
+            if s.start_ts.date() == today
+            or (hasattr(s.start_ts, 'astimezone') and s.start_ts.date() == today)
+        ]
+
+        if not today_spans:
+            self._notify("Today: no labels yet")
+            return
+
+        breakdown: dict[str, float] = {}
+        for s in today_spans:
+            mins = (s.end_ts - s.start_ts).total_seconds() / 60
+            breakdown[s.label] = breakdown.get(s.label, 0) + mins
+
+        total_min = sum(breakdown.values())
+        hours = int(total_min // 60)
+        mins = int(total_min % 60)
+        time_str = f"{hours}h {mins}m" if hours else f"{mins}m"
+
+        parts = [f"{label} {int(m)}m" for label, m in sorted(
+            breakdown.items(), key=lambda x: x[1], reverse=True,
+        )]
+        summary = f"Today: {len(today_spans)} labels, {time_str} — {', '.join(parts)}"
+        self._notify(summary)
+
+    def _open_data_dir(self, *_args: Any) -> None:
+        """Open the data directory in the OS file manager."""
+        system = platform.system()
+        try:
+            if system == "Darwin":
+                subprocess.Popen(["open", str(self._data_dir)])
+            else:
+                subprocess.Popen(["xdg-open", str(self._data_dir)])
+        except Exception:
+            logger.debug("Could not open data directory", exc_info=True)
+            self._notify(f"Data dir: {self._data_dir}")
+
+    def _reload_model(self, *_args: Any) -> None:
+        """Re-read the model bundle from disk without restarting."""
+        if self._model_dir is None:
+            self._notify("No model directory configured")
+            return
+        try:
+            new_suggester = _LabelSuggester(self._model_dir)
+            new_suggester._aw_host = self._aw_host
+            new_suggester._title_salt = self._title_salt
+            self._suggester = new_suggester
+            self._model_schema_hash = new_suggester._predictor._metadata.schema_hash
+            self._notify(f"Model reloaded from {self._model_dir.name}")
+            logger.info("Model reloaded from %s", self._model_dir)
+        except Exception as exc:
+            self._notify(f"Reload failed: {exc}")
+            logger.warning("Model reload failed: %s", exc, exc_info=True)
+
+    def _show_status(self, *_args: Any) -> None:
+        """Show a notification with connection and session status."""
+        aw_status = "connected" if self._monitor._bucket_id is not None else "disconnected"
+        paused = " (paused)" if self._monitor.is_paused else ""
+        model_name = self._model_dir.name if self._model_dir else "none"
+
+        parts = [
+            f"AW: {aw_status}{paused}",
+            f"Polls: {self._monitor._poll_count}",
+            f"Transitions: {self._transition_count}",
+            f"Labels: {self._labels_saved_count}",
+            f"Model: {model_name}",
+        ]
+        self._notify(" | ".join(parts))
 
     def _open_dashboard(self, *_args: Any) -> None:
         if self._browser:

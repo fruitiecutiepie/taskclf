@@ -54,11 +54,12 @@ Options:
 
 The UI is a SolidJS single-page application served by a FastAPI backend:
 
-- **REST endpoints** (`/api/labels`, `/api/labels/export`, `/api/queue`, `/api/features/summary`, `/api/aw/live`, `/api/config/labels`, `/api/config/user`, `/api/tray/pause`, `/api/tray/state`) handle label CRUD, export, queue management, user configuration, tray control, and data queries.
+- **REST endpoints** (`/api/labels`, `/api/labels/export`, `/api/labels/stats`, `/api/queue`, `/api/features/summary`, `/api/aw/live`, `/api/config/labels`, `/api/config/user`, `/api/tray/pause`, `/api/tray/state`) handle label CRUD, export, stats, queue management, user configuration, tray control, and data queries.
   - `POST /api/labels` accepts an optional `extend_forward` boolean. When true, the label is persisted with `extend_forward=true`; when the *next* label is created for the same user, this label's `end_ts` is automatically stretched to the new label's `start_ts`, producing contiguous coverage. The quick-label UI sets this flag by default. On overlap (409), the response body contains structured conflict details: `{"detail": {"error": "...", "conflicting_start_ts": "...", "conflicting_end_ts": "..."}}` so the frontend can show which existing label conflicts and its time range.
   - `PUT /api/labels` changes the label on an existing span identified by `start_ts` + `end_ts`. Returns 404 if no matching span exists.
   - `DELETE /api/labels` removes a span identified by `start_ts` + `end_ts`. Returns 404 if no matching span exists.
   - `GET /api/labels/export` downloads all label spans as a CSV file (`text/csv`). Returns 404 if no labels file exists or the file contains no spans.
+  - `GET /api/labels/stats` returns labeling statistics for a given day. Accepts an optional `date` query parameter (ISO-8601 date string, defaults to today UTC). Returns `{"date": "2026-03-01", "count": 5, "total_minutes": 75.0, "breakdown": {"Build": 45.0, "Meet": 20.0, "Write": 10.0}}`.
   - `POST /api/tray/pause` toggles the monitoring pause state. Returns `{"status": "ok", "paused": true/false}` when connected to a tray, or `{"status": "unavailable", "paused": false}` when no tray callbacks are configured.
   - `GET /api/tray/state` returns the current tray pause state: `{"available": true/false, "paused": true/false}`.
 - **WebSocket** (`/ws/predictions`) streams live events from the ActivityMonitor:
@@ -111,7 +112,11 @@ taskclf tray --dev
 - **Desktop notifications** -- on each transition, a notification prompts the user to label the completed block. By default, app names are redacted for privacy (`privacy_notifications=True`). Set `privacy_notifications=False` to show raw app identifiers. Notifications can be disabled entirely with `notifications_enabled=False`.
 - **Label suggestions** -- when `--model-dir` is provided, the app predicts a label and includes it in the notification. Without a model, all 8 core labels are shown.
 - **Quick-label menus** -- right-click the tray icon to label the last 5/10/15/30 minutes with any core label.
+- **Label Stats** -- tray menu action that shows a desktop notification summarizing today's labeling progress: total label count, total time, and per-label breakdown (e.g. "Today: 5 labels, 1h 15m -- Build 45m, Debug 20m, Write 10m"). Also available via `GET /api/labels/stats` for programmatic access.
 - **Export Labels** -- tray menu action that exports all label spans to a CSV file. Opens a save-file dialog (via tkinter) to choose the destination; falls back to `<data_dir>/labels_v1/labels_export.csv` when tkinter is unavailable. Also available via `GET /api/labels/export` for programmatic access.
+- **Status** -- tray menu action that shows a desktop notification with connection and session status: ActivityWatch connection state, poll count, transition count, saved labels count, and loaded model name.
+- **Open Data Folder** -- tray menu action that opens the data directory in the OS file manager (Finder on macOS, `xdg-open` on Linux). Falls back to a notification showing the path if the file manager cannot be launched.
+- **Reload Model** -- tray menu action that re-reads the model bundle from `--model-dir` without restarting. On success, updates the in-memory suggester and notifies "Model reloaded". On failure, keeps the previous model and notifies the error. Disabled (grayed out) when no `--model-dir` is configured.
 - **Open Web UI** -- menu option to open the labeling web UI in the browser.
 - **Event broadcasting** -- publishes `status`, `tray_state`, `initial_app`, `prediction`, `label_created`, and `suggest_label` events to the shared EventBus for connected WebSocket clients.
 

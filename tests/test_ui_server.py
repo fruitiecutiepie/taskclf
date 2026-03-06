@@ -1303,3 +1303,61 @@ class TestAwareTimestampRoundTrip:
         })
         assert resp.status_code == 200
         assert client.get("/api/labels").json() == []
+
+
+# ---------------------------------------------------------------------------
+# Label Stats endpoint
+# ---------------------------------------------------------------------------
+
+
+class TestLabelStats:
+
+    def test_no_labels_file(self, client: TestClient) -> None:
+        resp = client.get("/api/labels/stats", params={"date": "2026-03-01"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["date"] == "2026-03-01"
+        assert data["count"] == 0
+        assert data["total_minutes"] == 0.0
+        assert data["breakdown"] == {}
+
+    def test_stats_with_labels(self, client: TestClient) -> None:
+        client.post("/api/labels", json={
+            "start_ts": "2026-03-01T09:00:00",
+            "end_ts": "2026-03-01T09:45:00",
+            "label": "Build",
+        })
+        client.post("/api/labels", json={
+            "start_ts": "2026-03-01T10:00:00",
+            "end_ts": "2026-03-01T10:20:00",
+            "label": "Meet",
+        })
+
+        resp = client.get("/api/labels/stats", params={"date": "2026-03-01"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["date"] == "2026-03-01"
+        assert data["count"] == 2
+        assert data["total_minutes"] == 65.0
+        assert data["breakdown"]["Build"] == 45.0
+        assert data["breakdown"]["Meet"] == 20.0
+
+    def test_stats_filters_by_date(self, client: TestClient) -> None:
+        client.post("/api/labels", json={
+            "start_ts": "2026-03-01T09:00:00",
+            "end_ts": "2026-03-01T09:30:00",
+            "label": "Build",
+        })
+
+        resp = client.get("/api/labels/stats", params={"date": "2026-03-02"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["count"] == 0
+        assert data["total_minutes"] == 0.0
+
+    def test_stats_defaults_to_today(self, client: TestClient) -> None:
+        resp = client.get("/api/labels/stats")
+        assert resp.status_code == 200
+        data = resp.json()
+        today = dt.datetime.now(dt.timezone.utc).date().isoformat()
+        assert data["date"] == today

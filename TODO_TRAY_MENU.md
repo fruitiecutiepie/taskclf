@@ -5,7 +5,13 @@ Potential additions to the pystray tray menu in `TrayLabeler._build_menu()` (`sr
 Current menu:
 - Open Dashboard (default / left-click)
 - Pause / Resume (dynamic)
+- ---
+- Label Stats (notification)
 - Export Labels
+- ---
+- Status (notification)
+- Open Data Folder
+- Reload Model (enabled when model_dir set)
 - ---
 - Quit
 
@@ -13,26 +19,13 @@ Current menu:
 
 ## High Priority
 
-### 1. Label Stats (notification)
+### ~~1. Label Stats (notification)~~ DONE
 
-**What:** "Label Stats" menu item that shows a desktop notification summarising today's labeling progress: total label count, time coverage (hours labeled / hours since first label), and per-label distribution (e.g. "Build 45m, Debug 20m, Write 10m").
+Implemented in `_label_stats()` callback + `GET /api/labels/stats` endpoint.
 
-**Why:** The most common mid-work question is "am I labeling enough?" — answering it currently requires opening the dashboard and navigating to the history tab.
-
-**Implementation:**
-- Read spans from `self._labels_path` via `read_label_spans()` (already imported in `_export_labels`).
-- Filter to today (UTC date match on `start_ts`).
-- Compute per-label minutes: `sum((s.end_ts - s.start_ts).total_seconds() / 60 for s in spans if s.label == label)`.
-- Format as a compact notification string, e.g. "Today: 5 labels, 1h 15m — Build 45m, Debug 20m, Write 10m".
-- Call `self._notify(summary)`.
-- No file dialog, no parameters — a single click.
-- Add `GET /api/labels/stats` endpoint in `server.py` returning JSON `{date, count, total_minutes, breakdown: {label: minutes}}` so the dashboard can also surface it.
-
-**Touches:**
-- `src/taskclf/ui/tray.py` — add `_label_stats()` callback and menu item
-- `src/taskclf/ui/server.py` — add `GET /api/labels/stats` endpoint
-- `tests/test_tray.py` — test notification content
-- `docs/api/ui/labeling.md` — document menu item and endpoint
+- Tray menu item shows a desktop notification with today's label count, total time, and per-label breakdown.
+- REST endpoint returns JSON `{date, count, total_minutes, breakdown}` with optional `?date=` query parameter.
+- Tests: `TestLabelStats` in `tests/test_tray.py`, `TestLabelStats` in `tests/test_ui_server.py`.
 
 ---
 
@@ -84,62 +77,36 @@ Current menu:
 
 ---
 
-### 4. Open Data Directory
+### ~~4. Open Data Directory~~ DONE
 
-**What:** "Open Data Folder" menu item that opens `self._data_dir` in the OS file manager (Finder on macOS, `xdg-open` on Linux).
+Implemented in `_open_data_dir()` callback.
 
-**Why:** Quick access to parquet files, queue, and exports without remembering or typing the path. Useful for manual inspection, copying files to share, or checking disk usage.
-
-**Implementation:**
-- macOS: `subprocess.Popen(["open", str(self._data_dir)])`.
-- Linux: `subprocess.Popen(["xdg-open", str(self._data_dir)])`.
-- Pattern already exists in `_send_desktop_notification` which switches on `platform.system()`.
-- No notification needed; the OS handles feedback.
-
-**Touches:**
-- `src/taskclf/ui/tray.py` — add `_open_data_dir()` callback and menu item
-- `tests/test_tray.py` — test subprocess call (mock `Popen`)
-- `docs/api/ui/labeling.md` — document menu item
+- macOS: `subprocess.Popen(["open", ...])`, Linux: `subprocess.Popen(["xdg-open", ...])`.
+- Falls back to a notification showing the path on error.
+- Tests: `TestOpenDataDir` in `tests/test_tray.py`.
 
 ---
 
-### 5. Reload Model
+### ~~5. Reload Model~~ DONE
 
-**What:** "Reload Model" menu item that re-reads the model bundle from `self._model_dir` (or re-resolves from `active.json`) without restarting the tray.
+Implemented in `_reload_model()` callback.
 
-**Why:** After retraining, the model files on disk change but the in-memory `_LabelSuggester` still uses the old weights. The online inference loop has `ActiveModelReloader` for this, but the tray has no equivalent.
-
-**Implementation:**
-- If `self._model_dir` is set, re-run the `_LabelSuggester(model_dir)` constructor in a try/except.
-- On success: update `self._suggester`, `self._model_schema_hash`, notify "Model reloaded from {dir}".
-- On failure: keep old model, notify "Reload failed: {error}".
-- If no `model_dir` was configured, notify "No model directory configured".
-- Menu item should be disabled (grayed out) when no model is loaded — use `enabled=lambda _: self._model_dir is not None`.
-
-**Touches:**
-- `src/taskclf/ui/tray.py` — add `_reload_model()` callback and menu item
-- `tests/test_tray.py` — test reload success / failure / no-model
-- `docs/api/ui/labeling.md` — document menu item
+- Re-reads model bundle from `self._model_dir` without restarting.
+- Success: updates `_suggester` and `_model_schema_hash`, notifies user.
+- Failure: keeps old model, notifies error.
+- No model dir: notifies "No model directory configured".
+- Menu item disabled (grayed out) when `model_dir is None`.
+- Tests: `TestReloadModel` in `tests/test_tray.py`.
 
 ---
 
-### 6. Connection Status (notification)
+### ~~6. Connection Status (notification)~~ DONE
 
-**What:** "Status" menu item that shows a notification with ActivityWatch connection state, poll stats, and labeling stats.
+Implemented in `_show_status()` callback.
 
-**Why:** Quick health check without opening the dashboard's System tab. Useful when you suspect AW is down or polling stopped.
-
-**Implementation:**
-- Gather from `self._monitor`: `is_paused`, `poll_count`, `_current_app`, `_aw_connected` (if exposed).
-- Gather from self: `_transition_count`, `_labels_saved_count`, `_model_dir`, `_model_schema_hash`.
-- Format as notification, e.g. "AW: connected | Polls: 142 | Transitions: 5 | Labels: 12 | Model: run_20260226".
-- Single click, no dialog.
-
-**Touches:**
-- `src/taskclf/ui/tray.py` — add `_show_status()` callback and menu item
-- `src/taskclf/ui/tray.py` — may need to expose AW connection state from `ActivityMonitor`
-- `tests/test_tray.py` — test notification content
-- `docs/api/ui/labeling.md` — document menu item
+- Shows AW connection state, paused flag, poll count, transition count, saved labels count, model name.
+- Format: "AW: connected | Polls: 142 | Transitions: 5 | Labels: 12 | Model: run_20260226".
+- Tests: `TestShowStatus` in `tests/test_tray.py`.
 
 ---
 
@@ -173,7 +140,7 @@ After all items are implemented:
 Open Dashboard          (default / left-click)
 Pause / Resume          (dynamic)
 ─────────────────────
-Label Stats             (notification)
+Label Stats             (notification)       ✅ DONE
 Import Labels           (file picker)
 Export Labels           (file picker)
 ─────────────────────
@@ -183,11 +150,11 @@ Model ►                 (submenu)
     run_20260220
     (No Model)
   ─────────────────
-  Reload Model
+  Reload Model                               ✅ DONE
   Check Retrain
 ─────────────────────
-Status                  (notification)
-Open Data Folder
+Status                  (notification)       ✅ DONE
+Open Data Folder                             ✅ DONE
 ─────────────────────
 Quit
 ```
