@@ -39,11 +39,17 @@ const LabelApp: Component = () => {
   const inBrowser = isBrowserMode();
 
   function collapse() {
-    host.invoke({ cmd: "hideLabelGrid" });
+    host.invoke({ cmd: "toggleLabelGrid" });
   }
 
   return (
     <div
+      onMouseEnter={() => {
+        if (!inBrowser) host.invoke({ cmd: "cancelLabelHide" });
+      }}
+      onMouseLeave={() => {
+        if (!inBrowser) host.invoke({ cmd: "hideLabelGrid" });
+      }}
       style={{
         ...(inBrowser
           ? {
@@ -152,7 +158,10 @@ const App: Component = () => {
   if (isPanelView) return <PanelApp />;
 
   const inBrowser = isBrowserMode();
-  const [hovering, setHovering] = createSignal(false);
+  const [labelPinned, setLabelPinned] = createSignal(false);
+  const [badgeHovered, setBadgeHovered] = createSignal(false);
+  const [labelHovered, setLabelHovered] = createSignal(false);
+  const labelVisible = () => labelPinned() || badgeHovered() || labelHovered();
   const [panelPinned, setPanelPinned] = createSignal(false);
   const [dotHovered, setDotHovered] = createSignal(false);
   const [panelHovered, setPanelHovered] = createSignal(false);
@@ -167,8 +176,11 @@ const App: Component = () => {
   createEffect(() => {
     const count = ws.labelGridRequested();
     if (count > 0) {
-      setHovering(true);
-      if (!inBrowser) host.invoke({ cmd: "showLabelGrid" });
+      if (inBrowser) {
+        setLabelPinned(true);
+      } else {
+        host.invoke({ cmd: "toggleLabelGrid" });
+      }
     }
   });
 
@@ -176,20 +188,13 @@ const App: Component = () => {
     const prompt = ws.latestPrompt();
     if (!prompt) return;
     showTransitionNotification(prompt, () => {
-      setHovering(true);
-      if (!inBrowser) host.invoke({ cmd: "showLabelGrid" });
+      if (inBrowser) {
+        setLabelPinned(true);
+      } else {
+        host.invoke({ cmd: "toggleLabelGrid" });
+      }
     });
   });
-
-  function showLabel() {
-    setHovering(true);
-    host.invoke({ cmd: "showLabelGrid" });
-  }
-
-  function hideLabel() {
-    setHovering(false);
-    host.invoke({ cmd: "hideLabelGrid" });
-  }
 
   return (
     <div
@@ -208,8 +213,6 @@ const App: Component = () => {
       }}
     >
       <div
-        onMouseEnter={inBrowser ? () => setHovering(true) : undefined}
-        onMouseLeave={inBrowser ? () => setHovering(false) : undefined}
         style={{
           display: "flex",
           "flex-direction": "column",
@@ -269,15 +272,38 @@ const App: Component = () => {
                       host.invoke({ cmd: "hideStatePanel" });
                     }
               }
-              onShowLabel={inBrowser ? undefined : showLabel}
-              onHideLabel={inBrowser ? undefined : hideLabel}
+              onToggleLabel={
+                inBrowser
+                  ? () => {
+                      setLabelPinned((v) => !v);
+                    }
+                  : () => {
+                      host.invoke({ cmd: "toggleLabelGrid" });
+                    }
+              }
+              onShowLabel={
+                inBrowser
+                  ? () => setBadgeHovered(true)
+                  : () => {
+                      host.invoke({ cmd: "showLabelGrid" });
+                    }
+              }
+              onHideLabel={
+                inBrowser
+                  ? () => setBadgeHovered(false)
+                  : () => {
+                      host.invoke({ cmd: "hideLabelGrid" });
+                    }
+              }
             />
           </div>
         </div>
 
         {/* Inline label grid for browser mode preview */}
-        <Show when={inBrowser && hovering()}>
+        <Show when={inBrowser && labelVisible()}>
           <div
+            onMouseEnter={() => setLabelHovered(true)}
+            onMouseLeave={() => setLabelHovered(false)}
             style={{
               width: `${CONTENT_W}px`,
               "max-height": `${LABEL_MAX_H}px`,
@@ -287,7 +313,14 @@ const App: Component = () => {
               "border-radius": "12px",
             }}
           >
-            <LabelGrid onCollapse={hideLabel} prediction={ws.latestPrediction} />
+            <LabelGrid
+              onCollapse={() => {
+                setLabelPinned(false);
+                setBadgeHovered(false);
+                setLabelHovered(false);
+              }}
+              prediction={ws.latestPrediction}
+            />
           </div>
         </Show>
       </div>

@@ -34,6 +34,7 @@ class WindowAPI:
         self._panel_window: Any = None
         self._visible = True
         self._label_visible = False
+        self._label_pinned = False
         self._panel_visible = False
         self._panel_pinned = False
         self._label_hide_timer: threading.Timer | None = None
@@ -71,20 +72,46 @@ class WindowAPI:
     # -- Label grid window -----------------------------------------------------
 
     def show_label_grid(self) -> None:
+        """Show label grid on hover (non-pinned)."""
         if self._label_window is None or self._window is None:
             return
         self._cancel_timer("_label_hide_timer")
-        self._label_visible = True
-        self._reposition_label()
-        try:
-            self._label_window.show()
-        except Exception:
-            logger.debug("Could not show label grid", exc_info=True)
+        if not self._label_visible:
+            self._label_visible = True
+            self._reposition_label()
+            try:
+                self._label_window.show()
+            except Exception:
+                logger.debug("Could not show label grid", exc_info=True)
 
     def hide_label_grid(self) -> None:
-        self._schedule_hide(
-            "_label_hide_timer", self._do_hide_label,
-        )
+        """Schedule label grid hide unless pinned."""
+        if self._label_pinned:
+            return
+        self._schedule_hide("_label_hide_timer", self._do_hide_label)
+
+    def cancel_label_hide(self) -> None:
+        """Cancel any pending label hide (e.g. mouse entered label window)."""
+        self._cancel_timer("_label_hide_timer")
+
+    def toggle_label_grid(self) -> None:
+        """Toggle pinned state of the label grid."""
+        if self._label_window is None or self._window is None:
+            return
+        if self._label_visible and self._label_pinned:
+            self._label_pinned = False
+            self._do_hide_label()
+        elif self._label_visible and not self._label_pinned:
+            self._label_pinned = True
+        else:
+            self._cancel_timer("_label_hide_timer")
+            self._label_pinned = True
+            self._label_visible = True
+            self._reposition_label()
+            try:
+                self._label_window.show()
+            except Exception:
+                logger.debug("Could not show label grid", exc_info=True)
 
     def _do_hide_label(self) -> None:
         self._label_hide_timer = None
@@ -94,6 +121,7 @@ class WindowAPI:
             except Exception:
                 logger.debug("Could not hide label grid", exc_info=True)
         self._label_visible = False
+        self._label_pinned = False
 
     # -- State panel window ----------------------------------------------------
 

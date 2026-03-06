@@ -12,6 +12,7 @@ export const LiveBadge: Component<{
   onTogglePanel?: () => void;
   onShowPanel?: () => void;
   onHidePanel?: () => void;
+  onToggleLabel?: () => void;
   onShowLabel?: () => void;
   onHideLabel?: () => void;
 }> = (props) => {
@@ -56,6 +57,10 @@ export const LiveBadge: Component<{
         }}
         onMouseEnter={() => props.onShowLabel?.()}
         onMouseLeave={() => props.onHideLabel?.()}
+        onClick={(e) => {
+          e.stopPropagation();
+          props.onToggleLabel?.();
+        }}
       >
         {badgeText()}
       </span>

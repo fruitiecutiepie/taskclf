@@ -1,6 +1,7 @@
 """Unit tests for WindowAPI methods.
 
-Covers: bind, bind_label, bind_panel, show/hide label grid,
+Covers: bind, bind_label, bind_panel,
+show/hide/toggle label grid (hover + pin), cancel label hide,
 show/hide/toggle state panel (hover + pin), cancel panel hide,
 reposition label, position panel.
 
@@ -22,12 +23,12 @@ def _make_window(x: int = 200, y: int = 100) -> MagicMock:
     return win
 
 
-# ── TC-UI-WIN-001: show_label_grid with bound label window ────────────────
+# ── show_label_grid (hover show) ──────────────────────────────────────────
 
 
 class TestShowLabelGrid:
-    def test_label_visible_and_show_called(self) -> None:
-        """TC-UI-WIN-001: show_label_grid sets _label_visible and calls show()."""
+    def test_show_makes_visible(self) -> None:
+        """show_label_grid on hidden label → visible, show() called."""
         api = WindowAPI()
         main = _make_window()
         label = _make_window()
@@ -37,36 +38,150 @@ class TestShowLabelGrid:
         api.show_label_grid()
 
         assert api._label_visible is True
+        assert api._label_pinned is False
         label.show.assert_called_once()
 
-    def test_no_op_without_label_window(self) -> None:
-        """TC-UI-WIN-002: show_label_grid with no label window is a no-op."""
+    def test_show_idempotent_when_already_visible(self) -> None:
+        """Calling show_label_grid twice doesn't call show() again."""
         api = WindowAPI()
         main = _make_window()
-        api.bind(main)
-
-        api.show_label_grid()
-
-        assert api._label_visible is False
-
-    def test_no_op_without_main_window(self) -> None:
-        """show_label_grid with no main window is a no-op."""
-        api = WindowAPI()
         label = _make_window()
+        api.bind(main)
         api.bind_label(label)
 
         api.show_label_grid()
+        api.show_label_grid()
 
+        label.show.assert_called_once()
+
+    def test_show_cancels_pending_hide(self) -> None:
+        """Re-hovering cancels a pending hide timer."""
+        api = WindowAPI()
+        main = _make_window()
+        label = _make_window()
+        api.bind(main)
+        api.bind_label(label)
+
+        api.show_label_grid()
+        api.hide_label_grid()
+        assert api._label_hide_timer is not None
+
+        api.show_label_grid()
+        assert api._label_hide_timer is None
+
+    def test_no_op_without_label_window(self) -> None:
+        api = WindowAPI()
+        api.bind(_make_window())
+        api.show_label_grid()
+        assert api._label_visible is False
+
+    def test_no_op_without_main_window(self) -> None:
+        api = WindowAPI()
+        label = _make_window()
+        api.bind_label(label)
+        api.show_label_grid()
         assert api._label_visible is False
         label.show.assert_not_called()
 
 
-# ── TC-UI-WIN-003: hide_label_grid ────────────────────────────────────────
+# ── hide_label_grid (hover hide) ─────────────────────────────────────────
 
 
 class TestHideLabelGrid:
-    def test_label_hidden_after_timer(self) -> None:
-        """TC-UI-WIN-003: hide_label_grid schedules delayed hide."""
+    def test_schedules_hide_when_not_pinned(self) -> None:
+        """hide_label_grid schedules a delayed hide."""
+        api = WindowAPI()
+        main = _make_window()
+        label = _make_window()
+        api.bind(main)
+        api.bind_label(label)
+
+        api.show_label_grid()
+        api.hide_label_grid()
+
+        assert api._label_hide_timer is not None
+
+    def test_no_op_when_pinned(self) -> None:
+        """hide_label_grid is a no-op when label is pinned."""
+        api = WindowAPI()
+        main = _make_window()
+        label = _make_window()
+        api.bind(main)
+        api.bind_label(label)
+
+        api.show_label_grid()
+        api.toggle_label_grid()  # pin
+        assert api._label_pinned is True
+
+        api.hide_label_grid()
+
+        assert api._label_hide_timer is None
+        assert api._label_visible is True
+
+    def test_do_hide_resets_state(self) -> None:
+        """_do_hide_label clears visible and pinned flags."""
+        api = WindowAPI()
+        main = _make_window()
+        label = _make_window()
+        api.bind(main)
+        api.bind_label(label)
+
+        api.show_label_grid()
+        api._do_hide_label()
+
+        assert api._label_visible is False
+        assert api._label_pinned is False
+        label.hide.assert_called_once()
+
+
+# ── cancel_label_hide ────────────────────────────────────────────────────
+
+
+class TestCancelLabelHide:
+    def test_cancels_pending_timer(self) -> None:
+        """cancel_label_hide cancels a scheduled hide."""
+        api = WindowAPI()
+        main = _make_window()
+        label = _make_window()
+        api.bind(main)
+        api.bind_label(label)
+
+        api.show_label_grid()
+        api.hide_label_grid()
+        assert api._label_hide_timer is not None
+
+        api.cancel_label_hide()
+
+        assert api._label_hide_timer is None
+        assert api._label_visible is True
+
+    def test_no_op_without_pending_timer(self) -> None:
+        """cancel_label_hide with no timer is a safe no-op."""
+        api = WindowAPI()
+        api.cancel_label_hide()
+        assert api._label_hide_timer is None
+
+
+# ── toggle_label_grid (click to pin/unpin) ───────────────────────────────
+
+
+class TestToggleLabelGrid:
+    def test_click_from_hidden_shows_and_pins(self) -> None:
+        """Click while hidden → show + pin."""
+        api = WindowAPI()
+        main = _make_window()
+        label = _make_window()
+        api.bind(main)
+        api.bind_label(label)
+
+        api.toggle_label_grid()
+
+        assert api._label_visible is True
+        assert api._label_pinned is True
+        label.show.assert_called_once()
+
+    def test_click_while_hover_visible_pins(self) -> None:
+        """Click while hover-visible (not pinned) → pin."""
         api = WindowAPI()
         main = _make_window()
         label = _make_window()
@@ -75,11 +190,148 @@ class TestHideLabelGrid:
 
         api.show_label_grid()
         assert api._label_visible is True
+        assert api._label_pinned is False
 
-        api._do_hide_label()
+        api.toggle_label_grid()
+
+        assert api._label_visible is True
+        assert api._label_pinned is True
+        label.hide.assert_not_called()
+
+    def test_click_while_pinned_hides(self) -> None:
+        """Click while pinned → unpin + hide."""
+        api = WindowAPI()
+        main = _make_window()
+        label = _make_window()
+        api.bind(main)
+        api.bind_label(label)
+
+        api.toggle_label_grid()  # show + pin
+        assert api._label_pinned is True
+
+        api.toggle_label_grid()  # unpin + hide
 
         assert api._label_visible is False
+        assert api._label_pinned is False
         label.hide.assert_called_once()
+
+    def test_no_op_without_label_window(self) -> None:
+        api = WindowAPI()
+        api.bind(_make_window())
+        api.toggle_label_grid()
+        assert api._label_visible is False
+
+    def test_no_op_without_main_window(self) -> None:
+        api = WindowAPI()
+        label = _make_window()
+        api.bind_label(label)
+        api.toggle_label_grid()
+        assert api._label_visible is False
+        label.show.assert_not_called()
+
+
+# ── Full label state-machine scenarios ───────────────────────────────────
+
+
+class TestLabelStateMachine:
+    """End-to-end scenarios simulating the label grid hover/click lifecycle."""
+
+    def _setup(self) -> tuple[WindowAPI, MagicMock]:
+        api = WindowAPI()
+        main = _make_window()
+        label = _make_window()
+        api.bind(main)
+        api.bind_label(label)
+        return api, label
+
+    def test_hover_then_unhover(self) -> None:
+        """Hover badge → show; leave badge → scheduled hide → hidden."""
+        api, label = self._setup()
+
+        api.show_label_grid()
+        assert api._label_visible is True
+
+        api.hide_label_grid()
+        assert api._label_hide_timer is not None
+
+        api._do_hide_label()
+        assert api._label_visible is False
+        label.hide.assert_called_once()
+
+    def test_hover_badge_then_enter_label(self) -> None:
+        """Hover badge → show; leave badge → start hide; enter label → cancel."""
+        api, label = self._setup()
+
+        api.show_label_grid()
+        api.hide_label_grid()
+        assert api._label_hide_timer is not None
+
+        api.cancel_label_hide()
+        assert api._label_hide_timer is None
+        assert api._label_visible is True
+        label.hide.assert_not_called()
+
+    def test_hover_label_then_leave_label(self) -> None:
+        """Enter label (cancel hide); leave label → schedule hide → hidden."""
+        api, label = self._setup()
+
+        api.show_label_grid()
+        api.hide_label_grid()
+        api.cancel_label_hide()
+
+        api.hide_label_grid()
+        assert api._label_hide_timer is not None
+
+        api._do_hide_label()
+        assert api._label_visible is False
+
+    def test_hover_then_click_pins(self) -> None:
+        """Hover → visible; click → pinned; unhover → stays visible."""
+        api, label = self._setup()
+
+        api.show_label_grid()
+        api.toggle_label_grid()  # pin
+        assert api._label_pinned is True
+
+        api.hide_label_grid()  # unhover — no-op because pinned
+        assert api._label_hide_timer is None
+        assert api._label_visible is True
+
+    def test_pinned_then_click_hides(self) -> None:
+        """Pinned label → click → unpin + immediate hide."""
+        api, label = self._setup()
+
+        api.show_label_grid()
+        api.toggle_label_grid()  # pin
+        api.toggle_label_grid()  # unpin + hide
+
+        assert api._label_visible is False
+        assert api._label_pinned is False
+        label.hide.assert_called_once()
+
+    def test_click_without_hover(self) -> None:
+        """Click from hidden → show + pin; click again → hide."""
+        api, label = self._setup()
+
+        api.toggle_label_grid()
+        assert api._label_visible is True
+        assert api._label_pinned is True
+
+        api.toggle_label_grid()
+        assert api._label_visible is False
+        assert api._label_pinned is False
+
+    def test_unpin_then_hover_again(self) -> None:
+        """After unpinning (hidden), hovering shows it again as non-pinned."""
+        api, label = self._setup()
+
+        api.toggle_label_grid()  # pin
+        api.toggle_label_grid()  # unpin + hide
+        assert api._label_visible is False
+
+        api.show_label_grid()  # re-hover
+        assert api._label_visible is True
+        assert api._label_pinned is False
 
 
 # ── show_state_panel (hover show) ─────────────────────────────────────────

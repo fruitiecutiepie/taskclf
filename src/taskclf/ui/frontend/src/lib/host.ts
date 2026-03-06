@@ -12,6 +12,8 @@
 export type HostCommand =
   | { cmd: "showLabelGrid" }
   | { cmd: "hideLabelGrid" }
+  | { cmd: "toggleLabelGrid" }
+  | { cmd: "cancelLabelHide" }
   | { cmd: "hideWindow" }
   | { cmd: "toggleStatePanel" }
   | { cmd: "showStatePanel" }
@@ -29,6 +31,8 @@ declare global {
       api?: {
         show_label_grid(): Promise<void>;
         hide_label_grid(): Promise<void>;
+        toggle_label_grid(): Promise<void>;
+        cancel_label_hide(): Promise<void>;
         hide_window(): Promise<void>;
         toggle_state_panel(): Promise<void>;
         show_state_panel(): Promise<void>;
@@ -64,6 +68,12 @@ class AdaptiveHost implements Host {
           break;
         case "hideLabelGrid":
           await api.hide_label_grid();
+          break;
+        case "toggleLabelGrid":
+          await api.toggle_label_grid();
+          break;
+        case "cancelLabelHide":
+          await api.cancel_label_hide();
           break;
         case "hideWindow":
           await api.hide_window();
