@@ -20,6 +20,7 @@ from taskclf.labels.store import (
     _same_user,
     append_label_span,
     delete_label_span,
+    export_labels_to_csv,
     generate_dummy_labels,
     generate_label_summary,
     import_labels_from_csv,
@@ -755,3 +756,76 @@ class TestImportLabelsFromCsvErrors:
         )
         with pytest.raises(ValidationError):
             import_labels_from_csv(csv_path)
+
+
+# ---------------------------------------------------------------------------
+# export_labels_to_csv
+# ---------------------------------------------------------------------------
+
+
+class TestExportLabelsToCsv:
+    """TC-LABEL-EXP-001..003: export_labels_to_csv writes spans to CSV."""
+
+    def test_round_trip(self, tmp_path: Path) -> None:
+        """TC-LABEL-EXP-001: exported CSV is re-importable and faithful."""
+        parquet_path = tmp_path / "labels.parquet"
+        spans = generate_dummy_labels(dt.date(2025, 6, 15), n_rows=5)
+        write_label_spans(spans, parquet_path)
+
+        csv_path = tmp_path / "export.csv"
+        result = export_labels_to_csv(parquet_path, csv_path)
+        assert result == csv_path
+        assert csv_path.exists()
+
+        reimported = import_labels_from_csv(csv_path)
+        assert len(reimported) == len(spans)
+        for original, restored in zip(spans, reimported):
+            assert original.start_ts == restored.start_ts
+            assert original.end_ts == restored.end_ts
+            assert original.label == restored.label
+            assert original.provenance == restored.provenance
+
+    def test_no_labels_raises(self, tmp_path: Path) -> None:
+        """TC-LABEL-EXP-002: empty parquet raises ValueError."""
+        parquet_path = tmp_path / "labels.parquet"
+        write_label_spans([], parquet_path)
+
+        csv_path = tmp_path / "export.csv"
+        with pytest.raises(ValueError, match="No labels to export"):
+            export_labels_to_csv(parquet_path, csv_path)
+
+    def test_missing_parquet_raises(self, tmp_path: Path) -> None:
+        """TC-LABEL-EXP-003: non-existent parquet raises ValueError."""
+        parquet_path = tmp_path / "no_such_file.parquet"
+        csv_path = tmp_path / "export.csv"
+        with pytest.raises(ValueError, match="Labels file not found"):
+            export_labels_to_csv(parquet_path, csv_path)
+
+    def test_preserves_optional_fields(self, tmp_path: Path) -> None:
+        """TC-LABEL-EXP-004: user_id and confidence survive export."""
+        parquet_path = tmp_path / "labels.parquet"
+        span = LabelSpan(
+            start_ts=dt.datetime(2025, 6, 15, 10, 0),
+            end_ts=dt.datetime(2025, 6, 15, 10, 5),
+            label="Build",
+            provenance="manual",
+            user_id="test-user",
+            confidence=0.85,
+        )
+        write_label_spans([span], parquet_path)
+
+        csv_path = tmp_path / "export.csv"
+        export_labels_to_csv(parquet_path, csv_path)
+
+        df = pd.read_csv(csv_path)
+        assert df.iloc[0]["user_id"] == "test-user"
+        assert df.iloc[0]["confidence"] == pytest.approx(0.85)
+
+    def test_creates_parent_dirs(self, tmp_path: Path) -> None:
+        """TC-LABEL-EXP-005: parent directories are created automatically."""
+        parquet_path = tmp_path / "labels.parquet"
+        write_label_spans(generate_dummy_labels(dt.date(2025, 6, 15), n_rows=2), parquet_path)
+
+        csv_path = tmp_path / "nested" / "deep" / "export.csv"
+        result = export_labels_to_csv(parquet_path, csv_path)
+        assert result.exists()

@@ -1165,3 +1165,87 @@ class TestOpenDashboard:
         with patch.object(labeler, "_spawn_window") as mock_spawn:
             labeler._open_dashboard()
             mock_spawn.assert_called_once()
+
+
+class TestTrayMenuExportLabels:
+    """Menu includes 'Export Labels' item and the callback works."""
+
+    def test_build_menu_contains_export_labels(self, tmp_path: Path) -> None:
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+        menu = labeler._build_menu()
+        labels = [
+            item.text if isinstance(item.text, str) else item.text(None)
+            for item in menu.items
+            if hasattr(item, "text") and item.text is not None
+        ]
+        assert "Export Labels" in labels
+
+    def test_export_labels_success(self, tmp_path: Path) -> None:
+        import sys
+
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+
+        labels_dir = tmp_path / "labels_v1"
+        labels_dir.mkdir(parents=True)
+        span = LabelSpan(
+            start_ts=dt.datetime(2025, 6, 15, 10, 0),
+            end_ts=dt.datetime(2025, 6, 15, 10, 5),
+            label="Build",
+            provenance="manual",
+        )
+        from taskclf.labels.store import write_label_spans
+        write_label_spans([span], labels_dir / "labels.parquet")
+
+        csv_dest = tmp_path / "out.csv"
+        mock_tk = MagicMock()
+        mock_tk.filedialog.asksaveasfilename.return_value = str(csv_dest)
+
+        with (
+            patch.dict(sys.modules, {"tkinter": mock_tk, "tkinter.filedialog": mock_tk.filedialog}),
+            patch.object(labeler, "_notify") as mock_notify,
+        ):
+            labeler._export_labels()
+
+        assert csv_dest.exists()
+        mock_notify.assert_called_once()
+        assert "exported" in mock_notify.call_args[0][0].lower()
+
+    def test_export_labels_no_file_notifies_error(self, tmp_path: Path) -> None:
+        import sys
+
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+
+        csv_dest = tmp_path / "out.csv"
+        mock_tk = MagicMock()
+        mock_tk.filedialog.asksaveasfilename.return_value = str(csv_dest)
+
+        with (
+            patch.dict(sys.modules, {"tkinter": mock_tk, "tkinter.filedialog": mock_tk.filedialog}),
+            patch.object(labeler, "_notify") as mock_notify,
+        ):
+            labeler._export_labels()
+
+        assert not csv_dest.exists()
+        mock_notify.assert_called_once()
+        assert "failed" in mock_notify.call_args[0][0].lower()
+
+    def test_export_labels_cancel_dialog(self, tmp_path: Path) -> None:
+        """User cancels the save dialog — no export happens."""
+        import sys
+
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+
+        mock_tk = MagicMock()
+        mock_tk.filedialog.asksaveasfilename.return_value = ""
+
+        with (
+            patch.dict(sys.modules, {"tkinter": mock_tk, "tkinter.filedialog": mock_tk.filedialog}),
+            patch.object(labeler, "_notify") as mock_notify,
+        ):
+            labeler._export_labels()
+
+        mock_notify.assert_not_called()

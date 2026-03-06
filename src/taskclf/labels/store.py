@@ -1,7 +1,8 @@
-"""Label span I/O, validation, and synthetic label generation."""
+"""Label span I/O, validation, export, and synthetic label generation."""
 
 from __future__ import annotations
 
+import csv
 import datetime as dt
 from pathlib import Path
 from typing import Final, Sequence
@@ -119,6 +120,37 @@ def import_labels_from_csv(path: Path) -> list[LabelSpan]:
             kwargs["confidence"] = float(row["confidence"])
         spans.append(LabelSpan(**kwargs))
     return spans
+
+
+def export_labels_to_csv(parquet_path: Path, csv_path: Path) -> Path:
+    """Export label spans from a Parquet file to CSV.
+
+    Columns written: ``start_ts``, ``end_ts``, ``label``, ``provenance``,
+    ``user_id``, ``confidence``, ``extend_forward``.
+
+    Args:
+        parquet_path: Path to an existing labels Parquet file.
+        csv_path: Destination CSV file path.
+
+    Returns:
+        The *csv_path* that was written.
+
+    Raises:
+        ValueError: If the Parquet file does not exist or contains no spans.
+    """
+    if not parquet_path.exists():
+        raise ValueError(f"Labels file not found: {parquet_path}")
+    spans = read_label_spans(parquet_path)
+    if not spans:
+        raise ValueError("No labels to export")
+    rows = [s.model_dump() for s in spans]
+    fieldnames = list(rows[0].keys())
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(csv_path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+    return csv_path
 
 
 def _same_user(a: LabelSpan, b: LabelSpan) -> bool:

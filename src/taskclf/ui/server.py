@@ -17,7 +17,7 @@ from collections.abc import Callable
 from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -30,6 +30,7 @@ from taskclf.labels.queue import ActiveLabelingQueue
 from taskclf.labels.store import (
     append_label_span,
     delete_label_span,
+    export_labels_to_csv,
     generate_label_summary,
     read_label_spans,
     update_label_span,
@@ -325,6 +326,29 @@ def create_app(
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         return {"status": "deleted"}
+
+    @app.get("/api/labels/export")
+    async def export_labels() -> StreamingResponse:
+        """Download all label spans as a CSV file."""
+        import io
+        import tempfile
+
+        if not labels_path.exists():
+            raise HTTPException(status_code=404, detail="No labels file found")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            csv_path = Path(tmpdir) / "labels_export.csv"
+            try:
+                export_labels_to_csv(labels_path, csv_path)
+            except ValueError as exc:
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+            csv_bytes = csv_path.read_bytes()
+
+        return StreamingResponse(
+            io.BytesIO(csv_bytes),
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=labels_export.csv"},
+        )
 
     # -- REST: queue ----------------------------------------------------------
 

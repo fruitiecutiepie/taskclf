@@ -584,6 +584,7 @@ class TrayLabeler:
                 lambda _: "Resume" if self._monitor.is_paused else "Pause",
                 self._on_pause_menu,
             ),
+            pystray.MenuItem("Export Labels", self._export_labels),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Quit", self._quit),
         )
@@ -592,6 +593,38 @@ class TrayLabeler:
         paused = self._toggle_pause()
         state = "paused" if paused else "resumed"
         self._notify(f"Monitoring {state}")
+
+    def _export_labels(self, *_args: Any) -> None:
+        from taskclf.labels.store import export_labels_to_csv
+
+        csv_path: Path | None = None
+        try:
+            import tkinter as tk
+            from tkinter import filedialog
+
+            root = tk.Tk()
+            root.withdraw()
+            chosen = filedialog.asksaveasfilename(
+                defaultextension=".csv",
+                filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+                initialfile="labels_export.csv",
+                title="Export Labels",
+            )
+            root.destroy()
+            if not chosen:
+                return
+            csv_path = Path(chosen)
+        except Exception:
+            logger.debug("tkinter unavailable, using default export path")
+            csv_path = self._data_dir / "labels_v1" / "labels_export.csv"
+
+        try:
+            export_labels_to_csv(self._labels_path, csv_path)
+            self._notify(f"Labels exported to {csv_path}")
+            logger.info("Labels exported to %s", csv_path)
+        except ValueError as exc:
+            self._notify(f"Export failed: {exc}")
+            logger.warning("Label export failed: %s", exc)
 
     def _open_dashboard(self, *_args: Any) -> None:
         if self._browser:

@@ -31,6 +31,7 @@ Thumbs.db
 .coverage
 htmlcov/
 .mypy_cache/
+MagicMock/
 
 # Jupyter
 .ipynb_checkpoints/
