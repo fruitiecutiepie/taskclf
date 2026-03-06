@@ -137,3 +137,20 @@ class TestSubdirsList:
     def test_contains_expected_entries(self) -> None:
         expected = {"data/raw/aw", "data/processed", "models", "artifacts/telemetry", "configs"}
         assert set(_SUBDIRS) == expected
+
+
+class TestCLICallbackCreatesDirectories:
+    """The CLI entrypoint calls ensure_taskclf_dirs() on every invocation."""
+
+    def test_cli_creates_home_dirs(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        from typer.testing import CliRunner
+        from taskclf.cli.main import app
+
+        monkeypatch.setenv("TASKCLF_HOME", str(tmp_path / "home"))
+        runner = CliRunner()
+        result = runner.invoke(app, [
+            "train", "list", "--models-dir", str(tmp_path / "home" / "models"),
+        ])
+        assert result.exit_code == 0, result.output
+        for sub in _SUBDIRS:
+            assert (tmp_path / "home" / sub).is_dir(), f"Missing subdirectory after CLI invoke: {sub}"

@@ -33,6 +33,7 @@ from taskclf.core.defaults import (
     DEFAULT_TRANSITION_MINUTES,
     DEFAULT_RETRAIN_CADENCE_DAYS,
 )
+from taskclf.core.paths import ensure_taskclf_dirs
 
 def _version_callback(value: bool) -> None:
     if value:
@@ -59,6 +60,7 @@ def main(
         level=level,
         format="%(levelname)s %(name)s %(pathname)s:%(lineno)d — %(message)s",
     )
+    ensure_taskclf_dirs()
 
 
 # -- ingest -------------------------------------------------------------------
