@@ -284,6 +284,10 @@ class ActivityMonitor:
                         self._on_poll(dominant)
                     self._publish_status(dominant)
                     self.check_transition(dominant)
+                else:
+                    self._publish_status(
+                        self._current_app or "unknown", state="collecting",
+                    )
             self._stop.wait(timeout=self._poll_seconds)
 
     def stop(self) -> None:
