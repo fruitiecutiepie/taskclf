@@ -1745,19 +1745,21 @@ class TestBuildMenuEnhancements:
         assert "Model" in labels
         assert "Export Labels" in labels
 
-    def test_model_submenu_contains_reload(self, tmp_path: Path) -> None:
-        """Reload Model lives inside the Model submenu, not at top level."""
+    def test_model_submenu_contains_reload_and_check_retrain(self, tmp_path: Path) -> None:
+        """Reload Model and Check Retrain live inside the Model submenu, not at top level."""
         bus, _ = _capture_bus()
         labeler = _make_tray_labeler(tmp_path, event_bus=bus)
         menu = labeler._build_menu()
 
         top_labels = self._get_top_level_labels(menu)
         assert "Reload Model" not in top_labels
+        assert "Check Retrain" not in top_labels
 
         submenu = self._find_model_submenu(menu)
         assert submenu is not None
         sub_labels = self._get_submenu_labels(submenu)
         assert "Reload Model" in sub_labels
+        assert "Check Retrain" in sub_labels
 
     def test_reload_model_disabled_without_model_dir(self, tmp_path: Path) -> None:
         """Reload Model inside Model submenu is disabled when no model_dir."""
@@ -2059,3 +2061,211 @@ class TestSwitchModel:
         labels = self._submenu_labels(submenu)
         assert "(no models found)" in labels
         assert "Reload Model" in labels
+        assert "Check Retrain" in labels
+
+
+# ---------------------------------------------------------------------------
+# Check Retrain  (Item 7)
+# ---------------------------------------------------------------------------
+
+
+class TestCheckRetrain:
+    """Tests for TrayLabeler._check_retrain."""
+
+    def test_no_models_dir_notifies(self, tmp_path: Path) -> None:
+        """Without models_dir, notify 'No models directory configured'."""
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+        assert labeler._models_dir is None
+
+        with patch.object(labeler, "_notify") as mock_notify:
+            labeler._check_retrain()
+
+        mock_notify.assert_called_once()
+        assert "no models directory" in mock_notify.call_args[0][0].lower()
+
+    def test_retrain_due_no_models_found(self, tmp_path: Path) -> None:
+        """When no models exist, notify 'Retrain recommended: no models found'."""
+        bus, _ = _capture_bus()
+        labeler = TrayLabeler(
+            data_dir=tmp_path, model_dir=None,
+            models_dir=tmp_path / "models", event_bus=bus,
+        )
+        (tmp_path / "models").mkdir(exist_ok=True)
+
+        with (
+            patch("taskclf.train.retrain.find_latest_model", return_value=None),
+            patch("taskclf.train.retrain.check_retrain_due", return_value=True),
+            patch.object(labeler, "_notify") as mock_notify,
+        ):
+            labeler._check_retrain()
+
+        mock_notify.assert_called_once()
+        msg = mock_notify.call_args[0][0]
+        assert "no models found" in msg.lower()
+
+    def test_retrain_due_with_model(self, tmp_path: Path) -> None:
+        """When retrain is due with an existing model, show model name and date."""
+        import json
+
+        bus, _ = _capture_bus()
+        models_dir = tmp_path / "models"
+        models_dir.mkdir()
+        model_path = models_dir / "run_20260226"
+        model_path.mkdir()
+        (model_path / "metadata.json").write_text(
+            json.dumps({"created_at": "2026-02-26T12:00:00+00:00"})
+        )
+
+        labeler = TrayLabeler(
+            data_dir=tmp_path, model_dir=None,
+            models_dir=models_dir, event_bus=bus,
+        )
+
+        with (
+            patch("taskclf.train.retrain.find_latest_model", return_value=model_path),
+            patch("taskclf.train.retrain.check_retrain_due", return_value=True),
+            patch.object(labeler, "_notify") as mock_notify,
+        ):
+            labeler._check_retrain()
+
+        mock_notify.assert_called_once()
+        msg = mock_notify.call_args[0][0]
+        assert "retrain recommended" in msg.lower()
+        assert "run_20260226" in msg
+        assert "2026-02-26" in msg
+
+    def test_model_is_current(self, tmp_path: Path) -> None:
+        """When model is current, notify with model name and date."""
+        import json
+
+        bus, _ = _capture_bus()
+        models_dir = tmp_path / "models"
+        models_dir.mkdir()
+        model_path = models_dir / "run_20260301"
+        model_path.mkdir()
+        (model_path / "metadata.json").write_text(
+            json.dumps({"created_at": "2026-03-01T12:00:00+00:00"})
+        )
+
+        labeler = TrayLabeler(
+            data_dir=tmp_path, model_dir=None,
+            models_dir=models_dir, event_bus=bus,
+        )
+
+        with (
+            patch("taskclf.train.retrain.find_latest_model", return_value=model_path),
+            patch("taskclf.train.retrain.check_retrain_due", return_value=False),
+            patch.object(labeler, "_notify") as mock_notify,
+        ):
+            labeler._check_retrain()
+
+        mock_notify.assert_called_once()
+        msg = mock_notify.call_args[0][0]
+        assert "current" in msg.lower()
+        assert "run_20260301" in msg
+
+    def test_with_retrain_config_file(self, tmp_path: Path) -> None:
+        """When retrain_config is provided, load_retrain_config is used."""
+        import json
+
+        bus, _ = _capture_bus()
+        models_dir = tmp_path / "models"
+        models_dir.mkdir()
+
+        config_path = tmp_path / "retrain.yaml"
+        config_path.write_text("global_retrain_cadence_days: 14\n")
+
+        model_path = models_dir / "run_20260301"
+        model_path.mkdir()
+        (model_path / "metadata.json").write_text(
+            json.dumps({"created_at": "2026-03-01T12:00:00+00:00"})
+        )
+
+        labeler = TrayLabeler(
+            data_dir=tmp_path, model_dir=None,
+            models_dir=models_dir, event_bus=bus,
+            retrain_config=config_path,
+        )
+
+        with (
+            patch("taskclf.train.retrain.find_latest_model", return_value=model_path),
+            patch("taskclf.train.retrain.check_retrain_due", return_value=False) as mock_check,
+            patch.object(labeler, "_notify") as mock_notify,
+        ):
+            labeler._check_retrain()
+
+        mock_check.assert_called_once_with(models_dir, 14)
+        mock_notify.assert_called_once()
+
+    def test_exception_notifies_check_failed(self, tmp_path: Path) -> None:
+        """On exception, notify 'Check failed: ...'."""
+        bus, _ = _capture_bus()
+        labeler = TrayLabeler(
+            data_dir=tmp_path, model_dir=None,
+            models_dir=tmp_path / "models", event_bus=bus,
+        )
+        (tmp_path / "models").mkdir(exist_ok=True)
+
+        with (
+            patch(
+                "taskclf.train.retrain.find_latest_model",
+                side_effect=RuntimeError("disk error"),
+            ),
+            patch.object(labeler, "_notify") as mock_notify,
+        ):
+            labeler._check_retrain()
+
+        mock_notify.assert_called_once()
+        msg = mock_notify.call_args[0][0]
+        assert "check failed" in msg.lower()
+        assert "disk error" in msg
+
+    def test_check_retrain_in_submenu_enabled(self, tmp_path: Path) -> None:
+        """Check Retrain is enabled when models_dir is set."""
+        bus, _ = _capture_bus()
+        labeler = TrayLabeler(
+            data_dir=tmp_path, model_dir=None,
+            models_dir=tmp_path / "models", event_bus=bus,
+        )
+        (tmp_path / "models").mkdir(exist_ok=True)
+
+        menu = labeler._build_menu()
+        for item in menu.items:  # type: ignore[attr-defined]
+            if hasattr(item, "text") and item.text == "Model":
+                submenu = item.submenu
+                break
+        else:
+            pytest.fail("Model submenu not found")
+
+        retrain_item = None
+        for item in submenu.items:  # type: ignore[attr-defined]
+            if hasattr(item, "text") and item.text == "Check Retrain":
+                retrain_item = item
+                break
+
+        assert retrain_item is not None
+        assert retrain_item.enabled is True
+
+    def test_check_retrain_in_submenu_disabled_without_models_dir(self, tmp_path: Path) -> None:
+        """Check Retrain is disabled when models_dir is None."""
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+        assert labeler._models_dir is None
+
+        menu = labeler._build_menu()
+        for item in menu.items:  # type: ignore[attr-defined]
+            if hasattr(item, "text") and item.text == "Model":
+                submenu = item.submenu
+                break
+        else:
+            pytest.fail("Model submenu not found")
+
+        retrain_item = None
+        for item in submenu.items:  # type: ignore[attr-defined]
+            if hasattr(item, "text") and item.text == "Check Retrain":
+                retrain_item = item
+                break
+
+        assert retrain_item is not None
+        assert retrain_item.enabled is False

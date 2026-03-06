@@ -94,23 +94,17 @@ Implemented in `_show_status()` callback.
 
 ## Low Priority
 
-### 7. Check Retrain
+### ~~7. Check Retrain~~ DONE
 
-**What:** "Check Retrain" menu item that runs the retrain eligibility check and shows a notification with the result.
+Implemented in `_check_retrain()` callback + "Check Retrain" menu item in Model submenu.
 
-**Why:** Surfaces `train check-retrain` logic as a one-click check. Only useful if you have a retrain config set up.
-
-**Implementation:**
-- Requires a retrain config path (from `configs/retrain.yaml` or a default).
-- Call `check_retrain_due()` from `taskclf.train.retrain`.
-- Notify "Retrain recommended: {reason}" or "Model is current (last trained {date})".
-- Menu item disabled if no retrain config exists.
-
-**Touches:**
-- `src/taskclf/ui/tray.py` — add `_check_retrain()` callback and menu item
-- `src/taskclf/ui/tray.py` — accept optional `--retrain-config` parameter
-- `tests/test_tray.py` — test notification content
-- `docs/api/ui/labeling.md` — document menu item
+- Tray menu item (inside Model submenu) checks whether retraining is due based on the latest model's age and configured cadence. Shows a desktop notification with "Retrain recommended (cadence: Nd, last: model_name created date)" or "Model is current (model_name, created date)". When no models exist, notifies "Retrain recommended: no models found".
+- Uses `check_retrain_due()` and `find_latest_model()` from `taskclf.train.retrain`.
+- Optional `--retrain-config` CLI option loads a custom retrain YAML config; falls back to `RetrainConfig()` defaults when not provided.
+- Menu item disabled when `--models-dir` is not set.
+- CLI: `--retrain-config` option added to `taskclf tray` command.
+- Tests: `TestCheckRetrain` in `tests/test_tray.py` (8 tests: no models_dir, retrain due no models, retrain due with model, model is current, with config file, exception handling, submenu enabled, submenu disabled). Updated `TestBuildMenuEnhancements` and `TestSwitchModel` to verify "Check Retrain" in submenu.
+- Docs: `docs/api/ui/labeling.md` updated.
 
 ---
 
@@ -133,7 +127,7 @@ Model ►                 (submenu)             ✅ DONE
     (No Model)
   ─────────────────
   Reload Model                               ✅ DONE
-  Check Retrain
+  Check Retrain                              ✅ DONE
 ─────────────────────
 Status                  (notification)       ✅ DONE
 Open Data Folder                             ✅ DONE

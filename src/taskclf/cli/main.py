@@ -2249,6 +2249,7 @@ def tray_cmd(
     browser: bool = typer.Option(False, "--browser", help="Open UI in browser instead of native window"),
     no_tray: bool = typer.Option(False, "--no-tray", help="Skip the native tray icon (use with --browser for browser-only mode)"),
     username: str | None = typer.Option(None, "--username", help="Display name (persisted in config.json; does not affect label identity)"),
+    retrain_config: str | None = typer.Option(None, "--retrain-config", help="Path to retrain YAML config (enables Check Retrain in Model submenu)"),
 ) -> None:
     """Run a system tray labeling app with activity transition detection.
 
@@ -2287,6 +2288,7 @@ def tray_cmd(
             browser=browser,
             no_tray=no_tray,
             username=username,
+            retrain_config=Path(retrain_config) if retrain_config else None,
         )
     finally:
         if tmp_dir is not None:

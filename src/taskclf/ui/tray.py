@@ -410,10 +410,12 @@ class TrayLabeler:
         username: str | None = None,
         notifications_enabled: bool = True,
         privacy_notifications: bool = True,
+        retrain_config: Path | None = None,
     ) -> None:
         self._data_dir = data_dir
         self._model_dir = model_dir
         self._models_dir = models_dir
+        self._retrain_config = retrain_config
         self._labels_path = data_dir / "labels_v1" / "labels.parquet"
         self._config = UserConfig(data_dir)
         if username is not None:
@@ -778,6 +780,52 @@ class TrayLabeler:
             self._notify(f"Reload failed: {exc}")
             logger.warning("Model reload failed: %s", exc, exc_info=True)
 
+    def _check_retrain(self, *_args: Any) -> None:
+        """Check whether retraining is due and show a notification."""
+        if self._models_dir is None:
+            self._notify("No models directory configured")
+            return
+
+        try:
+            import json
+
+            from taskclf.train.retrain import (
+                RetrainConfig,
+                check_retrain_due,
+                find_latest_model,
+                load_retrain_config,
+            )
+
+            config = (
+                load_retrain_config(self._retrain_config)
+                if self._retrain_config is not None and self._retrain_config.is_file()
+                else RetrainConfig()
+            )
+
+            latest = find_latest_model(self._models_dir)
+            due = check_retrain_due(
+                self._models_dir, config.global_retrain_cadence_days,
+            )
+
+            if latest is not None:
+                raw = json.loads((latest / "metadata.json").read_text())
+                created = raw.get("created_at", "unknown")
+                if due:
+                    self._notify(
+                        f"Retrain recommended "
+                        f"(cadence: {config.global_retrain_cadence_days}d, "
+                        f"last: {latest.name} created {created})"
+                    )
+                else:
+                    self._notify(
+                        f"Model is current ({latest.name}, created {created})"
+                    )
+            else:
+                self._notify("Retrain recommended: no models found")
+        except Exception as exc:
+            self._notify(f"Check failed: {exc}")
+            logger.warning("Retrain check failed: %s", exc, exc_info=True)
+
     def _build_model_submenu(self) -> "pystray.Menu":
         """Build a dynamic submenu listing available model bundles."""
         import pystray
@@ -825,6 +873,11 @@ class TrayLabeler:
                 self._reload_model,
                 enabled=lambda _: self._model_dir is not None,
             ))
+            items.append(pystray.MenuItem(
+                "Check Retrain",
+                self._check_retrain,
+                enabled=lambda _: self._models_dir is not None,
+            ))
         else:
             items.append(pystray.MenuItem(
                 "(no models found)", None, enabled=False,
@@ -834,6 +887,11 @@ class TrayLabeler:
                 "Reload Model",
                 self._reload_model,
                 enabled=lambda _: self._model_dir is not None,
+            ))
+            items.append(pystray.MenuItem(
+                "Check Retrain",
+                self._check_retrain,
+                enabled=lambda _: self._models_dir is not None,
             ))
 
         return pystray.Menu(*items)
@@ -1111,6 +1169,7 @@ def run_tray(
     username: str | None = None,
     notifications_enabled: bool = True,
     privacy_notifications: bool = True,
+    retrain_config: Path | None = None,
 ) -> None:
     """Launch the system tray labeling app.
 
@@ -1148,6 +1207,8 @@ def run_tray(
         privacy_notifications: When ``True`` (the default), app names
             are redacted from desktop notifications to protect privacy.
             Set to ``False`` to show raw app identifiers.
+        retrain_config: Optional path to a retrain YAML config.
+            Enables the "Check Retrain" item in the Model submenu.
     """
     tray = TrayLabeler(
         data_dir=data_dir,
@@ -1165,5 +1226,6 @@ def run_tray(
         username=username,
         notifications_enabled=notifications_enabled,
         privacy_notifications=privacy_notifications,
+        retrain_config=retrain_config,
     )
     tray.run()
