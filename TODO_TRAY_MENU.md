@@ -10,9 +10,9 @@ Current menu:
 - Import Labels (file picker + merge/overwrite)
 - Export Labels
 - ---
+- Model (submenu: bundle list + No Model + Reload Model)
 - Status (notification)
 - Open Data Folder
-- Reload Model (enabled when model_dir set)
 - ---
 - Quit
 
@@ -44,25 +44,18 @@ Implemented in `_import_labels()` callback + `POST /api/labels/import` endpoint.
 
 ## Medium Priority
 
-### 3. Switch Model (submenu)
+### ~~3. Switch Model (submenu)~~ DONE
 
-**What:** A "Model" submenu listing available model bundles from the `models/` directory, with the currently loaded one checked. Clicking a different model hot-swaps the suggester.
+Implemented in `_build_model_submenu()`, `_switch_model()`, and `_unload_model()` callbacks.
 
-**Why:** Currently requires restarting the tray with a different `--model-dir`. During train/evaluate cycles you want to test different models' suggestions without restarting.
-
-**Implementation:**
-- Use `model_registry.list_bundles(models_dir)` to scan available bundles.
-- Build a dynamic `pystray.Menu` submenu with one `MenuItem` per bundle, using `checked=lambda item: item.text == current_model_id` for a radio-button effect.
-- On click: call `load_model_bundle(bundle.path)` and replace `self._suggester` with a new `_LabelSuggester`. Update `self._model_dir`, `self._model_schema_hash`.
-- Add a "(No Model)" entry to unload the model entirely.
-- Fallback: if `models/` doesn't exist or is empty, show a single disabled "(no models)" item.
-- The `ActiveModelReloader` in `infer/resolve.py` already handles `active.json`-based hot-reload for the online loop; this would be the manual/interactive equivalent for the tray.
-
-**Touches:**
-- `src/taskclf/ui/tray.py` — add `_build_model_submenu()`, `_switch_model()` callback
-- `src/taskclf/core/defaults.py` — may need `DEFAULT_MODELS_DIR` imported
-- `tests/test_tray.py` — test submenu construction, model swap
-- `docs/api/ui/labeling.md` — document submenu
+- "Model" submenu built dynamically from `model_registry.list_bundles(models_dir)`. Each valid bundle is a radio-button `MenuItem`; the currently loaded one is checked via `checked=lambda`.
+- Clicking a different bundle calls `_switch_model(path)` which instantiates a new `_LabelSuggester`, updates `_model_dir`, `_suggester`, `_model_schema_hash`, and notifies success. On failure, the old model is preserved.
+- "(No Model)" entry unloads the model entirely (clears `_suggester`, `_model_dir`, suggestions).
+- "Reload Model" moved from top-level menu into the Model submenu.
+- Fallback: when `models_dir` is `None`, doesn't exist, is empty, or contains only invalid bundles, shows a disabled "(no models found)" placeholder.
+- CLI: `--models-dir` option (default `models/`) passed to `TrayLabeler`.
+- Tests: `TestSwitchModel` in `tests/test_tray.py` (12 tests: list valid bundles, exclude invalid, checked state, checked when unloaded, switch success, switch failure, noop if same, unload, no models_dir fallback, empty dir fallback, all-invalid fallback, submenu in main menu). Updated `TestBuildMenuEnhancements` (4 tests: menu items, submenu contains reload, reload disabled/enabled).
+- Docs: `docs/api/ui/labeling.md` updated.
 
 ---
 
@@ -109,7 +102,7 @@ Implemented in `_show_status()` callback.
 
 **Implementation:**
 - Requires a retrain config path (from `configs/retrain.yaml` or a default).
-- Call `check_retrain_needed()` from `taskclf.train.retrain`.
+- Call `check_retrain_due()` from `taskclf.train.retrain`.
 - Notify "Retrain recommended: {reason}" or "Model is current (last trained {date})".
 - Menu item disabled if no retrain config exists.
 
@@ -133,7 +126,7 @@ Label Stats             (notification)       ✅ DONE
 Import Labels           (file picker)         ✅ DONE
 Export Labels           (file picker)
 ─────────────────────
-Model ►                 (submenu)
+Model ►                 (submenu)             ✅ DONE
   ☑ run_20260301
     run_20260226
     run_20260220

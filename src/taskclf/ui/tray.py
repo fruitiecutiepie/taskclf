@@ -381,6 +381,9 @@ class TrayLabeler:
     Args:
         data_dir: Path to the processed data directory (for label storage).
         model_dir: Optional path to a model bundle for label suggestions.
+        models_dir: Optional path to the directory containing all model
+            bundles.  When set, the tray builds a dynamic "Model" submenu
+            listing available bundles for hot-swapping.
         aw_host: ActivityWatch server URL.
         title_salt: Salt for hashing window titles.
         poll_seconds: Seconds between AW polls.
@@ -394,6 +397,7 @@ class TrayLabeler:
         *,
         data_dir: Path = Path(DEFAULT_DATA_DIR),
         model_dir: Path | None = None,
+        models_dir: Path | None = None,
         aw_host: str = DEFAULT_AW_HOST,
         title_salt: str = DEFAULT_TITLE_SALT,
         poll_seconds: int = DEFAULT_POLL_SECONDS,
@@ -409,6 +413,7 @@ class TrayLabeler:
     ) -> None:
         self._data_dir = data_dir
         self._model_dir = model_dir
+        self._models_dir = models_dir
         self._labels_path = data_dir / "labels_v1" / "labels.parquet"
         self._config = UserConfig(data_dir)
         if username is not None:
@@ -595,12 +600,9 @@ class TrayLabeler:
             pystray.MenuItem("Import Labels", self._import_labels),
             pystray.MenuItem("Export Labels", self._export_labels),
             pystray.Menu.SEPARATOR,
+            pystray.MenuItem("Model", self._build_model_submenu()),
             pystray.MenuItem("Status", self._show_status),
             pystray.MenuItem("Open Data Folder", self._open_data_dir),
-            pystray.MenuItem(
-                "Reload Model", self._reload_model,
-                enabled=lambda _: self._model_dir is not None,
-            ),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Quit", self._quit),
         )
@@ -775,6 +777,97 @@ class TrayLabeler:
         except Exception as exc:
             self._notify(f"Reload failed: {exc}")
             logger.warning("Model reload failed: %s", exc, exc_info=True)
+
+    def _build_model_submenu(self) -> "pystray.Menu":
+        """Build a dynamic submenu listing available model bundles."""
+        import pystray
+
+        from taskclf.model_registry import list_bundles
+
+        items: list[pystray.MenuItem] = []
+
+        bundles = (
+            list_bundles(self._models_dir)
+            if self._models_dir is not None
+            else []
+        )
+        valid_bundles = [b for b in bundles if b.valid]
+
+        if valid_bundles:
+            for bundle in valid_bundles:
+                model_path = bundle.path
+
+                def make_switch_cb(p: Path) -> Callable[..., None]:
+                    def cb(*_a: Any) -> None:
+                        self._switch_model(p)
+                    return cb
+
+                def make_checked(p: Path) -> Callable[..., bool]:
+                    return lambda _item: (
+                        self._model_dir is not None
+                        and self._model_dir.resolve() == p.resolve()
+                    )
+
+                items.append(pystray.MenuItem(
+                    bundle.model_id,
+                    make_switch_cb(model_path),
+                    checked=make_checked(model_path),
+                ))
+
+            items.append(pystray.MenuItem(
+                "(No Model)",
+                self._unload_model,
+                checked=lambda _item: self._model_dir is None,
+            ))
+            items.append(pystray.Menu.SEPARATOR)
+            items.append(pystray.MenuItem(
+                "Reload Model",
+                self._reload_model,
+                enabled=lambda _: self._model_dir is not None,
+            ))
+        else:
+            items.append(pystray.MenuItem(
+                "(no models found)", None, enabled=False,
+            ))
+            items.append(pystray.Menu.SEPARATOR)
+            items.append(pystray.MenuItem(
+                "Reload Model",
+                self._reload_model,
+                enabled=lambda _: self._model_dir is not None,
+            ))
+
+        return pystray.Menu(*items)
+
+    def _switch_model(self, model_path: Path) -> None:
+        """Hot-swap the active model to a different bundle."""
+        if (
+            self._model_dir is not None
+            and self._model_dir.resolve() == model_path.resolve()
+        ):
+            return
+
+        try:
+            new_suggester = _LabelSuggester(model_path)
+            new_suggester._aw_host = self._aw_host
+            new_suggester._title_salt = self._title_salt
+            self._suggester = new_suggester
+            self._model_dir = model_path
+            self._model_schema_hash = new_suggester._predictor._metadata.schema_hash
+            self._notify(f"Switched to model {model_path.name}")
+            logger.info("Switched to model %s", model_path)
+        except Exception as exc:
+            self._notify(f"Switch failed: {exc}")
+            logger.warning("Model switch to %s failed: %s", model_path, exc, exc_info=True)
+
+    def _unload_model(self, *_args: Any) -> None:
+        """Unload the current model entirely."""
+        self._suggester = None
+        self._model_dir = None
+        self._model_schema_hash = None
+        self._suggested_label = None
+        self._suggested_confidence = None
+        self._notify("Model unloaded")
+        logger.info("Model unloaded")
 
     def _show_status(self, *_args: Any) -> None:
         """Show a notification with connection and session status."""
@@ -1004,6 +1097,7 @@ class TrayLabeler:
 def run_tray(
     *,
     model_dir: Path | None = None,
+    models_dir: Path | None = None,
     aw_host: str = DEFAULT_AW_HOST,
     poll_seconds: int = DEFAULT_POLL_SECONDS,
     title_salt: str = DEFAULT_TITLE_SALT,
@@ -1028,6 +1122,8 @@ def run_tray(
     Args:
         model_dir: Optional path to a trained model bundle.  When
             provided, the tray suggests labels on activity transitions.
+        models_dir: Optional path to the directory containing all model
+            bundles.  Enables the "Model" submenu for hot-swapping.
         aw_host: ActivityWatch server URL.
         poll_seconds: Seconds between AW polling cycles.
         title_salt: Salt for hashing window titles.
@@ -1056,6 +1152,7 @@ def run_tray(
     tray = TrayLabeler(
         data_dir=data_dir,
         model_dir=model_dir,
+        models_dir=models_dir,
         aw_host=aw_host,
         title_salt=title_salt,
         poll_seconds=poll_seconds,

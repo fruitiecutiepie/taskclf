@@ -2238,6 +2238,7 @@ def monitor_show_cmd(
 @app.command("tray")
 def tray_cmd(
     model_dir: str | None = typer.Option(None, "--model-dir", help="Path to a model run directory (enables label suggestions)"),
+    models_dir: str = typer.Option(DEFAULT_MODELS_DIR, "--models-dir", help="Directory containing model bundles (enables Model submenu for hot-swapping)"),
     aw_host: str = typer.Option(DEFAULT_AW_HOST, "--aw-host", help="ActivityWatch server URL"),
     poll_seconds: int = typer.Option(DEFAULT_POLL_SECONDS, "--poll-seconds", help="Seconds between polling iterations"),
     title_salt: str = typer.Option(DEFAULT_TITLE_SALT, "--title-salt", help="Salt for hashing window titles"),
@@ -2275,6 +2276,7 @@ def tray_cmd(
     try:
         run_tray(
             model_dir=Path(model_dir) if model_dir else None,
+            models_dir=Path(models_dir),
             aw_host=aw_host,
             poll_seconds=poll_seconds,
             title_salt=title_salt,

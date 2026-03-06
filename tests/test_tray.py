@@ -1708,33 +1708,69 @@ class TestShowStatus:
 class TestBuildMenuEnhancements:
     """Verify the updated menu structure includes new items."""
 
+    def _get_top_level_labels(self, menu: object) -> list[str]:
+        labels = []
+        for item in menu.items:  # type: ignore[attr-defined]
+            if hasattr(item, "text") and item.text is not None:
+                text = item.text if isinstance(item.text, str) else item.text(None)
+                if text:
+                    labels.append(text)
+        return labels
+
+    def _find_model_submenu(self, menu: object) -> object | None:
+        for item in menu.items:  # type: ignore[attr-defined]
+            if hasattr(item, "text") and item.text == "Model":
+                return item.submenu
+        return None
+
+    def _get_submenu_labels(self, submenu: object) -> list[str]:
+        labels = []
+        for item in submenu.items:  # type: ignore[attr-defined]
+            if hasattr(item, "text") and item.text is not None:
+                text = item.text if isinstance(item.text, str) else item.text(None)
+                if text:
+                    labels.append(text)
+        return labels
+
     def test_menu_contains_new_items(self, tmp_path: Path) -> None:
         bus, _ = _capture_bus()
         labeler = _make_tray_labeler(tmp_path, event_bus=bus)
         menu = labeler._build_menu()
 
-        labels = []
-        for item in menu.items:
-            if hasattr(item, "text") and item.text is not None:
-                text = item.text if isinstance(item.text, str) else item.text(None)
-                if text:
-                    labels.append(text)
+        labels = self._get_top_level_labels(menu)
 
         assert "Label Stats" in labels
         assert "Status" in labels
         assert "Open Data Folder" in labels
-        assert "Reload Model" in labels
+        assert "Model" in labels
         assert "Export Labels" in labels
 
+    def test_model_submenu_contains_reload(self, tmp_path: Path) -> None:
+        """Reload Model lives inside the Model submenu, not at top level."""
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+        menu = labeler._build_menu()
+
+        top_labels = self._get_top_level_labels(menu)
+        assert "Reload Model" not in top_labels
+
+        submenu = self._find_model_submenu(menu)
+        assert submenu is not None
+        sub_labels = self._get_submenu_labels(submenu)
+        assert "Reload Model" in sub_labels
+
     def test_reload_model_disabled_without_model_dir(self, tmp_path: Path) -> None:
-        """Reload Model is disabled when no model_dir is configured."""
+        """Reload Model inside Model submenu is disabled when no model_dir."""
         bus, _ = _capture_bus()
         labeler = _make_tray_labeler(tmp_path, event_bus=bus)
         assert labeler._model_dir is None
 
         menu = labeler._build_menu()
+        submenu = self._find_model_submenu(menu)
+        assert submenu is not None
+
         reload_item = None
-        for item in menu.items:
+        for item in submenu.items:  # type: ignore[attr-defined]
             if hasattr(item, "text") and item.text == "Reload Model":
                 reload_item = item
                 break
@@ -1743,17 +1779,283 @@ class TestBuildMenuEnhancements:
         assert reload_item.enabled is False
 
     def test_reload_model_enabled_with_model_dir(self, tmp_path: Path) -> None:
-        """Reload Model is enabled when model_dir is configured."""
+        """Reload Model inside Model submenu is enabled when model_dir is set."""
         bus, _ = _capture_bus()
         labeler = _make_tray_labeler(tmp_path, event_bus=bus)
         labeler._model_dir = Path("models/run_test")
 
         menu = labeler._build_menu()
+        submenu = self._find_model_submenu(menu)
+        assert submenu is not None
+
         reload_item = None
-        for item in menu.items:
+        for item in submenu.items:  # type: ignore[attr-defined]
             if hasattr(item, "text") and item.text == "Reload Model":
                 reload_item = item
                 break
 
         assert reload_item is not None
         assert reload_item.enabled is True
+
+
+# ---------------------------------------------------------------------------
+# Switch Model  (Item 3)
+# ---------------------------------------------------------------------------
+
+
+class TestSwitchModel:
+    """Tests for the Model submenu, _switch_model, and _unload_model."""
+
+    def _make_labeler_with_models_dir(
+        self, tmp_path: Path, *, event_bus: EventBus | None = None,
+    ) -> TrayLabeler:
+        models_dir = tmp_path / "models"
+        models_dir.mkdir(exist_ok=True)
+        bus = event_bus or _capture_bus()[0]
+        return TrayLabeler(
+            data_dir=tmp_path,
+            model_dir=None,
+            models_dir=models_dir,
+            event_bus=bus,
+        )
+
+    def _submenu_labels(self, submenu: object) -> list[str]:
+        labels = []
+        for item in submenu.items:  # type: ignore[attr-defined]
+            if hasattr(item, "text") and item.text is not None:
+                text = item.text if isinstance(item.text, str) else item.text(None)
+                if text:
+                    labels.append(text)
+        return labels
+
+    def _find_model_submenu(self, menu: object) -> object:
+        for item in menu.items:  # type: ignore[attr-defined]
+            if hasattr(item, "text") and item.text == "Model":
+                return item.submenu
+        pytest.fail("Model submenu not found in menu")
+
+    # -- submenu listing --
+
+    def test_submenu_lists_valid_bundles(self, tmp_path: Path) -> None:
+        """Model submenu shows one item per valid bundle."""
+        from taskclf.model_registry import ModelBundle
+
+        labeler = self._make_labeler_with_models_dir(tmp_path)
+        bundles = [
+            ModelBundle(model_id="run_20260301", path=tmp_path / "models" / "run_20260301", valid=True),
+            ModelBundle(model_id="run_20260226", path=tmp_path / "models" / "run_20260226", valid=True),
+        ]
+
+        with patch("taskclf.model_registry.list_bundles", return_value=bundles):
+            submenu = labeler._build_model_submenu()
+
+        labels = self._submenu_labels(submenu)
+        assert "run_20260301" in labels
+        assert "run_20260226" in labels
+        assert "(No Model)" in labels
+        assert "Reload Model" in labels
+
+    def test_submenu_excludes_invalid_bundles(self, tmp_path: Path) -> None:
+        """Invalid bundles are filtered out of the submenu."""
+        from taskclf.model_registry import ModelBundle
+
+        labeler = self._make_labeler_with_models_dir(tmp_path)
+        bundles = [
+            ModelBundle(model_id="run_good", path=tmp_path / "models" / "run_good", valid=True),
+            ModelBundle(model_id="run_bad", path=tmp_path / "models" / "run_bad", valid=False, invalid_reason="missing metadata"),
+        ]
+
+        with patch("taskclf.model_registry.list_bundles", return_value=bundles):
+            submenu = labeler._build_model_submenu()
+
+        labels = self._submenu_labels(submenu)
+        assert "run_good" in labels
+        assert "run_bad" not in labels
+
+    # -- checked state (radio-button effect) --
+
+    def test_current_model_is_checked(self, tmp_path: Path) -> None:
+        """The currently loaded model shows a check mark."""
+        from taskclf.model_registry import ModelBundle
+
+        model_path = tmp_path / "models" / "run_20260301"
+        model_path.mkdir(parents=True)
+        labeler = self._make_labeler_with_models_dir(tmp_path)
+        labeler._model_dir = model_path
+
+        bundles = [
+            ModelBundle(model_id="run_20260301", path=model_path, valid=True),
+            ModelBundle(model_id="run_20260226", path=tmp_path / "models" / "run_20260226", valid=True),
+        ]
+
+        with patch("taskclf.model_registry.list_bundles", return_value=bundles):
+            submenu = labeler._build_model_submenu()
+
+        for item in submenu.items:
+            if hasattr(item, "text") and item.text == "run_20260301":
+                assert item.checked is True
+            elif hasattr(item, "text") and item.text == "run_20260226":
+                assert item.checked is False
+            elif hasattr(item, "text") and item.text == "(No Model)":
+                assert item.checked is False
+
+    def test_no_model_checked_when_unloaded(self, tmp_path: Path) -> None:
+        """'(No Model)' is checked when no model is loaded."""
+        from taskclf.model_registry import ModelBundle
+
+        labeler = self._make_labeler_with_models_dir(tmp_path)
+        assert labeler._model_dir is None
+
+        bundles = [
+            ModelBundle(model_id="run_20260301", path=tmp_path / "models" / "run_20260301", valid=True),
+        ]
+
+        with patch("taskclf.model_registry.list_bundles", return_value=bundles):
+            submenu = labeler._build_model_submenu()
+
+        for item in submenu.items:
+            if hasattr(item, "text") and item.text == "(No Model)":
+                assert item.checked is True
+            elif hasattr(item, "text") and item.text == "run_20260301":
+                assert item.checked is False
+
+    # -- switch model --
+
+    def test_switch_model_success(self, tmp_path: Path) -> None:
+        """Switching to a new model updates _suggester, _model_dir, _model_schema_hash."""
+        labeler = self._make_labeler_with_models_dir(tmp_path)
+        new_path = tmp_path / "models" / "run_20260301"
+        new_path.mkdir(parents=True)
+
+        mock_suggester = MagicMock()
+        mock_suggester._predictor._metadata.schema_hash = "hash_301"
+
+        with (
+            patch("taskclf.ui.tray._LabelSuggester", return_value=mock_suggester) as mock_cls,
+            patch.object(labeler, "_notify") as mock_notify,
+        ):
+            labeler._switch_model(new_path)
+
+        mock_cls.assert_called_once_with(new_path)
+        assert labeler._suggester is mock_suggester
+        assert labeler._model_dir == new_path
+        assert labeler._model_schema_hash == "hash_301"
+        mock_notify.assert_called_once()
+        assert "switched" in mock_notify.call_args[0][0].lower()
+
+    def test_switch_model_failure_keeps_old(self, tmp_path: Path) -> None:
+        """On load failure, the previous model is preserved."""
+        labeler = self._make_labeler_with_models_dir(tmp_path)
+        old_suggester = MagicMock()
+        old_path = tmp_path / "models" / "run_old"
+        labeler._suggester = old_suggester
+        labeler._model_dir = old_path
+        labeler._model_schema_hash = "old_hash"
+
+        new_path = tmp_path / "models" / "run_broken"
+
+        with (
+            patch("taskclf.ui.tray._LabelSuggester", side_effect=RuntimeError("corrupt model")),
+            patch.object(labeler, "_notify") as mock_notify,
+        ):
+            labeler._switch_model(new_path)
+
+        assert labeler._suggester is old_suggester
+        assert labeler._model_dir == old_path
+        assert labeler._model_schema_hash == "old_hash"
+        mock_notify.assert_called_once()
+        assert "failed" in mock_notify.call_args[0][0].lower()
+
+    def test_switch_model_noop_if_same(self, tmp_path: Path) -> None:
+        """Switching to the already-loaded model is a no-op."""
+        labeler = self._make_labeler_with_models_dir(tmp_path)
+        model_path = tmp_path / "models" / "run_20260301"
+        model_path.mkdir(parents=True)
+        labeler._model_dir = model_path
+
+        with (
+            patch("taskclf.ui.tray._LabelSuggester") as mock_cls,
+            patch.object(labeler, "_notify") as mock_notify,
+        ):
+            labeler._switch_model(model_path)
+
+        mock_cls.assert_not_called()
+        mock_notify.assert_not_called()
+
+    # -- unload model --
+
+    def test_unload_model(self, tmp_path: Path) -> None:
+        """Unloading clears _suggester, _model_dir, and suggestions."""
+        labeler = self._make_labeler_with_models_dir(tmp_path)
+        labeler._suggester = MagicMock()
+        labeler._model_dir = tmp_path / "models" / "run_test"
+        labeler._model_schema_hash = "some_hash"
+        labeler._suggested_label = "Build"
+        labeler._suggested_confidence = 0.9
+
+        with patch.object(labeler, "_notify") as mock_notify:
+            labeler._unload_model()
+
+        assert labeler._suggester is None
+        assert labeler._model_dir is None
+        assert labeler._model_schema_hash is None
+        assert labeler._suggested_label is None
+        assert labeler._suggested_confidence is None
+        mock_notify.assert_called_once()
+        assert "unloaded" in mock_notify.call_args[0][0].lower()
+
+    # -- fallback: no models_dir --
+
+    def test_no_models_dir_shows_fallback(self, tmp_path: Path) -> None:
+        """When models_dir is None, submenu shows '(no models found)'."""
+        bus, _ = _capture_bus()
+        labeler = TrayLabeler(
+            data_dir=tmp_path,
+            model_dir=None,
+            models_dir=None,
+            event_bus=bus,
+        )
+
+        submenu = labeler._build_model_submenu()
+        labels = self._submenu_labels(submenu)
+        assert "(no models found)" in labels
+        assert "Reload Model" in labels
+
+    def test_empty_models_dir_shows_fallback(self, tmp_path: Path) -> None:
+        """When models_dir exists but is empty, submenu shows '(no models found)'."""
+        labeler = self._make_labeler_with_models_dir(tmp_path)
+
+        with patch("taskclf.model_registry.list_bundles", return_value=[]):
+            submenu = labeler._build_model_submenu()
+
+        labels = self._submenu_labels(submenu)
+        assert "(no models found)" in labels
+
+    def test_all_invalid_bundles_shows_fallback(self, tmp_path: Path) -> None:
+        """When all bundles are invalid, submenu shows '(no models found)'."""
+        from taskclf.model_registry import ModelBundle
+
+        labeler = self._make_labeler_with_models_dir(tmp_path)
+        bundles = [
+            ModelBundle(model_id="run_bad", path=tmp_path / "models" / "run_bad", valid=False, invalid_reason="broken"),
+        ]
+
+        with patch("taskclf.model_registry.list_bundles", return_value=bundles):
+            submenu = labeler._build_model_submenu()
+
+        labels = self._submenu_labels(submenu)
+        assert "(no models found)" in labels
+
+    # -- menu structure --
+
+    def test_model_submenu_in_main_menu(self, tmp_path: Path) -> None:
+        """Top-level menu contains a 'Model' item with a submenu."""
+        labeler = self._make_labeler_with_models_dir(tmp_path)
+
+        with patch("taskclf.model_registry.list_bundles", return_value=[]):
+            menu = labeler._build_menu()
+
+        submenu = self._find_model_submenu(menu)
+        labels = self._submenu_labels(submenu)
+        assert "(no models found)" in labels
+        assert "Reload Model" in labels
