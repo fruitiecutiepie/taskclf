@@ -1,11 +1,12 @@
 import { type Accessor, type Component, createSignal } from "solid-js";
 import type { ConnectionStatus } from "../lib/ws";
 import { dotColor } from "./StatePanel";
-import { host } from "../lib/host";
 
 export const LiveBadgeConnectionStatus: Component<{
   status: Accessor<ConnectionStatus>;
   onTogglePanel?: () => void;
+  onShowPanel?: () => void;
+  onHidePanel?: () => void;
 }> = (props) => {
   const [hovered, setHovered] = createSignal(false);
   const color = () => dotColor(props.status());
@@ -24,12 +25,17 @@ export const LiveBadgeConnectionStatus: Component<{
         background: hovered() ? "rgba(255,255,255,0.08)" : "transparent",
         transition: "background 0.15s ease",
       }}
-      title={`${props.status()} — click to toggle panel`}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      title={`${props.status()} — click to pin panel`}
+      onMouseEnter={() => {
+        setHovered(true);
+        props.onShowPanel?.();
+      }}
+      onMouseLeave={() => {
+        setHovered(false);
+        props.onHidePanel?.();
+      }}
       onClick={(e) => {
         e.stopPropagation();
-        host.invoke({ cmd: "toggleStatePanel" });
         props.onTogglePanel?.();
       }}
     >

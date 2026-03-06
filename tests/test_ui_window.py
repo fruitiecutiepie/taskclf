@@ -1,7 +1,8 @@
 """Unit tests for WindowAPI methods.
 
 Covers: bind, bind_label, bind_panel, show/hide label grid,
-toggle state panel, reposition label, position panel.
+show/hide/toggle state panel (hover + pin), cancel panel hide,
+reposition label, position panel.
 
 All tests use mock window objects — no real GUI required.
 """
@@ -81,59 +82,315 @@ class TestHideLabelGrid:
         label.hide.assert_called_once()
 
 
-# ── TC-UI-WIN-004/005: toggle_state_panel ─────────────────────────────────
+# ── show_state_panel (hover show) ─────────────────────────────────────────
 
 
-class TestToggleStatePanel:
-    def test_show_panel(self) -> None:
-        """TC-UI-WIN-004: toggle hidden panel → visible, show() called."""
+class TestShowStatePanel:
+    def test_show_makes_visible(self) -> None:
+        """show_state_panel on hidden panel → visible, show() called."""
         api = WindowAPI()
         main = _make_window()
         panel = _make_window()
         api.bind(main)
         api.bind_panel(panel)
 
-        api.toggle_state_panel()
+        api.show_state_panel()
 
         assert api._panel_visible is True
+        assert api._panel_pinned is False
         panel.show.assert_called_once()
 
-    def test_hide_panel(self) -> None:
-        """TC-UI-WIN-005: toggle visible panel → schedules hide."""
+    def test_show_idempotent_when_already_visible(self) -> None:
+        """Calling show_state_panel twice doesn't call show() again."""
         api = WindowAPI()
         main = _make_window()
         panel = _make_window()
         api.bind(main)
         api.bind_panel(panel)
 
-        api.toggle_state_panel()
-        assert api._panel_visible is True
+        api.show_state_panel()
+        api.show_state_panel()
 
-        api._do_hide_panel()
+        panel.show.assert_called_once()
 
-        assert api._panel_visible is False
-        panel.hide.assert_called_once()
-
-    def test_no_op_without_panel_window(self) -> None:
-        """toggle_state_panel with no panel window is a no-op."""
+    def test_show_cancels_pending_hide(self) -> None:
+        """Re-hovering cancels a pending hide timer."""
         api = WindowAPI()
         main = _make_window()
+        panel = _make_window()
         api.bind(main)
+        api.bind_panel(panel)
 
-        api.toggle_state_panel()
+        api.show_state_panel()
+        api.hide_state_panel()
+        assert api._panel_hide_timer is not None
 
+        api.show_state_panel()
+        assert api._panel_hide_timer is None
+
+    def test_no_op_without_panel_window(self) -> None:
+        api = WindowAPI()
+        api.bind(_make_window())
+        api.show_state_panel()
         assert api._panel_visible is False
 
     def test_no_op_without_main_window(self) -> None:
-        """toggle_state_panel with no main window is a no-op."""
         api = WindowAPI()
         panel = _make_window()
+        api.bind_panel(panel)
+        api.show_state_panel()
+        assert api._panel_visible is False
+        panel.show.assert_not_called()
+
+
+# ── hide_state_panel (hover hide) ────────────────────────────────────────
+
+
+class TestHideStatePanel:
+    def test_schedules_hide_when_not_pinned(self) -> None:
+        """hide_state_panel schedules a delayed hide."""
+        api = WindowAPI()
+        main = _make_window()
+        panel = _make_window()
+        api.bind(main)
+        api.bind_panel(panel)
+
+        api.show_state_panel()
+        api.hide_state_panel()
+
+        assert api._panel_hide_timer is not None
+
+    def test_no_op_when_pinned(self) -> None:
+        """hide_state_panel is a no-op when panel is pinned."""
+        api = WindowAPI()
+        main = _make_window()
+        panel = _make_window()
+        api.bind(main)
+        api.bind_panel(panel)
+
+        api.show_state_panel()
+        api.toggle_state_panel()  # pin
+        assert api._panel_pinned is True
+
+        api.hide_state_panel()
+
+        assert api._panel_hide_timer is None
+        assert api._panel_visible is True
+
+    def test_do_hide_resets_state(self) -> None:
+        """_do_hide_panel clears visible and pinned flags."""
+        api = WindowAPI()
+        main = _make_window()
+        panel = _make_window()
+        api.bind(main)
+        api.bind_panel(panel)
+
+        api.show_state_panel()
+        api._do_hide_panel()
+
+        assert api._panel_visible is False
+        assert api._panel_pinned is False
+        panel.hide.assert_called_once()
+
+
+# ── cancel_panel_hide ────────────────────────────────────────────────────
+
+
+class TestCancelPanelHide:
+    def test_cancels_pending_timer(self) -> None:
+        """cancel_panel_hide cancels a scheduled hide."""
+        api = WindowAPI()
+        main = _make_window()
+        panel = _make_window()
+        api.bind(main)
+        api.bind_panel(panel)
+
+        api.show_state_panel()
+        api.hide_state_panel()
+        assert api._panel_hide_timer is not None
+
+        api.cancel_panel_hide()
+
+        assert api._panel_hide_timer is None
+        assert api._panel_visible is True
+
+    def test_no_op_without_pending_timer(self) -> None:
+        """cancel_panel_hide with no timer is a safe no-op."""
+        api = WindowAPI()
+        api.cancel_panel_hide()
+        assert api._panel_hide_timer is None
+
+
+# ── toggle_state_panel (click to pin/unpin) ──────────────────────────────
+
+
+class TestToggleStatePanel:
+    def test_click_from_hidden_shows_and_pins(self) -> None:
+        """Click while hidden → show + pin."""
+        api = WindowAPI()
+        main = _make_window()
+        panel = _make_window()
+        api.bind(main)
         api.bind_panel(panel)
 
         api.toggle_state_panel()
 
+        assert api._panel_visible is True
+        assert api._panel_pinned is True
+        panel.show.assert_called_once()
+
+    def test_click_while_hover_visible_pins(self) -> None:
+        """Click while hover-visible (not pinned) → pin."""
+        api = WindowAPI()
+        main = _make_window()
+        panel = _make_window()
+        api.bind(main)
+        api.bind_panel(panel)
+
+        api.show_state_panel()
+        assert api._panel_visible is True
+        assert api._panel_pinned is False
+
+        api.toggle_state_panel()
+
+        assert api._panel_visible is True
+        assert api._panel_pinned is True
+        panel.hide.assert_not_called()
+
+    def test_click_while_pinned_hides(self) -> None:
+        """Click while pinned → unpin + hide."""
+        api = WindowAPI()
+        main = _make_window()
+        panel = _make_window()
+        api.bind(main)
+        api.bind_panel(panel)
+
+        api.toggle_state_panel()  # show + pin
+        assert api._panel_pinned is True
+
+        api.toggle_state_panel()  # unpin + hide
+
+        assert api._panel_visible is False
+        assert api._panel_pinned is False
+        panel.hide.assert_called_once()
+
+    def test_no_op_without_panel_window(self) -> None:
+        api = WindowAPI()
+        api.bind(_make_window())
+        api.toggle_state_panel()
+        assert api._panel_visible is False
+
+    def test_no_op_without_main_window(self) -> None:
+        api = WindowAPI()
+        panel = _make_window()
+        api.bind_panel(panel)
+        api.toggle_state_panel()
         assert api._panel_visible is False
         panel.show.assert_not_called()
+
+
+# ── Full state-machine scenarios ─────────────────────────────────────────
+
+
+class TestPanelStateMachine:
+    """End-to-end scenarios simulating the hover/click lifecycle."""
+
+    def _setup(self) -> tuple[WindowAPI, MagicMock]:
+        api = WindowAPI()
+        main = _make_window()
+        panel = _make_window()
+        api.bind(main)
+        api.bind_panel(panel)
+        return api, panel
+
+    def test_hover_then_unhover(self) -> None:
+        """Hover dot → show; leave dot → scheduled hide → hidden."""
+        api, panel = self._setup()
+
+        api.show_state_panel()
+        assert api._panel_visible is True
+
+        api.hide_state_panel()
+        assert api._panel_hide_timer is not None
+
+        api._do_hide_panel()  # timer fires
+        assert api._panel_visible is False
+        panel.hide.assert_called_once()
+
+    def test_hover_dot_then_enter_panel(self) -> None:
+        """Hover dot → show; leave dot → start hide; enter panel → cancel hide."""
+        api, panel = self._setup()
+
+        api.show_state_panel()
+        api.hide_state_panel()
+        assert api._panel_hide_timer is not None
+
+        api.cancel_panel_hide()  # mouse entered panel window
+        assert api._panel_hide_timer is None
+        assert api._panel_visible is True
+        panel.hide.assert_not_called()
+
+    def test_hover_panel_then_leave_panel(self) -> None:
+        """Enter panel (cancel hide); leave panel → schedule hide → hidden."""
+        api, panel = self._setup()
+
+        api.show_state_panel()
+        api.hide_state_panel()
+        api.cancel_panel_hide()
+
+        api.hide_state_panel()  # mouse left panel
+        assert api._panel_hide_timer is not None
+
+        api._do_hide_panel()
+        assert api._panel_visible is False
+
+    def test_hover_then_click_pins(self) -> None:
+        """Hover → visible; click → pinned; unhover → stays visible."""
+        api, panel = self._setup()
+
+        api.show_state_panel()
+        api.toggle_state_panel()  # pin
+        assert api._panel_pinned is True
+
+        api.hide_state_panel()  # unhover — no-op because pinned
+        assert api._panel_hide_timer is None
+        assert api._panel_visible is True
+
+    def test_pinned_then_click_hides(self) -> None:
+        """Pinned panel → click → unpin + immediate hide."""
+        api, panel = self._setup()
+
+        api.show_state_panel()
+        api.toggle_state_panel()  # pin
+        api.toggle_state_panel()  # unpin + hide
+
+        assert api._panel_visible is False
+        assert api._panel_pinned is False
+        panel.hide.assert_called_once()
+
+    def test_click_without_hover(self) -> None:
+        """Click from hidden → show + pin; click again → hide."""
+        api, panel = self._setup()
+
+        api.toggle_state_panel()  # show + pin
+        assert api._panel_visible is True
+        assert api._panel_pinned is True
+
+        api.toggle_state_panel()  # unpin + hide
+        assert api._panel_visible is False
+        assert api._panel_pinned is False
+
+    def test_unpin_then_hover_again(self) -> None:
+        """After unpinning (hidden), hovering shows it again as non-pinned."""
+        api, panel = self._setup()
+
+        api.toggle_state_panel()  # pin
+        api.toggle_state_panel()  # unpin + hide
+        assert api._panel_visible is False
+
+        api.show_state_panel()  # re-hover
+        assert api._panel_visible is True
+        assert api._panel_pinned is False
 
 
 # ── TC-UI-WIN-006: _reposition_label ──────────────────────────────────────

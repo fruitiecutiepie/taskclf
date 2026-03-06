@@ -35,6 +35,7 @@ class WindowAPI:
         self._visible = True
         self._label_visible = False
         self._panel_visible = False
+        self._panel_pinned = False
         self._label_hide_timer: threading.Timer | None = None
         self._panel_hide_timer: threading.Timer | None = None
 
@@ -96,16 +97,41 @@ class WindowAPI:
 
     # -- State panel window ----------------------------------------------------
 
-    def toggle_state_panel(self) -> None:
-        """Toggle the panel window's visibility."""
+    def show_state_panel(self) -> None:
+        """Show panel on hover (non-pinned)."""
         if self._panel_window is None or self._window is None:
             return
-        if self._panel_visible:
-            self._schedule_hide(
-                "_panel_hide_timer", self._do_hide_panel,
-            )
+        self._cancel_timer("_panel_hide_timer")
+        if not self._panel_visible:
+            self._panel_visible = True
+            try:
+                self._panel_window.show()
+            except Exception:
+                logger.debug("Could not show panel", exc_info=True)
+            self._position_panel()
+
+    def hide_state_panel(self) -> None:
+        """Schedule panel hide unless pinned."""
+        if self._panel_pinned:
+            return
+        self._schedule_hide("_panel_hide_timer", self._do_hide_panel)
+
+    def cancel_panel_hide(self) -> None:
+        """Cancel any pending panel hide (e.g. mouse entered panel window)."""
+        self._cancel_timer("_panel_hide_timer")
+
+    def toggle_state_panel(self) -> None:
+        """Toggle pinned state of the panel."""
+        if self._panel_window is None or self._window is None:
+            return
+        if self._panel_visible and self._panel_pinned:
+            self._panel_pinned = False
+            self._do_hide_panel()
+        elif self._panel_visible and not self._panel_pinned:
+            self._panel_pinned = True
         else:
             self._cancel_timer("_panel_hide_timer")
+            self._panel_pinned = True
             self._panel_visible = True
             try:
                 self._panel_window.show()
@@ -121,6 +147,7 @@ class WindowAPI:
             except Exception:
                 logger.debug("Could not hide panel", exc_info=True)
         self._panel_visible = False
+        self._panel_pinned = False
 
     # -- Shared helpers --------------------------------------------------------
 

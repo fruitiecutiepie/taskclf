@@ -81,6 +81,12 @@ const PanelApp: Component = () => {
 
   return (
     <div
+      onMouseEnter={() => {
+        if (!inBrowser) host.invoke({ cmd: "cancelPanelHide" });
+      }}
+      onMouseLeave={() => {
+        if (!inBrowser) host.invoke({ cmd: "hideStatePanel" });
+      }}
       style={{
         ...(inBrowser
           ? {
@@ -147,11 +153,10 @@ const App: Component = () => {
 
   const inBrowser = isBrowserMode();
   const [hovering, setHovering] = createSignal(false);
-  const [showPanel, setShowPanel] = createSignal(false);
-
-  function browserTogglePanel() {
-    setShowPanel((v) => !v);
-  }
+  const [panelPinned, setPanelPinned] = createSignal(false);
+  const [dotHovered, setDotHovered] = createSignal(false);
+  const [panelHovered, setPanelHovered] = createSignal(false);
+  const panelVisible = () => panelPinned() || dotHovered() || panelHovered();
 
   const ws = useWebSocket();
 
@@ -241,7 +246,29 @@ const App: Component = () => {
               latestPrediction={ws.latestPrediction}
               latestTrayState={ws.latestTrayState}
               activeSuggestion={ws.activeSuggestion}
-              onTogglePanel={inBrowser ? browserTogglePanel : undefined}
+              onTogglePanel={
+                inBrowser
+                  ? () => {
+                      setPanelPinned((v) => !v);
+                    }
+                  : () => {
+                      host.invoke({ cmd: "toggleStatePanel" });
+                    }
+              }
+              onShowPanel={
+                inBrowser
+                  ? () => setDotHovered(true)
+                  : () => {
+                      host.invoke({ cmd: "showStatePanel" });
+                    }
+              }
+              onHidePanel={
+                inBrowser
+                  ? () => setDotHovered(false)
+                  : () => {
+                      host.invoke({ cmd: "hideStatePanel" });
+                    }
+              }
               onShowLabel={inBrowser ? undefined : showLabel}
               onHideLabel={inBrowser ? undefined : hideLabel}
             />
@@ -266,8 +293,10 @@ const App: Component = () => {
       </div>
 
       {/* Inline state panel for browser mode preview */}
-      <Show when={inBrowser && showPanel()}>
+      <Show when={inBrowser && panelVisible()}>
         <div
+          onMouseEnter={() => setPanelHovered(true)}
+          onMouseLeave={() => setPanelHovered(false)}
           style={{
             width: `${CONTENT_W}px`,
             "max-height": `${PANEL_MAX_H}px`,

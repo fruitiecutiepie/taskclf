@@ -10,6 +10,8 @@ export const LiveBadge: Component<{
   latestTrayState: Accessor<TrayState | null>;
   activeSuggestion: Accessor<LabelSuggestion | null>;
   onTogglePanel?: () => void;
+  onShowPanel?: () => void;
+  onHidePanel?: () => void;
   onShowLabel?: () => void;
   onHideLabel?: () => void;
 }> = (props) => {
@@ -60,6 +62,8 @@ export const LiveBadge: Component<{
       <LiveBadgeConnectionStatus
         status={props.status}
         onTogglePanel={props.onTogglePanel}
+        onShowPanel={props.onShowPanel}
+        onHidePanel={props.onHidePanel}
       />
     </div>
   );
