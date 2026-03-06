@@ -586,10 +586,15 @@ class TrayLabeler:
 
         _send_desktop_notification(title, message, timeout=10)
 
-    def _build_menu(self) -> "pystray.Menu":
+    def _build_menu_items(self) -> tuple["pystray.MenuItem", ...]:
+        """Return top-level menu items.
+
+        Used as a callable by ``pystray.Menu`` so the menu is rebuilt
+        (including a fresh Model submenu scan) on every right-click.
+        """
         import pystray
 
-        return pystray.Menu(
+        return (
             pystray.MenuItem(
                 "Open Dashboard", self._open_dashboard, default=True,
             ),
@@ -608,6 +613,12 @@ class TrayLabeler:
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Quit", self._quit),
         )
+
+    def _build_menu(self) -> "pystray.Menu":
+        """Build a static snapshot of the menu (used by tests)."""
+        import pystray
+
+        return pystray.Menu(*self._build_menu_items())
 
     def _on_pause_menu(self, *_args: Any) -> None:
         paused = self._toggle_pause()
@@ -1135,7 +1146,7 @@ class TrayLabeler:
             "taskclf",
             icon_image,
             "taskclf",
-            menu=self._build_menu,
+            menu=pystray.Menu(self._build_menu_items),
         )
 
         print(f"taskclf tray started ({mode})")

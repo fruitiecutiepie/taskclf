@@ -2277,12 +2277,12 @@ class TestCheckRetrain:
 
 
 class TestDynamicModelMenuRefresh:
-    """Verify that _build_menu produces fresh results on each call.
+    """Verify that the dynamic menu rebuilds on each open.
 
-    pystray receives _build_menu as a callable (not its result), so it
-    rebuilds the menu on every right-click.  These tests ensure that
-    repeated calls reflect the latest models_dir contents and that no
-    stale state accumulates.
+    In ``run()``, ``pystray.Menu(self._build_menu_items)`` passes the
+    method as a callable — pystray invokes it every time the menu is
+    about to be shown.  These tests ensure repeated invocations reflect
+    the latest ``models_dir`` contents and that no stale state accumulates.
     """
 
     def _make_labeler_with_models_dir(
@@ -2312,6 +2312,38 @@ class TestDynamicModelMenuRefresh:
                 if text:
                     labels.append(text)
         return labels
+
+    def test_menu_callable_integration_with_pystray(self, tmp_path: Path) -> None:
+        """pystray.Menu(callable) invokes _build_menu_items on .items access,
+        picking up model changes between accesses."""
+        import pystray
+
+        from taskclf.model_registry import ModelBundle
+
+        labeler = self._make_labeler_with_models_dir(tmp_path)
+        bundles_v1 = [
+            ModelBundle(model_id="run_A", path=tmp_path / "models" / "run_A", valid=True),
+        ]
+        bundles_v2 = [
+            ModelBundle(model_id="run_A", path=tmp_path / "models" / "run_A", valid=True),
+            ModelBundle(model_id="run_B", path=tmp_path / "models" / "run_B", valid=True),
+        ]
+
+        dynamic_menu = pystray.Menu(labeler._build_menu_items)
+
+        with patch("taskclf.model_registry.list_bundles", return_value=bundles_v1):
+            items1 = dynamic_menu.items
+        model_item1 = [i for i in items1 if hasattr(i, "text") and i.text == "Model"][0]
+        sub_labels1 = self._submenu_labels(model_item1.submenu)
+        assert "run_A" in sub_labels1
+        assert "run_B" not in sub_labels1
+
+        with patch("taskclf.model_registry.list_bundles", return_value=bundles_v2):
+            items2 = dynamic_menu.items
+        model_item2 = [i for i in items2 if hasattr(i, "text") and i.text == "Model"][0]
+        sub_labels2 = self._submenu_labels(model_item2.submenu)
+        assert "run_A" in sub_labels2
+        assert "run_B" in sub_labels2
 
     def test_repeated_calls_produce_identical_results(self, tmp_path: Path) -> None:
         """Calling _build_menu() multiple times with the same inputs gives
@@ -2426,3 +2458,19 @@ class TestDynamicModelMenuRefresh:
         labels2 = self._submenu_labels(self._find_model_submenu(menu2))
         assert "run_A" not in labels2
         assert "(no models found)" in labels2
+
+    def test_icon_constructor_accepts_dynamic_menu(self, tmp_path: Path) -> None:
+        """pystray.Icon(menu=Menu(callable)) must not raise — smoke test
+        for the exact pattern used in TrayLabeler.run()."""
+        import pystray
+
+        labeler = self._make_labeler_with_models_dir(tmp_path)
+        icon_image = _make_icon_image()
+
+        icon = pystray.Icon(
+            "taskclf_test",
+            icon_image,
+            "taskclf",
+            menu=pystray.Menu(labeler._build_menu_items),
+        )
+        assert icon.menu is not None

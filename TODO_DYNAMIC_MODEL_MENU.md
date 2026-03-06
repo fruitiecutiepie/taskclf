@@ -14,22 +14,30 @@ reflect the current set of valid bundles without requiring a restart.
 
 ## Approach Options
 
-### Option A: Rebuild menu on every open (recommended)
+### Option A: Rebuild menu on every open (recommended) -- DONE
 
-pystray supports dynamic menus by passing a callable to the `menu` parameter
-of `pystray.Icon`. Instead of building the menu once:
+`pystray.Icon` does **not** accept a callable for its `menu` parameter (it
+tries `Menu(*menu)` which fails on a method). However, `pystray.Menu` itself
+supports a single callable: when constructed as `Menu(callable)`, it invokes
+the callable on every `.items` access to get fresh menu items.
+
+The implementation extracts `_build_menu_items()` (returns a tuple of items)
+from `_build_menu()` (returns a `Menu`), and passes the method reference to
+`Menu`:
 
 ```python
-# Current (static)
-self._icon = pystray.Icon("taskclf", icon_image, "taskclf", menu=self._build_menu())
-
-# Proposed (dynamic)
-self._icon = pystray.Icon("taskclf", icon_image, "taskclf", menu=self._build_menu)
+# In run():
+self._icon = pystray.Icon(
+    "taskclf", icon_image, "taskclf",
+    menu=pystray.Menu(self._build_menu_items),
+)
 ```
 
-When `menu` is a callable, pystray calls it every time the menu is about to be
-shown. This means `_build_model_submenu()` re-scans `models_dir` on each
-right-click — picking up new bundles automatically.
+Every right-click invokes `_build_menu_items()`, which calls
+`_build_model_submenu()`, which re-scans `models_dir` via `list_bundles()`.
+
+`_build_menu()` is preserved as `Menu(*self._build_menu_items())` for test
+compatibility.
 
 **Pros:** Simple, no filesystem watchers, no polling, no state to manage.
 **Cons:** Slight delay on right-click if `models_dir` has many entries (should
@@ -48,26 +56,30 @@ Less automatic but simple.
 
 ## Recommendation
 
-**Option A** is the simplest and most robust. The key change is passing
-`self._build_menu` (the method reference) instead of `self._build_menu()`
-(the result) to `pystray.Icon`.
+**Option A** was chosen. The key insight is that `pystray.Icon` does not
+accept a callable for `menu`, but `pystray.Menu` does — so
+`Menu(self._build_menu_items)` achieves the same dynamic rebuild.
 
 ## Changes Required
 
-- [x] In `TrayLabeler.run()`, change `menu=self._build_menu()` to
-      `menu=self._build_menu` so pystray rebuilds the menu on each open.
-      **Done:** single-line change in `src/taskclf/ui/tray.py`.
+- [x] In `TrayLabeler.run()`, make the menu dynamic so pystray rebuilds it
+      on each open.
+      **Done:** extracted `_build_menu_items()` and used
+      `menu=pystray.Menu(self._build_menu_items)` in `run()`. `_build_menu()`
+      is kept as a static wrapper for tests.
 - [x] Verify this works on macOS (AppKit backend) and Linux (AppIndicator/GTK).
       Some backends may not support callable menus — add a fallback if needed.
-      **Done:** pystray's `MenuItem` and `Menu` already support callable labels,
-      checked, and enabled fields (used by Pause/Resume). The callable `menu`
-      parameter is supported by the Darwin/AppKit backend. No fallback needed.
+      **Done:** `pystray.Menu(callable)` is part of pystray's public API and
+      works on all backends. Tested on macOS/Darwin. No fallback needed.
+      **Note:** passing a bare callable to `pystray.Icon(menu=...)` does NOT
+      work — `Icon.__init__` tries `Menu(*menu)` which fails on a method.
+      The correct pattern is `Menu(callable)`.
 - [x] Update tests: `_build_menu` is now called repeatedly, ensure no side
       effects or stale state accumulates.
-      **Done:** `TestDynamicModelMenuRefresh` in `tests/test_tray.py` — 5 tests
-      covering: identical results on repeated calls, new bundles appearing,
-      removed bundles disappearing, empty-to-populated and populated-to-empty
-      transitions.
+      **Done:** `TestDynamicModelMenuRefresh` in `tests/test_tray.py` — 6 tests
+      covering: `pystray.Menu(callable)` integration, identical results on
+      repeated calls, new bundles appearing, removed bundles disappearing,
+      empty-to-populated and populated-to-empty transitions.
 - [x] Update docs to mention that the Model submenu auto-refreshes.
       **Done:** `docs/api/ui/labeling.md` updated.
 
