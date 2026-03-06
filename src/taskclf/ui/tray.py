@@ -1135,7 +1135,7 @@ class TrayLabeler:
             "taskclf",
             icon_image,
             "taskclf",
-            menu=self._build_menu(),
+            menu=self._build_menu,
         )
 
         print(f"taskclf tray started ({mode})")

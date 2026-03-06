@@ -2269,3 +2269,160 @@ class TestCheckRetrain:
 
         assert retrain_item is not None
         assert retrain_item.enabled is False
+
+
+# ---------------------------------------------------------------------------
+# Dynamic Model Menu Refresh
+# ---------------------------------------------------------------------------
+
+
+class TestDynamicModelMenuRefresh:
+    """Verify that _build_menu produces fresh results on each call.
+
+    pystray receives _build_menu as a callable (not its result), so it
+    rebuilds the menu on every right-click.  These tests ensure that
+    repeated calls reflect the latest models_dir contents and that no
+    stale state accumulates.
+    """
+
+    def _make_labeler_with_models_dir(
+        self, tmp_path: Path, *, event_bus: EventBus | None = None,
+    ) -> TrayLabeler:
+        models_dir = tmp_path / "models"
+        models_dir.mkdir(exist_ok=True)
+        bus = event_bus or _capture_bus()[0]
+        return TrayLabeler(
+            data_dir=tmp_path,
+            model_dir=None,
+            models_dir=models_dir,
+            event_bus=bus,
+        )
+
+    def _find_model_submenu(self, menu: object) -> object:
+        for item in menu.items:  # type: ignore[attr-defined]
+            if hasattr(item, "text") and item.text == "Model":
+                return item.submenu
+        pytest.fail("Model submenu not found in menu")
+
+    def _submenu_labels(self, submenu: object) -> list[str]:
+        labels: list[str] = []
+        for item in submenu.items:  # type: ignore[attr-defined]
+            if hasattr(item, "text") and item.text is not None:
+                text = item.text if isinstance(item.text, str) else item.text(None)
+                if text:
+                    labels.append(text)
+        return labels
+
+    def test_repeated_calls_produce_identical_results(self, tmp_path: Path) -> None:
+        """Calling _build_menu() multiple times with the same inputs gives
+        structurally identical menus — no side effects accumulate."""
+        from taskclf.model_registry import ModelBundle
+
+        labeler = self._make_labeler_with_models_dir(tmp_path)
+        bundles = [
+            ModelBundle(model_id="run_A", path=tmp_path / "models" / "run_A", valid=True),
+        ]
+
+        with patch("taskclf.model_registry.list_bundles", return_value=bundles):
+            menu1 = labeler._build_menu()
+            menu2 = labeler._build_menu()
+
+        labels1 = self._submenu_labels(self._find_model_submenu(menu1))
+        labels2 = self._submenu_labels(self._find_model_submenu(menu2))
+        assert labels1 == labels2
+
+    def test_new_bundle_appears_on_subsequent_call(self, tmp_path: Path) -> None:
+        """After a retrain adds a new bundle, the next _build_menu() call
+        includes it in the Model submenu."""
+        from taskclf.model_registry import ModelBundle
+
+        labeler = self._make_labeler_with_models_dir(tmp_path)
+
+        bundles_v1 = [
+            ModelBundle(model_id="run_20260301", path=tmp_path / "models" / "run_20260301", valid=True),
+        ]
+        bundles_v2 = [
+            ModelBundle(model_id="run_20260301", path=tmp_path / "models" / "run_20260301", valid=True),
+            ModelBundle(model_id="run_20260306", path=tmp_path / "models" / "run_20260306", valid=True),
+        ]
+
+        with patch("taskclf.model_registry.list_bundles", return_value=bundles_v1):
+            menu1 = labeler._build_menu()
+        labels1 = self._submenu_labels(self._find_model_submenu(menu1))
+        assert "run_20260301" in labels1
+        assert "run_20260306" not in labels1
+
+        with patch("taskclf.model_registry.list_bundles", return_value=bundles_v2):
+            menu2 = labeler._build_menu()
+        labels2 = self._submenu_labels(self._find_model_submenu(menu2))
+        assert "run_20260301" in labels2
+        assert "run_20260306" in labels2
+
+    def test_removed_bundle_disappears_on_subsequent_call(self, tmp_path: Path) -> None:
+        """When a bundle is deleted from models_dir, the next _build_menu()
+        call no longer lists it."""
+        from taskclf.model_registry import ModelBundle
+
+        labeler = self._make_labeler_with_models_dir(tmp_path)
+
+        bundles_v1 = [
+            ModelBundle(model_id="run_old", path=tmp_path / "models" / "run_old", valid=True),
+            ModelBundle(model_id="run_new", path=tmp_path / "models" / "run_new", valid=True),
+        ]
+        bundles_v2 = [
+            ModelBundle(model_id="run_new", path=tmp_path / "models" / "run_new", valid=True),
+        ]
+
+        with patch("taskclf.model_registry.list_bundles", return_value=bundles_v1):
+            menu1 = labeler._build_menu()
+        labels1 = self._submenu_labels(self._find_model_submenu(menu1))
+        assert "run_old" in labels1
+        assert "run_new" in labels1
+
+        with patch("taskclf.model_registry.list_bundles", return_value=bundles_v2):
+            menu2 = labeler._build_menu()
+        labels2 = self._submenu_labels(self._find_model_submenu(menu2))
+        assert "run_old" not in labels2
+        assert "run_new" in labels2
+
+    def test_empty_to_populated_transition(self, tmp_path: Path) -> None:
+        """When models_dir starts empty and a bundle appears, the menu
+        transitions from '(no models found)' to listing the new bundle."""
+        from taskclf.model_registry import ModelBundle
+
+        labeler = self._make_labeler_with_models_dir(tmp_path)
+
+        with patch("taskclf.model_registry.list_bundles", return_value=[]):
+            menu1 = labeler._build_menu()
+        labels1 = self._submenu_labels(self._find_model_submenu(menu1))
+        assert "(no models found)" in labels1
+
+        bundles = [
+            ModelBundle(model_id="first_model", path=tmp_path / "models" / "first_model", valid=True),
+        ]
+        with patch("taskclf.model_registry.list_bundles", return_value=bundles):
+            menu2 = labeler._build_menu()
+        labels2 = self._submenu_labels(self._find_model_submenu(menu2))
+        assert "(no models found)" not in labels2
+        assert "first_model" in labels2
+        assert "(No Model)" in labels2
+
+    def test_populated_to_empty_transition(self, tmp_path: Path) -> None:
+        """When all bundles are removed, the menu shows '(no models found)'."""
+        from taskclf.model_registry import ModelBundle
+
+        labeler = self._make_labeler_with_models_dir(tmp_path)
+
+        bundles = [
+            ModelBundle(model_id="run_A", path=tmp_path / "models" / "run_A", valid=True),
+        ]
+        with patch("taskclf.model_registry.list_bundles", return_value=bundles):
+            menu1 = labeler._build_menu()
+        labels1 = self._submenu_labels(self._find_model_submenu(menu1))
+        assert "run_A" in labels1
+
+        with patch("taskclf.model_registry.list_bundles", return_value=[]):
+            menu2 = labeler._build_menu()
+        labels2 = self._submenu_labels(self._find_model_submenu(menu2))
+        assert "run_A" not in labels2
+        assert "(no models found)" in labels2

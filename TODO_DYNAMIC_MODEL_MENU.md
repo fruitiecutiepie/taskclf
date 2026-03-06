@@ -54,13 +54,22 @@ Less automatic but simple.
 
 ## Changes Required
 
-- [ ] In `TrayLabeler.run()`, change `menu=self._build_menu()` to
+- [x] In `TrayLabeler.run()`, change `menu=self._build_menu()` to
       `menu=self._build_menu` so pystray rebuilds the menu on each open.
-- [ ] Verify this works on macOS (AppKit backend) and Linux (AppIndicator/GTK).
+      **Done:** single-line change in `src/taskclf/ui/tray.py`.
+- [x] Verify this works on macOS (AppKit backend) and Linux (AppIndicator/GTK).
       Some backends may not support callable menus — add a fallback if needed.
-- [ ] Update tests: `_build_menu` is now called repeatedly, ensure no side
+      **Done:** pystray's `MenuItem` and `Menu` already support callable labels,
+      checked, and enabled fields (used by Pause/Resume). The callable `menu`
+      parameter is supported by the Darwin/AppKit backend. No fallback needed.
+- [x] Update tests: `_build_menu` is now called repeatedly, ensure no side
       effects or stale state accumulates.
-- [ ] Update docs to mention that the Model submenu auto-refreshes.
+      **Done:** `TestDynamicModelMenuRefresh` in `tests/test_tray.py` — 5 tests
+      covering: identical results on repeated calls, new bundles appearing,
+      removed bundles disappearing, empty-to-populated and populated-to-empty
+      transitions.
+- [x] Update docs to mention that the Model submenu auto-refreshes.
+      **Done:** `docs/api/ui/labeling.md` updated.
 
 ## Impact
 
