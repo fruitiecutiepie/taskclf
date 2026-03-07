@@ -116,6 +116,8 @@ nav:
       - Core — Observability:
           - Drift Detection: api/core/drift.md
           - Quality Telemetry: api/core/telemetry.md
+          - Diagnostics: api/core/diagnostics.md
+          - Crash Handler: api/core/crash.md
       - Adapters:
           - ActivityWatch: api/adapters/activitywatch.md
       - Features:

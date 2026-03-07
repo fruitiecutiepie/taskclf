@@ -2144,8 +2144,45 @@ class TestBuildMenuEnhancements:
 # ---------------------------------------------------------------------------
 
 
+def _sample_diagnostics_info(version: str = "1.2.3") -> dict[str, object]:
+    """Return a minimal diagnostics dict for testing URL construction."""
+    import platform as _platform
+
+    return {
+        "taskclf_version": version,
+        "python_version": "3.14.0",
+        "os": _platform.platform(),
+        "architecture": _platform.machine(),
+        "taskclf_home": "/tmp/taskclf",
+        "activitywatch": {"reachable": False, "error": "test"},
+        "model_bundles": [],
+        "config": {"user_id": "[REDACTED]"},
+        "disk_usage": {"data": 0, "models": 0, "logs": 0},
+    }
+
+
 class TestReportIssue:
     """Tests for the _report_issue tray menu item and URL construction."""
+
+    def _patch_diagnostics(
+        self,
+        version: str = "1.2.3",
+        log_lines: list[str] | None = None,
+    ):
+        """Context manager that mocks collect_diagnostics and _read_log_tail."""
+        from contextlib import ExitStack
+
+        info = _sample_diagnostics_info(version)
+        stack = ExitStack()
+        stack.enter_context(patch(
+            "taskclf.core.diagnostics.collect_diagnostics",
+            return_value=info,
+        ))
+        stack.enter_context(patch(
+            "taskclf.core.crash._read_log_tail",
+            return_value=log_lines or [],
+        ))
+        return stack
 
     def test_menu_contains_report_issue(self, tmp_path: Path) -> None:
         """The top-level menu includes a 'Report Issue' item."""
@@ -2165,14 +2202,16 @@ class TestReportIssue:
     def test_report_issue_url_contains_github_repo(self, tmp_path: Path) -> None:
         bus, _ = _capture_bus()
         labeler = _make_tray_labeler(tmp_path, event_bus=bus)
-        url = labeler._build_report_issue_url()
+        with self._patch_diagnostics():
+            url = labeler._build_report_issue_url()
 
         assert "github.com/fruitiecutiepie/taskclf" in url
 
     def test_report_issue_url_contains_template_param(self, tmp_path: Path) -> None:
         bus, _ = _capture_bus()
         labeler = _make_tray_labeler(tmp_path, event_bus=bus)
-        url = labeler._build_report_issue_url()
+        with self._patch_diagnostics():
+            url = labeler._build_report_issue_url()
 
         assert "template=bug_report.yml" in url
 
@@ -2180,7 +2219,7 @@ class TestReportIssue:
         bus, _ = _capture_bus()
         labeler = _make_tray_labeler(tmp_path, event_bus=bus)
 
-        with patch("importlib.metadata.version", return_value="1.2.3"):
+        with self._patch_diagnostics(version="1.2.3"):
             url = labeler._build_report_issue_url()
 
         assert "1.2.3" in url
@@ -2188,17 +2227,20 @@ class TestReportIssue:
     def test_report_issue_url_contains_os_info(self, tmp_path: Path) -> None:
         bus, _ = _capture_bus()
         labeler = _make_tray_labeler(tmp_path, event_bus=bus)
-        url = labeler._build_report_issue_url()
+
+        with self._patch_diagnostics():
+            url = labeler._build_report_issue_url()
 
         import platform as _platform
-        assert _platform.system() in url
+        assert _platform.platform() in url
 
     def test_report_issue_url_is_well_formed(self, tmp_path: Path) -> None:
         from urllib.parse import urlparse
 
         bus, _ = _capture_bus()
         labeler = _make_tray_labeler(tmp_path, event_bus=bus)
-        url = labeler._build_report_issue_url()
+        with self._patch_diagnostics():
+            url = labeler._build_report_issue_url()
 
         parsed = urlparse(url)
         assert parsed.scheme == "https"
@@ -2209,7 +2251,7 @@ class TestReportIssue:
         bus, _ = _capture_bus()
         labeler = _make_tray_labeler(tmp_path, event_bus=bus)
 
-        with patch("webbrowser.open") as mock_open:
+        with self._patch_diagnostics(), patch("webbrowser.open") as mock_open:
             labeler._report_issue()
 
         mock_open.assert_called_once()
@@ -2217,14 +2259,11 @@ class TestReportIssue:
         assert "github.com/fruitiecutiepie/taskclf" in opened_url
 
     def test_report_issue_url_handles_unknown_version(self, tmp_path: Path) -> None:
-        """When importlib.metadata fails, version falls back to 'unknown'."""
+        """When collect_diagnostics returns 'unknown' version, URL still works."""
         bus, _ = _capture_bus()
         labeler = _make_tray_labeler(tmp_path, event_bus=bus)
 
-        with patch(
-            "importlib.metadata.version",
-            side_effect=Exception("not installed"),
-        ):
+        with self._patch_diagnostics(version="unknown"):
             url = labeler._build_report_issue_url()
 
         assert "unknown" in url
@@ -2246,6 +2285,87 @@ class TestReportIssue:
         assert "Report Issue" in labels
         assert "Quit" in labels
         assert labels.index("Report Issue") < labels.index("Quit")
+
+    def test_report_issue_url_includes_diagnostics_text(self, tmp_path: Path) -> None:
+        """The diagnostics query param contains formatted diagnostics output."""
+        from urllib.parse import parse_qs, urlparse
+
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+
+        with self._patch_diagnostics(version="4.5.6"):
+            url = labeler._build_report_issue_url()
+
+        qs = parse_qs(urlparse(url).query)
+        diag = qs["diagnostics"][0]
+        assert "taskclf diagnostics" in diag
+        assert "4.5.6" in diag
+
+    def test_report_issue_url_includes_log_tail(self, tmp_path: Path) -> None:
+        """When log tail is available, the logs query param is populated."""
+        from urllib.parse import parse_qs, urlparse
+
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+
+        sample_logs = ["2026-03-07 ERROR something broke", "2026-03-07 INFO retry"]
+        with self._patch_diagnostics(log_lines=sample_logs):
+            url = labeler._build_report_issue_url()
+
+        qs = parse_qs(urlparse(url).query)
+        assert "logs" in qs
+        assert "something broke" in qs["logs"][0]
+
+    def test_report_issue_url_omits_logs_when_empty(self, tmp_path: Path) -> None:
+        """When no log file exists, the logs param is omitted."""
+        from urllib.parse import parse_qs, urlparse
+
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+
+        with self._patch_diagnostics(log_lines=[]):
+            url = labeler._build_report_issue_url()
+
+        qs = parse_qs(urlparse(url).query)
+        assert "logs" not in qs
+
+    def test_report_issue_url_drops_logs_when_too_long(self, tmp_path: Path) -> None:
+        """When the full URL exceeds the length cap, logs are dropped."""
+        from urllib.parse import parse_qs, urlparse
+
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+
+        huge_logs = [f"line {i} {'x' * 300}" for i in range(50)]
+        with self._patch_diagnostics(log_lines=huge_logs):
+            url = labeler._build_report_issue_url()
+
+        assert len(url) <= TrayLabeler._MAX_ISSUE_URL_LEN
+        qs = parse_qs(urlparse(url).query)
+        assert "logs" not in qs
+        assert "diagnostics" in qs
+
+    def test_report_issue_url_survives_diagnostics_failure(
+        self, tmp_path: Path,
+    ) -> None:
+        """When collect_diagnostics raises, URL is still valid."""
+        from urllib.parse import urlparse
+
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+
+        with (
+            patch(
+                "taskclf.core.diagnostics.collect_diagnostics",
+                side_effect=RuntimeError("boom"),
+            ),
+            patch("taskclf.core.crash._read_log_tail", return_value=[]),
+        ):
+            url = labeler._build_report_issue_url()
+
+        parsed = urlparse(url)
+        assert parsed.scheme == "https"
+        assert "template=bug_report.yml" in url
 
 
 # ---------------------------------------------------------------------------

@@ -1112,25 +1112,64 @@ class TrayLabeler:
         except Exception:
             logger.debug("Could not open folder", exc_info=True)
 
+    _MAX_ISSUE_URL_LEN = 8000
+
     def _build_report_issue_url(self) -> str:
-        """Build a GitHub new-issue URL pre-filled with version and OS info."""
-        from importlib.metadata import version as _pkg_version
+        """Build a GitHub new-issue URL pre-filled with diagnostics and logs.
+
+        Automatically runs the equivalent of ``taskclf diagnostics`` and
+        reads the sanitized log tail from the user's data directory so
+        the bug report template fields are pre-populated.
+        """
         from urllib.parse import urlencode
 
+        from taskclf.core.crash import _read_log_tail
+        from taskclf.core.diagnostics import (
+            collect_diagnostics,
+            format_diagnostics_text,
+        )
+        from taskclf.core.paths import taskclf_home
+
+        home = taskclf_home()
+        models_dir = (
+            str(self._models_dir) if self._models_dir else str(home / "models")
+        )
+
         try:
-            taskclf_version = _pkg_version("taskclf")
+            info = collect_diagnostics(
+                aw_host=self._config.as_dict().get("aw_host", DEFAULT_AW_HOST),
+                data_dir=str(self._data_dir),
+                models_dir=models_dir,
+                include_logs=False,
+            )
+            diagnostics_text = format_diagnostics_text(info)
         except Exception:
-            taskclf_version = "unknown"
+            logger.debug("Failed to collect diagnostics", exc_info=True)
+            diagnostics_text = "<unable to collect diagnostics>"
 
-        os_info = f"{platform.system()} {platform.release()} ({platform.machine()})"
-        body = f"**taskclf version:** {taskclf_version}\n**OS:** {os_info}\n\n"
+        try:
+            log_tail = _read_log_tail(home / "logs", 30)
+            logs_text = "\n".join(log_tail) if log_tail else ""
+        except Exception:
+            logger.debug("Failed to read log tail", exc_info=True)
+            logs_text = ""
 
-        params = urlencode({
+        params: dict[str, str] = {
             "template": "bug_report.yml",
             "title": "[Bug]: ",
-            "diagnostics": f"taskclf {taskclf_version}\nOS: {os_info}",
-        })
-        return f"https://github.com/fruitiecutiepie/taskclf/issues/new?{params}"
+            "diagnostics": diagnostics_text,
+        }
+        if logs_text:
+            params["logs"] = logs_text
+
+        base = "https://github.com/fruitiecutiepie/taskclf/issues/new"
+        url = f"{base}?{urlencode(params)}"
+
+        if len(url) > self._MAX_ISSUE_URL_LEN:
+            params.pop("logs", None)
+            url = f"{base}?{urlencode(params)}"
+
+        return url
 
     def _report_issue(self, *_args: Any) -> None:
         """Open the GitHub issue tracker in the default browser."""
