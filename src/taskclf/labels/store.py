@@ -262,6 +262,82 @@ def append_label_span(span: LabelSpan, path: Path) -> Path:
     return write_label_spans(existing, path)
 
 
+def overwrite_label_span(span: LabelSpan, path: Path) -> Path:
+    """Append a label span, resolving overlaps by truncating/splitting/removing
+    existing same-user spans that conflict with the new one.
+
+    Extend-forward handling is identical to :func:`append_label_span`.
+
+    For each same-user span that overlaps *span*:
+
+    * **Fully contained** (existing inside new) -- removed.
+    * **Partial overlap at start** (existing starts before new, ends inside
+      new) -- existing ``end_ts`` truncated to ``span.start_ts``.
+    * **Partial overlap at end** (existing starts inside new, ends after
+      new) -- existing ``start_ts`` moved to ``span.end_ts``.
+    * **Fully contains** (existing wraps around new) -- split into a
+      *before* and *after* fragment.
+
+    Args:
+        span: The label span to insert.
+        path: Parquet file to read-modify-write.
+
+    Returns:
+        The *path* that was written.
+    """
+    existing: list[LabelSpan] = []
+    if path.exists():
+        existing = read_label_spans(path)
+
+    # Extend-forward: stretch the most recent same-user span up to span.start_ts
+    prev: LabelSpan | None = None
+    prev_idx: int | None = None
+    for i, ex in enumerate(existing):
+        if not _same_user(ex, span):
+            continue
+        if ex.start_ts >= span.start_ts:
+            continue
+        if prev is None or ex.start_ts > prev.start_ts:
+            prev = ex
+            prev_idx = i
+
+    if prev is not None and prev_idx is not None and prev.extend_forward:
+        updated = prev.model_copy(update={"end_ts": span.start_ts})
+        existing[prev_idx] = updated
+
+    resolved: list[LabelSpan] = []
+    for ex in existing:
+        if not _same_user(ex, span):
+            resolved.append(ex)
+            continue
+        if not (ex.start_ts < span.end_ts and span.start_ts < ex.end_ts):
+            resolved.append(ex)
+            continue
+
+        # Existing fully contained within new span -- drop it.
+        if ex.start_ts >= span.start_ts and ex.end_ts <= span.end_ts:
+            continue
+
+        # Existing fully contains new span -- split into before + after.
+        if ex.start_ts < span.start_ts and ex.end_ts > span.end_ts:
+            resolved.append(ex.model_copy(update={"end_ts": span.start_ts}))
+            resolved.append(ex.model_copy(update={"start_ts": span.end_ts}))
+            continue
+
+        # Partial overlap at start (existing starts before new).
+        if ex.start_ts < span.start_ts:
+            resolved.append(ex.model_copy(update={"end_ts": span.start_ts}))
+            continue
+
+        # Partial overlap at end (existing ends after new).
+        if ex.end_ts > span.end_ts:
+            resolved.append(ex.model_copy(update={"start_ts": span.end_ts}))
+            continue
+
+    resolved.append(span)
+    return write_label_spans(resolved, path)
+
+
 def update_label_span(
     start_ts: dt.datetime,
     end_ts: dt.datetime,

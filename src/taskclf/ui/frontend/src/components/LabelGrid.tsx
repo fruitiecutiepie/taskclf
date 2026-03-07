@@ -61,6 +61,16 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
     },
   );
   const [flash, setFlash] = createSignal<string | null>(null);
+  const [overwritePending, setOverwritePending] = createSignal<{
+    label: string;
+    start: string;
+    end: string;
+    conflictStart: string;
+    conflictEnd: string;
+    conflictLabel: string | null;
+    confidence: number;
+    extendForward: boolean;
+  } | null>(null);
   const [selectedMinutes, setSelectedMinutes] = createSignal(0);
   const [customActive, setCustomActive] = createSignal(false);
   const [customValue, setCustomValue] = createSignal("");
@@ -132,12 +142,16 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
           const parsed = JSON.parse(jsonMatch[0]);
           const overlap = parsed.detail ?? parsed;
           if (overlap.conflicting_start_ts && overlap.conflicting_end_ts) {
-            const cs = parseISODate(overlap.conflicting_start_ts);
-            const ce = parseISODate(overlap.conflicting_end_ts);
-            const fmt = (d: Date) =>
-              d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-            setFlash(`Error: Overlaps ${fmt(cs)}\u2013${fmt(ce)}`);
-            setTimeout(() => setFlash(null), 4000);
+            setOverwritePending({
+              label,
+              start: start.toISOString(),
+              end: now.toISOString(),
+              conflictStart: overlap.conflicting_start_ts,
+              conflictEnd: overlap.conflicting_end_ts,
+              conflictLabel: overlap.conflicting_label ?? null,
+              confidence: confPercent() / 100,
+              extendForward: extendFwd(),
+            });
             return;
           }
         } catch { /* fall through to generic error */ }
@@ -145,6 +159,32 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
       setFlash(`Error: ${msg}`);
       setTimeout(() => setFlash(null), 3000);
     }
+  }
+
+  async function confirmOverwrite() {
+    const pending = overwritePending();
+    if (!pending) return;
+    setOverwritePending(null);
+    try {
+      await createLabel({
+        start_ts: pending.start,
+        end_ts: pending.end,
+        label: pending.label,
+        confidence: pending.confidence,
+        extend_forward: pending.extendForward,
+        overwrite: true,
+      });
+      setFlash(pending.label);
+      setLabelVersion((v) => v + 1);
+      setTimeout(() => setFlash(null), 1500);
+    } catch (err: any) {
+      setFlash(`Error: ${err.message ?? "overwrite failed"}`);
+      setTimeout(() => setFlash(null), 3000);
+    }
+  }
+
+  function cancelOverwrite() {
+    setOverwritePending(null);
   }
 
   return (
@@ -446,6 +486,74 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
       </div>
 
       <ActivityContext minutes={selectedMinutes} prediction={props.prediction} />
+
+      <Show when={overwritePending()}>
+        {(pending) => {
+          const fmt = (d: Date) =>
+            d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+          const cs = parseISODate(pending().conflictStart);
+          const ce = parseISODate(pending().conflictEnd);
+          const cl = pending().conflictLabel;
+          const clColor = cl ? LABEL_COLORS[cl] ?? "var(--text)" : undefined;
+          return (
+            <div
+              style={{
+                "text-align": "center",
+                "font-size": "0.8rem",
+                "margin-bottom": "8px",
+                color: "var(--danger)",
+              }}
+            >
+              <span>
+                Overlaps{" "}
+                {cl && (
+                  <span style={{ color: clColor, "font-weight": "700" }}>{cl}</span>
+                )}{" "}
+                {fmt(cs)}{"\u2013"}{fmt(ce)}. Overwrite?
+              </span>
+              <div
+                style={{
+                  display: "flex",
+                  "justify-content": "center",
+                  gap: "8px",
+                  "margin-top": "4px",
+                }}
+              >
+                <button
+                  onClick={confirmOverwrite}
+                  style={{
+                    padding: "2px 10px",
+                    "border-radius": "6px",
+                    border: "1px solid var(--danger)",
+                    background: "var(--danger)",
+                    color: "#fff",
+                    cursor: "pointer",
+                    "font-size": "0.7rem",
+                    "font-weight": "600",
+                  }}
+                >
+                  Yes
+                </button>
+                <button
+                  onClick={cancelOverwrite}
+                  style={{
+                    padding: "2px 10px",
+                    "border-radius": "6px",
+                    border: "1px solid var(--border)",
+                    background: "var(--surface)",
+                    color: "var(--text-muted)",
+                    cursor: "pointer",
+                    "font-size": "0.7rem",
+                    "font-weight": "600",
+                  }}
+                >
+                  No
+                </button>
+              </div>
+            </div>
+          );
+        }}
+      </Show>
 
       <Show when={flash()}>
         <div

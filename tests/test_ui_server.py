@@ -1019,6 +1019,7 @@ class TestStructuredOverlapError:
         assert detail["conflicting_end_ts"] is not None
         assert "2026-02-27" in detail["conflicting_start_ts"]
         assert "2026-02-27" in detail["conflicting_end_ts"]
+        assert detail["conflicting_label"] == "Build"
 
     def test_overlap_conflicting_span_is_existing(self, client: TestClient) -> None:
         """TC-UI-OVL-002: the conflicting span points to the previously saved label."""
@@ -1053,6 +1054,70 @@ class TestStructuredOverlapError:
         assert "error" in detail
         assert detail["conflicting_start_ts"] is not None
         assert detail["conflicting_end_ts"] is not None
+
+
+# ---------------------------------------------------------------------------
+# Overwrite overlap resolution
+# ---------------------------------------------------------------------------
+
+
+class TestOverwriteLabel:
+    """Verify POST /api/labels with overwrite=true resolves overlaps."""
+
+    def test_overwrite_truncates_existing(self, client: TestClient) -> None:
+        """Overlapping span is truncated when overwrite is true."""
+        client.post("/api/labels", json={
+            "start_ts": "2026-02-27T09:00:00",
+            "end_ts": "2026-02-27T10:00:00",
+            "label": "Build",
+        })
+        resp = client.post("/api/labels", json={
+            "start_ts": "2026-02-27T09:30:00",
+            "end_ts": "2026-02-27T10:30:00",
+            "label": "Meet",
+            "overwrite": True,
+        })
+        assert resp.status_code == 201
+        assert resp.json()["label"] == "Meet"
+
+        labels = client.get("/api/labels").json()
+        assert len(labels) == 2
+        by_label = {l["label"]: l for l in labels}
+        assert "09:30:00" in by_label["Build"]["end_ts"]
+        assert "09:30:00" in by_label["Meet"]["start_ts"]
+
+    def test_overwrite_removes_contained(self, client: TestClient) -> None:
+        """Existing span fully inside new span is removed."""
+        client.post("/api/labels", json={
+            "start_ts": "2026-02-27T09:10:00",
+            "end_ts": "2026-02-27T09:20:00",
+            "label": "Build",
+        })
+        resp = client.post("/api/labels", json={
+            "start_ts": "2026-02-27T09:00:00",
+            "end_ts": "2026-02-27T09:30:00",
+            "label": "Debug",
+            "overwrite": True,
+        })
+        assert resp.status_code == 201
+        labels = client.get("/api/labels").json()
+        assert len(labels) == 1
+        assert labels[0]["label"] == "Debug"
+
+    def test_overwrite_false_still_rejects(self, client: TestClient) -> None:
+        """overwrite=false (default) still returns 409."""
+        client.post("/api/labels", json={
+            "start_ts": "2026-02-27T09:00:00",
+            "end_ts": "2026-02-27T10:00:00",
+            "label": "Build",
+        })
+        resp = client.post("/api/labels", json={
+            "start_ts": "2026-02-27T09:30:00",
+            "end_ts": "2026-02-27T10:30:00",
+            "label": "Meet",
+            "overwrite": False,
+        })
+        assert resp.status_code == 409
 
 
 # ---------------------------------------------------------------------------

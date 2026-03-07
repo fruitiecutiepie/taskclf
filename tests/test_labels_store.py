@@ -24,6 +24,7 @@ from taskclf.labels.store import (
     generate_dummy_labels,
     generate_label_summary,
     import_labels_from_csv,
+    overwrite_label_span,
     read_label_spans,
     update_label_span,
     write_label_spans,
@@ -920,3 +921,122 @@ class TestExportLabelsToCsv:
         csv_path = tmp_path / "nested" / "deep" / "export.csv"
         result = export_labels_to_csv(parquet_path, csv_path)
         assert result.exists()
+
+
+# ---------------------------------------------------------------------------
+# overwrite_label_span
+# ---------------------------------------------------------------------------
+
+
+class TestOverwriteLabelSpan:
+    """Tests for overwrite_label_span overlap resolution."""
+
+    def test_partial_overlap_start(self, tmp_path: Path) -> None:
+        """Existing starts before new and ends inside new -> truncate end."""
+        path = tmp_path / "labels.parquet"
+        existing = _span((10, 0), (10, 30), label="Build")
+        append_label_span(existing, path)
+
+        new = _span((10, 20), (10, 50), label="Debug")
+        overwrite_label_span(new, path)
+
+        spans = read_label_spans(path)
+        spans.sort(key=lambda s: s.start_ts)
+        assert len(spans) == 2
+        assert spans[0].label == "Build"
+        assert spans[0].end_ts == dt.datetime(2025, 6, 15, 10, 20)
+        assert spans[1].label == "Debug"
+        assert spans[1].start_ts == dt.datetime(2025, 6, 15, 10, 20)
+        assert spans[1].end_ts == dt.datetime(2025, 6, 15, 10, 50)
+
+    def test_partial_overlap_end(self, tmp_path: Path) -> None:
+        """Existing starts inside new and ends after new -> move start."""
+        path = tmp_path / "labels.parquet"
+        existing = _span((10, 20), (10, 50), label="Build")
+        append_label_span(existing, path)
+
+        new = _span((10, 0), (10, 30), label="Debug")
+        overwrite_label_span(new, path)
+
+        spans = read_label_spans(path)
+        spans.sort(key=lambda s: s.start_ts)
+        assert len(spans) == 2
+        assert spans[0].label == "Debug"
+        assert spans[0].end_ts == dt.datetime(2025, 6, 15, 10, 30)
+        assert spans[1].label == "Build"
+        assert spans[1].start_ts == dt.datetime(2025, 6, 15, 10, 30)
+
+    def test_fully_contained(self, tmp_path: Path) -> None:
+        """Existing fully inside new -> removed."""
+        path = tmp_path / "labels.parquet"
+        existing = _span((10, 10), (10, 20), label="Build")
+        append_label_span(existing, path)
+
+        new = _span((10, 0), (10, 30), label="Debug")
+        overwrite_label_span(new, path)
+
+        spans = read_label_spans(path)
+        assert len(spans) == 1
+        assert spans[0].label == "Debug"
+
+    def test_fully_contains_split(self, tmp_path: Path) -> None:
+        """Existing fully wraps new -> split into before + after."""
+        path = tmp_path / "labels.parquet"
+        existing = _span((10, 0), (11, 0), label="Build")
+        append_label_span(existing, path)
+
+        new = _span((10, 20), (10, 40), label="Debug")
+        overwrite_label_span(new, path)
+
+        spans = read_label_spans(path)
+        spans.sort(key=lambda s: s.start_ts)
+        assert len(spans) == 3
+        assert spans[0].label == "Build"
+        assert spans[0].end_ts == dt.datetime(2025, 6, 15, 10, 20)
+        assert spans[1].label == "Debug"
+        assert spans[1].start_ts == dt.datetime(2025, 6, 15, 10, 20)
+        assert spans[1].end_ts == dt.datetime(2025, 6, 15, 10, 40)
+        assert spans[2].label == "Build"
+        assert spans[2].start_ts == dt.datetime(2025, 6, 15, 10, 40)
+        assert spans[2].end_ts == dt.datetime(2025, 6, 15, 11, 0)
+
+    def test_no_overlap_appends_normally(self, tmp_path: Path) -> None:
+        """No conflict -> span is simply appended."""
+        path = tmp_path / "labels.parquet"
+        existing = _span((9, 0), (9, 30), label="Build")
+        append_label_span(existing, path)
+
+        new = _span((10, 0), (10, 30), label="Debug")
+        overwrite_label_span(new, path)
+
+        spans = read_label_spans(path)
+        assert len(spans) == 2
+
+    def test_different_user_not_affected(self, tmp_path: Path) -> None:
+        """Spans from a different user are left untouched."""
+        path = tmp_path / "labels.parquet"
+        u1 = _span((10, 0), (10, 30), label="Build", user_id="u1")
+        append_label_span(u1, path)
+
+        new = _span((10, 10), (10, 20), label="Debug", user_id="u2")
+        overwrite_label_span(new, path)
+
+        spans = read_label_spans(path)
+        assert len(spans) == 2
+        u1_spans = [s for s in spans if s.user_id == "u1"]
+        assert len(u1_spans) == 1
+        assert u1_spans[0].start_ts == dt.datetime(2025, 6, 15, 10, 0)
+        assert u1_spans[0].end_ts == dt.datetime(2025, 6, 15, 10, 30)
+
+    def test_extend_forward_honored(self, tmp_path: Path) -> None:
+        """Extend-forward on previous span is still applied before resolution."""
+        path = tmp_path / "labels.parquet"
+        prev = _span((9, 0), (9, 30), label="Build", extend_forward=True)
+        append_label_span(prev, path)
+
+        new = _span((10, 0), (10, 30), label="Debug")
+        overwrite_label_span(new, path)
+
+        spans = read_label_spans(path)
+        spans.sort(key=lambda s: s.start_ts)
+        assert spans[0].end_ts == dt.datetime(2025, 6, 15, 10, 0)

@@ -34,6 +34,7 @@ from taskclf.labels.store import (
     generate_label_summary,
     import_labels_from_csv,
     merge_label_spans,
+    overwrite_label_span,
     read_label_spans,
     update_label_span,
     write_label_spans,
@@ -60,6 +61,11 @@ class LabelCreateRequest(BaseModel):
         default=False,
         description="When true, this label extends forward until the next "
         "label is created, producing contiguous coverage.",
+    )
+    overwrite: bool = Field(
+        default=False,
+        description="When true, overlapping same-user spans are "
+        "truncated/split/removed to make room for this label.",
     )
 
 
@@ -148,6 +154,7 @@ class OverlapErrorDetail(BaseModel):
     error: str
     conflicting_start_ts: str | None = None
     conflicting_end_ts: str | None = None
+    conflicting_label: str | None = None
 
 
 def _utc_iso(ts: dt.datetime) -> str:
@@ -169,6 +176,7 @@ def _parse_overlap_error(
     msg: str,
     new_start: dt.datetime,
     new_end: dt.datetime,
+    existing: list[LabelSpan] | None = None,
 ) -> OverlapErrorDetail:
     """Extract the conflicting (existing) span timestamps from the overlap error."""
     m = _OVERLAP_RE.search(msg)
@@ -188,10 +196,19 @@ def _parse_overlap_error(
     else:
         conflict = span_a
 
+    conflicting_label: str | None = None
+    if existing:
+        conflict_start_str, conflict_end_str = conflict
+        for s in existing:
+            if str(s.start_ts) == conflict_start_str and str(s.end_ts) == conflict_end_str:
+                conflicting_label = s.label
+                break
+
     return OverlapErrorDetail(
         error=msg,
         conflicting_start_ts=conflict[0],
         conflicting_end_ts=conflict[1],
+        conflicting_label=conflicting_label,
     )
 
 
@@ -292,13 +309,17 @@ def create_app(
             )
         except (ValueError, Exception) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-        try:
-            append_label_span(span, labels_path)
-        except ValueError as exc:
-            detail = _parse_overlap_error(str(exc), span.start_ts, span.end_ts)
-            raise HTTPException(
-                status_code=409, detail=detail.model_dump(),
-            ) from exc
+        if body.overwrite:
+            overwrite_label_span(span, labels_path)
+        else:
+            try:
+                append_label_span(span, labels_path)
+            except ValueError as exc:
+                existing = read_label_spans(labels_path) if labels_path.exists() else []
+                detail = _parse_overlap_error(str(exc), span.start_ts, span.end_ts, existing)
+                raise HTTPException(
+                    status_code=409, detail=detail.model_dump(),
+                ) from exc
 
         if on_label_saved is not None:
             on_label_saved()
@@ -628,7 +649,8 @@ def create_app(
         try:
             append_label_span(span, labels_path)
         except ValueError as exc:
-            detail = _parse_overlap_error(str(exc), span.start_ts, span.end_ts)
+            existing = read_label_spans(labels_path) if labels_path.exists() else []
+            detail = _parse_overlap_error(str(exc), span.start_ts, span.end_ts, existing)
             raise HTTPException(
                 status_code=409, detail=detail.model_dump(),
             ) from exc
