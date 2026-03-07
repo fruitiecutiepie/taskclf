@@ -74,6 +74,26 @@ class WindowAPI:
         else:
             self.show_window()
 
+    def toggle_dashboard(self) -> None:
+        """Toggle all windows. Re-show positions the pill at its default location."""
+        if self._visible:
+            if self._label_visible:
+                self._do_hide_label()
+            if self._panel_visible:
+                self._do_hide_panel()
+            self.hide_window()
+        else:
+            if (
+                self._window is not None
+                and self._default_x is not None
+                and self._default_y is not None
+            ):
+                try:
+                    self._window.move(self._default_x, self._default_y)
+                except Exception:
+                    logger.debug("Could not reposition window to default", exc_info=True)
+            self.show_window()
+
     # -- Label grid window -----------------------------------------------------
 
     def show_label_grid(self) -> None:
@@ -332,6 +352,19 @@ def run_window(
         hidden=True,
     )
     api.bind_panel(panel)
+
+    def _stdin_reader() -> None:
+        """Read commands from stdin (sent by the tray process)."""
+        try:
+            for line in sys.stdin:
+                cmd = line.strip()
+                if cmd == "toggle":
+                    api.toggle_dashboard()
+        except Exception:
+            pass
+
+    stdin_thread = threading.Thread(target=_stdin_reader, daemon=True)
+    stdin_thread.start()
 
     saved_stderr_fd: int | None = None
     if sys.platform == "darwin":

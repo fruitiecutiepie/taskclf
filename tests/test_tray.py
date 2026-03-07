@@ -1210,19 +1210,20 @@ class TestOpenDashboard:
             url = mock_open.call_args[0][0]
             assert "127.0.0.1" in url
 
-    def test_native_mode_publishes_toggle_when_window_alive(self, tmp_path: Path) -> None:
-        """If pywebview subprocess is still running, _open_dashboard publishes toggle_dashboard."""
-        bus, captured = _capture_bus()
+    def test_native_mode_sends_toggle_via_stdin_when_window_alive(self, tmp_path: Path) -> None:
+        """If pywebview subprocess is still running, _open_dashboard sends toggle via stdin."""
+        bus, _ = _capture_bus()
         labeler = _make_tray_labeler(tmp_path, event_bus=bus)
         mock_proc = MagicMock()
         mock_proc.poll.return_value = None  # still running
+        mock_proc.stdin = MagicMock()
         labeler._ui_proc = mock_proc
 
         with patch.object(labeler, "_spawn_window") as mock_spawn:
             labeler._open_dashboard()
             mock_spawn.assert_not_called()
-            toggle_events = [e for e in captured if e.get("type") == "toggle_dashboard"]
-            assert len(toggle_events) == 1
+            mock_proc.stdin.write.assert_called_once_with(b"toggle\n")
+            mock_proc.stdin.flush.assert_called_once()
 
     def test_native_mode_respawns_when_window_exited(self, tmp_path: Path) -> None:
         """If pywebview subprocess exited, _open_dashboard restarts it."""

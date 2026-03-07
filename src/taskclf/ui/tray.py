@@ -1056,7 +1056,11 @@ class TrayLabeler:
             return
 
         if self._ui_proc is not None and self._ui_proc.poll() is None:
-            self._event_bus.publish_threadsafe({"type": "toggle_dashboard"})
+            try:
+                self._ui_proc.stdin.write(b"toggle\n")
+                self._ui_proc.stdin.flush()
+            except (BrokenPipeError, OSError):
+                logger.debug("Could not send toggle to UI process", exc_info=True)
             return
 
         self._spawn_window()
@@ -1277,7 +1281,7 @@ class TrayLabeler:
                 sys.executable, "-m", "taskclf.ui.window",
                 "--port", str(self._ui_port),
             ]
-            self._ui_proc = subprocess.Popen(cmd)
+            self._ui_proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
             mode = " (dev)" if self._dev else ""
             print(f"UI window launched{mode} (pid={self._ui_proc.pid}, port={self._ui_port})")
         except Exception:
