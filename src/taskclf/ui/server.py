@@ -88,6 +88,8 @@ class LabelUpdateRequest(BaseModel):
     start_ts: str = Field(description="ISO-8601 start timestamp (identifies the span)")
     end_ts: str = Field(description="ISO-8601 end timestamp (identifies the span)")
     label: str = Field(description="New label to assign")
+    new_start_ts: str | None = Field(default=None, description="New start timestamp (if changing time)")
+    new_end_ts: str | None = Field(default=None, description="New end timestamp (if changing time)")
 
 
 class LabelDeleteRequest(BaseModel):
@@ -328,10 +330,15 @@ def create_app(
         try:
             start = _to_naive_utc(dt.datetime.fromisoformat(body.start_ts))
             end = _to_naive_utc(dt.datetime.fromisoformat(body.end_ts))
+            new_start = _to_naive_utc(dt.datetime.fromisoformat(body.new_start_ts)) if body.new_start_ts else None
+            new_end = _to_naive_utc(dt.datetime.fromisoformat(body.new_end_ts)) if body.new_end_ts else None
         except (ValueError, Exception) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         try:
-            span = update_label_span(start, end, body.label, labels_path)
+            span = update_label_span(
+                start, end, body.label, labels_path,
+                new_start_ts=new_start, new_end_ts=new_end,
+            )
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         return LabelResponse(

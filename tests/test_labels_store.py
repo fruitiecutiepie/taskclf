@@ -637,6 +637,97 @@ class TestUpdateLabelSpan:
         assert updated.confidence == pytest.approx(0.85)
         assert updated.extend_forward is True
 
+    def test_update_start_ts(self, tmp_path: Path) -> None:
+        """TC-LABEL-UPD-006: update only the start timestamp."""
+        path = tmp_path / "labels.parquet"
+        s = _span((10, 0), (10, 30), label="Build")
+        write_label_spans([s], path)
+
+        updated = update_label_span(
+            s.start_ts, s.end_ts, "Build", path,
+            new_start_ts=dt.datetime(2025, 6, 15, 10, 5),
+        )
+        assert updated.start_ts == dt.datetime(2025, 6, 15, 10, 5)
+        assert updated.end_ts == s.end_ts
+        assert updated.label == "Build"
+
+        loaded = read_label_spans(path)
+        assert len(loaded) == 1
+        assert loaded[0].start_ts == dt.datetime(2025, 6, 15, 10, 5)
+
+    def test_update_end_ts(self, tmp_path: Path) -> None:
+        """TC-LABEL-UPD-007: update only the end timestamp."""
+        path = tmp_path / "labels.parquet"
+        s = _span((10, 0), (10, 30), label="Build")
+        write_label_spans([s], path)
+
+        updated = update_label_span(
+            s.start_ts, s.end_ts, "Build", path,
+            new_end_ts=dt.datetime(2025, 6, 15, 11, 0),
+        )
+        assert updated.start_ts == s.start_ts
+        assert updated.end_ts == dt.datetime(2025, 6, 15, 11, 0)
+
+    def test_update_both_timestamps(self, tmp_path: Path) -> None:
+        """TC-LABEL-UPD-008: update both timestamps and label together."""
+        path = tmp_path / "labels.parquet"
+        s = _span((10, 0), (10, 30), label="Build")
+        write_label_spans([s], path)
+
+        new_start = dt.datetime(2025, 6, 15, 9, 45)
+        new_end = dt.datetime(2025, 6, 15, 11, 0)
+        updated = update_label_span(
+            s.start_ts, s.end_ts, "Debug", path,
+            new_start_ts=new_start, new_end_ts=new_end,
+        )
+        assert updated.start_ts == new_start
+        assert updated.end_ts == new_end
+        assert updated.label == "Debug"
+
+        loaded = read_label_spans(path)
+        assert len(loaded) == 1
+        assert loaded[0].start_ts == new_start
+        assert loaded[0].end_ts == new_end
+        assert loaded[0].label == "Debug"
+
+    def test_update_timestamps_preserves_fields(self, tmp_path: Path) -> None:
+        """TC-LABEL-UPD-009: changing timestamps preserves provenance/user/confidence/extend_forward."""
+        path = tmp_path / "labels.parquet"
+        span = LabelSpan(
+            start_ts=dt.datetime(2025, 6, 15, 10, 0),
+            end_ts=dt.datetime(2025, 6, 15, 10, 30),
+            label="Build",
+            provenance="manual",
+            user_id="test-user",
+            confidence=0.9,
+            extend_forward=True,
+        )
+        write_label_spans([span], path)
+
+        updated = update_label_span(
+            span.start_ts, span.end_ts, "Build", path,
+            new_start_ts=dt.datetime(2025, 6, 15, 9, 50),
+            new_end_ts=dt.datetime(2025, 6, 15, 10, 40),
+        )
+        assert updated.provenance == "manual"
+        assert updated.user_id == "test-user"
+        assert updated.confidence == pytest.approx(0.9)
+        assert updated.extend_forward is True
+
+    def test_update_timestamps_none_keeps_original(self, tmp_path: Path) -> None:
+        """TC-LABEL-UPD-010: passing None for new timestamps keeps originals."""
+        path = tmp_path / "labels.parquet"
+        s = _span((10, 0), (10, 30), label="Build")
+        write_label_spans([s], path)
+
+        updated = update_label_span(
+            s.start_ts, s.end_ts, "Debug", path,
+            new_start_ts=None, new_end_ts=None,
+        )
+        assert updated.start_ts == s.start_ts
+        assert updated.end_ts == s.end_ts
+        assert updated.label == "Debug"
+
 
 # ---------------------------------------------------------------------------
 # delete_label_span

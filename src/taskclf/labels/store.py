@@ -267,14 +267,19 @@ def update_label_span(
     end_ts: dt.datetime,
     new_label: str,
     path: Path,
+    *,
+    new_start_ts: dt.datetime | None = None,
+    new_end_ts: dt.datetime | None = None,
 ) -> LabelSpan:
-    """Change the label on an existing span identified by its timestamps.
+    """Change the label and/or timestamps on an existing span.
 
     Args:
-        start_ts: Original start timestamp of the span.
-        end_ts: Original end timestamp of the span.
+        start_ts: Original start timestamp of the span (lookup key).
+        end_ts: Original end timestamp of the span (lookup key).
         new_label: Replacement label (must be in ``LABEL_SET_V1``).
         path: Parquet file containing label spans.
+        new_start_ts: If provided, replaces the span's start timestamp.
+        new_end_ts: If provided, replaces the span's end timestamp.
 
     Returns:
         The updated ``LabelSpan``.
@@ -290,8 +295,8 @@ def update_label_span(
     for i, s in enumerate(spans):
         if s.start_ts == start_ts and s.end_ts == end_ts:
             updated = LabelSpan(
-                start_ts=s.start_ts,
-                end_ts=s.end_ts,
+                start_ts=new_start_ts if new_start_ts is not None else s.start_ts,
+                end_ts=new_end_ts if new_end_ts is not None else s.end_ts,
                 label=new_label,
                 provenance=s.provenance,
                 user_id=s.user_id,

@@ -479,6 +479,67 @@ class TestUpdateLabel:
         assert len(labels) == 1
         assert labels[0]["label"] == "Debug"
 
+    def test_update_timestamps(self, client: TestClient) -> None:
+        """TC-UI-UPD-005: PUT with new_start_ts/new_end_ts changes the time range."""
+        self._create_label(client)
+        resp = client.put("/api/labels", json={
+            "start_ts": "2026-02-27T09:00:00",
+            "end_ts": "2026-02-27T10:00:00",
+            "label": "Build",
+            "new_start_ts": "2026-02-27T08:30:00",
+            "new_end_ts": "2026-02-27T10:30:00",
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["start_ts"] == "2026-02-27T08:30:00+00:00"
+        assert data["end_ts"] == "2026-02-27T10:30:00+00:00"
+        assert data["label"] == "Build"
+
+    def test_update_timestamps_and_label(self, client: TestClient) -> None:
+        """TC-UI-UPD-006: PUT with new timestamps and new label together."""
+        self._create_label(client)
+        resp = client.put("/api/labels", json={
+            "start_ts": "2026-02-27T09:00:00",
+            "end_ts": "2026-02-27T10:00:00",
+            "label": "Debug",
+            "new_start_ts": "2026-02-27T09:15:00",
+            "new_end_ts": "2026-02-27T09:45:00",
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["label"] == "Debug"
+        assert data["start_ts"] == "2026-02-27T09:15:00+00:00"
+        assert data["end_ts"] == "2026-02-27T09:45:00+00:00"
+
+    def test_update_timestamps_persisted(self, client: TestClient) -> None:
+        """TC-UI-UPD-007: PUT with new timestamps then GET shows updated times."""
+        self._create_label(client)
+        client.put("/api/labels", json={
+            "start_ts": "2026-02-27T09:00:00",
+            "end_ts": "2026-02-27T10:00:00",
+            "label": "Build",
+            "new_start_ts": "2026-02-27T08:00:00",
+            "new_end_ts": "2026-02-27T11:00:00",
+        })
+        labels = client.get("/api/labels").json()
+        assert len(labels) == 1
+        assert labels[0]["start_ts"] == "2026-02-27T08:00:00+00:00"
+        assert labels[0]["end_ts"] == "2026-02-27T11:00:00+00:00"
+
+    def test_update_without_new_timestamps(self, client: TestClient) -> None:
+        """TC-UI-UPD-008: PUT without new_start_ts/new_end_ts keeps original times."""
+        self._create_label(client)
+        resp = client.put("/api/labels", json={
+            "start_ts": "2026-02-27T09:00:00",
+            "end_ts": "2026-02-27T10:00:00",
+            "label": "Write",
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["start_ts"] == "2026-02-27T09:00:00+00:00"
+        assert data["end_ts"] == "2026-02-27T10:00:00+00:00"
+        assert data["label"] == "Write"
+
 
 # ---------------------------------------------------------------------------
 # DELETE /api/labels  (Item 35)

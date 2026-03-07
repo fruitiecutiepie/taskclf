@@ -232,9 +232,10 @@ const TimelineStrip: Component<{
 
 const LabelRow: Component<{
   lbl: LabelItem;
+  dateStr: string;
   expanded: boolean;
   onToggle: () => void;
-  onUpdate: (label: string) => void;
+  onUpdate: (label: string, newStart: string, newEnd: string) => void;
   onDelete: () => void;
   coreLabels: string[];
   busy: boolean;
@@ -245,10 +246,38 @@ const LabelRow: Component<{
   const dur = () => fmtDuration(endD().getTime() - startD().getTime());
   const [confirmDelete, setConfirmDelete] = createSignal(false);
 
-  const timeRange = (): TimeRange | null => ({
-    start: new Date(props.lbl.start_ts).toISOString(),
-    end: new Date(props.lbl.end_ts).toISOString(),
+  const [startTime, setStartTime] = createSignal(toTimeInputValue(startD()));
+  const [endTime, setEndTime] = createSignal(toTimeInputValue(endD()));
+
+  createEffect(() => {
+    setStartTime(toTimeInputValue(startD()));
+    setEndTime(toTimeInputValue(endD()));
   });
+
+  const editedRange = (): TimeRange | null => {
+    const s = timeInputToDate(props.dateStr, startTime());
+    const e = timeInputToDate(props.dateStr, endTime());
+    if (e.getTime() <= s.getTime()) return null;
+    return { start: s.toISOString(), end: e.toISOString() };
+  };
+
+  const rangeValid = () => editedRange() !== null;
+
+  const timeChanged = () =>
+    startTime() !== toTimeInputValue(startD()) ||
+    endTime() !== toTimeInputValue(endD());
+
+  const timeInputStyle = {
+    background: "#111",
+    border: "1px solid #333",
+    "border-radius": "4px",
+    color: "#e0e0e0",
+    "font-size": "0.6rem",
+    "font-family": "inherit",
+    padding: "2px 4px",
+    width: "70px",
+    "text-align": "center" as const,
+  };
 
   return (
     <div>
@@ -310,7 +339,34 @@ const LabelRow: Component<{
             border: "1px solid #2a2a3a",
           }}
         >
-          <ActivityContext timeRange={() => timeRange()} showEmpty />
+          <div
+            style={{
+              display: "flex",
+              "align-items": "center",
+              "justify-content": "center",
+              gap: "6px",
+              "margin-bottom": "6px",
+            }}
+          >
+            <span style={{ color: "#888", "font-size": "0.58rem" }}>From</span>
+            <input
+              type="time"
+              value={startTime()}
+              max={endTime()}
+              onInput={(e) => setStartTime(e.currentTarget.value)}
+              style={timeInputStyle}
+            />
+            <span style={{ color: "#888", "font-size": "0.58rem" }}>to</span>
+            <input
+              type="time"
+              value={endTime()}
+              min={startTime()}
+              onInput={(e) => setEndTime(e.currentTarget.value)}
+              style={timeInputStyle}
+            />
+          </div>
+
+          <ActivityContext timeRange={() => editedRange()} showEmpty />
 
           <Show when={props.flash}>
             <div
@@ -336,33 +392,37 @@ const LabelRow: Component<{
             }}
           >
             <For each={props.coreLabels}>
-              {(lbl) => (
-                <button
-                  disabled={props.busy}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (lbl !== props.lbl.label) props.onUpdate(lbl);
-                  }}
-                  style={{
-                    padding: "4px 2px",
-                    "border-radius": "4px",
-                    border:
-                      lbl === props.lbl.label
+              {(lbl) => {
+                const isActive = () => lbl === props.lbl.label && !timeChanged();
+                const canClick = () => rangeValid() && (lbl !== props.lbl.label || timeChanged());
+                return (
+                  <button
+                    disabled={props.busy || !canClick()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const r = editedRange();
+                      if (r && canClick()) props.onUpdate(lbl, r.start, r.end);
+                    }}
+                    style={{
+                      padding: "4px 2px",
+                      "border-radius": "4px",
+                      border: isActive()
                         ? `1.5px solid ${LABEL_COLORS[lbl] ?? "#888"}`
                         : "1px solid #333",
-                    background: lbl === props.lbl.label ? "#1e1e2e" : "#111",
-                    color: LABEL_COLORS[lbl] ?? "#e0e0e0",
-                    cursor: lbl === props.lbl.label ? "default" : "pointer",
-                    "font-size": "0.58rem",
-                    "font-weight": lbl === props.lbl.label ? "700" : "500",
-                    "text-align": "center",
-                    opacity: props.busy ? "0.5" : lbl === props.lbl.label ? "1" : "0.8",
-                    transition: "all 0.1s ease",
-                  }}
-                >
-                  {lbl}
-                </button>
-              )}
+                      background: isActive() ? "#1e1e2e" : "#111",
+                      color: LABEL_COLORS[lbl] ?? "#e0e0e0",
+                      cursor: canClick() ? "pointer" : "default",
+                      "font-size": "0.58rem",
+                      "font-weight": isActive() ? "700" : "500",
+                      "text-align": "center",
+                      opacity: props.busy ? "0.5" : isActive() ? "1" : "0.8",
+                      transition: "all 0.1s ease",
+                    }}
+                  >
+                    {lbl}
+                  </button>
+                );
+              }}
             </For>
           </div>
 
@@ -696,7 +756,7 @@ export const LabelHistory: Component<{
     return `gap|${new Date(seg.startMs).toISOString()}|${new Date(seg.endMs).toISOString()}`;
   }
 
-  async function handleUpdate(item: LabelItem, newLabel: string) {
+  async function handleUpdate(item: LabelItem, newLabel: string, newStart: string, newEnd: string) {
     setBusy(true);
     setFlash(null);
     try {
@@ -704,6 +764,8 @@ export const LabelHistory: Component<{
         start_ts: item.start_ts,
         end_ts: item.end_ts,
         label: newLabel,
+        new_start_ts: newStart,
+        new_end_ts: newEnd,
       });
       setFlash(newLabel);
       setTimeout(() => {
@@ -893,9 +955,10 @@ export const LabelHistory: Component<{
             >
               <LabelRow
                 lbl={item as LabelItem}
+                dateStr={selectedDate()}
                 expanded={expandedKey() === itemKey(item)}
                 onToggle={() => toggleRow(item)}
-                onUpdate={(newLabel) => handleUpdate(item as LabelItem, newLabel)}
+                onUpdate={(newLabel, newStart, newEnd) => handleUpdate(item as LabelItem, newLabel, newStart, newEnd)}
                 onDelete={() => handleDelete(item as LabelItem)}
                 coreLabels={coreLabels() ?? []}
                 busy={busy()}
