@@ -288,6 +288,8 @@ const App: Component = () => {
               latestPrediction={ws.latestPrediction}
               latestTrayState={ws.latestTrayState}
               activeSuggestion={ws.activeSuggestion}
+              labelPinned={labelPinned}
+              panelPinned={panelPinned}
               onTogglePanel={
                 inBrowser
                   ? () => {

@@ -9,6 +9,8 @@ export const LiveBadge: Component<{
   latestPrediction: Accessor<Prediction | null>;
   latestTrayState: Accessor<TrayState | null>;
   activeSuggestion: Accessor<LabelSuggestion | null>;
+  labelPinned?: Accessor<boolean>;
+  panelPinned?: Accessor<boolean>;
   onTogglePanel?: () => void;
   onShowPanel?: () => void;
   onHidePanel?: () => void;
@@ -54,7 +56,13 @@ export const LiveBadge: Component<{
           "text-shadow": predictionLabel() ? "0 1px 3px rgba(0,0,0,0.5)" : "none",
           "white-space": "nowrap",
           cursor: "pointer",
+          outline: props.labelPinned?.()
+            ? `2px solid ${predColor()}aa`
+            : "none",
+          "outline-offset": "2px",
+          transition: "outline 0.15s ease",
         }}
+        title={props.labelPinned?.() ? "Label grid pinned — click to unpin" : "Hover for label grid, click to pin"}
         onMouseEnter={() => props.onShowLabel?.()}
         onMouseLeave={() => props.onHideLabel?.()}
         onClick={(e) => {
@@ -66,6 +74,7 @@ export const LiveBadge: Component<{
       </span>
       <LiveBadgeConnectionStatus
         status={props.status}
+        panelPinned={props.panelPinned}
         onTogglePanel={props.onTogglePanel}
         onShowPanel={props.onShowPanel}
         onHidePanel={props.onHidePanel}
