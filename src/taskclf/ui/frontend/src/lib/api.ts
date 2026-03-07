@@ -48,6 +48,10 @@ export async function fetchLabels(limit = 50): Promise<LabelResponse[]> {
   return json(`${BASE}/labels?limit=${limit}`);
 }
 
+export async function fetchLabelsByDate(date: string): Promise<LabelResponse[]> {
+  return json(`${BASE}/labels?limit=500&date=${date}`);
+}
+
 export async function createLabel(body: {
   start_ts: string;
   end_ts: string;

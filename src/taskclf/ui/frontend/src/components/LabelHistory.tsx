@@ -1,5 +1,5 @@
 import { type Accessor, type Component, createEffect, createResource, createMemo, createSignal, For, on, Show } from "solid-js";
-import { deleteLabel, fetchCoreLabels, fetchLabels, updateLabel } from "../lib/api";
+import { createLabel, deleteLabel, fetchCoreLabels, fetchLabelsByDate, updateLabel } from "../lib/api";
 import type { Prediction } from "../lib/ws";
 import { ActivityContext, type TimeRange } from "./ActivityContext";
 import { LABEL_COLORS } from "./StatePanel";
@@ -8,14 +8,26 @@ function parseDate(iso: string): Date {
   return new Date(iso);
 }
 
-function isToday(d: Date): boolean {
-  const now = new Date();
-  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+function todayDateStr(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-function fmtDate(d: Date): string {
-  if (isToday(d)) return "Today";
-  return d.toLocaleDateString([], { month: "short", day: "numeric" });
+function fmtDateLabel(dateStr: string): string {
+  const today = todayDateStr();
+  if (dateStr === today) return "Today";
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, "0")}-${String(yesterday.getDate()).padStart(2, "0")}`;
+  if (dateStr === yStr) return "Yesterday";
+  const d = new Date(dateStr + "T00:00:00");
+  return d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+}
+
+function shiftDate(dateStr: string, delta: number): string {
+  const d = new Date(dateStr + "T12:00:00");
+  d.setDate(d.getDate() + delta);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 function fmtTime(d: Date): string {
@@ -32,10 +44,17 @@ function fmtDuration(ms: number): string {
   return `${h}h ${m}m`;
 }
 
-function dateKey(iso: string): string {
-  const d = parseDate(iso);
-  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+function toTimeInputValue(d: Date): string {
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
+
+function timeInputToDate(dateStr: string, timeVal: string): Date {
+  return new Date(`${dateStr}T${timeVal}:00`);
+}
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
 interface LabelEntry {
   label: string;
@@ -50,59 +69,83 @@ interface TimelineSegment {
   fraction: number;
 }
 
-interface DateGroup {
-  dateLabel: string;
-  entries: LabelEntry[];
-  timeline: TimelineSegment[];
-  spanMs: number;
+interface GapItem {
+  kind: "gap";
+  start_ts: string;
+  end_ts: string;
 }
 
-function buildTimeline(entries: LabelEntry[]): { segments: TimelineSegment[]; spanMs: number } {
-  if (!entries.length) return { segments: [], spanMs: 0 };
+interface LabelItem {
+  kind: "label";
+  label: string;
+  start_ts: string;
+  end_ts: string;
+}
+
+type TimelineItem = GapItem | LabelItem;
+
+// ---------------------------------------------------------------------------
+// Timeline builder — full-day range
+// ---------------------------------------------------------------------------
+
+function buildDayTimeline(
+  entries: LabelEntry[],
+  dayDateStr: string,
+): { segments: TimelineSegment[]; items: TimelineItem[]; spanMs: number } {
+  const dayStart = new Date(`${dayDateStr}T00:00:00`).getTime();
+  const dayEnd = new Date(`${dayDateStr}T23:59:59.999`).getTime();
+  const spanMs = dayEnd - dayStart;
+
+  if (!entries.length) {
+    const seg: TimelineSegment = { label: null, startMs: dayStart, endMs: dayEnd, fraction: 1 };
+    const gap: GapItem = { kind: "gap", start_ts: new Date(dayStart).toISOString(), end_ts: new Date(dayEnd).toISOString() };
+    return { segments: [seg], items: [gap], spanMs };
+  }
 
   const sorted = [...entries].sort((a, b) => parseDate(a.start_ts).getTime() - parseDate(b.start_ts).getTime());
-  const rangeStart = parseDate(sorted[0].start_ts).getTime();
-  const rangeEnd = Math.max(...sorted.map((e) => parseDate(e.end_ts).getTime()));
-  const spanMs = rangeEnd - rangeStart;
-  if (spanMs <= 0) return { segments: [], spanMs: 0 };
-
   const segments: TimelineSegment[] = [];
-  let cursor = rangeStart;
+  const items: TimelineItem[] = [];
+  let cursor = dayStart;
 
   for (const entry of sorted) {
-    const s = parseDate(entry.start_ts).getTime();
-    const e = parseDate(entry.end_ts).getTime();
+    const s = Math.max(parseDate(entry.start_ts).getTime(), dayStart);
+    const e = Math.min(parseDate(entry.end_ts).getTime(), dayEnd);
+    if (e <= cursor) continue;
 
     if (s > cursor) {
       segments.push({ label: null, startMs: cursor, endMs: s, fraction: (s - cursor) / spanMs });
+      items.push({ kind: "gap", start_ts: new Date(cursor).toISOString(), end_ts: new Date(s).toISOString() });
     }
-    segments.push({ label: entry.label, startMs: Math.max(s, cursor), endMs: e, fraction: (e - Math.max(s, cursor)) / spanMs });
-    cursor = Math.max(cursor, e);
+    const segStart = Math.max(s, cursor);
+    segments.push({ label: entry.label, startMs: segStart, endMs: e, fraction: (e - segStart) / spanMs });
+    items.push({ kind: "label", label: entry.label, start_ts: entry.start_ts, end_ts: entry.end_ts });
+    cursor = e;
   }
 
-  return { segments, spanMs };
+  if (cursor < dayEnd) {
+    segments.push({ label: null, startMs: cursor, endMs: dayEnd, fraction: (dayEnd - cursor) / spanMs });
+    items.push({ kind: "gap", start_ts: new Date(cursor).toISOString(), end_ts: new Date(dayEnd).toISOString() });
+  }
+
+  return { segments, items, spanMs };
 }
 
-function groupByDate(labels: LabelEntry[]): DateGroup[] {
-  const groups: DateGroup[] = [];
-  let currentKey = "";
-  for (const lbl of labels) {
-    const key = dateKey(lbl.start_ts);
-    if (key !== currentKey) {
-      currentKey = key;
-      groups.push({ dateLabel: fmtDate(parseDate(lbl.start_ts)), entries: [], timeline: [], spanMs: 0 });
-    }
-    groups[groups.length - 1].entries.push(lbl);
-  }
-  for (const g of groups) {
-    const { segments, spanMs } = buildTimeline(g.entries);
-    g.timeline = segments;
-    g.spanMs = spanMs;
-  }
-  return groups;
+// ---------------------------------------------------------------------------
+// Item key helper
+// ---------------------------------------------------------------------------
+
+function itemKey(item: TimelineItem): string {
+  return `${item.kind}|${item.start_ts}|${item.end_ts}`;
 }
 
-const TimelineStrip: Component<{ segments: TimelineSegment[] }> = (props) => {
+// ---------------------------------------------------------------------------
+// TimelineStrip — with clickable gaps
+// ---------------------------------------------------------------------------
+
+const TimelineStrip: Component<{
+  segments: TimelineSegment[];
+  onGapClick?: (seg: TimelineSegment) => void;
+}> = (props) => {
   const [tooltip, setTooltip] = createSignal<{ text: string; x: number } | null>(null);
 
   return (
@@ -122,21 +165,36 @@ const TimelineStrip: Component<{ segments: TimelineSegment[] }> = (props) => {
               style={{
                 "flex-grow": seg.fraction,
                 "flex-basis": "0",
-                "min-width": seg.label ? "2px" : "0",
-                background: seg.label ? (LABEL_COLORS[seg.label] ?? "#a0a0a0") : "transparent",
-                cursor: seg.label ? "pointer" : "default",
-                transition: "opacity 0.1s",
+                "min-width": seg.label ? "2px" : seg.fraction > 0.005 ? "1px" : "0",
+                background: seg.label
+                  ? (LABEL_COLORS[seg.label] ?? "#a0a0a0")
+                  : "rgba(255,255,255,0.04)",
+                cursor: "pointer",
+                transition: "opacity 0.1s, background 0.1s",
               }}
               onMouseEnter={(e) => {
-                if (!seg.label) return;
                 const rect = (e.currentTarget.parentElement as HTMLElement).getBoundingClientRect();
                 const x = e.currentTarget.getBoundingClientRect().left - rect.left + e.currentTarget.offsetWidth / 2;
                 const dur = fmtDuration(seg.endMs - seg.startMs);
                 const start = fmtTime(new Date(seg.startMs));
                 const end = fmtTime(new Date(seg.endMs));
-                setTooltip({ text: `${seg.label}  ${start}–${end}  (${dur})`, x });
+                const prefix = seg.label ?? "Unlabeled";
+                setTooltip({ text: `${prefix}  ${start}\u2013${end}  (${dur})`, x });
+                if (!seg.label) {
+                  e.currentTarget.style.background = "rgba(255,255,255,0.1)";
+                }
               }}
-              onMouseLeave={() => setTooltip(null)}
+              onMouseLeave={(e) => {
+                setTooltip(null);
+                if (!seg.label) {
+                  e.currentTarget.style.background = "rgba(255,255,255,0.04)";
+                }
+              }}
+              onClick={() => {
+                if (!seg.label && props.onGapClick) {
+                  props.onGapClick(seg);
+                }
+              }}
             />
           )}
         </For>
@@ -168,12 +226,12 @@ const TimelineStrip: Component<{ segments: TimelineSegment[] }> = (props) => {
   );
 };
 
-function labelKey(lbl: LabelEntry): string {
-  return `${lbl.start_ts}|${lbl.end_ts}`;
-}
+// ---------------------------------------------------------------------------
+// LabelRow (existing labels)
+// ---------------------------------------------------------------------------
 
 const LabelRow: Component<{
-  lbl: LabelEntry;
+  lbl: LabelItem;
   expanded: boolean;
   onToggle: () => void;
   onUpdate: (label: string) => void;
@@ -390,14 +448,222 @@ const LabelRow: Component<{
   );
 };
 
+// ---------------------------------------------------------------------------
+// GapRow (unlabeled gaps — click to label a sub-range)
+// ---------------------------------------------------------------------------
+
+const GapRow: Component<{
+  gap: GapItem;
+  dateStr: string;
+  expanded: boolean;
+  onToggle: () => void;
+  onCreate: (start: string, end: string, label: string) => void;
+  coreLabels: string[];
+  busy: boolean;
+  flash: string | null;
+}> = (props) => {
+  const gapStartD = () => parseDate(props.gap.start_ts);
+  const gapEndD = () => parseDate(props.gap.end_ts);
+  const dur = () => fmtDuration(gapEndD().getTime() - gapStartD().getTime());
+
+  const [startTime, setStartTime] = createSignal(toTimeInputValue(gapStartD()));
+  const [endTime, setEndTime] = createSignal(toTimeInputValue(gapEndD()));
+
+  createEffect(() => {
+    setStartTime(toTimeInputValue(gapStartD()));
+    setEndTime(toTimeInputValue(gapEndD()));
+  });
+
+  const selectedRange = (): TimeRange | null => {
+    const s = timeInputToDate(props.dateStr, startTime());
+    const e = timeInputToDate(props.dateStr, endTime());
+    if (e.getTime() <= s.getTime()) return null;
+    return { start: s.toISOString(), end: e.toISOString() };
+  };
+
+  const rangeValid = () => {
+    const r = selectedRange();
+    return r !== null;
+  };
+
+  const timeInputStyle = {
+    background: "#111",
+    border: "1px solid #333",
+    "border-radius": "4px",
+    color: "#e0e0e0",
+    "font-size": "0.6rem",
+    "font-family": "inherit",
+    padding: "2px 4px",
+    width: "70px",
+    "text-align": "center" as const,
+  };
+
+  return (
+    <div>
+      <div
+        onClick={props.onToggle}
+        style={{
+          display: "flex",
+          "justify-content": "space-between",
+          "align-items": "baseline",
+          padding: "2px 4px",
+          gap: "8px",
+          cursor: "pointer",
+          "border-radius": "4px",
+          background: props.expanded ? "#1a1a22" : "transparent",
+          transition: "background 0.1s ease",
+        }}
+        onMouseEnter={(e) => {
+          if (!props.expanded) e.currentTarget.style.background = "#16161e";
+        }}
+        onMouseLeave={(e) => {
+          if (!props.expanded) e.currentTarget.style.background = "transparent";
+        }}
+      >
+        <span style={{ display: "flex", "align-items": "center", gap: "6px" }}>
+          <span
+            style={{
+              width: "6px",
+              height: "6px",
+              "border-radius": "50%",
+              border: "1.5px dashed #555",
+              "flex-shrink": "0",
+            }}
+          />
+          <span
+            style={{
+              color: "#666",
+              "font-weight": "500",
+              "font-size": "0.65rem",
+              "font-style": "italic",
+            }}
+          >
+            Unlabeled
+          </span>
+        </span>
+        <span
+          style={{ color: "#666", "font-size": "0.65rem", "white-space": "nowrap" }}
+        >
+          {fmtTime(gapStartD())} – {fmtTime(gapEndD())}{" "}
+          <span style={{ color: "#555" }}>({dur()})</span>
+        </span>
+      </div>
+
+      <Show when={props.expanded}>
+        <div
+          style={{
+            padding: "6px 8px",
+            margin: "2px 0 4px",
+            background: "#131320",
+            "border-radius": "6px",
+            border: "1px dashed #2a2a3a",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              "align-items": "center",
+              "justify-content": "center",
+              gap: "6px",
+              "margin-bottom": "6px",
+            }}
+          >
+            <span style={{ color: "#888", "font-size": "0.58rem" }}>From</span>
+            <input
+              type="time"
+              value={startTime()}
+              min={toTimeInputValue(gapStartD())}
+              max={endTime()}
+              onInput={(e) => setStartTime(e.currentTarget.value)}
+              style={timeInputStyle}
+            />
+            <span style={{ color: "#888", "font-size": "0.58rem" }}>to</span>
+            <input
+              type="time"
+              value={endTime()}
+              min={startTime()}
+              max={toTimeInputValue(gapEndD())}
+              onInput={(e) => setEndTime(e.currentTarget.value)}
+              style={timeInputStyle}
+            />
+          </div>
+
+          <ActivityContext timeRange={() => selectedRange()} showEmpty />
+
+          <Show when={props.flash}>
+            <div
+              style={{
+                "text-align": "center",
+                "font-size": "0.65rem",
+                "margin-bottom": "4px",
+                color: props.flash!.startsWith("Error")
+                  ? "#ef4444"
+                  : "#22c55e",
+              }}
+            >
+              {props.flash!.startsWith("Error") ? props.flash : `Saved: ${props.flash}`}
+            </div>
+          </Show>
+
+          <div
+            style={{
+              display: "grid",
+              "grid-template-columns": "repeat(4, 1fr)",
+              gap: "3px",
+            }}
+          >
+            <For each={props.coreLabels}>
+              {(lbl) => (
+                <button
+                  disabled={props.busy || !rangeValid()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const r = selectedRange();
+                    if (r) props.onCreate(r.start, r.end, lbl);
+                  }}
+                  style={{
+                    padding: "4px 2px",
+                    "border-radius": "4px",
+                    border: "1px solid #333",
+                    background: "#111",
+                    color: LABEL_COLORS[lbl] ?? "#e0e0e0",
+                    cursor: rangeValid() ? "pointer" : "not-allowed",
+                    "font-size": "0.58rem",
+                    "font-weight": "500",
+                    "text-align": "center",
+                    opacity: props.busy || !rangeValid() ? "0.4" : "0.8",
+                    transition: "all 0.1s ease",
+                  }}
+                >
+                  {lbl}
+                </button>
+              )}
+            </For>
+          </div>
+        </div>
+      </Show>
+    </div>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// LabelHistory (main export)
+// ---------------------------------------------------------------------------
+
 export const LabelHistory: Component<{
   visible: Accessor<boolean>;
   latestPrediction?: Accessor<Prediction | null>;
 }> = (props) => {
-  const [labels, { refetch }] = createResource(props.visible, async (show) => {
-    if (!show) return [];
-    return fetchLabels(50);
-  });
+  const [selectedDate, setSelectedDate] = createSignal(todayDateStr());
+  let dateInputRef: HTMLInputElement | undefined;
+
+  const [labels, { refetch }] = createResource(
+    () => (props.visible() ? selectedDate() : null),
+    async (dateStr) => {
+      if (!dateStr) return [];
+      return fetchLabelsByDate(dateStr);
+    },
+  );
   const [coreLabels] = createResource(fetchCoreLabels);
 
   const [expandedKey, setExpandedKey] = createSignal<string | null>(null);
@@ -410,24 +676,33 @@ export const LabelHistory: Component<{
     { defer: true },
   ));
 
-  const grouped = createMemo(() => {
+  const dayData = createMemo(() => {
     const l = labels();
-    return l?.length ? groupByDate(l) : [];
+    const entries: LabelEntry[] = (l ?? []).map((r) => ({
+      label: r.label,
+      start_ts: r.start_ts,
+      end_ts: r.end_ts,
+    }));
+    return buildDayTimeline(entries, selectedDate());
   });
 
-  function toggleRow(lbl: LabelEntry) {
-    const key = labelKey(lbl);
+  function toggleRow(item: TimelineItem) {
+    const key = itemKey(item);
     setExpandedKey(expandedKey() === key ? null : key);
     setFlash(null);
   }
 
-  async function handleUpdate(lbl: LabelEntry, newLabel: string) {
+  function gapSegToKey(seg: TimelineSegment): string {
+    return `gap|${new Date(seg.startMs).toISOString()}|${new Date(seg.endMs).toISOString()}`;
+  }
+
+  async function handleUpdate(item: LabelItem, newLabel: string) {
     setBusy(true);
     setFlash(null);
     try {
       await updateLabel({
-        start_ts: lbl.start_ts,
-        end_ts: lbl.end_ts,
+        start_ts: item.start_ts,
+        end_ts: item.end_ts,
         label: newLabel,
       });
       setFlash(newLabel);
@@ -443,13 +718,13 @@ export const LabelHistory: Component<{
     }
   }
 
-  async function handleDelete(lbl: LabelEntry) {
+  async function handleDelete(item: LabelItem) {
     setBusy(true);
     setFlash(null);
     try {
       await deleteLabel({
-        start_ts: lbl.start_ts,
-        end_ts: lbl.end_ts,
+        start_ts: item.start_ts,
+        end_ts: item.end_ts,
       });
       setExpandedKey(null);
       refetch();
@@ -460,6 +735,30 @@ export const LabelHistory: Component<{
     }
   }
 
+  async function handleGapCreate(startTs: string, endTs: string, label: string) {
+    setBusy(true);
+    setFlash(null);
+    try {
+      await createLabel({
+        start_ts: startTs,
+        end_ts: endTs,
+        label,
+      });
+      setFlash(label);
+      setTimeout(() => {
+        setFlash(null);
+        setExpandedKey(null);
+        refetch();
+      }, 800);
+    } catch (err: any) {
+      setFlash(`Error: ${err.message}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const isFutureDate = () => selectedDate() >= shiftDate(todayDateStr(), 1);
+
   return (
     <div
       style={{
@@ -469,20 +768,89 @@ export const LabelHistory: Component<{
         color: "#e0e0e0",
       }}
     >
+      {/* Header with date navigation */}
       <div
         style={{
-          "font-size": "0.75rem",
-          "font-weight": "700",
-          color: "#e0e0e0",
+          display: "flex",
+          "align-items": "center",
+          "justify-content": "space-between",
           "margin-bottom": "6px",
           "padding-bottom": "4px",
           "border-bottom": "1px solid #2a2a2a",
-          "letter-spacing": "0.02em",
-          "text-align": "center",
         }}
       >
-        Label History
+        <button
+          onClick={() => setSelectedDate(shiftDate(selectedDate(), -1))}
+          style={{
+            background: "none",
+            border: "none",
+            color: "#999",
+            cursor: "pointer",
+            "font-size": "0.75rem",
+            padding: "2px 6px",
+            "border-radius": "4px",
+            transition: "color 0.1s",
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = "#e0e0e0"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = "#999"; }}
+        >
+          ◀
+        </button>
+        <div style={{ position: "relative" }}>
+          <span
+            onClick={() => dateInputRef?.showPicker()}
+            style={{
+              "font-size": "0.75rem",
+              "font-weight": "700",
+              color: "#e0e0e0",
+              "letter-spacing": "0.02em",
+              cursor: "pointer",
+              "user-select": "none",
+            }}
+          >
+            {fmtDateLabel(selectedDate())}
+          </span>
+          <input
+            ref={dateInputRef}
+            type="date"
+            value={selectedDate()}
+            max={todayDateStr()}
+            onInput={(e) => {
+              const v = e.currentTarget.value;
+              if (v) setSelectedDate(v);
+            }}
+            style={{
+              position: "absolute",
+              top: "0",
+              left: "0",
+              width: "100%",
+              height: "100%",
+              opacity: "0",
+              cursor: "pointer",
+            }}
+          />
+        </div>
+        <button
+          onClick={() => { if (!isFutureDate()) setSelectedDate(shiftDate(selectedDate(), 1)); }}
+          disabled={isFutureDate()}
+          style={{
+            background: "none",
+            border: "none",
+            color: isFutureDate() ? "#444" : "#999",
+            cursor: isFutureDate() ? "default" : "pointer",
+            "font-size": "0.75rem",
+            padding: "2px 6px",
+            "border-radius": "4px",
+            transition: "color 0.1s",
+          }}
+          onMouseEnter={(e) => { if (!isFutureDate()) e.currentTarget.style.color = "#e0e0e0"; }}
+          onMouseLeave={(e) => { if (!isFutureDate()) e.currentTarget.style.color = "#999"; }}
+        >
+          ▶
+        </button>
       </div>
+
+      {/* Content */}
       <Show
         when={!labels.loading}
         fallback={
@@ -498,88 +866,44 @@ export const LabelHistory: Component<{
           </div>
         }
       >
-        <Show
-          when={grouped().length}
-          fallback={
-            <div
-              style={{
-                "text-align": "center",
-                padding: "16px 12px",
-                color: "#808080",
-              }}
+        <TimelineStrip
+          segments={dayData().segments}
+          onGapClick={(seg) => {
+            const key = gapSegToKey(seg);
+            setExpandedKey(expandedKey() === key ? null : key);
+            setFlash(null);
+          }}
+        />
+        <For each={dayData().items}>
+          {(item) => (
+            <Show
+              when={item.kind === "label"}
+              fallback={
+                <GapRow
+                  gap={item as GapItem}
+                  dateStr={selectedDate()}
+                  expanded={expandedKey() === itemKey(item)}
+                  onToggle={() => toggleRow(item)}
+                  onCreate={handleGapCreate}
+                  coreLabels={coreLabels() ?? []}
+                  busy={busy()}
+                  flash={expandedKey() === itemKey(item) ? flash() : null}
+                />
+              }
             >
-              <div
-                style={{
-                  display: "flex",
-                  height: "7px",
-                  "border-radius": "3px",
-                  overflow: "hidden",
-                  background: "#1a1a1a",
-                  "margin-bottom": "10px",
-                }}
-              >
-                <div style={{ flex: "2", background: "#6366f1", opacity: "0.15" }} />
-                <div style={{ flex: "1" }} />
-                <div style={{ flex: "3", background: "#3b82f6", opacity: "0.15" }} />
-                <div style={{ flex: "1" }} />
-                <div style={{ flex: "2", background: "#14b8a6", opacity: "0.15" }} />
-              </div>
-              <div
-                style={{
-                  "font-size": "0.7rem",
-                  "font-weight": "600",
-                  color: "#909090",
-                  "margin-bottom": "4px",
-                }}
-              >
-                No labels yet
-              </div>
-              <div style={{ "font-size": "0.58rem", color: "#707070", "line-height": "1.4" }}>
-                Use the label grid above to tag your activity.
-                <br />
-                A timeline will build up here over time.
-              </div>
-            </div>
-          }
-        >
-          <For each={grouped()}>
-            {(group) => (
-            <div style={{ "margin-bottom": "5px" }}>
-              <div
-                style={{
-                  "font-size": "0.6rem",
-                  "font-weight": "700",
-                  "text-transform": "uppercase",
-                  "letter-spacing": "0.06em",
-                  color: "#9a9a9a",
-                  "margin-bottom": "1px",
-                  "border-bottom": "1px solid #333",
-                  "padding-bottom": "1px",
-                }}
-              >
-                {group.dateLabel}
-              </div>
-              <Show when={group.timeline.length}>
-                <TimelineStrip segments={group.timeline} />
-              </Show>
-              <For each={group.entries}>
-                {(lbl) => (
-                  <LabelRow
-                    lbl={lbl}
-                    expanded={expandedKey() === labelKey(lbl)}
-                    onToggle={() => toggleRow(lbl)}
-                    onUpdate={(newLabel) => handleUpdate(lbl, newLabel)}
-                    onDelete={() => handleDelete(lbl)}
-                    coreLabels={coreLabels() ?? []}
-                    busy={busy()}
-                    flash={expandedKey() === labelKey(lbl) ? flash() : null}
-                  />
-                )}
-              </For>
-            </div>
+              <LabelRow
+                lbl={item as LabelItem}
+                expanded={expandedKey() === itemKey(item)}
+                onToggle={() => toggleRow(item)}
+                onUpdate={(newLabel) => handleUpdate(item as LabelItem, newLabel)}
+                onDelete={() => handleDelete(item as LabelItem)}
+                coreLabels={coreLabels() ?? []}
+                busy={busy()}
+                flash={expandedKey() === itemKey(item) ? flash() : null}
+              />
+            </Show>
           )}
-          </For>
-        </Show>
+        </For>
       </Show>
     </div>
   );

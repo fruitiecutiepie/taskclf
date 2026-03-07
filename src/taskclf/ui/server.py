@@ -244,10 +244,23 @@ def create_app(
     # -- REST: labels ---------------------------------------------------------
 
     @app.get("/api/labels")
-    async def list_labels(limit: int = Query(50, ge=1, le=500)) -> list[LabelResponse]:
+    async def list_labels(
+        limit: int = Query(50, ge=1, le=500),
+        date: str | None = Query(None, description="ISO-8601 date to filter labels by (e.g. 2025-03-07)"),
+    ) -> list[LabelResponse]:
         if not labels_path.exists():
             return []
         spans = read_label_spans(labels_path)
+
+        if date is not None:
+            try:
+                target = dt.date.fromisoformat(date)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=f"Invalid date: {date}") from exc
+            day_start = dt.datetime.combine(target, dt.time.min)
+            day_end = dt.datetime.combine(target, dt.time.max)
+            spans = [s for s in spans if s.end_ts > day_start and s.start_ts < day_end]
+
         spans.sort(key=lambda s: s.start_ts, reverse=True)
         return [
             LabelResponse(
