@@ -1204,13 +1204,15 @@ class TestTrayMenuExportLabels:
 
         with (
             patch.dict(sys.modules, {"tkinter": mock_tk, "tkinter.filedialog": mock_tk.filedialog}),
-            patch.object(labeler, "_notify") as mock_notify,
+            patch.object(labeler, "_notify_with_reveal") as mock_reveal,
         ):
             labeler._export_labels()
 
         assert csv_dest.exists()
-        mock_notify.assert_called_once()
-        assert "exported" in mock_notify.call_args[0][0].lower()
+        mock_reveal.assert_called_once()
+        msg, path_arg = mock_reveal.call_args[0]
+        assert "exported" in msg.lower()
+        assert path_arg == csv_dest
 
     def test_export_labels_no_file_notifies_error(self, tmp_path: Path) -> None:
         import sys
@@ -1249,6 +1251,69 @@ class TestTrayMenuExportLabels:
             labeler._export_labels()
 
         mock_notify.assert_not_called()
+
+    def test_notify_with_reveal_opens_folder_on_darwin(self, tmp_path: Path) -> None:
+        """_notify_with_reveal runs osascript dialog on macOS."""
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+
+        csv_file = tmp_path / "out.csv"
+        csv_file.write_text("header\n")
+
+        with (
+            patch("taskclf.ui.tray.platform.system", return_value="Darwin"),
+            patch("taskclf.ui.tray.subprocess.run") as mock_run,
+        ):
+            labeler._notify_with_reveal("Exported OK", csv_file)
+
+        mock_run.assert_called_once()
+        args = mock_run.call_args
+        assert args[0][0][0] == "osascript"
+        script = args[0][0][2]
+        assert "Show in Finder" in script
+        assert str(tmp_path) in script
+
+    def test_notify_with_reveal_fallback_non_darwin(self, tmp_path: Path) -> None:
+        """On non-macOS platforms, falls back to _notify + _reveal_in_file_manager."""
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+
+        csv_file = tmp_path / "out.csv"
+        csv_file.write_text("header\n")
+
+        with (
+            patch("taskclf.ui.tray.platform.system", return_value="Linux"),
+            patch.object(labeler, "_notify") as mock_notify,
+            patch.object(labeler, "_reveal_in_file_manager") as mock_reveal,
+        ):
+            labeler._notify_with_reveal("Exported OK", csv_file)
+
+        mock_notify.assert_called_once_with("Exported OK")
+        mock_reveal.assert_called_once_with(tmp_path)
+
+    def test_reveal_in_file_manager_darwin(self, tmp_path: Path) -> None:
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+
+        with (
+            patch("taskclf.ui.tray.platform.system", return_value="Darwin"),
+            patch("taskclf.ui.tray.subprocess.Popen") as mock_popen,
+        ):
+            labeler._reveal_in_file_manager(tmp_path)
+
+        mock_popen.assert_called_once_with(["open", str(tmp_path)])
+
+    def test_reveal_in_file_manager_linux(self, tmp_path: Path) -> None:
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+
+        with (
+            patch("taskclf.ui.tray.platform.system", return_value="Linux"),
+            patch("taskclf.ui.tray.subprocess.Popen") as mock_popen,
+        ):
+            labeler._reveal_in_file_manager(tmp_path)
+
+        mock_popen.assert_called_once_with(["xdg-open", str(tmp_path)])
 
 
 # ---------------------------------------------------------------------------
@@ -1444,6 +1509,66 @@ class TestImportLabels:
 
         mock_notify.assert_called_once()
         assert "failed" in mock_notify.call_args[0][0].lower()
+
+    def test_import_osascript_fallback_merge(self, tmp_path: Path) -> None:
+        """When tkinter fails, osascript fallback picks up the file dialog."""
+        import sys
+
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+
+        labels_dir = tmp_path / "labels_v1"
+        labels_dir.mkdir(parents=True)
+
+        csv_file = tmp_path / "import.csv"
+        self._write_csv(csv_file, self._sample_csv_rows())
+
+        mock_tk = MagicMock()
+        mock_tk.Tk.side_effect = RuntimeError("no display")
+
+        with (
+            patch.dict(sys.modules, {
+                "tkinter": mock_tk,
+                "tkinter.filedialog": mock_tk.filedialog,
+                "tkinter.messagebox": mock_tk.messagebox,
+            }),
+            patch.object(
+                labeler, "_import_labels_osascript",
+                return_value=(csv_file, "merge"),
+            ) as mock_osa,
+            patch.object(labeler, "_notify") as mock_notify,
+        ):
+            labeler._import_labels()
+
+        mock_osa.assert_called_once()
+        mock_notify.assert_called_once()
+        assert "imported" in mock_notify.call_args[0][0].lower()
+
+    def test_import_osascript_fallback_cancel(self, tmp_path: Path) -> None:
+        """When tkinter fails and osascript is cancelled, no import happens."""
+        import sys
+
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+
+        mock_tk = MagicMock()
+        mock_tk.Tk.side_effect = RuntimeError("no display")
+
+        with (
+            patch.dict(sys.modules, {
+                "tkinter": mock_tk,
+                "tkinter.filedialog": mock_tk.filedialog,
+                "tkinter.messagebox": mock_tk.messagebox,
+            }),
+            patch.object(
+                labeler, "_import_labels_osascript",
+                return_value=(None, None),
+            ),
+            patch.object(labeler, "_notify") as mock_notify,
+        ):
+            labeler._import_labels()
+
+        mock_notify.assert_not_called()
 
     def test_build_menu_contains_import_labels(self, tmp_path: Path) -> None:
         """Menu structure includes Import Labels item."""

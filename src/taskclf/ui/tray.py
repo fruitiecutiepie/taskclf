@@ -651,7 +651,9 @@ class TrayLabeler:
 
         try:
             export_labels_to_csv(self._labels_path, csv_path)
-            self._notify(f"Labels exported to {csv_path}")
+            self._notify_with_reveal(
+                f"Labels exported to {csv_path.name}", csv_path,
+            )
             logger.info("Labels exported to %s", csv_path)
         except ValueError as exc:
             self._notify(f"Export failed: {exc}")
@@ -694,9 +696,10 @@ class TrayLabeler:
                 return
             strategy = "merge" if answer else "overwrite"
         except Exception:
-            logger.debug("tkinter unavailable for import dialog")
-            self._notify("Import failed: no file dialog available")
-            return
+            logger.debug("tkinter unavailable for import dialog, trying osascript")
+            csv_path, strategy = self._import_labels_osascript()
+            if csv_path is None:
+                return
 
         try:
             imported = import_labels_from_csv(csv_path)
@@ -720,6 +723,45 @@ class TrayLabeler:
         except ValueError as exc:
             self._notify(f"Import failed: {exc}")
             logger.warning("Label import failed: %s", exc)
+
+    def _import_labels_osascript(self) -> tuple[Path | None, str | None]:
+        """macOS fallback for import file dialog using osascript."""
+        if platform.system() != "Darwin":
+            self._notify("Import failed: no file dialog available")
+            return None, None
+        try:
+            result = subprocess.run(
+                [
+                    "osascript", "-e",
+                    'POSIX path of (choose file of type {"csv"}'
+                    ' with prompt "Import Labels")',
+                ],
+                capture_output=True, text=True, timeout=120,
+            )
+            if result.returncode != 0 or not result.stdout.strip():
+                return None, None
+            csv_path = Path(result.stdout.strip())
+
+            btn = subprocess.run(
+                [
+                    "osascript", "-e",
+                    'button returned of (display dialog'
+                    ' "Merge with existing labels?\\n\\n'
+                    'Merge = keep existing, add new\\n'
+                    'Overwrite = replace all labels"'
+                    ' buttons {"Cancel","Overwrite","Merge"}'
+                    ' default button "Merge")',
+                ],
+                capture_output=True, text=True, timeout=120,
+            )
+            if btn.returncode != 0 or not btn.stdout.strip():
+                return None, None
+            strategy = "merge" if btn.stdout.strip() == "Merge" else "overwrite"
+            return csv_path, strategy
+        except Exception as exc:
+            logger.debug("osascript import dialog failed: %s", exc)
+            self._notify("Import failed: no file dialog available")
+            return None, None
 
     def _label_stats(self, *_args: Any) -> None:
         """Show a notification with today's labeling progress."""
@@ -975,6 +1017,48 @@ class TrayLabeler:
 
     def _notify(self, message: str) -> None:
         _send_desktop_notification("taskclf", message, timeout=5)
+
+    def _notify_with_reveal(self, message: str, path: Path) -> None:
+        """Show a notification with an option to reveal *path* in the file manager.
+
+        On macOS an AppleScript dialog with an "Show in Finder" button is
+        displayed (auto-dismisses after 10 s).  On other platforms the
+        containing folder is opened automatically alongside the notification.
+        """
+        folder = path.parent if path.is_file() else path
+        if platform.system() == "Darwin":
+            safe_msg = message.replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ")
+            safe_folder = str(folder).replace("\\", "\\\\").replace('"', '\\"')
+            script = (
+                f'set theResult to display dialog "{safe_msg}" '
+                f'buttons {{"OK", "Show in Finder"}} default button "OK" '
+                f"giving up after 10\n"
+                f'if button returned of theResult is "Show in Finder" then\n'
+                f'    do shell script "open \\"{safe_folder}\\""\n'
+                f"end if"
+            )
+            try:
+                subprocess.run(
+                    ["osascript", "-e", script],
+                    capture_output=True, timeout=15, check=False,
+                )
+                return
+            except Exception:
+                logger.debug("osascript dialog failed, falling back", exc_info=True)
+
+        self._notify(message)
+        self._reveal_in_file_manager(folder)
+
+    def _reveal_in_file_manager(self, path: Path) -> None:
+        """Open *path* in the platform file manager."""
+        system = platform.system()
+        try:
+            if system == "Darwin":
+                subprocess.Popen(["open", str(path)])
+            else:
+                subprocess.Popen(["xdg-open", str(path)])
+        except Exception:
+            logger.debug("Could not open folder", exc_info=True)
 
     def _start_server(self) -> int:
         """Start FastAPI + uvicorn in-process, sharing the tray's EventBus.
