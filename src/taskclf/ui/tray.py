@@ -647,6 +647,7 @@ class TrayLabeler:
             pystray.MenuItem("Status", self._show_status),
             pystray.MenuItem("Open Data Folder", self._open_data_dir),
             pystray.MenuItem("Edit Config", self._edit_config),
+            pystray.MenuItem("Report Issue", self._report_issue),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Quit", self._quit),
         )
@@ -1111,6 +1112,33 @@ class TrayLabeler:
         except Exception:
             logger.debug("Could not open folder", exc_info=True)
 
+    def _build_report_issue_url(self) -> str:
+        """Build a GitHub new-issue URL pre-filled with version and OS info."""
+        from importlib.metadata import version as _pkg_version
+        from urllib.parse import urlencode
+
+        try:
+            taskclf_version = _pkg_version("taskclf")
+        except Exception:
+            taskclf_version = "unknown"
+
+        os_info = f"{platform.system()} {platform.release()} ({platform.machine()})"
+        body = f"**taskclf version:** {taskclf_version}\n**OS:** {os_info}\n\n"
+
+        params = urlencode({
+            "template": "bug_report.yml",
+            "title": "[Bug]: ",
+            "diagnostics": f"taskclf {taskclf_version}\nOS: {os_info}",
+        })
+        return f"https://github.com/fruitiecutiepie/taskclf/issues/new?{params}"
+
+    def _report_issue(self, *_args: Any) -> None:
+        """Open the GitHub issue tracker in the default browser."""
+        import webbrowser
+
+        url = self._build_report_issue_url()
+        webbrowser.open(url)
+
     def _start_server(self) -> int:
         """Start FastAPI + uvicorn in-process, sharing the tray's EventBus.
 
@@ -1246,6 +1274,9 @@ class TrayLabeler:
     def run(self) -> None:
         """Start the tray icon and background monitor. Blocks until quit."""
         import atexit
+
+        from taskclf.core.logging import setup_file_logging
+        setup_file_logging()
 
         if self._browser:
             self._start_ui_embedded()

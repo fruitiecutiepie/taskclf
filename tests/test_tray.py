@@ -2140,6 +2140,115 @@ class TestBuildMenuEnhancements:
 
 
 # ---------------------------------------------------------------------------
+# Report Issue  (Item 4)
+# ---------------------------------------------------------------------------
+
+
+class TestReportIssue:
+    """Tests for the _report_issue tray menu item and URL construction."""
+
+    def test_menu_contains_report_issue(self, tmp_path: Path) -> None:
+        """The top-level menu includes a 'Report Issue' item."""
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+        menu = labeler._build_menu()
+
+        labels: list[str] = []
+        for item in menu.items:
+            if hasattr(item, "text") and item.text is not None:
+                text = item.text if isinstance(item.text, str) else item.text(None)
+                if text:
+                    labels.append(text)
+
+        assert "Report Issue" in labels
+
+    def test_report_issue_url_contains_github_repo(self, tmp_path: Path) -> None:
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+        url = labeler._build_report_issue_url()
+
+        assert "github.com/fruitiecutiepie/taskclf" in url
+
+    def test_report_issue_url_contains_template_param(self, tmp_path: Path) -> None:
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+        url = labeler._build_report_issue_url()
+
+        assert "template=bug_report.yml" in url
+
+    def test_report_issue_url_contains_version(self, tmp_path: Path) -> None:
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+
+        with patch("importlib.metadata.version", return_value="1.2.3"):
+            url = labeler._build_report_issue_url()
+
+        assert "1.2.3" in url
+
+    def test_report_issue_url_contains_os_info(self, tmp_path: Path) -> None:
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+        url = labeler._build_report_issue_url()
+
+        import platform as _platform
+        assert _platform.system() in url
+
+    def test_report_issue_url_is_well_formed(self, tmp_path: Path) -> None:
+        from urllib.parse import urlparse
+
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+        url = labeler._build_report_issue_url()
+
+        parsed = urlparse(url)
+        assert parsed.scheme == "https"
+        assert parsed.netloc == "github.com"
+        assert parsed.path.startswith("/fruitiecutiepie/taskclf/issues/new")
+
+    def test_report_issue_opens_browser(self, tmp_path: Path) -> None:
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+
+        with patch("webbrowser.open") as mock_open:
+            labeler._report_issue()
+
+        mock_open.assert_called_once()
+        opened_url = mock_open.call_args[0][0]
+        assert "github.com/fruitiecutiepie/taskclf" in opened_url
+
+    def test_report_issue_url_handles_unknown_version(self, tmp_path: Path) -> None:
+        """When importlib.metadata fails, version falls back to 'unknown'."""
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+
+        with patch(
+            "importlib.metadata.version",
+            side_effect=Exception("not installed"),
+        ):
+            url = labeler._build_report_issue_url()
+
+        assert "unknown" in url
+        assert "github.com/fruitiecutiepie/taskclf" in url
+
+    def test_report_issue_before_quit_in_menu(self, tmp_path: Path) -> None:
+        """Report Issue appears before Quit in the menu ordering."""
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+        menu = labeler._build_menu()
+
+        labels: list[str] = []
+        for item in menu.items:
+            if hasattr(item, "text") and item.text is not None:
+                text = item.text if isinstance(item.text, str) else item.text(None)
+                if text:
+                    labels.append(text)
+
+        assert "Report Issue" in labels
+        assert "Quit" in labels
+        assert labels.index("Report Issue") < labels.index("Quit")
+
+
+# ---------------------------------------------------------------------------
 # Switch Model  (Item 3)
 # ---------------------------------------------------------------------------
 

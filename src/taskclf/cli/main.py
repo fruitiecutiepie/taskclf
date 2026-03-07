@@ -62,6 +62,9 @@ def main(
     )
     ensure_taskclf_dirs()
 
+    from taskclf.core.logging import setup_file_logging
+    setup_file_logging()
+
 
 # -- ingest -------------------------------------------------------------------
 ingest_app = typer.Typer()

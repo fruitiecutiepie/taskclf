@@ -80,6 +80,7 @@ class TestDefaultsTypes:
             "DEFAULT_CALIBRATION_METHOD",
             "MIXED_UNKNOWN",
             "DEFAULT_TELEMETRY_DIR",
+            "DEFAULT_LOG_DIR",
         ]
         for name in str_names:
             value = getattr(defaults, name)
@@ -92,6 +93,7 @@ class TestDefaultsTypes:
             "DEFAULT_RAW_AW_DIR",
             "DEFAULT_MODELS_DIR",
             "DEFAULT_TELEMETRY_DIR",
+            "DEFAULT_LOG_DIR",
         ]
         for name in path_names:
             value = getattr(defaults, name)
@@ -136,6 +138,7 @@ class TestDefaultsTypes:
             "DEFAULT_CALIBRATOR_UPDATE_CADENCE_DAYS",
             "DEFAULT_DATA_LOOKBACK_DAYS", "DEFAULT_REGRESSION_TOLERANCE",
             "DEFAULT_GIT_TIMEOUT_SECONDS", "DEFAULT_DUMMY_ROWS",
+            "DEFAULT_LOG_DIR",
         }
         missing = public - covered
         assert not missing, f"Uncovered public names: {missing}"

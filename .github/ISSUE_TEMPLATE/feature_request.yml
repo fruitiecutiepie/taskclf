@@ -1,0 +1,33 @@
+name: Feature Request
+description: Suggest a new feature or improvement for taskclf.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: What problem does this feature solve? Why is it needed?
+      placeholder: I'm always frustrated when ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: Describe how you'd like this to work.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Have you considered any alternative approaches?
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Any other information, mockups, or references.

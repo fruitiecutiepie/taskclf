@@ -2,12 +2,17 @@
 
 Prevents accidental leakage of raw window titles, keystrokes, clipboard
 content, URLs, and other PII through log output.
+
+Also provides :func:`setup_file_logging` for persisting logs to a rotating
+file under ``<TASKCLF_HOME>/logs/``.
 """
 
 from __future__ import annotations
 
 import logging
+import logging.handlers
 import re
+from pathlib import Path
 from typing import Final, Sequence
 
 _SENSITIVE_KEYS: Final[tuple[str, ...]] = (
@@ -86,3 +91,61 @@ def install_sanitizing_filter(
         target.addFilter(filt)
 
     return filt
+
+
+_FILE_LOG_FORMAT: Final[str] = (
+    "%(asctime)s %(levelname)s %(name)s %(pathname)s:%(lineno)d — %(message)s"
+)
+
+
+def setup_file_logging(
+    log_dir: str | Path | None = None,
+    *,
+    max_bytes: int = 5_000_000,
+    backup_count: int = 3,
+) -> logging.handlers.RotatingFileHandler | None:
+    """Attach a :class:`~logging.handlers.RotatingFileHandler` to the root logger.
+
+    The handler always logs at ``DEBUG`` level so that error context is
+    captured even when the console level is ``WARNING``.  A
+    :class:`SanitizingFilter` is applied so PII is never written to disk.
+
+    If a ``RotatingFileHandler`` targeting the same file is already
+    present on the root logger, this function is a no-op (idempotent).
+
+    Args:
+        log_dir: Directory for the log file.  Defaults to
+            ``<TASKCLF_HOME>/logs`` when ``None``.
+        max_bytes: Maximum size of a single log file before rotation.
+        backup_count: Number of rotated backup files to keep.
+
+    Returns:
+        The handler that was created, or ``None`` if one already existed.
+    """
+    if log_dir is None:
+        from taskclf.core.paths import taskclf_home
+        log_dir = taskclf_home() / "logs"
+
+    log_dir = Path(log_dir)
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / "taskclf.log"
+
+    root = logging.getLogger()
+    for h in root.handlers:
+        if (
+            isinstance(h, logging.handlers.RotatingFileHandler)
+            and Path(h.baseFilename).resolve() == log_file.resolve()
+        ):
+            return None
+
+    handler = logging.handlers.RotatingFileHandler(
+        log_file,
+        maxBytes=max_bytes,
+        backupCount=backup_count,
+        encoding="utf-8",
+    )
+    handler.setLevel(logging.DEBUG)
+    handler.setFormatter(logging.Formatter(_FILE_LOG_FORMAT))
+    handler.addFilter(SanitizingFilter())
+    root.addHandler(handler)
+    return handler

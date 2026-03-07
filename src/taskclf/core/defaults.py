@@ -33,6 +33,7 @@ DEFAULT_OUT_DIR: Final[str] = str(_HOME / "artifacts")
 DEFAULT_DATA_DIR: Final[str] = str(_HOME / "data" / "processed")
 DEFAULT_RAW_AW_DIR: Final[str] = str(_HOME / "data" / "raw" / "aw")
 DEFAULT_MODELS_DIR: Final[str] = str(_HOME / "models")
+DEFAULT_LOG_DIR: Final[str] = str(_HOME / "logs")
 
 # ── ActivityWatch ──
 DEFAULT_AW_HOST: Final[str] = "http://localhost:5600"

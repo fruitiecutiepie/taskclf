@@ -9,38 +9,32 @@ Make it easy for users to report errors when something goes wrong in taskclf.
 
 ## Current State
 
-- **CLI** prints errors to stderr via `typer.echo(..., err=True)` and exits with code 1. No log file is written.
-- **Tray app** shows desktop notifications for some errors (export/import/model failures) via `_notify()` → `_send_desktop_notification()`. Errors are logged to stderr only.
+- **CLI** prints errors to stderr via `typer.echo(..., err=True)` and exits with code 1. Logs are also persisted to `<TASKCLF_HOME>/logs/taskclf.log` via a `RotatingFileHandler` with `SanitizingFilter`.
+- **Tray app** shows desktop notifications for some errors (export/import/model failures) via `_notify()` → `_send_desktop_notification()`. Logs are persisted to the same rotating log file (set up in `TrayLabeler.run()`). A "Report Issue" menu item opens the GitHub issue tracker pre-filled with version/OS info.
 - **Frontend** shows flash/status messages for label CRUD errors. `SuggestionBanner` only logs to `console.error`.
 - **Server** raises `HTTPException` with structured details (e.g., 409 for label overlap).
-- **Logging** uses Python `logging` module with `SanitizingFilter` (redacts PII). All output goes to stderr — nothing is persisted to disk.
-- **No** "Report Bug" button, GitHub issue templates, crash handler, or diagnostics command.
+- **Logging** uses Python `logging` module with `SanitizingFilter` (redacts PII). Console output goes to stderr; file output goes to `<TASKCLF_HOME>/logs/taskclf.log` with rotation (5 MB, 3 backups) at DEBUG level.
+- **GitHub issue templates** are available at `.github/ISSUE_TEMPLATE/` (bug report and feature request YAML forms).
+- **No** diagnostics command, crash handler, or frontend "Report Issue" link yet.
 
 ---
 
-## TODO 1: Persist logs to a file
+## ~~TODO 1: Persist logs to a file~~ DONE
 
-**Priority:** High — without this, error context is lost when the terminal closes.
+**Status:** Implemented.
 
-**What:** Add a `FileHandler` that writes logs to `<TASKCLF_HOME>/logs/taskclf.log` with rotation.
+**What was done:**
+- Added `"logs"` to `_SUBDIRS` in `core/paths.py` so `ensure_taskclf_dirs()` creates the logs directory.
+- Added `DEFAULT_LOG_DIR` constant to `core/defaults.py`.
+- Added `setup_file_logging()` utility in `core/logging.py` — creates a `RotatingFileHandler` (5 MB, 3 backups, DEBUG level) with `SanitizingFilter`, attached to the root logger. Idempotent (safe to call from both CLI and tray).
+- CLI `main()` callback calls `setup_file_logging()` after `ensure_taskclf_dirs()`.
+- `TrayLabeler.run()` calls `setup_file_logging()` for standalone tray launches.
+- Tests added to `test_core_paths.py`, `test_core_defaults.py`, `test_core_logging.py`, and `test_cli_main.py`.
 
-**Where to change:**
-
-- `src/taskclf/core/paths.py` — add `"logs"` to `_SUBDIRS` tuple (line 26) so the directory is created by `ensure_taskclf_dirs()`.
-- `src/taskclf/core/defaults.py` — add `DEFAULT_LOG_DIR` constant derived from `_HOME / "logs"`.
-- `src/taskclf/cli/main.py` — in the `main()` callback (lines 56–63), add a `RotatingFileHandler` alongside the existing `StreamHandler`. Apply the `SanitizingFilter` from `core/logging.py` to the file handler so PII is never written to disk.
-- `src/taskclf/ui/tray.py` — ensure the tray's `TrayLabeler.run()` (line 1246) also sets up the file handler if it hasn't been initialized by the CLI path (tray can be launched standalone).
-
-**Log file paths** (platform-dependent, from `core/paths.py`):
+**Log file paths** (platform-dependent):
 - macOS: `~/Library/Application Support/taskclf/logs/taskclf.log`
 - Linux: `~/.local/share/taskclf/logs/taskclf.log`
 - Windows: `%LOCALAPPDATA%/taskclf/logs/taskclf.log`
-
-**Details:**
-- Use `logging.handlers.RotatingFileHandler` with `maxBytes=5_000_000` (5 MB), `backupCount=3`.
-- Log level for file handler: `DEBUG` always (regardless of `--verbose` flag) so errors are captured even in normal operation.
-- Apply `SanitizingFilter` (from `src/taskclf/core/logging.py`) to the file handler.
-- Format: `"%(asctime)s %(levelname)s %(name)s %(pathname)s:%(lineno)d — %(message)s"`.
 
 ---
 
@@ -62,7 +56,7 @@ Make it easy for users to report errors when something goes wrong in taskclf.
 - Whether ActivityWatch is reachable (GET `<aw_host>/api/0/info`, timeout 5s)
 - Available model bundles (from `model_registry.list_bundles()`)
 - Config summary (`UserConfig(data_dir).as_dict()`, with `user_id` redacted)
-- Last 50 lines of the log file (if TODO 1 is implemented)
+- Last 50 lines of the log file (from `<TASKCLF_HOME>/logs/taskclf.log`)
 - Disk usage of `data/`, `models/`, `logs/` directories
 
 **Flags:**
@@ -72,45 +66,28 @@ Make it easy for users to report errors when something goes wrong in taskclf.
 
 ---
 
-## TODO 3: Add GitHub issue templates
+## ~~TODO 3: Add GitHub issue templates~~ DONE
 
-**Priority:** Medium — structured issue forms reduce back-and-forth.
+**Status:** Implemented.
 
-**What:** Create `.github/ISSUE_TEMPLATE/bug_report.yml` (YAML form) and `feature_request.yml`.
-
-**Where to create:**
-
-- `.github/ISSUE_TEMPLATE/bug_report.yml`
-- `.github/ISSUE_TEMPLATE/feature_request.yml`
-- `.github/ISSUE_TEMPLATE/config.yml` (optional: template chooser config)
-
-**Bug report template fields:**
-1. **Description** — what happened
-2. **Steps to reproduce** — numbered list
-3. **Expected behavior** — what should have happened
-4. **Diagnostics output** — paste output of `taskclf diagnostics`
-5. **Log excerpt** — paste relevant lines from `<TASKCLF_HOME>/logs/taskclf.log`
-6. **Screenshots** — optional
-7. **Additional context** — optional
+**What was done:**
+- Created `.github/ISSUE_TEMPLATE/bug_report.yml` — YAML form with fields: Description, Steps to reproduce, Expected behavior, Diagnostics output, Log excerpt, Screenshots, Additional context.
+- Created `.github/ISSUE_TEMPLATE/feature_request.yml` — YAML form with fields: Problem/motivation, Proposed solution, Alternatives considered, Additional context.
+- Created `.github/ISSUE_TEMPLATE/config.yml` — template chooser config with a link to discussions.
 
 ---
 
-## TODO 4: Add "Report Issue" to the tray menu
+## ~~TODO 4: Add "Report Issue" to the tray menu~~ DONE
 
-**Priority:** Medium — single-click path from the app to the issue tracker.
+**Status:** Implemented.
 
-**What:** Add a tray menu item that opens the GitHub new-issue URL in the browser, pre-filled with version and OS info as query params.
+**What was done:**
+- Added `_build_report_issue_url()` method to `TrayLabeler` that constructs a GitHub new-issue URL pre-filled with the `bug_report.yml` template and version/OS diagnostics as query parameters.
+- Added `_report_issue()` method that opens the URL with `webbrowser.open()`.
+- Added `pystray.MenuItem("Report Issue", self._report_issue)` to `_build_menu_items()` before the final separator/Quit group.
+- Added 9 tests in `TestReportIssue` class in `test_tray.py`: menu presence, URL structure, version/OS inclusion, well-formedness, browser opening, unknown version fallback, and menu ordering.
 
-**Where to change:**
-
-- `src/taskclf/ui/tray.py` — in `_build_menu_items()` (line 625), add a `pystray.MenuItem("Report Issue", self._report_issue)` before the `Quit` item, inside the last separator group (after "Edit Config", line 649).
-- Add a `_report_issue` method to `TrayLabeler` that:
-  1. Builds a URL like `https://github.com/fruitiecutiepie/taskclf/issues/new?template=bug_report.yml&title=...`
-  2. Appends version/OS as URL query params or body text
-  3. Opens it with `webbrowser.open()`
-- `tests/test_tray.py` — add a test that verifies the menu item exists and the URL is well-formed.
-
-**Current tray menu structure** (for reference):
+**Updated tray menu structure:**
 
 ```
 Open Dashboard        (default)
@@ -124,7 +101,8 @@ Model >               (submenu)
 Status
 Open Data Folder
 Edit Config
-─────────────         ← insert "Report Issue" here
+Report Issue          ← NEW
+─────────────
 Quit
 ```
 
@@ -152,7 +130,7 @@ Quit
 **Where to change:**
 
 - `src/taskclf/cli/main.py` — wrap the Typer `app()` invocation (or use Typer's exception handler hook) to catch unhandled exceptions, write a timestamped crash file to `<TASKCLF_HOME>/logs/crash_<timestamp>.txt`, and print a message like `"taskclf crashed. Details saved to <path>. Please report at <issue URL>."`.
-- `src/taskclf/ui/tray.py` — wrap `TrayLabeler.run()` (line 1246) similarly. On crash, also attempt a desktop notification with the crash file path.
+- `src/taskclf/ui/tray.py` — wrap `TrayLabeler.run()` similarly. On crash, also attempt a desktop notification with the crash file path.
 
 **Crash file contents:**
 - Timestamp
@@ -176,10 +154,10 @@ Quit
 
 ## Implementation Order
 
-1. **TODO 1** (log file) — foundation for everything else
+1. ~~**TODO 1** (log file) — foundation for everything else~~ DONE
 2. **TODO 2** (diagnostics command) — immediately useful, references log file
-3. **TODO 3** (issue templates) — references diagnostics output
-4. **TODO 4** (tray menu item) — links to issue template
+3. ~~**TODO 3** (issue templates) — references diagnostics output~~ DONE
+4. ~~**TODO 4** (tray menu item) — links to issue template~~ DONE
 5. **TODO 5** (frontend link) — links to issue template
 6. **TODO 6** (crash handler) — writes to log dir
 7. **TODO 7** (SuggestionBanner) — independent, low priority

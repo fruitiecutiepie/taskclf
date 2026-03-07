@@ -1,13 +1,16 @@
 """End-to-end CLI tests for taskclf commands.
 
-Covers TC-E2E-001 through TC-E2E-006.  Tests invoke the Typer CLI via
-CliRunner in isolated temp directories and verify exit codes, expected file
-outputs, schema consistency, and absence of sensitive data.
+Covers TC-E2E-001 through TC-E2E-006, plus TC-E2E-LOG (file logging).
+Tests invoke the Typer CLI via CliRunner in isolated temp directories and
+verify exit codes, expected file outputs, schema consistency, and absence
+of sensitive data.
 """
 
 from __future__ import annotations
 
 import json
+import logging
+import logging.handlers
 from pathlib import Path
 
 import pandas as pd
@@ -512,3 +515,31 @@ class TestReportDaily:
 
         for forbidden in ("raw_keystrokes", "window_title_raw", "clipboard"):
             assert forbidden not in raw, f"Sensitive field {forbidden!r} in report"
+
+
+# ---------------------------------------------------------------------------
+# TC-E2E-LOG: CLI sets up file logging
+# ---------------------------------------------------------------------------
+
+
+class TestCLIFileLogging:
+    """TC-E2E-LOG: CLI callback creates a rotating log file."""
+
+    def _remove_file_handlers(self) -> None:
+        root = logging.getLogger()
+        for h in list(root.handlers):
+            if isinstance(h, logging.handlers.RotatingFileHandler):
+                root.removeHandler(h)
+                h.close()
+
+    def test_cli_creates_log_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        self._remove_file_handlers()
+        monkeypatch.setenv("TASKCLF_HOME", str(tmp_path / "home"))
+        result = runner.invoke(app, [
+            "train", "list", "--models-dir", str(tmp_path / "home" / "models"),
+        ])
+        assert result.exit_code == 0, result.output
+        assert (tmp_path / "home" / "logs" / "taskclf.log").exists()
+        self._remove_file_handlers()

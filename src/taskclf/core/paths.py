@@ -29,6 +29,7 @@ _SUBDIRS: tuple[str, ...] = (
     "models",
     "artifacts/telemetry",
     "configs",
+    "logs",
 )
 
 

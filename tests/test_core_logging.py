@@ -1,18 +1,23 @@
 """Tests for sanitizing log filter (core/logging.py).
 
 Covers: TC-LOG-001 (redact_message), TC-LOG-002 (SanitizingFilter),
-TC-LOG-003 (install_sanitizing_filter).
+TC-LOG-003 (install_sanitizing_filter), TC-LOG-004 (setup_file_logging).
 """
 
 from __future__ import annotations
 
 import logging
+import logging.handlers
+from pathlib import Path
+
+import pytest
 
 from taskclf.core.logging import (
     SanitizingFilter,
     _SENSITIVE_KEYS,
     install_sanitizing_filter,
     redact_message,
+    setup_file_logging,
 )
 
 
@@ -150,3 +155,105 @@ class TestInstallSanitizingFilter:
 
         handler.removeFilter(filt)
         logger.removeHandler(handler)
+
+
+# ---------------------------------------------------------------------------
+# setup_file_logging
+# ---------------------------------------------------------------------------
+
+
+class TestSetupFileLogging:
+    """TC-LOG-004: setup_file_logging creates a RotatingFileHandler with sanitization."""
+
+    def _cleanup_handler(self, handler: logging.handlers.RotatingFileHandler | None) -> None:
+        if handler is not None:
+            logging.getLogger().removeHandler(handler)
+            handler.close()
+
+    def test_creates_log_file(self, tmp_path: Path) -> None:
+        log_dir = tmp_path / "logs"
+        handler = setup_file_logging(log_dir)
+        try:
+            assert handler is not None
+            assert (log_dir / "taskclf.log").exists()
+        finally:
+            self._cleanup_handler(handler)
+
+    def test_creates_log_directory(self, tmp_path: Path) -> None:
+        log_dir = tmp_path / "deep" / "nested" / "logs"
+        handler = setup_file_logging(log_dir)
+        try:
+            assert log_dir.is_dir()
+        finally:
+            self._cleanup_handler(handler)
+
+    def test_handler_level_is_debug(self, tmp_path: Path) -> None:
+        handler = setup_file_logging(tmp_path / "logs")
+        try:
+            assert handler is not None
+            assert handler.level == logging.DEBUG
+        finally:
+            self._cleanup_handler(handler)
+
+    def test_handler_has_sanitizing_filter(self, tmp_path: Path) -> None:
+        handler = setup_file_logging(tmp_path / "logs")
+        try:
+            assert handler is not None
+            assert any(isinstance(f, SanitizingFilter) for f in handler.filters)
+        finally:
+            self._cleanup_handler(handler)
+
+    def test_handler_attached_to_root_logger(self, tmp_path: Path) -> None:
+        handler = setup_file_logging(tmp_path / "logs")
+        try:
+            assert handler is not None
+            assert handler in logging.getLogger().handlers
+        finally:
+            self._cleanup_handler(handler)
+
+    def test_idempotent_returns_none_on_second_call(self, tmp_path: Path) -> None:
+        log_dir = tmp_path / "logs"
+        handler1 = setup_file_logging(log_dir)
+        try:
+            handler2 = setup_file_logging(log_dir)
+            assert handler2 is None
+        finally:
+            self._cleanup_handler(handler1)
+
+    def test_respects_rotation_params(self, tmp_path: Path) -> None:
+        handler = setup_file_logging(
+            tmp_path / "logs", max_bytes=1_000_000, backup_count=5,
+        )
+        try:
+            assert handler is not None
+            assert handler.maxBytes == 1_000_000
+            assert handler.backupCount == 5
+        finally:
+            self._cleanup_handler(handler)
+
+    def test_sanitizes_sensitive_data_in_file(self, tmp_path: Path) -> None:
+        log_dir = tmp_path / "logs"
+        handler = setup_file_logging(log_dir)
+        try:
+            assert handler is not None
+            test_logger = logging.getLogger("test.file_sanitize")
+            test_logger.setLevel(logging.DEBUG)
+            test_logger.debug("window_title=SecretDoc.txt")
+            handler.flush()
+
+            content = (log_dir / "taskclf.log").read_text()
+            assert "SecretDoc.txt" not in content
+            assert "[REDACTED]" in content
+        finally:
+            self._cleanup_handler(handler)
+
+    def test_default_log_dir_uses_taskclf_home(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("TASKCLF_HOME", str(tmp_path / "home"))
+        handler = setup_file_logging(None)
+        try:
+            assert handler is not None
+            assert Path(handler.baseFilename).parent == tmp_path / "home" / "logs"
+        finally:
+            self._cleanup_handler(handler)

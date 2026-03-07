@@ -135,7 +135,7 @@ class TestSubdirsList:
     """Verify the expected subdirectories are in _SUBDIRS."""
 
     def test_contains_expected_entries(self) -> None:
-        expected = {"data/raw/aw", "data/processed", "models", "artifacts/telemetry", "configs"}
+        expected = {"data/raw/aw", "data/processed", "models", "artifacts/telemetry", "configs", "logs"}
         assert set(_SUBDIRS) == expected
 
 
