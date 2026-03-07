@@ -420,6 +420,45 @@ class TrayLabeler:
         self._config = UserConfig(data_dir)
         if username is not None:
             self._config.username = username
+
+        saved = self._config.as_dict()
+        notifications_enabled = self._resolve(
+            saved, "notifications_enabled", notifications_enabled, True,
+        )
+        privacy_notifications = self._resolve(
+            saved, "privacy_notifications", privacy_notifications, True,
+        )
+        poll_seconds = self._resolve(
+            saved, "poll_seconds", poll_seconds, DEFAULT_POLL_SECONDS,
+        )
+        transition_minutes = self._resolve(
+            saved, "transition_minutes", transition_minutes, DEFAULT_TRANSITION_MINUTES,
+        )
+        aw_host = self._resolve(saved, "aw_host", aw_host, DEFAULT_AW_HOST)
+        title_salt = self._resolve(saved, "title_salt", title_salt, DEFAULT_TITLE_SALT)
+        ui_port = self._resolve(saved, "ui_port", ui_port, 8741)
+
+        self._config.update({
+            "_help": {
+                "user_id": "Stable UUID for this install. Do not change.",
+                "username": "Display name shown in labels. Does not affect label identity.",
+                "notifications_enabled": "Set to false to suppress all desktop notifications.",
+                "privacy_notifications": "When true, app names are redacted from notifications.",
+                "poll_seconds": "Seconds between ActivityWatch polling cycles.",
+                "transition_minutes": "Minutes a new app must persist before a transition fires.",
+                "aw_host": "ActivityWatch server URL.",
+                "title_salt": "Salt used for hashing window titles (privacy).",
+                "ui_port": "Port for the embedded web UI server.",
+            },
+            "notifications_enabled": notifications_enabled,
+            "privacy_notifications": privacy_notifications,
+            "poll_seconds": poll_seconds,
+            "transition_minutes": transition_minutes,
+            "aw_host": aw_host,
+            "title_salt": title_salt,
+            "ui_port": ui_port,
+        })
+
         self._notifications_enabled = notifications_enabled
         self._privacy_notifications = privacy_notifications
         self._current_app: str = "unknown"
@@ -464,6 +503,13 @@ class TrayLabeler:
             event_bus=self._event_bus,
         )
         self._icon: Any = None
+
+    @staticmethod
+    def _resolve(saved: dict[str, Any], key: str, cli_val: Any, default: Any) -> Any:
+        """Return *cli_val* when it was explicitly set, else the persisted value."""
+        if cli_val != default:
+            return cli_val
+        return saved.get(key, default)
 
     def _handle_initial_app(self, app: str, ts: dt.datetime) -> None:
         """Publish an initial_app event so the UI can prompt for the pre-start period."""
@@ -611,6 +657,7 @@ class TrayLabeler:
             pystray.MenuItem("Model", self._build_model_submenu()),
             pystray.MenuItem("Status", self._show_status),
             pystray.MenuItem("Open Data Folder", self._open_data_dir),
+            pystray.MenuItem("Edit Config", self._edit_config),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Quit", self._quit),
         )
@@ -816,6 +863,19 @@ class TrayLabeler:
         except Exception:
             logger.debug("Could not open data directory", exc_info=True)
             self._notify(f"Data dir: {self._data_dir}")
+
+    def _edit_config(self, *_args: Any) -> None:
+        """Open config.json in the default text editor."""
+        config_path = self._config._path
+        system = platform.system()
+        try:
+            if system == "Darwin":
+                subprocess.Popen(["open", "-t", str(config_path)])
+            else:
+                subprocess.Popen(["xdg-open", str(config_path)])
+        except Exception:
+            logger.debug("Could not open config file", exc_info=True)
+            self._notify(f"Config: {config_path}")
 
     def _reload_model(self, *_args: Any) -> None:
         """Re-read the model bundle from disk without restarting."""

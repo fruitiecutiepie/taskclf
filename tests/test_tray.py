@@ -1792,6 +1792,140 @@ class TestOpenDataDir:
 
 
 # ---------------------------------------------------------------------------
+# Edit Config
+# ---------------------------------------------------------------------------
+
+
+class TestEditConfig:
+    """Tests for TrayLabeler._edit_config."""
+
+    @patch("taskclf.ui.tray.subprocess.Popen")
+    @patch("taskclf.ui.tray.platform.system", return_value="Darwin")
+    def test_macos_opens_with_text_flag(
+        self, _mock_sys: MagicMock, mock_popen: MagicMock, tmp_path: Path,
+    ) -> None:
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+        labeler._edit_config()
+
+        mock_popen.assert_called_once()
+        args = mock_popen.call_args[0][0]
+        assert args[0] == "open"
+        assert "-t" in args
+        assert str(tmp_path / "config.json") in args[-1]
+
+    @patch("taskclf.ui.tray.subprocess.Popen")
+    @patch("taskclf.ui.tray.platform.system", return_value="Linux")
+    def test_linux_calls_xdg_open(
+        self, _mock_sys: MagicMock, mock_popen: MagicMock, tmp_path: Path,
+    ) -> None:
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+        labeler._edit_config()
+
+        mock_popen.assert_called_once()
+        args = mock_popen.call_args[0][0]
+        assert args[0] == "xdg-open"
+        assert str(tmp_path / "config.json") in args[-1]
+
+    @patch("taskclf.ui.tray.subprocess.Popen", side_effect=OSError("no editor"))
+    @patch("taskclf.ui.tray.platform.system", return_value="Darwin")
+    def test_fallback_notifies_path_on_error(
+        self, _mock_sys: MagicMock, _mock_popen: MagicMock, tmp_path: Path,
+    ) -> None:
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+
+        with patch.object(labeler, "_notify") as mock_notify:
+            labeler._edit_config()
+
+        mock_notify.assert_called_once()
+        assert "config.json" in mock_notify.call_args[0][0]
+
+    def test_menu_contains_edit_config(self, tmp_path: Path) -> None:
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+        menu = labeler._build_menu()
+
+        labels = []
+        for item in menu.items:
+            if hasattr(item, "text") and item.text is not None:
+                text = item.text if isinstance(item.text, str) else item.text(None)
+                if text:
+                    labels.append(text)
+        assert "Edit Config" in labels
+
+
+class TestSettingsPersistence:
+    """Verify runtime settings are persisted to config.json."""
+
+    def test_settings_written_to_config(self, tmp_path: Path) -> None:
+        bus, _ = _capture_bus()
+        TrayLabeler(
+            data_dir=tmp_path, model_dir=None, event_bus=bus,
+            notifications_enabled=False,
+            privacy_notifications=False,
+            poll_seconds=120,
+            transition_minutes=5,
+            aw_host="http://localhost:9999",
+            title_salt="custom-salt",
+            ui_port=9000,
+        )
+
+        import json
+        config = json.loads((tmp_path / "config.json").read_text())
+        assert config["notifications_enabled"] is False
+        assert config["privacy_notifications"] is False
+        assert config["poll_seconds"] == 120
+        assert config["transition_minutes"] == 5
+        assert config["aw_host"] == "http://localhost:9999"
+        assert config["title_salt"] == "custom-salt"
+        assert config["ui_port"] == 9000
+
+    def test_config_values_used_as_defaults(self, tmp_path: Path) -> None:
+        """When CLI args match defaults, persisted config values take precedence."""
+        import json
+
+        config_path = tmp_path / "config.json"
+        config_path.write_text(json.dumps({
+            "user_id": "test-id",
+            "poll_seconds": 90,
+            "transition_minutes": 7,
+            "notifications_enabled": False,
+        }))
+
+        bus, _ = _capture_bus()
+        labeler = TrayLabeler(
+            data_dir=tmp_path, model_dir=None, event_bus=bus,
+        )
+
+        assert labeler._notifications_enabled is False
+        assert labeler._monitor._poll_seconds == 90
+        assert labeler._monitor._transition_threshold == 7 * 60
+
+    def test_explicit_cli_overrides_config(self, tmp_path: Path) -> None:
+        """Explicit CLI args (non-default) override persisted config values."""
+        import json
+
+        config_path = tmp_path / "config.json"
+        config_path.write_text(json.dumps({
+            "user_id": "test-id",
+            "poll_seconds": 90,
+            "notifications_enabled": True,
+        }))
+
+        bus, _ = _capture_bus()
+        labeler = TrayLabeler(
+            data_dir=tmp_path, model_dir=None, event_bus=bus,
+            poll_seconds=30,
+            notifications_enabled=False,
+        )
+
+        assert labeler._notifications_enabled is False
+        assert labeler._monitor._poll_seconds == 30
+
+
+# ---------------------------------------------------------------------------
 # Reload Model  (Item 5)
 # ---------------------------------------------------------------------------
 
