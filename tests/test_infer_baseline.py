@@ -70,6 +70,35 @@ def _make_df(rows: list[dict]) -> pd.DataFrame:
     return pd.DataFrame([_make_row(**r) for r in rows])
 
 
+# ── Rule 0: BreakIdle — lockscreen ─────────────────────────────────────────
+
+class TestLockscreenRule:
+    def test_lockscreen_always_break_idle(self) -> None:
+        """Lockscreen app_category is unconditionally BreakIdle."""
+        row = _make_row(app_category="lockscreen", active_seconds_any=40.0)
+        assert classify_single_row(row) == CoreLabel.BreakIdle
+
+    def test_lockscreen_overrides_browser(self) -> None:
+        """Lockscreen wins even when browser flags would suggest ReadResearch."""
+        row = _make_row(
+            app_category="lockscreen",
+            is_browser=True,
+            scroll_events_per_min=8.0,
+            keys_per_min=3.0,
+        )
+        assert classify_single_row(row) == CoreLabel.BreakIdle
+
+    def test_lockscreen_overrides_editor(self) -> None:
+        """Lockscreen wins even when editor flags would suggest Build."""
+        row = _make_row(
+            app_category="lockscreen",
+            is_editor=True,
+            keys_per_min=50.0,
+            shortcut_rate=3.0,
+        )
+        assert classify_single_row(row) == CoreLabel.BreakIdle
+
+
 # ── Rule 1: BreakIdle ──────────────────────────────────────────────────────
 
 class TestBreakIdleRule:

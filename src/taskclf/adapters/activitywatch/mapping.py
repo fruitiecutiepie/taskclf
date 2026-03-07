@@ -133,6 +133,29 @@ _PROJECT_MGMT: Final[dict[str, AppInfo]] = {
     "linear": ("com.linear", False, False, False, "project_mgmt"),
 }
 
+_LOCKSCREEN: Final[dict[str, AppInfo]] = {
+    # macOS
+    "loginwindow": ("com.apple.loginwindow", False, False, False, "lockscreen"),
+    # Windows
+    "lockapp.exe": ("com.microsoft.LockApp", False, False, False, "lockscreen"),
+    "logonui.exe": ("com.microsoft.LogonUI", False, False, False, "lockscreen"),
+    # Linux (common screen lockers)
+    "gnome-screensaver": ("org.gnome.ScreenSaver", False, False, False, "lockscreen"),
+    "gnome-shell": ("org.gnome.Shell", False, False, False, "lockscreen"),
+    "xdg-desktop-portal-gnome": (
+        "org.freedesktop.portal.Desktop",
+        False,
+        False,
+        False,
+        "lockscreen",
+    ),
+    "i3lock": ("org.i3wm.i3lock", False, False, False, "lockscreen"),
+    "swaylock": ("org.swaywm.swaylock", False, False, False, "lockscreen"),
+    "xscreensaver": ("org.jwz.xscreensaver", False, False, False, "lockscreen"),
+    "light-locker": ("org.freedesktop.light-locker", False, False, False, "lockscreen"),
+    "slock": ("org.suckless.slock", False, False, False, "lockscreen"),
+}
+
 KNOWN_APPS: Final[dict[str, AppInfo]] = {
     **_BROWSERS,
     **_EDITORS,
@@ -147,12 +170,13 @@ KNOWN_APPS: Final[dict[str, AppInfo]] = {
     **_FILE_MANAGER,
     **_UTILITIES,
     **_PROJECT_MGMT,
+    **_LOCKSCREEN,
 }
 
 APP_CATEGORIES: Final[frozenset[str]] = frozenset({
     "browser", "editor", "terminal", "email", "chat", "meeting",
     "docs", "design", "devtools", "media", "file_manager",
-    "utilities", "project_mgmt", "other",
+    "utilities", "project_mgmt", "lockscreen", "other",
 })
 
 

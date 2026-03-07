@@ -120,6 +120,28 @@ class TestNormalizeApp:
         assert normalize_app("Finder")[4] == "file_manager"
         assert normalize_app("Linear")[4] == "project_mgmt"
 
+    def test_lockscreen_macos(self) -> None:
+        app_id, is_browser, is_editor, is_terminal, cat = normalize_app("loginwindow")
+        assert app_id == "com.apple.loginwindow"
+        assert is_browser is False
+        assert is_editor is False
+        assert is_terminal is False
+        assert cat == "lockscreen"
+
+    def test_lockscreen_windows(self) -> None:
+        assert normalize_app("LockApp.exe")[4] == "lockscreen"
+        assert normalize_app("LogonUI.exe")[4] == "lockscreen"
+
+    def test_lockscreen_linux(self) -> None:
+        assert normalize_app("gnome-screensaver")[4] == "lockscreen"
+        assert normalize_app("i3lock")[4] == "lockscreen"
+        assert normalize_app("swaylock")[4] == "lockscreen"
+        assert normalize_app("xscreensaver")[4] == "lockscreen"
+
+    def test_lockscreen_case_insensitive(self) -> None:
+        assert normalize_app("LoginWindow") == normalize_app("loginwindow")
+        assert normalize_app("LOCKAPP.EXE") == normalize_app("lockapp.exe")
+
 
 # ---------------------------------------------------------------------------
 # client._raw_event_to_aw_event

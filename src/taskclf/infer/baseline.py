@@ -74,6 +74,10 @@ def classify_single_row(
         A label string: one of the :class:`CoreLabel` values or
         :data:`MIXED_UNKNOWN`.
     """
+    # Rule 0: BreakIdle — lockscreen / login window is unconditionally idle
+    if row.get("app_category") == "lockscreen":
+        return CoreLabel.BreakIdle
+
     active_any = row.get("active_seconds_any")
     max_idle = row.get("max_idle_run_seconds")
 

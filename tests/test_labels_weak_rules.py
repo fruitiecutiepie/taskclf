@@ -255,6 +255,18 @@ class TestApplyWeakRules:
         assert spans[0].end_ts == _ts(10, 0) + dt.timedelta(seconds=DEFAULT_BUCKET_SECONDS)
         assert spans[1].start_ts == _ts(10, 2)
 
+    def test_lockscreen_category_produces_break_idle(self) -> None:
+        """Lockscreen app_category is auto-labeled BreakIdle."""
+        rows = [
+            _feature_row(_ts(10, 0), app_category="lockscreen"),
+            _feature_row(_ts(10, 1), app_category="lockscreen"),
+            _feature_row(_ts(10, 2), app_category="lockscreen"),
+        ]
+        spans = apply_weak_rules(_features_df(rows))
+        assert len(spans) == 1
+        assert spans[0].label == "BreakIdle"
+        assert "lockscreen" in spans[0].provenance
+
     def test_default_rules_used_when_none(self) -> None:
         """When rules=None, build_default_rules() is used."""
         rows = [_feature_row(_ts(10, 0), app_id="com.microsoft.VSCode")]

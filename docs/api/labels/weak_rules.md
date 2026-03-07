@@ -60,6 +60,7 @@ Maps `app_category` values to labels.
 
 | Category | Label |
 |----------|-------|
+| `lockscreen` | BreakIdle |
 | `meeting` | Meet |
 | `chat` | Communicate |
 | `email` | Communicate |
@@ -70,6 +71,11 @@ Maps `app_category` values to labels.
 | `design` | Write |
 | `media` | BreakIdle |
 | `file_manager` | BreakIdle |
+
+The `lockscreen` category covers OS lock/login screens (macOS `loginwindow`,
+Windows `LockApp.exe`/`LogonUI.exe`, Linux screen lockers like `i3lock`,
+`swaylock`, `gnome-screensaver`, etc.).  No productive task is possible while
+the screen is locked, so these are unconditionally labeled `BreakIdle`.
 
 ### `DOMAIN_CATEGORY_RULES` (lowest priority)
 

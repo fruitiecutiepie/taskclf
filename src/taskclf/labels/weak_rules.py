@@ -72,6 +72,7 @@ APP_ID_RULES: Final[dict[str, str]] = {
 }
 
 APP_CATEGORY_RULES: Final[dict[str, str]] = {
+    "lockscreen": "BreakIdle",
     "meeting": "Meet",
     "chat": "Communicate",
     "email": "Communicate",

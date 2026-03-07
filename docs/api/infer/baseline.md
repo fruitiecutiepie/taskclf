@@ -4,10 +4,16 @@ Rule-based baseline classifier (no ML).
 
 Applies heuristic rules to feature windows in priority order:
 
+0. **BreakIdle** — lockscreen / OS login window (`app_category == "lockscreen"`)
 1. **BreakIdle** — near-zero activity or long idle run
 2. **ReadResearch** — browser foreground with high scroll and low typing
 3. **Build** — editor/terminal foreground with high typing and shortcuts
 4. **Mixed/Unknown** — fallback reject label
+
+Rule 0 fires when the foreground app is an OS lock screen (macOS
+`loginwindow`, Windows `LockApp.exe`, Linux screen lockers).  Since no
+productive task is possible while the screen is locked, this overrides
+all other signals unconditionally.
 
 This establishes the cold-start performance floor that ML models must beat.
 
