@@ -1119,6 +1119,30 @@ class TestOverwriteLabel:
         })
         assert resp.status_code == 409
 
+    def test_overlap_409_lists_all_conflicts(self, client: TestClient) -> None:
+        """409 response lists every conflicting span, not just the first."""
+        client.post("/api/labels", json={
+            "start_ts": "2026-02-27T09:00:00",
+            "end_ts": "2026-02-27T09:30:00",
+            "label": "Build",
+        })
+        client.post("/api/labels", json={
+            "start_ts": "2026-02-27T09:40:00",
+            "end_ts": "2026-02-27T10:10:00",
+            "label": "Debug",
+        })
+        resp = client.post("/api/labels", json={
+            "start_ts": "2026-02-27T09:15:00",
+            "end_ts": "2026-02-27T10:00:00",
+            "label": "Meet",
+        })
+        assert resp.status_code == 409
+        detail = resp.json()["detail"]
+        spans = detail["conflicting_spans"]
+        assert len(spans) == 2
+        labels = {s["label"] for s in spans}
+        assert labels == {"Build", "Debug"}
+
 
 # ---------------------------------------------------------------------------
 # label_created event type  (Item 14)

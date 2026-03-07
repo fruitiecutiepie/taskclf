@@ -150,11 +150,18 @@ class LabelImportResponse(BaseModel):
     strategy: str
 
 
+class ConflictingSpan(BaseModel):
+    start_ts: str
+    end_ts: str
+    label: str
+
+
 class OverlapErrorDetail(BaseModel):
     error: str
     conflicting_start_ts: str | None = None
     conflicting_end_ts: str | None = None
     conflicting_label: str | None = None
+    conflicting_spans: list[ConflictingSpan] = []
 
 
 def _utc_iso(ts: dt.datetime) -> str:
@@ -174,11 +181,10 @@ _OVERLAP_RE = re.compile(
 
 def _parse_overlap_error(
     msg: str,
-    new_start: dt.datetime,
-    new_end: dt.datetime,
+    new_span: LabelSpan,
     existing: list[LabelSpan] | None = None,
 ) -> OverlapErrorDetail:
-    """Extract the conflicting (existing) span timestamps from the overlap error."""
+    """Extract all conflicting (existing) spans from the overlap error."""
     m = _OVERLAP_RE.search(msg)
     if m is None:
         return OverlapErrorDetail(error=msg)
@@ -186,29 +192,44 @@ def _parse_overlap_error(
     span_a = (m.group(1).strip(), m.group(2).strip())
     span_b = (m.group(3).strip(), m.group(4).strip())
 
-    new_start_str = str(new_start)
-    new_end_str = str(new_end)
+    new_start_str = str(new_span.start_ts)
+    new_end_str = str(new_span.end_ts)
 
     if span_a == (new_start_str, new_end_str):
-        conflict = span_b
+        first_conflict = span_b
     elif span_b == (new_start_str, new_end_str):
-        conflict = span_a
+        first_conflict = span_a
     else:
-        conflict = span_a
+        first_conflict = span_a
 
-    conflicting_label: str | None = None
+    conflicts: list[ConflictingSpan] = []
+    first_label: str | None = None
+
     if existing:
-        conflict_start_str, conflict_end_str = conflict
         for s in existing:
-            if str(s.start_ts) == conflict_start_str and str(s.end_ts) == conflict_end_str:
-                conflicting_label = s.label
+            if s.start_ts == new_span.start_ts and s.end_ts == new_span.end_ts:
+                continue
+            same_user = (s.user_id is None or new_span.user_id is None
+                         or s.user_id == new_span.user_id)
+            if same_user and s.start_ts < new_span.end_ts and new_span.start_ts < s.end_ts:
+                conflicts.append(ConflictingSpan(
+                    start_ts=str(s.start_ts),
+                    end_ts=str(s.end_ts),
+                    label=s.label,
+                ))
+
+        fc_start, fc_end = first_conflict
+        for c in conflicts:
+            if c.start_ts == fc_start and c.end_ts == fc_end:
+                first_label = c.label
                 break
 
     return OverlapErrorDetail(
         error=msg,
-        conflicting_start_ts=conflict[0],
-        conflicting_end_ts=conflict[1],
-        conflicting_label=conflicting_label,
+        conflicting_start_ts=first_conflict[0],
+        conflicting_end_ts=first_conflict[1],
+        conflicting_label=first_label,
+        conflicting_spans=conflicts,
     )
 
 
@@ -316,7 +337,7 @@ def create_app(
                 append_label_span(span, labels_path)
             except ValueError as exc:
                 existing = read_label_spans(labels_path) if labels_path.exists() else []
-                detail = _parse_overlap_error(str(exc), span.start_ts, span.end_ts, existing)
+                detail = _parse_overlap_error(str(exc), span, existing)
                 raise HTTPException(
                     status_code=409, detail=detail.model_dump(),
                 ) from exc
@@ -650,7 +671,7 @@ def create_app(
             append_label_span(span, labels_path)
         except ValueError as exc:
             existing = read_label_spans(labels_path) if labels_path.exists() else []
-            detail = _parse_overlap_error(str(exc), span.start_ts, span.end_ts, existing)
+            detail = _parse_overlap_error(str(exc), span, existing)
             raise HTTPException(
                 status_code=409, detail=detail.model_dump(),
             ) from exc

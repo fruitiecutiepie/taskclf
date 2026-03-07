@@ -65,9 +65,7 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
     label: string;
     start: string;
     end: string;
-    conflictStart: string;
-    conflictEnd: string;
-    conflictLabel: string | null;
+    conflicts: { start_ts: string; end_ts: string; label: string }[];
     confidence: number;
     extendForward: boolean;
   } | null>(null);
@@ -141,14 +139,21 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
         try {
           const parsed = JSON.parse(jsonMatch[0]);
           const overlap = parsed.detail ?? parsed;
-          if (overlap.conflicting_start_ts && overlap.conflicting_end_ts) {
+          const spans: { start_ts: string; end_ts: string; label: string }[] =
+            overlap.conflicting_spans ?? [];
+          if (spans.length === 0 && overlap.conflicting_start_ts && overlap.conflicting_end_ts) {
+            spans.push({
+              start_ts: overlap.conflicting_start_ts,
+              end_ts: overlap.conflicting_end_ts,
+              label: overlap.conflicting_label ?? "unknown",
+            });
+          }
+          if (spans.length > 0) {
             setOverwritePending({
               label,
               start: start.toISOString(),
               end: now.toISOString(),
-              conflictStart: overlap.conflicting_start_ts,
-              conflictEnd: overlap.conflicting_end_ts,
-              conflictLabel: overlap.conflicting_label ?? null,
+              conflicts: spans,
               confidence: confPercent() / 100,
               extendForward: extendFwd(),
             });
@@ -491,10 +496,6 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
         {(pending) => {
           const fmt = (d: Date) =>
             d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-          const cs = parseISODate(pending().conflictStart);
-          const ce = parseISODate(pending().conflictEnd);
-          const cl = pending().conflictLabel;
-          const clColor = cl ? LABEL_COLORS[cl] ?? "var(--text)" : undefined;
           return (
             <div
               style={{
@@ -506,10 +507,21 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
             >
               <span>
                 Overlaps{" "}
-                {cl && (
-                  <span style={{ color: clColor, "font-weight": "700" }}>{cl}</span>
-                )}{" "}
-                {fmt(cs)}{"\u2013"}{fmt(ce)}. Overwrite?
+                <For each={pending().conflicts}>
+                  {(c, i) => {
+                    const color = LABEL_COLORS[c.label] ?? "var(--text)";
+                    const cs = parseISODate(c.start_ts);
+                    const ce = parseISODate(c.end_ts);
+                    return (
+                      <>
+                        {i() > 0 && ", "}
+                        <span style={{ color, "font-weight": "700" }}>{c.label}</span>
+                        {" "}{fmt(cs)}{"\u2013"}{fmt(ce)}
+                      </>
+                    );
+                  }}
+                </For>
+                . Overwrite?
               </span>
               <div
                 style={{
