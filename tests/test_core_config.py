@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import tomllib
 import uuid
 
 import pytest
@@ -15,6 +16,15 @@ def test_auto_generates_uuid_user_id(tmp_path):
     uid = cfg.user_id
     uuid.UUID(uid)
     assert len(uid) == 36
+
+
+def test_user_id_stored_in_dot_file(tmp_path):
+    """user_id lives in .user_id, not in config.toml."""
+    cfg = UserConfig(tmp_path)
+    assert (tmp_path / ".user_id").exists()
+    assert (tmp_path / ".user_id").read_text().strip() == cfg.user_id
+    toml_text = (tmp_path / "config.toml").read_text() if (tmp_path / "config.toml").exists() else ""
+    assert "user_id" not in toml_text
 
 
 def test_user_id_stable_across_reloads(tmp_path):
@@ -84,7 +94,7 @@ def test_update_no_op(tmp_path):
 
 
 def test_corrupt_config_falls_back(tmp_path):
-    (tmp_path / "config.json").write_text("NOT VALID JSON", "utf-8")
+    (tmp_path / "config.toml").write_text("NOT VALID TOML ][", "utf-8")
     cfg = UserConfig(tmp_path)
     assert cfg.username == "default-user"
     uuid.UUID(cfg.user_id)
@@ -94,10 +104,12 @@ def test_config_creates_parent_dirs(tmp_path):
     deep = tmp_path / "a" / "b" / "c"
     cfg = UserConfig(deep)
     cfg.username = "nested"
-    assert (deep / "config.json").exists()
-    data = json.loads((deep / "config.json").read_text())
+    assert (deep / "config.toml").exists()
+    data = tomllib.loads((deep / "config.toml").read_text())
     assert data["username"] == "nested"
-    uuid.UUID(data["user_id"])
+    assert "user_id" not in data
+    assert (deep / ".user_id").exists()
+    uuid.UUID(cfg.user_id)
 
 
 def test_changing_username_does_not_change_user_id(tmp_path):
@@ -143,20 +155,91 @@ def test_update_whitespace_username_rejected(tmp_path):
         cfg.update({"username": "   "})
 
 
-def test_empty_user_id_regenerated(tmp_path):
-    """Regression: empty-string user_id in config.json must be regenerated."""
-    config_path = tmp_path / "config.json"
-    config_path.write_text(json.dumps({"user_id": ""}))
+def test_empty_user_id_file_regenerated(tmp_path):
+    """Regression: empty .user_id file must trigger regeneration."""
+    (tmp_path / ".user_id").write_text("", "utf-8")
     cfg = UserConfig(tmp_path)
     assert cfg.user_id != ""
     uuid.UUID(cfg.user_id)
 
 
-def test_null_user_id_regenerated(tmp_path):
-    """Regression: null user_id in config.json must be regenerated."""
-    config_path = tmp_path / "config.json"
-    config_path.write_text(json.dumps({"user_id": None}))
+def test_missing_user_id_file_regenerated(tmp_path):
+    """Regression: missing .user_id file must trigger generation."""
+    (tmp_path / "config.toml").write_text('username = "alice"\n')
     cfg = UserConfig(tmp_path)
     assert cfg.user_id is not None
     assert cfg.user_id != ""
     uuid.UUID(cfg.user_id)
+
+
+def test_user_id_migrated_from_toml_to_dot_file(tmp_path):
+    """If old code wrote user_id into config.toml, move it to .user_id."""
+    (tmp_path / "config.toml").write_text('user_id = "in-toml-uuid"\nusername = "bob"\n')
+    cfg = UserConfig(tmp_path)
+    assert cfg.user_id == "in-toml-uuid"
+    assert (tmp_path / ".user_id").read_text().strip() == "in-toml-uuid"
+    toml_text = (tmp_path / "config.toml").read_text()
+    assert "user_id" not in toml_text
+
+
+# ---------------------------------------------------------------------------
+# JSON -> TOML migration
+# ---------------------------------------------------------------------------
+
+
+def test_json_to_toml_migration(tmp_path):
+    """Existing config.json is migrated to config.toml + .user_id."""
+    json_path = tmp_path / "config.json"
+    json_path.write_text(json.dumps({
+        "user_id": "migrated-uuid",
+        "username": "migrator",
+        "poll_seconds": 90,
+    }))
+
+    cfg = UserConfig(tmp_path)
+
+    assert cfg.user_id == "migrated-uuid"
+    assert cfg.username == "migrator"
+    assert cfg.as_dict()["poll_seconds"] == 90
+    assert (tmp_path / "config.toml").exists()
+    assert (tmp_path / ".user_id").exists()
+    assert not (tmp_path / "config.json").exists()
+    assert (tmp_path / "config.json.bak").exists()
+    toml_text = (tmp_path / "config.toml").read_text()
+    assert "user_id" not in toml_text
+
+
+def test_json_migration_strips_help_key(tmp_path):
+    """The _help dict from JSON-era configs is dropped during migration."""
+    json_path = tmp_path / "config.json"
+    json_path.write_text(json.dumps({
+        "user_id": "help-uuid",
+        "_help": {"user_id": "old help text"},
+        "poll_seconds": 60,
+    }))
+
+    cfg = UserConfig(tmp_path)
+    assert "_help" not in cfg.as_dict()
+    toml_text = (tmp_path / "config.toml").read_text()
+    assert "_help" not in toml_text
+
+
+def test_json_not_migrated_when_toml_exists(tmp_path):
+    """If config.toml already exists, config.json is left alone."""
+    (tmp_path / ".user_id").write_text("toml-uuid", "utf-8")
+    (tmp_path / "config.toml").write_text('username = "from-toml"\n')
+    (tmp_path / "config.json").write_text(json.dumps({"user_id": "json-uuid"}))
+
+    cfg = UserConfig(tmp_path)
+    assert cfg.user_id == "toml-uuid"
+    assert (tmp_path / "config.json").exists()
+
+
+def test_toml_has_comments(tmp_path):
+    """Persisted config.toml contains # comment lines for known settings."""
+    cfg = UserConfig(tmp_path)
+    cfg.update({"notifications_enabled": True, "poll_seconds": 60})
+    text = (tmp_path / "config.toml").read_text()
+    assert "# Set to false to suppress" in text
+    assert "# Seconds between" in text
+    assert "user_id" not in text

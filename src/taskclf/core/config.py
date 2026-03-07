@@ -1,12 +1,13 @@
 """User-level configuration persistence.
 
-Stores per-install settings as a JSON file inside the data directory.
-The file is created on first access with an auto-generated ``user_id``
-(UUID) that never changes.
+Stores editable settings in ``config.toml`` and the immutable install
+identity (``user_id``) in a separate ``.user_id`` file so that users
+cannot accidentally break label continuity by editing their config.
 
-Typical location::
+Typical locations::
 
-    data/processed/config.json
+    data/processed/config.toml   # user-editable settings
+    data/processed/.user_id      # stable UUID, never shown in config
 
 Usage::
 
@@ -23,61 +24,119 @@ from __future__ import annotations
 
 import json
 import logging
+import tomllib
 import uuid
 from pathlib import Path
 from typing import Any
+
+import tomli_w
 
 from taskclf.core.defaults import DEFAULT_DATA_DIR
 
 logger = logging.getLogger(__name__)
 
 _DEFAULT_USERNAME = "default-user"
-_CONFIG_FILENAME = "config.json"
+_CONFIG_FILENAME = "config.toml"
+_USER_ID_FILENAME = ".user_id"
+_LEGACY_JSON_FILENAME = "config.json"
+
+_SETTING_COMMENTS: dict[str, str] = {
+    "username": "Display name shown in labels. Does not affect label identity.",
+    "notifications_enabled": "Set to false to suppress all desktop notifications.",
+    "privacy_notifications": "When true, app names are redacted from notifications.",
+    "poll_seconds": "Seconds between ActivityWatch polling cycles.",
+    "transition_minutes": "Minutes a new app must persist before a transition fires.",
+    "aw_host": "ActivityWatch server URL.",
+    "title_salt": "Salt used for hashing window titles (privacy).",
+    "ui_port": "Port for the embedded web UI server.",
+}
 
 
 class UserConfig:
-    """Read/write access to ``config.json`` in a data directory.
+    """Read/write access to ``config.toml`` and ``.user_id`` in a data directory.
 
-    On first instantiation (no config file yet) a random UUID
-    ``user_id`` is generated and persisted.  This ID is stable across
-    restarts and is the value written into every ``LabelSpan``.
+    The immutable ``user_id`` lives in a separate ``.user_id`` file so
+    it never appears in the user-editable config.  On first run a random
+    UUID is generated and written there.
 
     ``username`` is a free-form display name that can be changed at any
     time without affecting label continuity.
 
-    All mutations are persisted immediately.  The file is plain JSON so
-    it can be hand-edited when the UI or CLI are not available.
+    All mutations are persisted immediately.  ``config.toml`` uses ``#``
+    comments above each setting so it can be hand-edited.
     """
 
     def __init__(self, data_dir: Path | str = DEFAULT_DATA_DIR) -> None:
-        self._path = Path(data_dir) / _CONFIG_FILENAME
+        self._dir = Path(data_dir)
+        self._path = self._dir / _CONFIG_FILENAME
+        self._user_id_path = self._dir / _USER_ID_FILENAME
+        self._migrate_json()
         self._data: dict[str, Any] = self._load()
-        self._ensure_user_id()
+        self._uid: str = self._load_user_id()
+
+    # -- migration & loading ---------------------------------------------------
+
+    def _migrate_json(self) -> None:
+        """One-time migration from config.json to config.toml + .user_id."""
+        json_path = self._dir / _LEGACY_JSON_FILENAME
+        if self._path.exists() or not json_path.exists():
+            return
+        try:
+            data = json.loads(json_path.read_text("utf-8"))
+            data.pop("_help", None)
+
+            uid = data.pop("user_id", None)
+            if uid:
+                self._dir.mkdir(parents=True, exist_ok=True)
+                self._user_id_path.write_text(uid, "utf-8")
+
+            self._dir.mkdir(parents=True, exist_ok=True)
+            self._path.write_text(_to_commented_toml(data), "utf-8")
+            json_path.rename(json_path.with_suffix(".json.bak"))
+            logger.info("Migrated %s → %s + %s", json_path, self._path, self._user_id_path)
+        except Exception:
+            logger.warning("Failed to migrate %s", json_path, exc_info=True)
 
     def _load(self) -> dict[str, Any]:
         if self._path.exists():
             try:
-                return json.loads(self._path.read_text("utf-8"))
-            except (json.JSONDecodeError, OSError):
+                return dict(tomllib.loads(self._path.read_text("utf-8")))
+            except (tomllib.TOMLDecodeError, OSError):
                 logger.warning("Corrupt config at %s — using defaults", self._path)
         return {}
 
-    def _ensure_user_id(self) -> None:
-        """Generate and persist a stable ``user_id`` if one is missing or invalid."""
-        if not self._data.get("user_id"):
-            self._data["user_id"] = str(uuid.uuid4())
+    def _load_user_id(self) -> str:
+        """Read or generate the stable user_id from .user_id file."""
+        if self._user_id_path.exists():
+            uid = self._user_id_path.read_text("utf-8").strip()
+            if uid:
+                return uid
+
+        # Migrate from config.toml if it was written there by old code
+        uid = self._data.pop("user_id", None)
+        if uid:
+            self._persist_user_id(uid)
             self._persist()
+            return uid
+
+        uid = str(uuid.uuid4())
+        self._persist_user_id(uid)
+        return uid
+
+    def _persist_user_id(self, uid: str) -> None:
+        self._dir.mkdir(parents=True, exist_ok=True)
+        self._user_id_path.write_text(uid, "utf-8")
 
     def _persist(self) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        self._path.write_text(json.dumps(self._data, indent=2) + "\n", "utf-8")
+        self._path.write_text(_to_commented_toml(self._data), "utf-8")
 
     # -- user_id (stable, read-only after creation) ----------------------------
 
     @property
     def user_id(self) -> str:
         """Stable UUID assigned to this install.  Never changes."""
-        return self._data["user_id"]
+        return self._uid
 
     # -- username (editable display name) --------------------------------------
 
@@ -118,3 +177,17 @@ class UserConfig:
             self._data[key] = val
         self._persist()
         return self.as_dict()
+
+
+def _to_commented_toml(data: dict[str, Any]) -> str:
+    """Serialize *data* as TOML with ``#`` comments above known settings."""
+    lines: list[str] = []
+    for key, val in data.items():
+        if key == "user_id":
+            continue
+        comment = _SETTING_COMMENTS.get(key)
+        if comment:
+            lines.append(f"# {comment}")
+        lines.append(tomli_w.dumps({key: val}).rstrip())
+        lines.append("")
+    return "\n".join(lines) + "\n" if lines else ""

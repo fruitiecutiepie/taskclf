@@ -1812,7 +1812,7 @@ class TestEditConfig:
         args = mock_popen.call_args[0][0]
         assert args[0] == "open"
         assert "-t" in args
-        assert str(tmp_path / "config.json") in args[-1]
+        assert str(tmp_path / "config.toml") in args[-1]
 
     @patch("taskclf.ui.tray.subprocess.Popen")
     @patch("taskclf.ui.tray.platform.system", return_value="Linux")
@@ -1826,7 +1826,7 @@ class TestEditConfig:
         mock_popen.assert_called_once()
         args = mock_popen.call_args[0][0]
         assert args[0] == "xdg-open"
-        assert str(tmp_path / "config.json") in args[-1]
+        assert str(tmp_path / "config.toml") in args[-1]
 
     @patch("taskclf.ui.tray.subprocess.Popen", side_effect=OSError("no editor"))
     @patch("taskclf.ui.tray.platform.system", return_value="Darwin")
@@ -1840,7 +1840,7 @@ class TestEditConfig:
             labeler._edit_config()
 
         mock_notify.assert_called_once()
-        assert "config.json" in mock_notify.call_args[0][0]
+        assert "config.toml" in mock_notify.call_args[0][0]
 
     def test_menu_contains_edit_config(self, tmp_path: Path) -> None:
         bus, _ = _capture_bus()
@@ -1857,7 +1857,7 @@ class TestEditConfig:
 
 
 class TestSettingsPersistence:
-    """Verify runtime settings are persisted to config.json."""
+    """Verify runtime settings are persisted to config.toml."""
 
     def test_settings_written_to_config(self, tmp_path: Path) -> None:
         bus, _ = _capture_bus()
@@ -1872,8 +1872,8 @@ class TestSettingsPersistence:
             ui_port=9000,
         )
 
-        import json
-        config = json.loads((tmp_path / "config.json").read_text())
+        import tomllib
+        config = tomllib.loads((tmp_path / "config.toml").read_text())
         assert config["notifications_enabled"] is False
         assert config["privacy_notifications"] is False
         assert config["poll_seconds"] == 120
@@ -1884,10 +1884,10 @@ class TestSettingsPersistence:
 
     def test_config_values_used_as_defaults(self, tmp_path: Path) -> None:
         """When CLI args match defaults, persisted config values take precedence."""
-        import json
+        import tomli_w
 
-        config_path = tmp_path / "config.json"
-        config_path.write_text(json.dumps({
+        config_path = tmp_path / "config.toml"
+        config_path.write_text(tomli_w.dumps({
             "user_id": "test-id",
             "poll_seconds": 90,
             "transition_minutes": 7,
@@ -1905,10 +1905,10 @@ class TestSettingsPersistence:
 
     def test_explicit_cli_overrides_config(self, tmp_path: Path) -> None:
         """Explicit CLI args (non-default) override persisted config values."""
-        import json
+        import tomli_w
 
-        config_path = tmp_path / "config.json"
-        config_path.write_text(json.dumps({
+        config_path = tmp_path / "config.toml"
+        config_path.write_text(tomli_w.dumps({
             "user_id": "test-id",
             "poll_seconds": 90,
             "notifications_enabled": True,

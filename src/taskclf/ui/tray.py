@@ -439,17 +439,6 @@ class TrayLabeler:
         ui_port = self._resolve(saved, "ui_port", ui_port, 8741)
 
         self._config.update({
-            "_help": {
-                "user_id": "Stable UUID for this install. Do not change.",
-                "username": "Display name shown in labels. Does not affect label identity.",
-                "notifications_enabled": "Set to false to suppress all desktop notifications.",
-                "privacy_notifications": "When true, app names are redacted from notifications.",
-                "poll_seconds": "Seconds between ActivityWatch polling cycles.",
-                "transition_minutes": "Minutes a new app must persist before a transition fires.",
-                "aw_host": "ActivityWatch server URL.",
-                "title_salt": "Salt used for hashing window titles (privacy).",
-                "ui_port": "Port for the embedded web UI server.",
-            },
             "notifications_enabled": notifications_enabled,
             "privacy_notifications": privacy_notifications,
             "poll_seconds": poll_seconds,
