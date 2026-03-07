@@ -766,3 +766,87 @@ class TestDiagnostics:
         out_file = tmp_path / "diag.txt"
         result = self._invoke("--out", str(out_file))
         assert str(out_file) in result.output
+
+
+# ---------------------------------------------------------------------------
+# TC-CRASH-CLI: cli_main() crash handler
+# ---------------------------------------------------------------------------
+
+
+class TestCrashHandler:
+    """TC-CRASH-CLI: cli_main() writes crash report on unhandled exceptions."""
+
+    def test_crash_writes_report_and_exits_1(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Unhandled exception produces a crash file and exits with code 1."""
+        from unittest.mock import patch as _patch
+
+        from taskclf.cli.main import cli_main
+
+        monkeypatch.setenv("TASKCLF_HOME", str(tmp_path))
+
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+
+        with (
+            _patch("taskclf.cli.main.app", side_effect=RuntimeError("boom")),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            cli_main()
+
+        assert exc_info.value.code == 1
+
+        crash_files = list(log_dir.glob("crash_*.txt"))
+        assert len(crash_files) == 1
+
+        contents = crash_files[0].read_text("utf-8")
+        assert "RuntimeError" in contents
+        assert "boom" in contents
+
+    def test_crash_prints_path_and_url_to_stderr(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Crash message on stderr includes file path and issue URL."""
+        from unittest.mock import patch as _patch
+
+        from taskclf.core.crash import ISSUE_URL
+        from taskclf.cli.main import cli_main
+
+        monkeypatch.setenv("TASKCLF_HOME", str(tmp_path))
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+
+        with (
+            _patch("taskclf.cli.main.app", side_effect=RuntimeError("boom")),
+            pytest.raises(SystemExit),
+        ):
+            cli_main()
+
+        captured = capsys.readouterr()
+        assert "crash_" in captured.err
+        assert ISSUE_URL in captured.err
+
+    def test_system_exit_passes_through(self) -> None:
+        """SystemExit is not caught by the crash handler."""
+        from unittest.mock import patch as _patch
+
+        from taskclf.cli.main import cli_main
+
+        with (
+            _patch("taskclf.cli.main.app", side_effect=SystemExit(0)),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            cli_main()
+
+        assert exc_info.value.code == 0
+
+    def test_keyboard_interrupt_passes_through(self) -> None:
+        """KeyboardInterrupt is not caught by the crash handler."""
+        from unittest.mock import patch as _patch
+
+        from taskclf.cli.main import cli_main
+
+        with (
+            _patch("taskclf.cli.main.app", side_effect=KeyboardInterrupt),
+            pytest.raises(KeyboardInterrupt),
+        ):
+            cli_main()

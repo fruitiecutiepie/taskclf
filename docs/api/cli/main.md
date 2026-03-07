@@ -2,6 +2,17 @@
 
 Typer CLI entrypoint and commands.
 
+## Crash handler
+
+The CLI entry point (`cli_main()`) wraps all commands in a top-level
+crash handler.  If an unhandled exception escapes, a timestamped crash
+report is written to `<TASKCLF_HOME>/logs/crash_<YYYYMMDD_HHMMSS>.txt`
+and the file path plus issue URL are printed to stderr.  `SystemExit`
+and `KeyboardInterrupt` pass through normally.
+
+See [core.crash](../core/crash.md) for crash file contents and privacy
+details.
+
 ## Commands
 
 | Command | Description |

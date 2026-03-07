@@ -42,7 +42,7 @@ Documentation = "https://fruitiecutiepie.github.io/taskclf"
 Repository = "https://github.com/fruitiecutiepie/taskclf"
 
 [project.scripts]
-taskclf = "taskclf.cli.main:app"
+taskclf = "taskclf.cli.main:cli_main"
 
 [tool.uv_build]
 data-includes = ["src/taskclf/ui/static/**/*"]

@@ -2,6 +2,7 @@
 
 import datetime as dt
 import logging
+import traceback
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
 
@@ -2663,5 +2664,28 @@ def diagnostics(
         typer.echo(text)
 
 
+def cli_main() -> None:
+    """Entry-point wrapper that catches unhandled crashes."""
+    try:
+        app()
+    except (SystemExit, KeyboardInterrupt):
+        raise
+    except Exception as exc:
+        import sys as _sys
+
+        from taskclf.core.crash import ISSUE_URL, write_crash_report
+
+        try:
+            path = write_crash_report(exc)
+            print(
+                f"taskclf crashed. Details saved to {path}\n"
+                f"Please report at {ISSUE_URL}",
+                file=_sys.stderr,
+            )
+        except Exception:
+            traceback.print_exc()
+        raise SystemExit(1) from exc
+
+
 if __name__ == "__main__":
-    app()
+    cli_main()

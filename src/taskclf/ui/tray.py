@@ -1273,6 +1273,26 @@ class TrayLabeler:
 
     def run(self) -> None:
         """Start the tray icon and background monitor. Blocks until quit."""
+        try:
+            self._run_inner()
+        except (SystemExit, KeyboardInterrupt):
+            raise
+        except Exception as exc:
+            from taskclf.core.crash import write_crash_report
+
+            try:
+                path = write_crash_report(exc)
+                _send_desktop_notification(
+                    "taskclf crashed",
+                    f"Details saved to {path}",
+                    timeout=10,
+                )
+            except Exception:
+                logger.debug("Could not write crash report", exc_info=True)
+            raise
+
+    def _run_inner(self) -> None:
+        """Actual run logic, separated so ``run()`` can wrap it."""
         import atexit
 
         from taskclf.core.logging import setup_file_logging

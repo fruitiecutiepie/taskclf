@@ -2922,3 +2922,97 @@ class TestDynamicModelMenuRefresh:
             menu=pystray.Menu(labeler._build_menu_items),
         )
         assert icon.menu is not None
+
+
+# ---------------------------------------------------------------------------
+# TC-CRASH-TRAY: TrayLabeler.run() crash handler
+# ---------------------------------------------------------------------------
+
+
+class TestTrayCrashHandler:
+    """TC-CRASH-TRAY: TrayLabeler.run() writes crash report on unhandled exceptions."""
+
+    def test_run_writes_crash_report_on_exception(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Unhandled exception in _run_inner produces a crash file."""
+        monkeypatch.setenv("TASKCLF_HOME", str(tmp_path))
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+
+        with (
+            patch.object(labeler, "_run_inner", side_effect=RuntimeError("tray boom")),
+            pytest.raises(RuntimeError, match="tray boom"),
+        ):
+            labeler.run()
+
+        crash_files = list(log_dir.glob("crash_*.txt"))
+        assert len(crash_files) == 1
+
+        contents = crash_files[0].read_text("utf-8")
+        assert "RuntimeError" in contents
+        assert "tray boom" in contents
+
+    def test_run_attempts_desktop_notification_on_crash(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """On crash, a desktop notification is attempted with the crash path."""
+        monkeypatch.setenv("TASKCLF_HOME", str(tmp_path))
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+
+        with (
+            patch.object(labeler, "_run_inner", side_effect=RuntimeError("notify boom")),
+            patch("taskclf.ui.tray._send_desktop_notification") as mock_notify,
+            pytest.raises(RuntimeError, match="notify boom"),
+        ):
+            labeler.run()
+
+        mock_notify.assert_called_once()
+        call_args = mock_notify.call_args
+        assert call_args[0][0] == "taskclf crashed"
+        assert "crash_" in call_args[0][1]
+
+    def test_run_reraises_original_exception(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The original exception is re-raised after writing the crash report."""
+        monkeypatch.setenv("TASKCLF_HOME", str(tmp_path))
+        (tmp_path / "logs").mkdir(parents=True, exist_ok=True)
+
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+
+        with (
+            patch.object(labeler, "_run_inner", side_effect=RuntimeError("reraise me")),
+            pytest.raises(RuntimeError, match="reraise me"),
+        ):
+            labeler.run()
+
+    def test_system_exit_passes_through(self, tmp_path: Path) -> None:
+        """SystemExit is not caught by the tray crash handler."""
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+
+        with (
+            patch.object(labeler, "_run_inner", side_effect=SystemExit(0)),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            labeler.run()
+
+        assert exc_info.value.code == 0
+
+    def test_keyboard_interrupt_passes_through(self, tmp_path: Path) -> None:
+        """KeyboardInterrupt is not caught by the tray crash handler."""
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+
+        with (
+            patch.object(labeler, "_run_inner", side_effect=KeyboardInterrupt),
+            pytest.raises(KeyboardInterrupt),
+        ):
+            labeler.run()

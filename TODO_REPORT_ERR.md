@@ -16,7 +16,7 @@ Make it easy for users to report errors when something goes wrong in taskclf.
 - **Logging** uses Python `logging` module with `SanitizingFilter` (redacts PII). Console output goes to stderr; file output goes to `<TASKCLF_HOME>/logs/taskclf.log` with rotation (5 MB, 3 backups) at DEBUG level.
 - **GitHub issue templates** are available at `.github/ISSUE_TEMPLATE/` (bug report and feature request YAML forms).
 - **`taskclf diagnostics`** CLI command collects version, OS, AW reachability, config, model bundles, disk usage, and log tail. Supports `--json`, `--include-logs`, `--log-lines`, and `--out` flags.
-- **No** crash handler or frontend "Report Issue" link yet.
+- **Crash handler** wraps both CLI (`cli_main()`) and tray (`TrayLabeler.run()`) entry points. On unhandled exceptions, writes a timestamped crash report to `<TASKCLF_HOME>/logs/crash_<timestamp>.txt` with environment info and sanitized log tail. CLI prints the path and issue URL to stderr; tray attempts a desktop notification.
 
 ---
 
@@ -95,35 +95,22 @@ Quit
 
 ---
 
-## TODO 5: Add "Report Issue" link to the web frontend
+## ~~TODO 5: Top-level crash handler~~ DONE
 
-**Priority:** Medium — users in browser mode need an equivalent path.
+**Status:** Implemented.
 
-**What:** Add a small help/feedback link in the frontend UI that opens the same GitHub issue URL.
+**What was done:**
+- Added `src/taskclf/core/crash.py` with `write_crash_report(exc, *, log_dir, log_tail_lines)` — writes a timestamped crash file to `<TASKCLF_HOME>/logs/crash_<YYYYMMDD_HHMMSS>.txt` containing: timestamp, exception type/message/traceback, taskclf version, Python version, OS, and the last N sanitized log lines (via `redact_message()`). Handles missing/empty log files gracefully and avoids overwriting on same-second collisions.
+- Added `cli_main()` wrapper in `cli/main.py` — wraps `app()` in `try/except Exception`, writes crash report, prints crash file path and issue URL to stderr, and exits with code 1. `SystemExit` and `KeyboardInterrupt` pass through. Updated `pyproject.toml` entry point from `app` to `cli_main`.
+- Refactored `TrayLabeler.run()` in `ui/tray.py` — split into `run()` (crash wrapper) and `_run_inner()` (original logic). On crash, writes crash report and attempts a desktop notification with the crash file path before re-raising. `SystemExit` and `KeyboardInterrupt` pass through.
+- 12 tests added in `TestWriteCrashReport` class in `test_core_crash.py` (TC-CRASH-001 through TC-CRASH-010): file creation, filename format, timestamp, exception details, version/OS info, issue URL, log tail inclusion, missing/empty log file, privacy/sanitization, collision avoidance, and directory creation.
+- 4 tests added in `TestCrashHandler` class in `test_cli_main.py` (TC-CRASH-CLI): crash report + exit code 1, stderr output with path and URL, `SystemExit` pass-through, `KeyboardInterrupt` pass-through.
+- 5 tests added in `TestTrayCrashHandler` class in `test_tray.py` (TC-CRASH-TRAY): crash report creation, desktop notification attempt, exception re-raise, `SystemExit` pass-through, `KeyboardInterrupt` pass-through.
 
-**Where to change:**
-
-- `src/taskclf/ui/frontend/src/App.tsx` — add a link/button in the top bar or footer. In browser mode (`isBrowserMode()`, line 28), render a subtle "Report Issue" anchor that opens the GitHub URL in a new tab.
-- Add a `GET /api/diagnostics` endpoint in `src/taskclf/ui/server.py` so the frontend can fetch version/OS info to pre-fill the report.
-
----
-
-## TODO 6: Top-level crash handler
-
-**Priority:** Low — catches truly unexpected failures.
-
-**What:** Wrap the CLI and tray entry points in a top-level `try/except` that writes a crash report file and prints the file path to stderr.
-
-**Where to change:**
-
-- `src/taskclf/cli/main.py` — wrap the Typer `app()` invocation (or use Typer's exception handler hook) to catch unhandled exceptions, write a timestamped crash file to `<TASKCLF_HOME>/logs/crash_<timestamp>.txt`, and print a message like `"taskclf crashed. Details saved to <path>. Please report at <issue URL>."`.
-- `src/taskclf/ui/tray.py` — wrap `TrayLabeler.run()` similarly. On crash, also attempt a desktop notification with the crash file path.
-
-**Crash file contents:**
-- Timestamp
-- Exception type, message, full traceback
-- `taskclf` version, Python version, OS
-- Last 20 log lines (if log file exists)
+**Crash file path** (platform-dependent):
+- macOS: `~/Library/Application Support/taskclf/logs/crash_<YYYYMMDD_HHMMSS>.txt`
+- Linux: `~/.local/share/taskclf/logs/crash_<YYYYMMDD_HHMMSS>.txt`
+- Windows: `%LOCALAPPDATA%/taskclf/logs/crash_<YYYYMMDD_HHMMSS>.txt`
 
 ---
 
@@ -146,8 +133,7 @@ Quit
 2. ~~**TODO 2** (diagnostics command) — immediately useful, references log file~~ DONE
 3. ~~**TODO 3** (issue templates) — references diagnostics output~~ DONE
 4. ~~**TODO 4** (tray menu item) — links to issue template~~ DONE
-5. **TODO 5** (frontend link) — links to issue template
-6. **TODO 6** (crash handler) — writes to log dir
+5. ~~**TODO 5** (crash handler) — writes to log dir~~ DONE
 7. ~~**TODO 7** (SuggestionBanner) — independent, low priority~~ DONE
 
 ---
