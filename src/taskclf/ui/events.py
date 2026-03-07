@@ -60,6 +60,11 @@ class EventBus:
                     except asyncio.QueueFull:
                         logger.warning("EventBus: failed to enqueue after eviction")
 
+    @property
+    def has_subscribers(self) -> bool:
+        """Return ``True`` if at least one WebSocket client is subscribed."""
+        return bool(self._subscribers)
+
     def publish_threadsafe(self, event: dict[str, Any]) -> None:
         """Schedule a publish from a non-async thread (e.g. ``ActivityMonitor``)."""
         loop = self._loop

@@ -83,9 +83,9 @@ The UI is a SolidJS single-page application served by a FastAPI backend:
 
 The UI never displays raw window titles, keystrokes, or URLs.
 Only aggregated metrics and application identifiers are shown.
-Desktop notifications redact app names by default (`privacy_notifications=True`);
-set to `False` to show raw app identifiers in notifications.
-Notifications can be disabled entirely with `notifications_enabled=False`.
+Transition notifications (web and desktop fallback) redact app names by default
+(`privacy_notifications=True`); set to `False` to show raw app identifiers.
+Desktop fallback notifications can be disabled entirely with `notifications_enabled=False`.
 
 ::: taskclf.ui.server
 
@@ -111,7 +111,7 @@ taskclf tray --dev
 - **In-process web UI server** -- the FastAPI server always runs in-process, sharing the tray's `EventBus`. In `--browser` mode the dashboard opens in the default browser; otherwise a lightweight pywebview subprocess provides a native floating window. Both modes receive the same live events (status, tray_state, suggest_label, prediction) because the server and the tray publish/subscribe on the same `EventBus` instance.
 - **Activity transition detection** -- polls ActivityWatch and detects when the dominant foreground app changes. A transition fires when the new app persists for >= `--transition-minutes` (default 3). On the first poll, an `initial_app` event is published so the UI can prompt labeling for the pre-start period.
 - **Pause/resume** -- monitoring can be paused via the tray menu ("Pause"/"Resume") or the `POST /api/tray/pause` REST endpoint. When paused, polling and transition detection are skipped but session state (poll count, transitions) is preserved. The `status` event emits `state: "paused"` and the `tray_state` event includes `paused: true`.
-- **Desktop notifications** -- on each transition, a notification prompts the user to label the completed block. By default, app names are redacted for privacy (`privacy_notifications=True`). Set `privacy_notifications=False` to show raw app identifiers. Notifications can be disabled entirely with `notifications_enabled=False`.
+- **Transition notifications** -- on each transition, a notification prompts the user to label the completed block. The primary channel is the **Web Notifications API** (delivered via the `prompt_label` WebSocket event to the frontend); macOS osascript desktop notifications serve as a fallback when no browser or pywebview client is connected. The browser requests notification permission on the first user interaction (click). By default, app names are redacted for privacy (`privacy_notifications=True`). Set `privacy_notifications=False` to show raw app identifiers. Desktop fallback notifications can be disabled entirely with `notifications_enabled=False`.
 - **Label suggestions** -- when `--model-dir` is provided, the app predicts a label and includes it in the notification. Without a model, all 8 core labels are shown.
 - **Quick-label menus** -- right-click the tray icon to label the last 5/10/15/30 minutes with any core label.
 - **Label Stats** -- tray menu action that shows a desktop notification summarizing today's labeling progress: total label count, total time, and per-label breakdown (e.g. "Today: 5 labels, 1h 15m -- Build 45m, Debug 20m, Write 10m"). Also available via `GET /api/labels/stats` for programmatic access.

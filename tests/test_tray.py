@@ -294,6 +294,35 @@ _BLOCK_END = dt.datetime(2026, 3, 1, 10, 15, 0, tzinfo=dt.timezone.utc)
 
 
 # ---------------------------------------------------------------------------
+# EventBus.has_subscribers
+# ---------------------------------------------------------------------------
+
+
+class TestEventBusHasSubscribers:
+
+    def test_empty_bus_has_no_subscribers(self) -> None:
+        bus = EventBus()
+        assert bus.has_subscribers is False
+
+    def test_bus_with_subscriber_returns_true(self) -> None:
+        import asyncio
+
+        bus = EventBus()
+        q: asyncio.Queue[dict] = asyncio.Queue(maxsize=256)
+        bus._subscribers.add(q)
+        assert bus.has_subscribers is True
+
+    def test_bus_after_subscriber_removed(self) -> None:
+        import asyncio
+
+        bus = EventBus()
+        q: asyncio.Queue[dict] = asyncio.Queue(maxsize=256)
+        bus._subscribers.add(q)
+        bus._subscribers.discard(q)
+        assert bus.has_subscribers is False
+
+
+# ---------------------------------------------------------------------------
 # 46a — TrayLabeler._handle_transition event publishing
 # ---------------------------------------------------------------------------
 
@@ -401,6 +430,55 @@ class TestHandleTransition:
         assert lt["block_start"] == _BLOCK_START.isoformat()
         assert lt["block_end"] == _BLOCK_END.isoformat()
         dt.datetime.fromisoformat(lt["fired_at"])
+
+    @patch("taskclf.ui.tray._send_desktop_notification")
+    def test_osascript_skipped_when_subscriber_connected(
+        self, mock_notif: MagicMock, tmp_path: Path,
+    ) -> None:
+        """Desktop notification is suppressed when a WebSocket client is subscribed."""
+        import asyncio
+
+        bus, captured = _capture_bus()
+        q: asyncio.Queue[dict] = asyncio.Queue(maxsize=256)
+        bus._subscribers.add(q)
+
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+        labeler._handle_transition(
+            "com.apple.Terminal", "us.zoom.xos", _BLOCK_START, _BLOCK_END,
+        )
+
+        mock_notif.assert_not_called()
+        assert any(e["type"] == "prompt_label" for e in captured)
+
+    @patch("taskclf.ui.tray._send_desktop_notification")
+    def test_osascript_fires_when_no_subscribers(
+        self, mock_notif: MagicMock, tmp_path: Path,
+    ) -> None:
+        """Desktop notification fires as fallback when no WebSocket clients."""
+        bus, captured = _capture_bus()
+        assert not bus.has_subscribers
+
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+        labeler._handle_transition(
+            "com.apple.Terminal", "us.zoom.xos", _BLOCK_START, _BLOCK_END,
+        )
+
+        mock_notif.assert_called_once()
+        assert any(e["type"] == "prompt_label" for e in captured)
+
+    @patch("taskclf.ui.tray._send_desktop_notification")
+    def test_osascript_fires_when_no_event_bus(
+        self, mock_notif: MagicMock, tmp_path: Path,
+    ) -> None:
+        """Desktop notification fires when event_bus is None."""
+        labeler = TrayLabeler(
+            data_dir=tmp_path, model_dir=None, event_bus=None,
+        )
+        labeler._handle_transition(
+            "com.apple.Terminal", "us.zoom.xos", _BLOCK_START, _BLOCK_END,
+        )
+
+        mock_notif.assert_called_once()
 
 
 # ---------------------------------------------------------------------------

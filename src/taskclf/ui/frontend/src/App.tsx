@@ -191,6 +191,16 @@ const App: Component = () => {
 
   const ws = useWebSocket();
 
+  const ensurePermission = (() => {
+    let asked = false;
+    return () => {
+      if (!asked) {
+        asked = true;
+        requestPermission();
+      }
+    };
+  })();
+
   onMount(() => {
     requestPermission();
   });
@@ -281,9 +291,11 @@ const App: Component = () => {
               onTogglePanel={
                 inBrowser
                   ? () => {
+                      ensurePermission();
                       setPanelPinned((v) => !v);
                     }
                   : () => {
+                      ensurePermission();
                       host.invoke({ cmd: "toggleStatePanel" });
                     }
               }
@@ -304,9 +316,11 @@ const App: Component = () => {
               onToggleLabel={
                 inBrowser
                   ? () => {
+                      ensurePermission();
                       setLabelPinned((v) => !v);
                     }
                   : () => {
+                      ensurePermission();
                       host.invoke({ cmd: "toggleLabelGrid" });
                     }
               }
