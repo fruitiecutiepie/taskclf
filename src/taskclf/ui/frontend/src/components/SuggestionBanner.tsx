@@ -1,4 +1,4 @@
-import { type Accessor, type Component, Show } from "solid-js";
+import { type Accessor, type Component, Show, createSignal } from "solid-js";
 import type { LabelSuggestion } from "../lib/ws";
 import { createLabel } from "../lib/api";
 
@@ -6,10 +6,12 @@ export const SuggestionBanner: Component<{
   suggestion: Accessor<LabelSuggestion | null>;
 }> = (props) => {
   const s = () => props.suggestion();
+  const [error, setError] = createSignal<string | null>(null);
 
   async function accept() {
     const sg = s();
     if (!sg) return;
+    setError(null);
     try {
       await createLabel({
         start_ts: sg.block_start,
@@ -17,8 +19,11 @@ export const SuggestionBanner: Component<{
         label: sg.suggested,
         confidence: sg.confidence,
       });
-    } catch (err) {
+    } catch (err: any) {
+      const msg = err?.message || "Failed to accept suggestion";
       console.error("Failed to accept suggestion", err);
+      setError(msg);
+      setTimeout(() => setError(null), 4000);
     }
   }
 
@@ -32,6 +37,7 @@ export const SuggestionBanner: Component<{
           padding: "12px 16px",
           "margin-bottom": "16px",
           display: "flex",
+          "flex-wrap": "wrap",
           "align-items": "center",
           "justify-content": "space-between",
           gap: "12px",
@@ -80,6 +86,18 @@ export const SuggestionBanner: Component<{
             Dismiss
           </button>
         </div>
+        <Show when={error()}>
+          <div
+            style={{
+              color: "var(--error, #e53935)",
+              "font-size": "0.8rem",
+              "margin-top": "6px",
+              width: "100%",
+            }}
+          >
+            Error: {error()}
+          </div>
+        </Show>
       </div>
     </Show>
   );

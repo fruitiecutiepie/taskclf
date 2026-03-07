@@ -543,3 +543,226 @@ class TestCLIFileLogging:
         assert result.exit_code == 0, result.output
         assert (tmp_path / "home" / "logs" / "taskclf.log").exists()
         self._remove_file_handlers()
+
+
+# ---------------------------------------------------------------------------
+# TC-E2E-DIAG: taskclf diagnostics
+# ---------------------------------------------------------------------------
+
+
+class TestDiagnostics:
+    """TC-E2E-DIAG: `taskclf diagnostics` collects environment info."""
+
+    @pytest.fixture(autouse=True)
+    def _isolate(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Point TASKCLF_HOME at a temp dir and stub AW as unreachable."""
+        self.home = tmp_path / "home"
+        self.home.mkdir()
+        monkeypatch.setenv("TASKCLF_HOME", str(self.home))
+
+        # Ensure data/processed and models dirs exist for config/bundles
+        (self.home / "data" / "processed").mkdir(parents=True)
+        (self.home / "models").mkdir(parents=True)
+        (self.home / "logs").mkdir(parents=True)
+
+        # Remove any leftover file handlers from other tests
+        root = logging.getLogger()
+        for h in list(root.handlers):
+            if isinstance(h, logging.handlers.RotatingFileHandler):
+                root.removeHandler(h)
+                h.close()
+
+    def _invoke(self, *extra_args: str) -> object:
+        return runner.invoke(app, ["diagnostics", *extra_args])
+
+    # -- basic output --------------------------------------------------------
+
+    def test_exit_code_zero(self) -> None:
+        result = self._invoke()
+        assert result.exit_code == 0, result.output
+
+    def test_human_output_contains_expected_sections(self) -> None:
+        result = self._invoke()
+        assert result.exit_code == 0
+        out = result.output
+        assert "taskclf diagnostics" in out
+        assert "version" in out
+        assert "python" in out
+        assert "os" in out
+        assert "architecture" in out
+        assert "taskclf_home" in out
+        assert "activitywatch" in out
+        assert "model bundles" in out
+        assert "config" in out
+        assert "disk usage" in out
+
+    # -- JSON output ---------------------------------------------------------
+
+    def test_json_flag_produces_valid_json(self) -> None:
+        result = self._invoke("--json")
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert isinstance(data, dict)
+
+    def test_json_contains_all_keys(self) -> None:
+        result = self._invoke("--json")
+        data = json.loads(result.output)
+        expected_keys = {
+            "taskclf_version", "python_version", "os", "architecture",
+            "taskclf_home", "activitywatch", "model_bundles", "config",
+            "disk_usage",
+        }
+        assert expected_keys.issubset(data.keys())
+
+    def test_json_activitywatch_has_reachable_field(self) -> None:
+        result = self._invoke("--json")
+        data = json.loads(result.output)
+        aw = data["activitywatch"]
+        assert "reachable" in aw
+
+    # -- AW unreachable handled gracefully -----------------------------------
+
+    def test_aw_unreachable_still_exit_zero(self) -> None:
+        result = self._invoke("--json")
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        aw = data["activitywatch"]
+        assert isinstance(aw["reachable"], bool)
+
+    # -- config redaction ----------------------------------------------------
+
+    def test_user_id_redacted_in_json(self) -> None:
+        result = self._invoke("--json")
+        data = json.loads(result.output)
+        assert data["config"]["user_id"] == "[REDACTED]"
+
+    def test_user_id_redacted_in_text(self) -> None:
+        result = self._invoke()
+        assert "[REDACTED]" in result.output
+
+    # -- privacy: no sensitive fields leak -----------------------------------
+
+    def test_no_sensitive_fields_in_output(self) -> None:
+        result = self._invoke("--json")
+        raw = result.output
+        for forbidden in FORBIDDEN_COLUMNS:
+            assert forbidden not in raw, f"Sensitive field {forbidden!r} leaked"
+
+    # -- model bundles -------------------------------------------------------
+
+    def test_model_bundles_empty_when_no_models(self) -> None:
+        result = self._invoke("--json")
+        data = json.loads(result.output)
+        assert data["model_bundles"] == []
+
+    # -- disk usage ----------------------------------------------------------
+
+    def test_disk_usage_has_expected_dirs(self) -> None:
+        result = self._invoke("--json")
+        data = json.loads(result.output)
+        disk = data["disk_usage"]
+        assert "data" in disk
+        assert "models" in disk
+        assert "logs" in disk
+
+    def test_disk_usage_values_are_numeric_or_null(self) -> None:
+        result = self._invoke("--json")
+        data = json.loads(result.output)
+        for v in data["disk_usage"].values():
+            assert v is None or isinstance(v, (int, float))
+
+    # -- log tail ------------------------------------------------------------
+
+    def test_no_log_tail_by_default(self) -> None:
+        result = self._invoke("--json")
+        data = json.loads(result.output)
+        assert "log_tail" not in data
+
+    def test_include_logs_shows_tail(self) -> None:
+        log_file = self.home / "logs" / "taskclf.log"
+        log_file.write_text("\n".join(f"line {i}" for i in range(100)), "utf-8")
+
+        result = self._invoke("--json", "--include-logs")
+        data = json.loads(result.output)
+        assert "log_tail" in data
+        assert isinstance(data["log_tail"], list)
+        assert len(data["log_tail"]) == 50  # default
+
+    def test_log_lines_controls_tail_length(self) -> None:
+        log_file = self.home / "logs" / "taskclf.log"
+        log_file.write_text("\n".join(f"line {i}" for i in range(100)), "utf-8")
+
+        result = self._invoke("--json", "--include-logs", "--log-lines", "10")
+        data = json.loads(result.output)
+        assert len(data["log_tail"]) == 10
+
+    def test_include_logs_empty_file(self) -> None:
+        """CLI callback creates the log file, so test the empty-file case."""
+        log_file = self.home / "logs" / "taskclf.log"
+        log_file.write_text("", "utf-8")
+
+        result = self._invoke("--json", "--include-logs")
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["log_tail"] == []
+
+    def test_collect_diagnostics_missing_log_file(self, tmp_path: Path) -> None:
+        """Directly test _collect_diagnostics when the log file is absent."""
+        from taskclf.cli.main import _collect_diagnostics
+
+        bare_home = tmp_path / "bare"
+        bare_home.mkdir()
+        (bare_home / "data" / "processed").mkdir(parents=True)
+        (bare_home / "models").mkdir(parents=True)
+
+        import os
+        old_env = os.environ.get("TASKCLF_HOME")
+        os.environ["TASKCLF_HOME"] = str(bare_home)
+        try:
+            info = _collect_diagnostics(
+                aw_host="http://localhost:1",
+                data_dir=str(bare_home / "data" / "processed"),
+                models_dir=str(bare_home / "models"),
+                include_logs=True,
+                log_lines=50,
+            )
+        finally:
+            if old_env is None:
+                os.environ.pop("TASKCLF_HOME", None)
+            else:
+                os.environ["TASKCLF_HOME"] = old_env
+
+        assert info["log_tail"] == ["<log file not found>"]
+
+    def test_include_logs_in_text_mode(self) -> None:
+        log_file = self.home / "logs" / "taskclf.log"
+        log_file.write_text("alpha\nbeta\ngamma\n", "utf-8")
+
+        result = self._invoke("--include-logs", "--log-lines", "2")
+        assert result.exit_code == 0
+        assert "beta" in result.output
+        assert "gamma" in result.output
+
+    # -- --out flag ----------------------------------------------------------
+
+    def test_out_writes_to_file(self, tmp_path: Path) -> None:
+        out_file = tmp_path / "diag.txt"
+        result = self._invoke("--out", str(out_file))
+        assert result.exit_code == 0
+        assert out_file.exists()
+        contents = out_file.read_text("utf-8")
+        assert "taskclf diagnostics" in contents
+
+    def test_out_json_writes_valid_json_file(self, tmp_path: Path) -> None:
+        out_file = tmp_path / "diag.json"
+        result = self._invoke("--json", "--out", str(out_file))
+        assert result.exit_code == 0
+        data = json.loads(out_file.read_text("utf-8"))
+        assert "taskclf_version" in data
+
+    def test_out_flag_prints_path_to_stdout(self, tmp_path: Path) -> None:
+        out_file = tmp_path / "diag.txt"
+        result = self._invoke("--out", str(out_file))
+        assert str(out_file) in result.output

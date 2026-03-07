@@ -33,6 +33,7 @@ Typer CLI entrypoint and commands.
 | `taskclf monitor drift-check` | Run drift detection (reference vs current) |
 | `taskclf monitor telemetry` | Compute and store a telemetry snapshot |
 | `taskclf monitor show` | Display recent telemetry snapshots |
+| `taskclf diagnostics` | Collect environment info for bug reports |
 | `taskclf ui` | Launch the labeling UI as a native floating window |
 | `taskclf tray` | Run system tray labeling app with activity transition detection |
 
@@ -436,6 +437,49 @@ Display recent telemetry snapshots as a Rich table.
 ```bash
 taskclf monitor show --store-dir artifacts/telemetry --last 10
 ```
+
+### diagnostics
+
+Collect environment and runtime info for bug reports.  Prints a
+human-readable summary by default, or JSON with `--json`.
+
+```bash
+taskclf diagnostics
+```
+
+Output as JSON:
+
+```bash
+taskclf diagnostics --json
+```
+
+Include log tail:
+
+```bash
+taskclf diagnostics --json --include-logs --log-lines 100
+```
+
+Write to a file:
+
+```bash
+taskclf diagnostics --json --out diagnostics.json
+```
+
+**Output includes:**
+- `taskclf` version, Python version, OS and architecture
+- Resolved `TASKCLF_HOME` path
+- ActivityWatch reachability (graceful on failure)
+- Available model bundles (from `models/`)
+- Config summary (`user_id` always redacted)
+- Disk usage of `data/`, `models/`, `logs/`
+- Last N log lines (when `--include-logs` is passed)
+
+| Option | Default | Description |
+|---|---|---|
+| `--json` | off | Output as JSON instead of human-readable text |
+| `--include-logs` | off | Append the last N log lines to the output |
+| `--log-lines` | `50` | Number of log lines to include (requires `--include-logs`) |
+| `--out` | *(stdout)* | Write output to a file instead of stdout |
 
 ### tray
 

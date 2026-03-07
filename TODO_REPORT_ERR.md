@@ -11,11 +11,12 @@ Make it easy for users to report errors when something goes wrong in taskclf.
 
 - **CLI** prints errors to stderr via `typer.echo(..., err=True)` and exits with code 1. Logs are also persisted to `<TASKCLF_HOME>/logs/taskclf.log` via a `RotatingFileHandler` with `SanitizingFilter`.
 - **Tray app** shows desktop notifications for some errors (export/import/model failures) via `_notify()` → `_send_desktop_notification()`. Logs are persisted to the same rotating log file (set up in `TrayLabeler.run()`). A "Report Issue" menu item opens the GitHub issue tracker pre-filled with version/OS info.
-- **Frontend** shows flash/status messages for label CRUD errors. `SuggestionBanner` only logs to `console.error`.
+- **Frontend** shows flash/status messages for label CRUD errors. `SuggestionBanner` shows inline error messages with auto-dismiss on accept failure.
 - **Server** raises `HTTPException` with structured details (e.g., 409 for label overlap).
 - **Logging** uses Python `logging` module with `SanitizingFilter` (redacts PII). Console output goes to stderr; file output goes to `<TASKCLF_HOME>/logs/taskclf.log` with rotation (5 MB, 3 backups) at DEBUG level.
 - **GitHub issue templates** are available at `.github/ISSUE_TEMPLATE/` (bug report and feature request YAML forms).
-- **No** diagnostics command, crash handler, or frontend "Report Issue" link yet.
+- **`taskclf diagnostics`** CLI command collects version, OS, AW reachability, config, model bundles, disk usage, and log tail. Supports `--json`, `--include-logs`, `--log-lines`, and `--out` flags.
+- **No** crash handler or frontend "Report Issue" link yet.
 
 ---
 
@@ -38,31 +39,17 @@ Make it easy for users to report errors when something goes wrong in taskclf.
 
 ---
 
-## TODO 2: Add a `taskclf diagnostics` CLI command
+## ~~TODO 2: Add a `taskclf diagnostics` CLI command~~ DONE
 
-**Priority:** High — gives users a copy-pasteable block for bug reports.
+**Status:** Implemented.
 
-**What:** A command that collects environment info and prints it to stdout (or writes to a file).
-
-**Where to change:**
-
-- `src/taskclf/cli/main.py` — add a new top-level command `diagnostics` (after the existing command groups starting at line 66).
-
-**Output should include:**
-- `taskclf` version (from `importlib.metadata.version("taskclf")`)
-- Python version (`sys.version`)
-- OS and architecture (`platform.platform()`, `platform.machine()`)
-- `TASKCLF_HOME` resolved path (from `core/paths.taskclf_home()`)
-- Whether ActivityWatch is reachable (GET `<aw_host>/api/0/info`, timeout 5s)
-- Available model bundles (from `model_registry.list_bundles()`)
-- Config summary (`UserConfig(data_dir).as_dict()`, with `user_id` redacted)
-- Last 50 lines of the log file (from `<TASKCLF_HOME>/logs/taskclf.log`)
-- Disk usage of `data/`, `models/`, `logs/` directories
-
-**Flags:**
-- `--json` — output as JSON instead of human-readable
-- `--include-logs` — append the last N log lines (default: 50)
-- `--out PATH` — write to a file instead of stdout
+**What was done:**
+- Added `_collect_diagnostics()` helper in `cli/main.py` — gathers version, Python version, OS/arch, `TASKCLF_HOME` path, ActivityWatch reachability (GET with 5s timeout), model bundles via `model_registry.list_bundles()`, config summary (with `user_id` redacted), disk usage of `data/`, `models/`, `logs/`, and optionally the last N log lines.
+- Added `_format_diagnostics_text()` for human-readable output.
+- Added `diagnostics` top-level Typer command with flags: `--json`, `--include-logs/--no-include-logs`, `--log-lines N`, `--out PATH`.
+- AW unreachable is handled gracefully (reports `reachable: false` with error string, does not fail the command).
+- `user_id` is always redacted in config output. Log lines are already sanitized by `SanitizingFilter`.
+- 21 tests added in `TestDiagnostics` class in `test_cli_main.py` (TC-E2E-DIAG): exit code, human/JSON output, all expected keys, AW unreachable handling, `user_id` redaction, privacy checks, empty model bundles, disk usage, log tail with `--include-logs`/`--log-lines`, missing/empty log file, `--out` file write, and `--json --out` combination.
 
 ---
 
@@ -117,7 +104,7 @@ Quit
 **Where to change:**
 
 - `src/taskclf/ui/frontend/src/App.tsx` — add a link/button in the top bar or footer. In browser mode (`isBrowserMode()`, line 28), render a subtle "Report Issue" anchor that opens the GitHub URL in a new tab.
-- Optionally add a `GET /api/diagnostics` endpoint in `src/taskclf/ui/server.py` so the frontend can fetch version/OS info to pre-fill the report.
+- Add a `GET /api/diagnostics` endpoint in `src/taskclf/ui/server.py` so the frontend can fetch version/OS info to pre-fill the report.
 
 ---
 
@@ -140,27 +127,28 @@ Quit
 
 ---
 
-## TODO 7: Surface errors better in SuggestionBanner
+## ~~TODO 7: Surface errors better in SuggestionBanner~~ DONE
 
-**Priority:** Low — currently errors are silently swallowed.
+**Status:** Implemented.
 
-**What:** `SuggestionBanner.tsx` only does `console.error("Failed to accept suggestion", err)` with no user-facing feedback.
-
-**Where to change:**
-
-- `src/taskclf/ui/frontend/src/components/SuggestionBanner.tsx` — show a flash/toast message when accepting a suggestion fails, consistent with how `LabelGrid.tsx` and `LabelHistory.tsx` handle errors.
+**What was done:**
+- Added `createSignal<string | null>` for error state in `SuggestionBanner.tsx`.
+- On `accept()` catch: sets error signal with the error message and auto-clears after 4 seconds (matching the pattern used in `LabelGrid.tsx`).
+- Error cleared at the start of each accept attempt.
+- Error rendered inline below the Accept/Dismiss buttons via `<Show when={error()}>`, styled with `color: var(--error)`.
+- `console.error` retained for developer visibility.
 
 ---
 
 ## Implementation Order
 
 1. ~~**TODO 1** (log file) — foundation for everything else~~ DONE
-2. **TODO 2** (diagnostics command) — immediately useful, references log file
+2. ~~**TODO 2** (diagnostics command) — immediately useful, references log file~~ DONE
 3. ~~**TODO 3** (issue templates) — references diagnostics output~~ DONE
 4. ~~**TODO 4** (tray menu item) — links to issue template~~ DONE
 5. **TODO 5** (frontend link) — links to issue template
 6. **TODO 6** (crash handler) — writes to log dir
-7. **TODO 7** (SuggestionBanner) — independent, low priority
+7. ~~**TODO 7** (SuggestionBanner) — independent, low priority~~ DONE
 
 ---
 
