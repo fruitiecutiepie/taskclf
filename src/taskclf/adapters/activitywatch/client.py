@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import logging
+import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -252,10 +253,12 @@ def fetch_aw_events(
     start_iso = start.isoformat() + "Z" if start.tzinfo is None else start.isoformat()
     end_iso = end.isoformat() + "Z" if end.tzinfo is None else end.isoformat()
 
-    url = (
-        f"{base}/api/0/buckets/{bucket_id}/events"
-        f"?start={start_iso}&end={end_iso}"
+    qs = urllib.parse.urlencode(
+        {"start": start_iso, "end": end_iso},
+        safe=":",
+        quote_via=urllib.parse.quote,
     )
+    url = f"{base}/api/0/buckets/{bucket_id}/events?{qs}"
     raw_events: list[dict] = _api_get(url)
 
     events = [
@@ -287,10 +290,12 @@ def fetch_aw_input_events(
     start_iso = start.isoformat() + "Z" if start.tzinfo is None else start.isoformat()
     end_iso = end.isoformat() + "Z" if end.tzinfo is None else end.isoformat()
 
-    url = (
-        f"{base}/api/0/buckets/{bucket_id}/events"
-        f"?start={start_iso}&end={end_iso}"
+    qs = urllib.parse.urlencode(
+        {"start": start_iso, "end": end_iso},
+        safe=":",
+        quote_via=urllib.parse.quote,
     )
+    url = f"{base}/api/0/buckets/{bucket_id}/events?{qs}"
     raw_events: list[dict] = _api_get(url)
 
     events = [_raw_to_input_event(e) for e in raw_events]

@@ -562,7 +562,7 @@ class TestFetchAwEvents:
 
     @patch(_MOCK_API, return_value=[])
     def test_tz_aware_timestamp_url(self, mock_get) -> None:
-        """TZ-aware datetimes use isoformat() without extra Z."""
+        """TZ-aware datetimes URL-encode '+' in offset to avoid server errors."""
         start = datetime(2026, 2, 23, 10, 0, tzinfo=timezone.utc)
         end = datetime(2026, 2, 23, 11, 0, tzinfo=timezone.utc)
         fetch_aw_events(
@@ -573,8 +573,8 @@ class TestFetchAwEvents:
             title_salt=SALT,
         )
         (url,), _ = mock_get.call_args
-        assert "start=2026-02-23T10:00:00+00:00" in url
-        assert "end=2026-02-23T11:00:00+00:00" in url
+        assert "start=2026-02-23T10:00:00%2B00:00" in url
+        assert "end=2026-02-23T11:00:00%2B00:00" in url
 
     @patch(_MOCK_API, return_value=[])
     def test_empty_response(self, mock_get) -> None:
