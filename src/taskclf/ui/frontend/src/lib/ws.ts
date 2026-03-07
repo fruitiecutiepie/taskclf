@@ -67,6 +67,10 @@ export interface ShowLabelGridEvent {
   type: "show_label_grid";
 }
 
+export interface ToggleDashboardEvent {
+  type: "toggle_dashboard";
+}
+
 export interface PromptLabelEvent {
   type: "prompt_label";
   prev_app: string;
@@ -106,6 +110,7 @@ export type WSEvent =
   | StatusEvent
   | TrayState
   | ShowLabelGridEvent
+  | ToggleDashboardEvent
   | PromptLabelEvent
   | SuggestionClearedEvent
   | NoModelTransitionEvent
@@ -138,6 +143,7 @@ export function useWebSocket() {
   const [latestPrompt, setLatestPrompt] =
     createSignal<PromptLabelEvent | null>(null);
   const [labelGridRequested, setLabelGridRequested] = createSignal(0);
+  const [dashboardToggleRequested, setDashboardToggleRequested] = createSignal(0);
   const [connectionStatus, setConnectionStatus] =
     createSignal<ConnectionStatus>("connecting");
   const [wsStats, setWsStats] = createSignal<WSStats>({
@@ -248,6 +254,14 @@ export function useWebSocket() {
               lastMessageAt: now,
             }));
             break;
+          case "toggle_dashboard":
+            setDashboardToggleRequested((n) => n + 1);
+            setWsStats((prev) => ({
+              ...prev,
+              messageCount: prev.messageCount + 1,
+              lastMessageAt: now,
+            }));
+            break;
           case "prompt_label":
             setLatestPrompt(data);
             setWsStats((prev) => ({
@@ -329,6 +343,7 @@ export function useWebSocket() {
     activeSuggestion,
     latestPrompt,
     labelGridRequested,
+    dashboardToggleRequested,
     connectionStatus,
     wsStats,
     dismissSuggestion,

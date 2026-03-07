@@ -531,7 +531,8 @@ class TrayLabeler:
             self._suggested_label = None
             self._suggested_confidence = None
 
-        self._send_notification(prev_app, new_app, block_start, block_end)
+        if self._event_bus is None or not self._event_bus.has_subscribers:
+            self._send_notification(prev_app, new_app, block_start, block_end)
 
         if self._event_bus is not None:
             self._event_bus.publish_threadsafe({
@@ -1005,6 +1006,7 @@ class TrayLabeler:
             return
 
         if self._ui_proc is not None and self._ui_proc.poll() is None:
+            self._event_bus.publish_threadsafe({"type": "toggle_dashboard"})
             return
 
         self._spawn_window()

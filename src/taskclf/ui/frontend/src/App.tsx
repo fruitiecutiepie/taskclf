@@ -196,6 +196,13 @@ const App: Component = () => {
   });
 
   createEffect(() => {
+    const count = ws.dashboardToggleRequested();
+    if (count > 0) {
+      host.invoke({ cmd: "toggleDashboard" });
+    }
+  });
+
+  createEffect(() => {
     const count = ws.labelGridRequested();
     if (count > 0) {
       if (inBrowser) {
