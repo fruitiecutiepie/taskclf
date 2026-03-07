@@ -16,10 +16,20 @@ from taskclf.ui.window import WindowAPI
 
 
 def _make_window(x: int = 200, y: int = 100) -> MagicMock:
-    """Create a mock window with x, y, show, hide, move."""
+    """Create a mock window with x, y, show, hide, move.
+
+    The mock's x/y update when move() is called, so position-checking
+    logic in WindowAPI (e.g. user-drag detection) works correctly.
+    """
     win = MagicMock()
     win.x = x
     win.y = y
+
+    def _track_move(new_x: int, new_y: int) -> None:
+        win.x = new_x
+        win.y = new_y
+
+    win.move = MagicMock(side_effect=_track_move)
     return win
 
 
@@ -664,6 +674,86 @@ class TestRepositionLabel:
             100 + 30 + 4,     # y + 34
         )
 
+    def test_expected_pos_set_after_reposition(self) -> None:
+        """Programmatic move records expected position for drag detection."""
+        api = WindowAPI()
+        main = _make_window(x=200, y=100)
+        label = _make_window()
+        api.bind(main)
+        api.bind_label(label)
+
+        api.show_label_grid()
+
+        assert api._label_expected_pos == (70, 134)
+
+    def test_expected_pos_cleared_on_hide(self) -> None:
+        """Hiding the label resets expected position for next show."""
+        api = WindowAPI()
+        main = _make_window(x=200, y=100)
+        label = _make_window()
+        api.bind(main)
+        api.bind_label(label)
+
+        api.show_label_grid()
+        assert api._label_expected_pos is not None
+
+        api._do_hide_label()
+        assert api._label_expected_pos is None
+
+    def test_label_follows_main_when_not_user_dragged(self) -> None:
+        """Label repositions when main window moves and label hasn't been dragged."""
+        api = WindowAPI()
+        main = _make_window(x=200, y=100)
+        label = _make_window()
+        api.bind(main)
+        api.bind_label(label)
+
+        api.show_label_grid()
+        assert label.move.call_count == 1
+
+        main.x = 300
+        api._on_main_window_moved()
+
+        assert label.move.call_count == 2
+        label.move.assert_called_with(300 + 150 - 280, 100 + 30 + 4)
+
+    def test_label_not_repositioned_after_user_drag(self) -> None:
+        """After user drags label away, main window move does not snap it back."""
+        api = WindowAPI()
+        main = _make_window(x=200, y=100)
+        label = _make_window()
+        api.bind(main)
+        api.bind_label(label)
+
+        api.show_label_grid()
+        assert label.move.call_count == 1
+
+        label.x = 500
+        label.y = 500
+
+        main.x = 300
+        api._on_main_window_moved()
+
+        assert label.move.call_count == 1
+
+    def test_label_reanchors_after_hide_show_cycle(self) -> None:
+        """After hide+show, label re-anchors to pill (expected_pos was reset)."""
+        api = WindowAPI()
+        main = _make_window(x=200, y=100)
+        label = _make_window()
+        api.bind(main)
+        api.bind_label(label)
+
+        api.show_label_grid()
+        label.x = 500
+        label.y = 500
+        api._do_hide_label()
+
+        main.x = 400
+        api.show_label_grid()
+
+        label.move.assert_called_with(400 + 150 - 280, 100 + 30 + 4)
+
 
 # ── TC-UI-WIN-007/008: _position_panel ────────────────────────────────────
 
@@ -702,6 +792,32 @@ class TestPositionPanel:
             200 + 150 - 280,          # x - 130
             100 + 30 + 4 + 330 + 4,   # y + 368
         )
+
+    def test_panel_expected_pos_set(self) -> None:
+        """Panel records expected position after programmatic move."""
+        api = WindowAPI()
+        main = _make_window(x=200, y=100)
+        panel = _make_window()
+        api.bind(main)
+        api.bind_panel(panel)
+
+        api.toggle_state_panel()
+
+        assert api._panel_expected_pos == (70, 134)
+
+    def test_panel_expected_pos_cleared_on_hide(self) -> None:
+        """Hiding the panel resets expected position."""
+        api = WindowAPI()
+        main = _make_window(x=200, y=100)
+        panel = _make_window()
+        api.bind(main)
+        api.bind_panel(panel)
+
+        api.toggle_state_panel()
+        assert api._panel_expected_pos is not None
+
+        api._do_hide_panel()
+        assert api._panel_expected_pos is None
 
 
 # ── TC-UI-WIN-009/010/011: bind methods ──────────────────────────────────

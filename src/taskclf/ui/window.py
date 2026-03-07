@@ -17,6 +17,7 @@ _COMPACT_SIZE = (150, 30)
 _LABEL_SIZE = (280, 330)
 _PANEL_SIZE = (280, 520)
 _CHILD_HIDE_DELAY_S = 0.3
+_DRAG_TOLERANCE = 10  # pixels — ignore drift below this when detecting user drags
 
 
 class WindowAPI:
@@ -39,6 +40,10 @@ class WindowAPI:
         self._panel_pinned = False
         self._label_hide_timer: threading.Timer | None = None
         self._panel_hide_timer: threading.Timer | None = None
+        self._label_expected_pos: tuple[int, int] | None = None
+        self._panel_expected_pos: tuple[int, int] | None = None
+        self._default_x: int | None = None
+        self._default_y: int | None = None
 
     def bind(self, window: Any) -> None:
         self._window = window
@@ -122,6 +127,7 @@ class WindowAPI:
                 logger.debug("Could not hide label grid", exc_info=True)
         self._label_visible = False
         self._label_pinned = False
+        self._label_expected_pos = None
 
     # -- State panel window ----------------------------------------------------
 
@@ -176,6 +182,7 @@ class WindowAPI:
                 logger.debug("Could not hide panel", exc_info=True)
         self._panel_visible = False
         self._panel_pinned = False
+        self._panel_expected_pos = None
 
     # -- Shared helpers --------------------------------------------------------
 
@@ -195,7 +202,19 @@ class WindowAPI:
             setattr(self, timer_attr, None)
 
     def _on_main_window_moved(self) -> None:
-        """Reposition the label grid when the main window is dragged."""
+        """Reposition the label grid, unless the user has dragged it away."""
+        if (
+            self._label_visible
+            and self._label_window is not None
+            and self._label_expected_pos is not None
+        ):
+            try:
+                cx, cy = self._label_window.x, self._label_window.y
+                ex, ey = self._label_expected_pos
+                if abs(cx - ex) > _DRAG_TOLERANCE or abs(cy - ey) > _DRAG_TOLERANCE:
+                    return
+            except Exception:
+                pass
         self._reposition_label()
 
     def _reposition_label(self) -> None:
@@ -204,10 +223,10 @@ class WindowAPI:
             return
         try:
             if self._label_visible and self._label_window is not None:
-                self._label_window.move(
-                    self._window.x + _COMPACT_SIZE[0] - _LABEL_SIZE[0],
-                    self._window.y + _COMPACT_SIZE[1] + 4,
-                )
+                new_x = self._window.x + _COMPACT_SIZE[0] - _LABEL_SIZE[0]
+                new_y = self._window.y + _COMPACT_SIZE[1] + 4
+                self._label_window.move(new_x, new_y)
+                self._label_expected_pos = (new_x, new_y)
         except Exception:
             logger.debug("Could not reposition label window", exc_info=True)
 
@@ -220,7 +239,9 @@ class WindowAPI:
             y = self._window.y + _COMPACT_SIZE[1] + 4
             if self._label_visible:
                 y += _LABEL_SIZE[1] + 4
-            self._panel_window.move(right_x - _PANEL_SIZE[0], y)
+            new_x = right_x - _PANEL_SIZE[0]
+            self._panel_window.move(new_x, y)
+            self._panel_expected_pos = (new_x, y)
         except Exception:
             logger.debug("Could not position panel window", exc_info=True)
 
@@ -255,6 +276,9 @@ def run_window(
     x = (primary.width - _COMPACT_SIZE[0] - 16) if primary else None
     y = 16 if primary else None
 
+    api._default_x = x
+    api._default_y = y
+
     window = webview.create_window(
         "taskclf",
         url=f"http://127.0.0.1:{port}",
@@ -264,7 +288,7 @@ def run_window(
         y=y,
         frameless=True,
         on_top=True,
-        easy_drag=True,
+        easy_drag=False,
         resizable=False,
         transparent=True,
         js_api=api,

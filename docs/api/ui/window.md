@@ -17,8 +17,9 @@ Three windows are managed:
 | State panel | 280 x 520 | System/history debug panel (hidden by default) |
 
 The compact pill is positioned at the top-right of the primary screen.
-Child windows (label grid, panel) are anchored below the pill and
-reposition automatically when the pill is dragged.
+Child windows (label grid, panel) are anchored below the pill on
+initial show.  Once visible, children can be freely dragged to any
+monitor; they will not snap back until hidden and re-shown.
 
 ## WindowAPI
 
@@ -43,8 +44,17 @@ components never reference `window.pywebview` directly.
 
 - The label grid is placed at `(pill.x + pill.width - grid.width, pill.y + pill.height + 4)`, right-aligned with the pill.
 - The panel is placed below the pill (or below the label grid if it is visible), also right-aligned.
-- When the pill is dragged, the label grid automatically repositions via the `moved` event handler.
+- When the pill is dragged, the label grid follows *only if the user has not independently dragged it*.  Once the user drags a child window away (beyond a 10 px tolerance), that child stops following and stays where the user placed it.
+- Hiding a child window resets its expected position, so the next show re-anchors it to the pill.
 - Child windows hide with a 300 ms delay to avoid flicker on rapid toggle.
+
+### Dragging
+
+All three windows use CSS `pywebview-drag-region` elements for drag
+handles (the pill's entire surface and a small grab bar at the top of
+each child window).  The main pill sets `easy_drag=False` to avoid
+conflicts between the native easy-drag handler and the CSS drag region,
+which previously caused glitches on multi-monitor setups.
 
 ## run_window
 
