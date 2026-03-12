@@ -3,8 +3,10 @@ import {
   type Component,
   For,
   Show,
+  createEffect,
   createMemo,
   createSignal,
+  on,
 } from "solid-js";
 import type {
   ConnectionStatus,
@@ -229,52 +231,107 @@ const ProgressBar: Component<{ pct: number; color?: string }> = (props) => (
 const TrainingPanel: Component<{
   trainState: Accessor<TrainState>;
 }> = (props) => {
-  const today = () => {
-    const d = new Date();
-    return d.toISOString().slice(0, 10);
-  };
-  const thirtyDaysAgo = () => {
-    const d = new Date();
-    d.setDate(d.getDate() - 30);
-    return d.toISOString().slice(0, 10);
-  };
+  const initToday = new Date().toISOString().slice(0, 10);
+  const initFrom = (() => { const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().slice(0, 10); })();
 
-  const [dateFrom, setDateFrom] = createSignal(thirtyDaysAgo());
-  const [dateTo, setDateTo] = createSignal(today());
+  const [dateFrom, setDateFrom] = createSignal(initFrom);
+  const [dateTo, setDateTo] = createSignal(initToday);
   const [boostRounds, setBoostRounds] = createSignal(100);
   const [classWeight, setClassWeight] = createSignal<"balanced" | "none">("balanced");
   const [synthetic, setSynthetic] = createSignal(false);
 
   const [dataCheck, setDataCheck] = createSignal<DataCheck | null>(null);
+  const [checkedRange, setCheckedRange] = createSignal<{ from: string; to: string } | null>(null);
   const [models, setModels] = createSignal<ModelBundle[]>([]);
-  const [loadError, setLoadError] = createSignal<string | null>(null);
+  const [checking, setChecking] = createSignal(false);
+  const [checkError, setCheckError] = createSignal<string | null>(null);
+  const [trainError, setTrainError] = createSignal<string | null>(null);
   const [submitting, setSubmitting] = createSignal(false);
+  const [confirmPending, setConfirmPending] = createSignal(false);
 
   const ts = () => props.trainState();
   const isRunning = () => ts().status === "running";
 
-  async function refreshData() {
+  // Invalidate data check when date range changes
+  createEffect(on(
+    () => [dateFrom(), dateTo()],
+    () => { setDataCheck(null); setCheckedRange(null); setCheckError(null); },
+    { defer: true },
+  ));
+
+  // Auto-refresh models when training completes
+  createEffect(on(
+    () => ts().status,
+    (status, prevStatus) => {
+      if (prevStatus === "running" && status === "complete") {
+        refreshModels();
+      }
+    },
+  ));
+
+  const canTrain = createMemo(() => {
+    if (synthetic()) return true;
+    const dc = dataCheck();
+    if (!dc) return false;
+    return dc.total_feature_rows > 0 && dc.label_span_count > 0;
+  });
+
+  const trainDisabledReason = createMemo(() => {
+    if (synthetic()) return null;
+    if (!dataCheck()) return "Check data before training";
+    const dc = dataCheck()!;
+    if (dc.total_feature_rows === 0) return "No feature rows in selected range";
+    if (dc.label_span_count === 0) return "No label spans in selected range";
+    return null;
+  });
+
+  function sortModels(ml: ModelBundle[]) {
+    return ml
+      .filter((m) => m.valid)
+      .sort((a, b) => {
+        if (a.created_at && b.created_at) return b.created_at.localeCompare(a.created_at);
+        return 0;
+      });
+  }
+
+  async function refreshModels() {
     try {
-      setLoadError(null);
+      const ml = await listModels();
+      setModels(sortModels(ml));
+    } catch { /* non-critical */ }
+  }
+
+  async function handleCheckData() {
+    if (checking()) return;
+    setChecking(true);
+    setCheckError(null);
+    try {
       const [dc, ml] = await Promise.all([
         trainDataCheck(dateFrom(), dateTo()),
         listModels(),
       ]);
       setDataCheck(dc);
-      setModels(ml.filter((m) => m.valid).sort((a, b) => {
-        if (a.created_at && b.created_at) return b.created_at.localeCompare(a.created_at);
-        return 0;
-      }));
+      setCheckedRange({ from: dateFrom(), to: dateTo() });
+      setModels(sortModels(ml));
     } catch (e: any) {
-      setLoadError(e?.message ?? "Failed to load data");
+      setCheckError(e?.message ?? "Failed to check data");
+    } finally {
+      setChecking(false);
     }
   }
 
-  refreshData();
+  // Only load models on mount (not data check -- user must click Check Data)
+  refreshModels();
 
   async function handleTrain() {
     if (submitting()) return;
+    if (!confirmPending()) {
+      setConfirmPending(true);
+      return;
+    }
+    setConfirmPending(false);
     setSubmitting(true);
+    setTrainError(null);
     try {
       await startTraining({
         date_from: dateFrom(),
@@ -284,7 +341,7 @@ const TrainingPanel: Component<{
         synthetic: synthetic(),
       });
     } catch (e: any) {
-      setLoadError(e?.message ?? "Failed to start training");
+      setTrainError(e?.message ?? "Failed to start training");
     } finally {
       setSubmitting(false);
     }
@@ -294,7 +351,7 @@ const TrainingPanel: Component<{
     try {
       await cancelTraining();
     } catch (e: any) {
-      setLoadError(e?.message ?? "Failed to cancel");
+      setTrainError(e?.message ?? "Failed to cancel");
     }
   }
 
@@ -310,15 +367,16 @@ const TrainingPanel: Component<{
     "box-sizing": "border-box" as const,
   };
 
-  const btnStyle = (variant: "primary" | "danger" | "ghost" = "primary") => ({
+  const btnStyle = (variant: "primary" | "danger" | "ghost" = "primary", disabled = false) => ({
     padding: "4px 10px",
     border: "none",
     "border-radius": "5px",
     "font-size": "0.63rem",
     "font-family": "inherit",
     "font-weight": "600",
-    cursor: "pointer",
+    cursor: disabled ? "not-allowed" : "pointer",
     transition: "all 0.15s ease",
+    opacity: disabled ? 0.6 : 1,
     ...(variant === "primary"
       ? { background: "#6366f1", color: "#fff" }
       : variant === "danger"
@@ -350,7 +408,13 @@ const TrainingPanel: Component<{
             />
           </div>
         </div>
-        <button onClick={refreshData} style={btnStyle("ghost")}>Check Data</button>
+        <button
+          onClick={handleCheckData}
+          disabled={checking()}
+          style={btnStyle("ghost", checking())}
+        >
+          {checking() ? "Checking…" : "Check Data"}
+        </button>
         <Show when={dataCheck()}>
           <div style={{ "margin-top": "4px" }}>
             <Row label="features_days" value={`${dataCheck()!.dates_with_features.length} / ${dataCheck()!.dates_with_features.length + dataCheck()!.dates_missing_features.length}`} />
@@ -361,14 +425,25 @@ const TrainingPanel: Component<{
             </Show>
           </div>
         </Show>
-        <Show when={loadError()}>
-          <div style={{ color: "#ef4444", "margin-top": "3px", "font-size": "0.58rem" }}>{loadError()}</div>
+        <Show when={checkError()}>
+          <div
+            style={{ color: "#ef4444", "margin-top": "3px", "font-size": "0.58rem", display: "flex", "justify-content": "space-between", "align-items": "center" }}
+          >
+            <span>{checkError()}</span>
+            <span onClick={() => setCheckError(null)} style={{ cursor: "pointer", "margin-left": "4px", opacity: 0.7 }}>✕</span>
+          </div>
         </Show>
       </Section>
 
       {/* Train form */}
       <Section title="Train Model" defaultOpen>
-        <div style={{ display: "flex", "flex-direction": "column", gap: "4px" }}>
+        <div style={{
+          display: "flex",
+          "flex-direction": "column",
+          gap: "4px",
+          opacity: canTrain() || isRunning() ? 1 : 0.5,
+          transition: "opacity 0.2s ease",
+        }}>
           <div style={{ display: "flex", gap: "4px", "align-items": "center" }}>
             <div style={{ flex: 1 }}>
               <label style={{ color: "#9a9a9a", "font-size": "0.58rem" }}>Boost Rounds</label>
@@ -379,6 +454,7 @@ const TrainingPanel: Component<{
                 step="10"
                 value={boostRounds()}
                 onInput={(e) => setBoostRounds(parseInt(e.currentTarget.value) || 100)}
+                disabled={!canTrain() && !isRunning()}
                 style={inputStyle}
               />
             </div>
@@ -387,6 +463,7 @@ const TrainingPanel: Component<{
               <select
                 value={classWeight()}
                 onChange={(e) => setClassWeight(e.currentTarget.value as "balanced" | "none")}
+                disabled={!canTrain() && !isRunning()}
                 style={inputStyle}
               >
                 <option value="balanced">balanced</option>
@@ -403,25 +480,55 @@ const TrainingPanel: Component<{
             />
             Synthetic data (no real data needed)
           </label>
-          <div style={{ display: "flex", gap: "4px", "margin-top": "2px" }}>
+          <Show when={checkedRange() && !synthetic()}>
+            <div style={{ "font-size": "0.56rem", color: "#808080", "margin-top": "1px" }}>
+              Training range: {checkedRange()!.from} — {checkedRange()!.to}
+            </div>
+          </Show>
+          <div style={{ display: "flex", gap: "4px", "align-items": "center", "margin-top": "2px" }}>
             <Show
               when={!isRunning()}
               fallback={
                 <button onClick={handleCancel} style={btnStyle("danger")}>Cancel Training</button>
               }
             >
-              <button
-                onClick={handleTrain}
-                disabled={submitting()}
-                style={{
-                  ...btnStyle("primary"),
-                  opacity: submitting() ? 0.6 : 1,
-                }}
-              >
-                {submitting() ? "Starting…" : "Train Model"}
-              </button>
+              <Show when={confirmPending()} fallback={
+                <button
+                  onClick={handleTrain}
+                  disabled={submitting() || !canTrain()}
+                  style={btnStyle("primary", submitting() || !canTrain())}
+                >
+                  {submitting() ? "Starting…" : "Train Model"}
+                </button>
+              }>
+                <button
+                  onClick={handleTrain}
+                  style={btnStyle("primary")}
+                >
+                  Confirm
+                </button>
+                <button
+                  onClick={() => setConfirmPending(false)}
+                  style={btnStyle("ghost")}
+                >
+                  Cancel
+                </button>
+              </Show>
             </Show>
           </div>
+          <Show when={trainDisabledReason() && !synthetic()}>
+            <div style={{ "font-size": "0.56rem", color: "#808080", "margin-top": "1px" }}>
+              {trainDisabledReason()}
+            </div>
+          </Show>
+          <Show when={trainError()}>
+            <div
+              style={{ color: "#ef4444", "margin-top": "3px", "font-size": "0.58rem", display: "flex", "justify-content": "space-between", "align-items": "center" }}
+            >
+              <span>{trainError()}</span>
+              <span onClick={() => setTrainError(null)} style={{ cursor: "pointer", "margin-left": "4px", opacity: 0.7 }}>✕</span>
+            </div>
+          </Show>
         </div>
       </Section>
 
@@ -477,14 +584,6 @@ const TrainingPanel: Component<{
           <Show when={ts().model_dir}>
             <Row label="model_dir" value={ts().model_dir!.split("/").pop() ?? ts().model_dir!} dim mono />
           </Show>
-          <Show when={ts().status === "complete"}>
-            <button
-              onClick={() => refreshData()}
-              style={{ ...btnStyle("ghost"), "margin-top": "4px" }}
-            >
-              Refresh Models
-            </button>
-          </Show>
         </Section>
       </Show>
 
@@ -512,7 +611,7 @@ const TrainingPanel: Component<{
           </For>
         </Show>
         <button
-          onClick={refreshData}
+          onClick={refreshModels}
           style={{ ...btnStyle("ghost"), "margin-top": "4px" }}
         >
           Refresh
