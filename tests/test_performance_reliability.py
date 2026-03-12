@@ -62,11 +62,67 @@ def test_tc_perf_002_duckdb_query_performance() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skip(
-    reason="TODO: remove .skip once infer/online.py real-time predictor loop is implemented"
-)
-def test_tc_rel_001_online_handles_missing_minute() -> None:
-    """TC-REL-001: online inference handles missing minute gracefully (no crash)."""
+def test_tc_rel_001_online_handles_missing_minute(tmp_path: Path) -> None:
+    """TC-REL-001: online inference handles missing minute gracefully (no crash).
+
+    Feeds an OnlinePredictor consecutive buckets with a 5-minute gap in
+    the middle and asserts that it produces valid predictions and
+    segments without errors.
+    """
+    import datetime as dt
+
+    from typer.testing import CliRunner
+
+    from taskclf.cli.main import app
+    from taskclf.core.model_io import load_model_bundle
+    from taskclf.core.types import LABEL_SET_V1
+    from taskclf.core.defaults import MIXED_UNKNOWN
+    from taskclf.features.build import generate_dummy_features
+    from taskclf.infer.online import OnlinePredictor
+
+    runner = CliRunner()
+    models_dir = tmp_path / "models"
+    result = runner.invoke(app, [
+        "train", "lgbm",
+        "--from", "2025-06-14",
+        "--to", "2025-06-15",
+        "--synthetic",
+        "--models-dir", str(models_dir),
+        "--num-boost-round", "5",
+    ])
+    assert result.exit_code == 0, result.output
+    model_dir = next(models_dir.iterdir())
+
+    model, metadata, cat_encoders = load_model_bundle(model_dir)
+    predictor = OnlinePredictor(
+        model, metadata, cat_encoders=cat_encoders, smooth_window=3,
+    )
+
+    valid_labels = LABEL_SET_V1 | {MIXED_UNKNOWN}
+
+    rows_before = generate_dummy_features(dt.date(2025, 6, 15), n_rows=3)
+    rows_after = generate_dummy_features(dt.date(2025, 6, 15), n_rows=3)
+
+    gap = dt.timedelta(minutes=5)
+    last_ts = rows_before[-1].bucket_start_ts
+    rows_after_shifted = []
+    for i, row in enumerate(rows_after):
+        new_start = last_ts + gap + dt.timedelta(minutes=i + 1)
+        new_end = new_start + dt.timedelta(seconds=60)
+        rows_after_shifted.append(row.model_copy(update={
+            "bucket_start_ts": new_start,
+            "bucket_end_ts": new_end,
+        }))
+
+    all_rows = list(rows_before) + rows_after_shifted
+    for row in all_rows:
+        pred = predictor.predict_bucket(row)
+        assert pred.mapped_label_name in valid_labels
+
+    segments = predictor.get_segments()
+    assert len(segments) >= 1
+    total_buckets = sum(s.bucket_count for s in segments)
+    assert total_buckets == len(all_rows)
 
 
 # ---------------------------------------------------------------------------
