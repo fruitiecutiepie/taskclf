@@ -64,14 +64,14 @@ export const TrainingPanel: Component<{
     if (synthetic()) return true;
     const dc = dataCheck();
     if (!dc) return false;
-    return dc.total_feature_rows > 0 && dc.label_span_count > 0;
+    return dc.dates_with_features.length > 0 && dc.label_span_count > 0;
   });
 
   const trainDisabledReason = createMemo(() => {
     if (synthetic()) return null;
-    if (!dataCheck()) return "Check data before training";
+    if (!dataCheck()) return "Prepare data before training";
     const dc = dataCheck()!;
-    if (dc.total_feature_rows === 0) return "No feature rows in selected range";
+    if (dc.dates_with_features.length === 0) return "No feature data in selected range";
     if (dc.label_span_count === 0) return "No label spans in selected range";
     return null;
   });
@@ -202,16 +202,15 @@ export const TrainingPanel: Component<{
           disabled={checking()}
           style={btnStyle("ghost", checking())}
         >
-          {checking() ? "Checking…" : "Check Data"}
+          {checking() ? "Preparing…" : "Prepare Data"}
         </button>
         <Show when={dataCheck()}>
           <div style={{ "margin-top": "4px" }}>
-            <StatusRow label="features_days" value={`${dataCheck()!.dates_with_features.length} / ${dataCheck()!.dates_with_features.length + dataCheck()!.dates_missing_features.length}`} />
-            <StatusRow label="feature_rows" value={String(dataCheck()!.total_feature_rows)} />
-            <StatusRow label="label_spans" value={String(dataCheck()!.label_span_count)} />
-            <Show when={dataCheck()!.dates_missing_features.length > 0}>
-              <StatusRow label="missing_dates" value={String(dataCheck()!.dates_missing_features.length)} color="#f59e0b" />
+            <Show when={dataCheck()!.dates_built.length > 0}>
+              <StatusRow label="built" value={`${dataCheck()!.dates_built.length} day(s) from AW`} color="#22c55e" />
             </Show>
+            <StatusRow label="features_days" value={`${dataCheck()!.dates_with_features.length} / ${dataCheck()!.dates_with_features.length + dataCheck()!.dates_missing_features.length}`} />
+            <StatusRow label="label_spans" value={String(dataCheck()!.label_span_count)} />
           </div>
         </Show>
         <Show when={checkError()}>

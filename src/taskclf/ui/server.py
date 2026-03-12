@@ -217,6 +217,8 @@ class DataCheckResponse(BaseModel):
     dates_missing_features: list[str]
     total_feature_rows: int
     label_span_count: int
+    dates_built: list[str] = []
+    build_errors: list[str] = []
 
 
 @dataclass
@@ -1038,7 +1040,10 @@ def create_app(
                     "message": job.message,
                 })
 
-                build_features_for_date(current, data_dir)
+                build_features_for_date(
+                    current, data_dir,
+                    aw_host=aw_host, title_salt=title_salt,
+                )
                 built += 1
                 current += dt.timedelta(days=1)
 
@@ -1174,8 +1179,28 @@ def create_app(
         date_from: str = Query(..., description="Start date (YYYY-MM-DD)"),
         date_to: str = Query(..., description="End date (YYYY-MM-DD)"),
     ) -> DataCheckResponse:
+        from taskclf.features.build import build_features_for_date
+
         start = dt.date.fromisoformat(date_from)
         end = dt.date.fromisoformat(date_to)
+
+        dates_built: list[str] = []
+        build_errors: list[str] = []
+
+        current = start
+        while current <= end:
+            fp = data_dir / f"features_v1/date={current.isoformat()}" / "features.parquet"
+            if not fp.exists():
+                try:
+                    build_features_for_date(
+                        current, data_dir,
+                        aw_host=aw_host, title_salt=title_salt,
+                    )
+                    dates_built.append(current.isoformat())
+                except Exception as exc:
+                    build_errors.append(f"{current}: {exc}")
+            current += dt.timedelta(days=1)
+
         current = start
         dates_with: list[str] = []
         dates_missing: list[str] = []
@@ -1184,12 +1209,16 @@ def create_app(
         while current <= end:
             fp = data_dir / f"features_v1/date={current.isoformat()}" / "features.parquet"
             if fp.exists():
-                dates_with.append(current.isoformat())
                 try:
                     df = read_parquet(fp)
-                    total_rows += len(df)
+                    n = len(df)
                 except Exception:
-                    pass
+                    n = 0
+                if n > 0:
+                    dates_with.append(current.isoformat())
+                    total_rows += n
+                else:
+                    dates_missing.append(current.isoformat())
             else:
                 dates_missing.append(current.isoformat())
             current += dt.timedelta(days=1)
@@ -1215,6 +1244,8 @@ def create_app(
             dates_missing_features=dates_missing,
             total_feature_rows=total_rows,
             label_span_count=label_count,
+            dates_built=dates_built,
+            build_errors=build_errors,
         )
 
     # -- WebSocket ------------------------------------------------------------

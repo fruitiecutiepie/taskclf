@@ -185,6 +185,8 @@ export interface DataCheck {
   dates_missing_features: string[];
   total_feature_rows: number;
   label_span_count: number;
+  dates_built: string[];
+  build_errors: string[];
 }
 
 export async function startTraining(params: {

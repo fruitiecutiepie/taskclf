@@ -102,7 +102,10 @@ List available model bundles from the models directory.
 
 ### `GET /api/train/data-check`
 
-Check data readiness for a date range.
+Prepare data for a date range.  For any date without an existing
+`features.parquet`, the endpoint automatically fetches events from
+the running ActivityWatch server and builds feature rows before
+reporting totals.
 
 **Query parameters:**
 
@@ -117,12 +120,17 @@ Check data readiness for a date range.
 {
   "date_from": "2026-02-01",
   "date_to": "2026-03-01",
-  "dates_with_features": ["2026-02-01", "2026-02-02"],
-  "dates_missing_features": ["2026-02-03"],
-  "total_feature_rows": 1440,
-  "label_span_count": 25
+  "dates_with_features": ["2026-02-01", "2026-02-02", "2026-02-03"],
+  "dates_missing_features": [],
+  "total_feature_rows": 4320,
+  "label_span_count": 25,
+  "dates_built": ["2026-02-03"],
+  "build_errors": []
 }
 ```
+
+- `dates_built` — dates where features were freshly built from AW during this call.
+- `build_errors` — per-date error messages if AW was unreachable or returned no data.
 
 ## WebSocket Events
 
@@ -182,8 +190,9 @@ suggester. No manual model-switch is required.
 The training UI is accessible via the "training" tab in the StatePanel.
 It provides:
 
-- **Data Readiness** — date range picker and data check showing feature
-  coverage and label span counts.
+- **Data Readiness** — date range picker and "Prepare Data" button that
+  auto-builds missing features from ActivityWatch before showing
+  feature coverage and label span counts.
 - **Train Form** — configurable boost rounds, class weight, synthetic
   data toggle, and a "Train Model" button.
 - **Progress Indicator** — real-time step, message, and progress bar
