@@ -6,8 +6,10 @@ import {
   type Component,
 } from "solid-js";
 import { LabelGrid } from "./components/LabelGrid";
-import { LiveBadge } from "./components/LiveBadge";
-import { StatePanel } from "./components/StatePanel";
+import { PredictionBadge } from "./components/PredictionBadge";
+import { StatusPanel } from "./components/StatusPanel";
+import { LabelShell } from "./components/LabelShell";
+import { StatusShell } from "./components/StatusShell";
 import {
   requestPermission,
   showTransitionNotification,
@@ -19,7 +21,6 @@ const viewParam = new URLSearchParams(window.location.search).get("view");
 const isPanelView = viewParam === "panel";
 const isLabelView = viewParam === "label";
 
-// Dimensions matching window.py (_COMPACT_SIZE, _LABEL_SIZE, _PANEL_SIZE)
 const COMPACT_W = 150;
 const CONTENT_W = 280;
 const LABEL_MAX_H = 330;
@@ -32,153 +33,9 @@ if (!isBrowserMode()) {
   document.body.style.background = "transparent";
 }
 
-/* ---------- Label grid window (standalone pywebview) ---------- */
-
-const LabelApp: Component = () => {
-  const ws = useWebSocket();
-  const inBrowser = isBrowserMode();
-
-  function collapse() {
-    host.invoke({ cmd: "toggleLabelGrid" });
-  }
-
-  return (
-    <div
-      onMouseEnter={() => {
-        if (!inBrowser) host.invoke({ cmd: "cancelLabelHide" });
-      }}
-      onMouseLeave={() => {
-        if (!inBrowser) host.invoke({ cmd: "hideLabelGrid" });
-      }}
-      style={{
-        ...(inBrowser
-          ? {
-              display: "flex",
-              "justify-content": "center",
-              "padding-top": "32px",
-              "min-height": "100vh",
-              background: "url('/bliss.png') center/cover no-repeat fixed",
-            }
-          : {}),
-      }}
-    >
-      <div
-        style={{
-          background: "var(--bg)",
-          width: inBrowser ? `${CONTENT_W}px` : "100%",
-          ...(inBrowser
-            ? { "max-height": `${LABEL_MAX_H}px` }
-            : { height: "100vh", display: "flex", "flex-direction": "column" }),
-          "overflow-y": "auto",
-          "border-radius": inBrowser ? "12px" : "0",
-        }}
-      >
-        <Show when={!inBrowser}>
-          <div
-            class="pywebview-drag-region"
-            style={{
-              height: "10px",
-              cursor: "grab",
-              "flex-shrink": "0",
-              display: "flex",
-              "justify-content": "center",
-              "align-items": "center",
-            }}
-          >
-            <div
-              style={{
-                width: "32px",
-                height: "3px",
-                "border-radius": "2px",
-                background: "rgba(255,255,255,0.15)",
-              }}
-            />
-          </div>
-        </Show>
-        <LabelGrid onCollapse={collapse} prediction={ws.latestPrediction} />
-      </div>
-    </div>
-  );
-};
-
-/* ---------- State panel window (standalone pywebview) ---------- */
-
-const PanelApp: Component = () => {
-  const ws = useWebSocket();
-  const inBrowser = isBrowserMode();
-
-  return (
-    <div
-      onMouseEnter={() => {
-        if (!inBrowser) host.invoke({ cmd: "cancelPanelHide" });
-      }}
-      onMouseLeave={() => {
-        if (!inBrowser) host.invoke({ cmd: "hideStatePanel" });
-      }}
-      style={{
-        ...(inBrowser
-          ? {
-              display: "flex",
-              "justify-content": "center",
-              "padding-top": "32px",
-              "min-height": "100vh",
-              background: "url('/bliss.png') center/cover no-repeat fixed",
-            }
-          : {}),
-      }}
-    >
-      <div
-        style={{
-          background: "transparent",
-          width: inBrowser ? `${CONTENT_W}px` : "100%",
-          ...(inBrowser
-            ? { "max-height": `${PANEL_MAX_H}px` }
-            : { height: "100vh", display: "flex", "flex-direction": "column" }),
-          overflow: "auto",
-          padding: "4px",
-        }}
-      >
-        <Show when={!inBrowser}>
-          <div
-            class="pywebview-drag-region"
-            style={{
-              height: "10px",
-              cursor: "grab",
-              "flex-shrink": "0",
-              display: "flex",
-              "justify-content": "center",
-              "align-items": "center",
-            }}
-          >
-            <div
-              style={{
-                width: "32px",
-                height: "3px",
-                "border-radius": "2px",
-                background: "rgba(255,255,255,0.15)",
-              }}
-            />
-          </div>
-        </Show>
-        <StatePanel
-          status={ws.connectionStatus}
-          latestStatus={ws.latestStatus}
-          latestPrediction={ws.latestPrediction}
-          latestTrayState={ws.latestTrayState}
-          activeSuggestion={ws.activeSuggestion}
-          wsStats={ws.wsStats}
-          trainState={ws.trainState}
-        />
-      </div>
-    </div>
-  );
-};
-
-/* ---------- Main pill window ---------- */
-
 const App: Component = () => {
-  if (isLabelView) return <LabelApp />;
-  if (isPanelView) return <PanelApp />;
+  if (isLabelView) return <LabelShell />;
+  if (isPanelView) return <StatusShell />;
 
   const inBrowser = isBrowserMode();
   const [labelPinned, setLabelPinned] = createSignal(false);
@@ -276,7 +133,7 @@ const App: Component = () => {
               "user-select": "none",
             }}
           >
-            <LiveBadge
+            <PredictionBadge
               status={ws.connectionStatus}
               latestStatus={ws.latestStatus}
               latestPrediction={ws.latestPrediction}
@@ -338,7 +195,6 @@ const App: Component = () => {
           </div>
         </div>
 
-        {/* Inline label grid for browser mode preview */}
         <Show when={inBrowser && labelVisible()}>
           <div
             onMouseEnter={() => setLabelHovered(true)}
@@ -364,7 +220,6 @@ const App: Component = () => {
         </Show>
       </div>
 
-      {/* Inline state panel for browser mode preview */}
       <Show when={inBrowser && panelVisible()}>
         <div
           onMouseEnter={() => setPanelHovered(true)}
@@ -376,7 +231,7 @@ const App: Component = () => {
             "margin-top": "4px",
           }}
         >
-          <StatePanel
+          <StatusPanel
             status={ws.connectionStatus}
             latestStatus={ws.latestStatus}
             latestPrediction={ws.latestPrediction}

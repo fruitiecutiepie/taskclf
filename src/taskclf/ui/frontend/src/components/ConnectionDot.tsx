@@ -1,8 +1,8 @@
 import { type Accessor, type Component, createSignal } from "solid-js";
 import type { ConnectionStatus } from "../lib/ws";
-import { dotColor } from "./StatePanel";
+import { dotColor } from "../lib/labelColors";
 
-export const LiveBadgeConnectionStatus: Component<{
+export const ConnectionDot: Component<{
   status: Accessor<ConnectionStatus>;
   panelPinned?: Accessor<boolean>;
   onTogglePanel?: () => void;

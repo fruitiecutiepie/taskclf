@@ -1,9 +1,9 @@
 import { type Accessor, type Component } from "solid-js";
 import type { ConnectionStatus, LabelSuggestion, Prediction, StatusEvent, TrayState } from "../lib/ws";
-import { LABEL_COLORS } from "./StatePanel";
-import { LiveBadgeConnectionStatus } from "./LiveBadgeConnectionStatus";
+import { LABEL_COLORS } from "../lib/labelColors";
+import { ConnectionDot } from "./ConnectionDot";
 
-export const LiveBadge: Component<{
+export const PredictionBadge: Component<{
   status: Accessor<ConnectionStatus>;
   latestStatus: Accessor<StatusEvent | null>;
   latestPrediction: Accessor<Prediction | null>;
@@ -72,7 +72,7 @@ export const LiveBadge: Component<{
       >
         {badgeText()}
       </span>
-      <LiveBadgeConnectionStatus
+      <ConnectionDot
         status={props.status}
         panelPinned={props.panelPinned}
         onTogglePanel={props.onTogglePanel}

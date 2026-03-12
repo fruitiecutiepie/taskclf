@@ -1,7 +1,7 @@
 import { type Component, createResource, For, Show } from "solid-js";
 import { fetchLabels } from "../lib/api";
 
-export const History: Component = () => {
+export const LabelTable: Component = () => {
   const [labels] = createResource(async () => fetchLabels(50));
 
   return (

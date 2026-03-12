@@ -1,18 +1,9 @@
 import { createSignal, createResource, For, Show, type Accessor, type Component } from "solid-js";
 import { createLabel, fetchCoreLabels, fetchLabels } from "../lib/api";
 import type { Prediction } from "../lib/ws";
-import { ActivityContext } from "./ActivityContext";
-
-const LABEL_COLORS: Record<string, string> = {
-  Build: "#6366f1",
-  Debug: "#f59e0b",
-  Review: "#8b5cf6",
-  Write: "#3b82f6",
-  ReadResearch: "#14b8a6",
-  Communicate: "#f97316",
-  Meet: "#ec4899",
-  BreakIdle: "#6b7280",
-};
+import { parseISODate, timeAgo } from "../lib/date";
+import { LABEL_COLORS } from "../lib/labelColors";
+import { ActivitySummary } from "./ActivitySummary";
 
 const MINUTE_OPTIONS = [0, 1, 5, 15, 30, 60] as const;
 type TimeUnit = "s" | "m" | "h" | "d";
@@ -31,21 +22,6 @@ interface LabelGridProps {
   maxHeight?: number;
   onCollapse: () => void;
   prediction?: Accessor<Prediction | null>;
-}
-
-function parseISODate(iso: string): Date {
-  return new Date(iso);
-}
-
-function timeAgo(iso: string): string {
-  const d = parseISODate(iso);
-  const mins = Math.round((Date.now() - d.getTime()) / 60_000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const h = Math.floor(mins / 60);
-  if (h < 24) return `${h}h ago`;
-  const days = Math.floor(h / 24);
-  return `${days}d ago`;
 }
 
 export const LabelGrid: Component<LabelGridProps> = (props) => {
@@ -407,7 +383,7 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
         </div>
       </div>
 
-      <ActivityContext minutes={selectedMinutes} prediction={props.prediction} />
+      <ActivitySummary minutes={selectedMinutes} prediction={props.prediction} />
 
       <div
         onClick={toggleExtendFwd}

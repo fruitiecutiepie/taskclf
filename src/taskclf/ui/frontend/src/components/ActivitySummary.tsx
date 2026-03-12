@@ -1,34 +1,12 @@
 import { type Accessor, type Component, createResource, For, Show } from "solid-js";
 import { fetchAWLive, fetchFeatureSummary } from "../lib/api";
 import type { Prediction } from "../lib/ws";
-import { LABEL_COLORS } from "./StatePanel";
+import { LABEL_COLORS } from "../lib/labelColors";
+import { shortAppName, fmtRate } from "../lib/format";
+import type { TimeRange } from "../lib/date";
+import { timeRangeForMinutes } from "../lib/date";
 
-function shortAppName(app: string): string {
-  const parts = app.split(".");
-  return parts[parts.length - 1];
-}
-
-function fmtRate(v: number | null): string | null {
-  if (v == null) return null;
-  return v < 10 ? v.toFixed(1) : String(Math.round(v));
-}
-
-export interface TimeRange {
-  start: string;
-  end: string;
-}
-
-function timeRangeForMinutes(mins: number): TimeRange | null {
-  if (mins < 1) return null;
-  const now = new Date();
-  const start = new Date(now.getTime() - mins * 60_000);
-  return {
-    start: start.toISOString(),
-    end: now.toISOString(),
-  };
-}
-
-export const ActivityContext: Component<{
+export const ActivitySummary: Component<{
   minutes?: Accessor<number>;
   timeRange?: Accessor<TimeRange | null>;
   prediction?: Accessor<Prediction | null>;
@@ -123,7 +101,6 @@ export const ActivityContext: Component<{
           }
         >
           <div style={containerStyle}>
-            {/* Model prediction */}
             <Show when={pred()}>
               <div
                 style={{
@@ -150,7 +127,6 @@ export const ActivityContext: Component<{
               </div>
             </Show>
 
-            {/* Top apps: prefer AW live, fall back to feature-derived */}
             <Show when={hasApps()}>
               <div
                 style={{
@@ -212,7 +188,6 @@ export const ActivityContext: Component<{
               </div>
             </Show>
 
-            {/* Input stats + coverage */}
             <Show when={hasStats() || hasCoverage()}>
               <div
                 style={{

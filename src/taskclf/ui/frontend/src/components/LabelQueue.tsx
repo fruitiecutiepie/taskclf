@@ -6,7 +6,7 @@ import {
 } from "solid-js";
 import { fetchQueue, markQueueDone } from "../lib/api";
 
-export const QueuePanel: Component = () => {
+export const LabelQueue: Component = () => {
   const [queue, { refetch }] = createResource(async () => fetchQueue(20));
 
   async function skip(requestId: string) {

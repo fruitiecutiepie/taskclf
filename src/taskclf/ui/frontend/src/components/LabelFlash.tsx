@@ -1,12 +1,12 @@
 import type { Component } from "solid-js";
 import { Show } from "solid-js";
-import { LABEL_COLORS } from "./StatePanel";
+import { LABEL_COLORS } from "../lib/labelColors";
 
-interface FlashMessageProps {
+interface LabelFlashProps {
   flash: string;
 }
 
-export const FlashMessage: Component<FlashMessageProps> = (props) => {
+export const LabelFlash: Component<LabelFlashProps> = (props) => {
   const isError = () => props.flash.startsWith("Error");
   const labelColor = () => LABEL_COLORS[props.flash] ?? "#22c55e";
 

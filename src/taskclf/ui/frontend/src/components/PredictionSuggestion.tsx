@@ -2,7 +2,7 @@ import { type Accessor, type Component, Show, createSignal } from "solid-js";
 import type { LabelSuggestion } from "../lib/ws";
 import { createLabel } from "../lib/api";
 
-export const SuggestionBanner: Component<{
+export const PredictionSuggestion: Component<{
   suggestion: Accessor<LabelSuggestion | null>;
 }> = (props) => {
   const s = () => props.suggestion();
