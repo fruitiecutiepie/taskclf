@@ -5,6 +5,7 @@ Covers:
 - A2  labels label-now     (TC-CLI-LN-001 .. TC-CLI-LN-005)
 - A3  labels show-queue    (TC-CLI-SQ-001 .. TC-CLI-SQ-004)
 - A4  labels project       (TC-CLI-LP-001 .. TC-CLI-LP-004)
+- A4b labels export        (TC-CLI-LE-001 .. TC-CLI-LE-003)
 - A5  train build-dataset  (TC-CLI-BD-001 .. TC-CLI-BD-003)
 - A6  train evaluate       (TC-CLI-EV-001 .. TC-CLI-EV-004)
 - A7  train tune-reject    (TC-CLI-TR-001 .. TC-CLI-TR-003)
@@ -397,6 +398,58 @@ class TestLabelsProject:
         assert result.exit_code == 0, result.output
         assert "Projected" in result.output
         assert "labeled windows" in result.output
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# A4b  labels export
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestLabelsExport:
+    """TC-CLI-LE: `taskclf labels export` CLI wiring."""
+
+    def test_round_trip(self, tmp_path: Path) -> None:
+        """TC-CLI-LE-001: exit 0 and CSV written with expected columns."""
+        data_dir = tmp_path / "data"
+        _import_labels(data_dir, tmp_path)
+
+        csv_out = tmp_path / "exported.csv"
+        result = runner.invoke(app, [
+            "labels", "export",
+            "--out", str(csv_out),
+            "--data-dir", str(data_dir),
+        ])
+        assert result.exit_code == 0, result.output
+        assert csv_out.exists()
+        df = pd.read_csv(csv_out)
+        assert len(df) == 2
+        for col in ("start_ts", "end_ts", "label", "provenance"):
+            assert col in df.columns
+
+    def test_missing_parquet(self, tmp_path: Path) -> None:
+        """TC-CLI-LE-002: exit 1 when labels.parquet does not exist."""
+        data_dir = tmp_path / "empty"
+        data_dir.mkdir()
+        csv_out = tmp_path / "exported.csv"
+        result = runner.invoke(app, [
+            "labels", "export",
+            "--out", str(csv_out),
+            "--data-dir", str(data_dir),
+        ])
+        assert result.exit_code == 1
+
+    def test_default_output_path(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """TC-CLI-LE-003: without --out the file is written to labels.csv in cwd."""
+        data_dir = tmp_path / "data"
+        _import_labels(data_dir, tmp_path)
+
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(app, [
+            "labels", "export",
+            "--data-dir", str(data_dir),
+        ])
+        assert result.exit_code == 0, result.output
+        assert (tmp_path / "labels.csv").exists()
 
 
 # ═══════════════════════════════════════════════════════════════════════════

@@ -437,6 +437,24 @@ def labels_show_queue_cmd(
     console.print(table)
 
 
+@labels_app.command("export")
+def labels_export_cmd(
+    out: str = typer.Option("labels.csv", "--out", "-o", help="Destination CSV file path"),
+    data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory"),
+) -> None:
+    """Export labels.parquet to CSV."""
+    from taskclf.labels.store import export_labels_to_csv
+
+    parquet_path = Path(data_dir) / "labels_v1" / "labels.parquet"
+    csv_path = Path(out)
+    try:
+        result = export_labels_to_csv(parquet_path, csv_path)
+        typer.echo(f"Exported labels -> {result}")
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1)
+
+
 @labels_app.command("project")
 def labels_project_cmd(
     date_from: str = typer.Option(..., "--from", help="Start date (YYYY-MM-DD)"),
