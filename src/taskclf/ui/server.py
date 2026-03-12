@@ -849,7 +849,16 @@ def create_app(
                     all_spans = _read_ls(lp)
                     start_dt = dt.datetime(start.year, start.month, start.day, tzinfo=dt.timezone.utc)
                     end_dt = dt.datetime(end.year, end.month, end.day, 23, 59, 59, tzinfo=dt.timezone.utc)
-                    all_labels = [s for s in all_spans if s.end_ts >= start_dt and s.start_ts <= end_dt]
+
+                    def _to_utc(ts: dt.datetime) -> dt.datetime:
+                        if ts.tzinfo is None:
+                            return ts.replace(tzinfo=dt.timezone.utc)
+                        return ts
+
+                    all_labels = [
+                        s for s in all_spans
+                        if _to_utc(s.end_ts) >= start_dt and _to_utc(s.start_ts) <= end_dt
+                    ]
 
             while current <= end:
                 if job._cancel.is_set():
