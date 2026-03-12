@@ -143,6 +143,24 @@ _PD_KIND_MAP: Final[dict[type, set[str]]] = {
 }
 
 
+def coerce_nullable_numeric(df: pd.DataFrame) -> pd.DataFrame:
+    """Convert nullable numeric columns from object (None) to float64 (NaN).
+
+    When ``FeatureRow.model_dump()`` emits ``None`` for ``Optional[float]``
+    fields, pandas stores the column as ``object`` dtype.  This helper
+    coerces those columns to ``float64`` so downstream validation and
+    parquet writing see the correct dtype.
+
+    The DataFrame is modified **in-place** and also returned for convenience.
+    """
+    for col, expected_type in _COLUMNS_V1.items():
+        if col not in df.columns:
+            continue
+        if expected_type in (float, int) and df[col].dtype.kind == "O":
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+    return df
+
+
 def _check_dataframe_dtypes(df: pd.DataFrame) -> None:
     errors: list[str] = []
     for col, expected_type in _COLUMNS_V1.items():

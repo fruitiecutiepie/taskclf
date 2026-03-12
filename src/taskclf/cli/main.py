@@ -143,6 +143,13 @@ def ingest_aw_cmd(
         )
 
 
+def _parquet_row_count(path: Path) -> int:
+    """Return the number of rows in a parquet file without reading data."""
+    import pyarrow.parquet as pq
+
+    return pq.read_metadata(path).num_rows
+
+
 # -- features ----------------------------------------------------------------
 features_app = typer.Typer()
 app.add_typer(features_app, name="features")
@@ -184,24 +191,43 @@ def features_build(
         raise typer.Exit(code=1)
 
     effective_host = None if synthetic else aw_host
+    data_path = Path(data_dir)
     current = start
-    total_days = 0
+    ok_days: list[dt.date] = []
+    empty_days: list[dt.date] = []
+    failed: list[tuple[dt.date, str]] = []
+
     while current <= end:
         try:
             out_path = build_features_for_date(
                 current,
-                Path(data_dir),
+                data_path,
                 aw_host=effective_host,
                 title_salt=title_salt,
                 synthetic=synthetic,
             )
-            typer.echo(f"  {current}: wrote features to {out_path}")
-            total_days += 1
+            row_count = _parquet_row_count(out_path)
+            if row_count == 0:
+                empty_days.append(current)
+            else:
+                ok_days.append(current)
         except Exception as exc:
-            typer.echo(f"  {current}: FAILED — {exc}", err=True)
+            failed.append((current, str(exc)))
         current += dt.timedelta(days=1)
 
-    typer.echo(f"Done — built features for {total_days} day(s).")
+    total = len(ok_days) + len(empty_days) + len(failed)
+    out_dir = data_path / "features_v1"
+    typer.echo(
+        f"Done — {total} day(s): {len(ok_days)} ok, "
+        f"{len(empty_days)} empty, {len(failed)} failed."
+    )
+    typer.echo(f"  output: {out_dir}")
+    if empty_days:
+        dates_str = ", ".join(d.isoformat() for d in empty_days)
+        typer.echo(f"  empty (no AW events): {dates_str}")
+    if failed:
+        for d, reason in failed:
+            typer.echo(f"  FAILED {d}: {reason}", err=True)
 
 
 # -- labels -------------------------------------------------------------------

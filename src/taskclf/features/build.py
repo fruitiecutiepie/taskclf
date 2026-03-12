@@ -23,7 +23,7 @@ from taskclf.core.defaults import (
     DEFAULT_TITLE_HASH_BUCKETS,
 )
 from taskclf.core.hashing import stable_hash
-from taskclf.core.schema import FeatureSchemaV1
+from taskclf.core.schema import FeatureSchemaV1, coerce_nullable_numeric
 from taskclf.core.store import write_parquet
 from taskclf.core.time import align_to_bucket
 from taskclf.core.types import Event, FeatureRow
@@ -511,13 +511,14 @@ def build_features_for_date(
             device_id=device_id,
         )
         if not rows:
-            logger.warning("No AW events found for %s — writing empty parquet", date)
+            logger.debug("No AW events found for %s — writing empty parquet", date)
     else:
         rows = generate_dummy_features(date, user_id=user_id, device_id=device_id)
 
     df = pd.DataFrame([r.model_dump() for r in rows])
 
     if not df.empty:
+        coerce_nullable_numeric(df)
         FeatureSchemaV1.validate_dataframe(df)
 
     out_path = (

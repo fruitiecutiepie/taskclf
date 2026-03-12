@@ -120,6 +120,26 @@ row = FeatureSchemaV1.validate_row(raw_dict)
 
 Returns the validated `FeatureRow` on success.
 
+## coerce_nullable_numeric
+
+Converts nullable numeric columns from `object` dtype (caused by
+`None` values from `FeatureRow.model_dump()`) to `float64` (with
+`NaN`).  Call this **before** `validate_dataframe` whenever a
+DataFrame is built from model-dumped rows that may contain `None` in
+numeric fields.
+
+The function modifies the DataFrame in place and also returns it for
+chaining convenience.
+
+```python
+import pandas as pd
+from taskclf.core.schema import FeatureSchemaV1, coerce_nullable_numeric
+
+df = pd.DataFrame([row.model_dump() for row in feature_rows])
+coerce_nullable_numeric(df)
+FeatureSchemaV1.validate_dataframe(df)
+```
+
 ## validate_dataframe
 
 Checks that a DataFrame has exactly the expected columns (no missing,
@@ -140,9 +160,10 @@ dtype checking.
 
 ```python
 import pandas as pd
-from taskclf.core.schema import FeatureSchemaV1
+from taskclf.core.schema import FeatureSchemaV1, coerce_nullable_numeric
 
 df = pd.DataFrame([row.model_dump() for row in feature_rows])
+coerce_nullable_numeric(df)
 FeatureSchemaV1.validate_dataframe(df)  # raises ValueError on mismatch
 ```
 
