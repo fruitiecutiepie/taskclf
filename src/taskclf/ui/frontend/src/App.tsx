@@ -9,7 +9,7 @@ import { LabelRecorder } from "./components/LabelRecorder";
 import { PredictionBadge } from "./components/PredictionBadge";
 import { StatusPanel } from "./components/StatusPanel";
 import { LabelRecorderWindow } from "./components/LabelRecorderWindow";
-import { StatusShell } from "./components/StatusShell";
+import { StatusPanelWindow } from "./components/StatusPanelWindow";
 import {
   requestPermission,
   showTransitionNotification,
@@ -35,7 +35,7 @@ if (!isBrowserMode()) {
 
 const App: Component = () => {
   if (isLabelView) return <LabelRecorderWindow />;
-  if (isPanelView) return <StatusShell />;
+  if (isPanelView) return <StatusPanelWindow />;
 
   const inBrowser = isBrowserMode();
   const [labelPinned, setLabelPinned] = createSignal(false);

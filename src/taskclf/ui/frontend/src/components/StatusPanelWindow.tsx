@@ -7,7 +7,7 @@ const CONTENT_W = 280;
 const PANEL_MAX_H = 520;
 const isBrowserMode = () => window.innerWidth > 300 && !host.isNativeWindow;
 
-export const StatusShell: Component = () => {
+export const StatusPanelWindow: Component = () => {
   const ws = useWebSocket();
   const inBrowser = isBrowserMode();
 
