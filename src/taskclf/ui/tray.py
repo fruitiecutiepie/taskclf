@@ -1056,6 +1056,7 @@ class TrayLabeler:
             return
 
         if self._ui_proc is not None and self._ui_proc.poll() is None:
+            logger.debug("Sending toggle to UI process (pid=%s)", self._ui_proc.pid)
             try:
                 self._ui_proc.stdin.write(b"toggle\n")
                 self._ui_proc.stdin.flush()
@@ -1063,6 +1064,7 @@ class TrayLabeler:
                 logger.debug("Could not send toggle to UI process", exc_info=True)
             return
 
+        logger.debug("No running UI process — spawning new window")
         self._spawn_window()
 
     def _quit(self, *_args: Any) -> None:

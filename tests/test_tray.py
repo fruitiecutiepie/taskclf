@@ -8,12 +8,13 @@ Covers:
 - _send_desktop_notification platform dispatch
 - _make_icon_image output
 - _LabelSuggester.suggest label prediction
-- No tests for pystray GUI (interactive widget, untestable in CI)
+- _run_inner lifecycle: --no-tray integration, pystray mock smoke, menu snapshot
 """
 
 from __future__ import annotations
 
 import datetime as dt
+import threading
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -3137,3 +3138,433 @@ class TestTrayCrashHandler:
             pytest.raises(KeyboardInterrupt),
         ):
             labeler.run()
+
+
+# ---------------------------------------------------------------------------
+# #63 — --no-tray integration tests (TC-TRAY-NOTRAY-*)
+# ---------------------------------------------------------------------------
+
+
+def _run_inner_patches(labeler: TrayLabeler):
+    """Context-manager stack for _run_inner tests: suppress logging, atexit, UI."""
+    from contextlib import ExitStack
+
+    stack = ExitStack()
+    stack.enter_context(patch("taskclf.core.logging.setup_file_logging"))
+    stack.enter_context(patch("atexit.register"))
+    stack.enter_context(patch.object(labeler, "_start_ui_embedded"))
+    stack.enter_context(patch.object(labeler, "_start_ui_subprocess"))
+    stack.enter_context(patch.object(labeler, "_cleanup_ui"))
+    return stack
+
+
+class TestNoTrayIntegration:
+    """TC-TRAY-NOTRAY: Verify _run_inner(no_tray=True) lifecycle without GUI."""
+
+    def test_browser_mode_calls_start_ui_embedded(self, tmp_path: Path) -> None:
+        """TC-TRAY-NOTRAY-001: no_tray + browser → _start_ui_embedded."""
+        bus, _ = _capture_bus()
+        labeler = TrayLabeler(
+            data_dir=tmp_path, no_tray=True, browser=True, event_bus=bus,
+        )
+        monitor_called = threading.Event()
+
+        with _run_inner_patches(labeler) as stack:
+            mock_embedded = stack.enter_context(
+                patch.object(labeler, "_start_ui_embedded"),
+            )
+            stack.enter_context(
+                patch.object(
+                    labeler._monitor, "run",
+                    side_effect=lambda: monitor_called.set(),
+                ),
+            )
+            t = threading.Thread(target=labeler._run_inner, daemon=True)
+            t.start()
+            assert monitor_called.wait(timeout=5)
+            mock_embedded.assert_called_once()
+
+    def test_non_browser_mode_calls_start_ui_subprocess(self, tmp_path: Path) -> None:
+        """TC-TRAY-NOTRAY-002: no_tray + browser=False → _start_ui_subprocess."""
+        bus, _ = _capture_bus()
+        labeler = TrayLabeler(
+            data_dir=tmp_path, no_tray=True, browser=False, event_bus=bus,
+        )
+        monitor_called = threading.Event()
+
+        with _run_inner_patches(labeler) as stack:
+            mock_subprocess = stack.enter_context(
+                patch.object(labeler, "_start_ui_subprocess"),
+            )
+            stack.enter_context(
+                patch.object(
+                    labeler._monitor, "run",
+                    side_effect=lambda: monitor_called.set(),
+                ),
+            )
+            t = threading.Thread(target=labeler._run_inner, daemon=True)
+            t.start()
+            assert monitor_called.wait(timeout=5)
+            mock_subprocess.assert_called_once()
+
+    def test_monitor_thread_started(self, tmp_path: Path) -> None:
+        """TC-TRAY-NOTRAY-003: monitor.run() is invoked from a daemon thread."""
+        bus, _ = _capture_bus()
+        labeler = TrayLabeler(
+            data_dir=tmp_path, no_tray=True, browser=True, event_bus=bus,
+        )
+        monitor_called = threading.Event()
+        monitor_thread_name: list[str] = []
+
+        def track_monitor():
+            monitor_thread_name.append(threading.current_thread().name)
+            monitor_called.set()
+
+        with _run_inner_patches(labeler) as stack:
+            stack.enter_context(
+                patch.object(labeler._monitor, "run", side_effect=track_monitor),
+            )
+            t = threading.Thread(target=labeler._run_inner, daemon=True)
+            t.start()
+            assert monitor_called.wait(timeout=5)
+
+        assert len(monitor_thread_name) == 1
+        assert monitor_thread_name[0] != threading.current_thread().name
+
+    def test_cleanup_on_keyboard_interrupt(self, tmp_path: Path) -> None:
+        """TC-TRAY-NOTRAY-004: KeyboardInterrupt triggers monitor.stop() and _cleanup_ui().
+
+        Mocks both threading.Thread and threading.Event so the stop Event's
+        wait() raises KeyboardInterrupt without actually blocking.
+        """
+        bus, _ = _capture_bus()
+        labeler = TrayLabeler(
+            data_dir=tmp_path, no_tray=True, browser=True, event_bus=bus,
+        )
+
+        stop_event = MagicMock()
+        stop_event.wait.side_effect = KeyboardInterrupt
+        mock_thread = MagicMock()
+
+        with (
+            patch("taskclf.core.logging.setup_file_logging"),
+            patch("atexit.register"),
+            patch.object(labeler, "_start_ui_embedded"),
+            patch.object(labeler, "_cleanup_ui") as mock_cleanup,
+            patch.object(labeler._monitor, "stop") as mock_stop,
+            patch("threading.Thread", return_value=mock_thread),
+            patch("threading.Event", return_value=stop_event),
+        ):
+            labeler._run_inner()
+
+        mock_stop.assert_called_once()
+        mock_cleanup.assert_called_once()
+
+    def test_atexit_registers_cleanup(self, tmp_path: Path) -> None:
+        """TC-TRAY-NOTRAY-005: _cleanup_ui is registered with atexit."""
+        bus, _ = _capture_bus()
+        labeler = TrayLabeler(
+            data_dir=tmp_path, no_tray=True, browser=True, event_bus=bus,
+        )
+        monitor_called = threading.Event()
+
+        with (
+            patch("taskclf.core.logging.setup_file_logging"),
+            patch("atexit.register") as mock_atexit,
+            patch.object(labeler, "_start_ui_embedded"),
+            patch.object(labeler, "_cleanup_ui"),
+            patch.object(
+                labeler._monitor, "run",
+                side_effect=lambda: monitor_called.set(),
+            ),
+        ):
+            t = threading.Thread(target=labeler._run_inner, daemon=True)
+            t.start()
+            assert monitor_called.wait(timeout=5)
+            mock_atexit.assert_called_once_with(labeler._cleanup_ui)
+
+
+# ---------------------------------------------------------------------------
+# #64 — Mock pystray.Icon.run() smoke test (TC-TRAY-RUN-*)
+# ---------------------------------------------------------------------------
+
+
+class TestRunInnerSmoke:
+    """TC-TRAY-RUN: Verify _run_inner() icon path with mocked pystray."""
+
+    def test_icon_created_and_run_called(self, tmp_path: Path) -> None:
+        """TC-TRAY-RUN-001: pystray.Icon constructed with correct args and run() called."""
+        bus, _ = _capture_bus()
+        labeler = TrayLabeler(
+            data_dir=tmp_path, no_tray=False, browser=True, event_bus=bus,
+        )
+
+        fake_icon = MagicMock()
+
+        with (
+            patch("taskclf.core.logging.setup_file_logging"),
+            patch("atexit.register"),
+            patch.object(labeler, "_start_ui_embedded"),
+            patch.object(labeler, "_cleanup_ui"),
+            patch.object(labeler._monitor, "run"),
+            patch("pystray.Icon", return_value=fake_icon) as mock_icon_cls,
+        ):
+            labeler._run_inner()
+
+        mock_icon_cls.assert_called_once()
+        call_args = mock_icon_cls.call_args
+        assert call_args[0][0] == "taskclf"
+        assert isinstance(call_args[0][1], Image.Image)
+        assert call_args[0][2] == "taskclf"
+        assert call_args[1]["menu"] is not None
+        fake_icon.run.assert_called_once()
+
+    def test_cleanup_called_after_icon_run(self, tmp_path: Path) -> None:
+        """TC-TRAY-RUN-002: _cleanup_ui is called in the finally block after icon.run()."""
+        bus, _ = _capture_bus()
+        labeler = TrayLabeler(
+            data_dir=tmp_path, no_tray=False, browser=True, event_bus=bus,
+        )
+        call_order: list[str] = []
+        fake_icon = MagicMock()
+        fake_icon.run.side_effect = lambda: call_order.append("icon.run")
+
+        with (
+            patch("taskclf.core.logging.setup_file_logging"),
+            patch("atexit.register"),
+            patch.object(labeler, "_start_ui_embedded"),
+            patch.object(
+                labeler, "_cleanup_ui",
+                side_effect=lambda: call_order.append("cleanup"),
+            ),
+            patch.object(labeler._monitor, "run"),
+            patch("pystray.Icon", return_value=fake_icon),
+        ):
+            labeler._run_inner()
+
+        assert call_order == ["icon.run", "cleanup"]
+
+    def test_cleanup_called_even_on_icon_run_exception(self, tmp_path: Path) -> None:
+        """TC-TRAY-RUN-003: _cleanup_ui runs even if icon.run() raises."""
+        bus, _ = _capture_bus()
+        labeler = TrayLabeler(
+            data_dir=tmp_path, no_tray=False, browser=True, event_bus=bus,
+        )
+        fake_icon = MagicMock()
+        fake_icon.run.side_effect = RuntimeError("icon crashed")
+
+        with (
+            patch("taskclf.core.logging.setup_file_logging"),
+            patch("atexit.register"),
+            patch.object(labeler, "_start_ui_embedded"),
+            patch.object(labeler, "_cleanup_ui") as mock_cleanup,
+            patch.object(labeler._monitor, "run"),
+            patch("pystray.Icon", return_value=fake_icon),
+            pytest.raises(RuntimeError, match="icon crashed"),
+        ):
+            labeler._run_inner()
+
+        mock_cleanup.assert_called_once()
+
+    def test_icon_menu_uses_build_menu_items_callable(self, tmp_path: Path) -> None:
+        """TC-TRAY-RUN-004: menu is constructed with _build_menu_items as callable."""
+        bus, _ = _capture_bus()
+        labeler = TrayLabeler(
+            data_dir=tmp_path, no_tray=False, browser=True, event_bus=bus,
+        )
+        fake_icon = MagicMock()
+
+        with (
+            patch("taskclf.core.logging.setup_file_logging"),
+            patch("atexit.register"),
+            patch.object(labeler, "_start_ui_embedded"),
+            patch.object(labeler, "_cleanup_ui"),
+            patch.object(labeler._monitor, "run"),
+            patch("pystray.Icon", return_value=fake_icon) as mock_icon_cls,
+        ):
+            labeler._run_inner()
+
+        call_kwargs = mock_icon_cls.call_args[1]
+        menu = call_kwargs["menu"]
+        import pystray
+        assert isinstance(menu, pystray.Menu)
+        # Accessing .items invokes the callable to get fresh items
+        items = menu.items
+        assert len(items) > 0
+
+
+# ---------------------------------------------------------------------------
+# #65 — Menu structure snapshot test (TC-TRAY-MENU-*)
+# ---------------------------------------------------------------------------
+
+
+class TestMenuStructureSnapshot:
+    """TC-TRAY-MENU: Walk the full menu tree and assert stable structure."""
+
+    _SEPARATOR_TEXT = "- - - -"
+
+    def _extract_top_level(
+        self, labeler: TrayLabeler,
+    ) -> list[tuple[str, bool]]:
+        """Return ``[(label_or_SEPARATOR, has_submenu), ...]`` for the top menu.
+
+        pystray resolves callable text via the ``.text`` property, so
+        accessing ``item.text`` already returns a string.
+        """
+        items = labeler._build_menu_items()
+        result: list[tuple[str, bool]] = []
+        for item in items:
+            has_submenu = item.submenu is not None
+            result.append((item.text, has_submenu))
+        return result
+
+    def _submenu_labels(self, submenu: object) -> list[str]:
+        labels: list[str] = []
+        for item in submenu.items:  # type: ignore[attr-defined]
+            text = getattr(item, "text", None)
+            if text is not None:
+                labels.append(text)
+        return labels
+
+    def test_top_level_item_labels(self, tmp_path: Path) -> None:
+        """TC-TRAY-MENU-001: top-level menu has all expected items in order."""
+        bus, _ = _capture_bus()
+        labeler = TrayLabeler(
+            data_dir=tmp_path, models_dir=tmp_path / "models",
+            event_bus=bus,
+        )
+        (tmp_path / "models").mkdir(exist_ok=True)
+        structure = self._extract_top_level(labeler)
+        labels_only = [label for label, _ in structure]
+
+        expected = [
+            "Open Dashboard",
+            "Pause",
+            self._SEPARATOR_TEXT,
+            "Label Stats",
+            "Import Labels",
+            "Export Labels",
+            self._SEPARATOR_TEXT,
+            "Model",
+            "Status",
+            "Open Data Folder",
+            "Edit Config",
+            "Report Issue",
+            self._SEPARATOR_TEXT,
+            "Quit",
+        ]
+        assert labels_only == expected
+
+    def test_separator_positions(self, tmp_path: Path) -> None:
+        """TC-TRAY-MENU-002: separators appear at positions 2, 6, 12."""
+        bus, _ = _capture_bus()
+        labeler = TrayLabeler(
+            data_dir=tmp_path, models_dir=tmp_path / "models",
+            event_bus=bus,
+        )
+        (tmp_path / "models").mkdir(exist_ok=True)
+        structure = self._extract_top_level(labeler)
+        sep_positions = [
+            i for i, (text, _) in enumerate(structure)
+            if text == self._SEPARATOR_TEXT
+        ]
+        assert sep_positions == [2, 6, 12]
+
+    def test_model_item_has_submenu(self, tmp_path: Path) -> None:
+        """TC-TRAY-MENU-003: 'Model' is the only item with a submenu."""
+        bus, _ = _capture_bus()
+        labeler = TrayLabeler(
+            data_dir=tmp_path, models_dir=tmp_path / "models",
+            event_bus=bus,
+        )
+        (tmp_path / "models").mkdir(exist_ok=True)
+        structure = self._extract_top_level(labeler)
+        submenu_items = [
+            label for label, has_sub in structure if has_sub
+        ]
+        assert submenu_items == ["Model"]
+
+    def test_open_dashboard_is_default(self, tmp_path: Path) -> None:
+        """TC-TRAY-MENU-004: 'Open Dashboard' has default=True."""
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+        items = labeler._build_menu_items()
+        dashboard = items[0]
+        assert dashboard.text == "Open Dashboard"
+        assert dashboard.default is True
+
+    def test_pause_label_reflects_state(self, tmp_path: Path) -> None:
+        """TC-TRAY-MENU-005: Pause/Resume label changes with monitor state."""
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+
+        items = labeler._build_menu_items()
+        pause_item = items[1]
+        # pystray resolves callable text via the .text property
+        assert pause_item.text == "Pause"
+
+        labeler._monitor.pause()
+        assert pause_item.text == "Resume"
+
+        labeler._monitor.resume()
+        assert pause_item.text == "Pause"
+
+    def test_model_submenu_no_bundles(self, tmp_path: Path) -> None:
+        """TC-TRAY-MENU-006: Model submenu shows '(no models found)' when empty."""
+        bus, _ = _capture_bus()
+        labeler = TrayLabeler(
+            data_dir=tmp_path, models_dir=tmp_path / "models",
+            event_bus=bus,
+        )
+        (tmp_path / "models").mkdir(exist_ok=True)
+
+        menu = labeler._build_menu()
+        for item in menu.items:  # type: ignore[attr-defined]
+            if hasattr(item, "text") and item.text == "Model":
+                sub_labels = self._submenu_labels(item.submenu)
+                assert "(no models found)" in sub_labels
+                assert "Reload Model" in sub_labels
+                assert "Check Retrain" in sub_labels
+                return
+        pytest.fail("Model submenu not found")
+
+    def test_model_submenu_with_bundles(self, tmp_path: Path) -> None:
+        """TC-TRAY-MENU-007: Model submenu lists bundle IDs plus control items."""
+        from taskclf.model_registry import ModelBundle
+
+        bus, _ = _capture_bus()
+        labeler = TrayLabeler(
+            data_dir=tmp_path, models_dir=tmp_path / "models",
+            event_bus=bus,
+        )
+        (tmp_path / "models").mkdir(exist_ok=True)
+
+        bundles = [
+            ModelBundle(model_id="run_X", path=tmp_path / "models" / "run_X", valid=True),
+            ModelBundle(model_id="run_Y", path=tmp_path / "models" / "run_Y", valid=True),
+        ]
+
+        with patch("taskclf.model_registry.list_bundles", return_value=bundles):
+            menu = labeler._build_menu()
+
+        for item in menu.items:  # type: ignore[attr-defined]
+            if hasattr(item, "text") and item.text == "Model":
+                sub_labels = self._submenu_labels(item.submenu)
+                assert "run_X" in sub_labels
+                assert "run_Y" in sub_labels
+                assert "(No Model)" in sub_labels
+                assert "Reload Model" in sub_labels
+                assert "Check Retrain" in sub_labels
+                return
+        pytest.fail("Model submenu not found")
+
+    def test_menu_item_count_stable(self, tmp_path: Path) -> None:
+        """TC-TRAY-MENU-008: total top-level item count is 14 (11 + 3 separators)."""
+        bus, _ = _capture_bus()
+        labeler = TrayLabeler(
+            data_dir=tmp_path, models_dir=tmp_path / "models",
+            event_bus=bus,
+        )
+        (tmp_path / "models").mkdir(exist_ok=True)
+        items = labeler._build_menu_items()
+        assert len(items) == 14

@@ -153,7 +153,8 @@ TC-CLI-MS-004 `--last N` caps snapshots shown).
 **Underlying tests:** `test_tray.py` (ActivityMonitor), `test_ui_server.py` (FastAPI endpoints)
 
 **Note:** Interactive GUI commands — not feasible to test via CliRunner.
-Component-level coverage is adequate.
+Component-level coverage is adequate. See **Part G** below for automated
+tray testing strategies that don't require manual interaction.
 
 ---
 
@@ -1103,3 +1104,136 @@ TC-TAX-010 frozen immutability).
 
 **Status:** Covered by `tests/test_infer_online.py::TestRunOnlineLoop::test_run_online_loop_single_poll_writes_outputs`
 (TC-ONLINE-007: stubbed AW client + single poll → predictions.csv and segments.json written; session_start propagated).
+
+---
+---
+
+# TODO — Part G: Automated Tray Testing (no manual interaction)
+
+The pystray GUI loop (`Icon.run()`) is inherently interactive, but
+the tray system can be tested automatically at several levels without
+a human clicking the icon. Existing `tests/test_tray.py` (~3100 lines)
+covers business logic extensively; the items below target the remaining
+integration and GUI-adjacent gaps.
+
+**Existing coverage (for reference):**
+- `ActivityMonitor` transition detection (7+ tests)
+- `TrayLabeler` event publishing: `_handle_transition`, `_handle_poll`,
+  `_publish_status` (9 tests, TC-UI-TRAY-001 through TC-UI-TRAY-009)
+- `_build_menu_items` / `_build_model_submenu` — including real
+  `pystray.Menu(callable)` integration (TestDynamicModelMenuRefresh)
+- `_send_desktop_notification` (3 tests, mocked `osascript`)
+- `_make_icon_image` (2 tests)
+- `_LabelSuggester.suggest` (4 tests)
+- Crash handler, pause/resume, import/export, model switching, retrain
+- Label creation via tray callbacks (3 tests)
+
+**What is NOT tested (remaining):**
+- End-to-end event flow with a real server: tray → EventBus →
+  FastAPI WebSocket → client (full stack with real uvicorn)
+- Real pystray icon start/stop (visual rendering on macOS/Linux)
+
+---
+
+## High Priority
+
+### ~~63. `--no-tray` integration test — full stack without GUI~~ DONE
+
+**Status:** Covered by `tests/test_tray.py::TestNoTrayIntegration` (5 tests):
+- TC-TRAY-NOTRAY-001 `no_tray + browser` → `_start_ui_embedded` called
+- TC-TRAY-NOTRAY-002 `no_tray + browser=False` → `_start_ui_subprocess` called
+- TC-TRAY-NOTRAY-003 `monitor.run()` invoked from a daemon thread (verified
+  via `threading.current_thread().name`)
+- TC-TRAY-NOTRAY-004 `KeyboardInterrupt` triggers `monitor.stop()` and
+  `_cleanup_ui()` (mocked `threading.Thread`/`threading.Event` to avoid
+  C-level blocking in `Event.wait()`)
+- TC-TRAY-NOTRAY-005 `_cleanup_ui` registered with `atexit`
+
+**Note:** Tests mock out UI startup (`_start_ui_embedded`/`_start_ui_subprocess`),
+logging, and `atexit` to focus on wiring correctness. AW polling is not exercised
+(monitor.run is mocked); the existing `TestActivityTransitionDetection` and
+`TestTrayEventPublishing` suites cover that path.
+
+---
+
+### ~~64. Mock `pystray.Icon.run()` smoke test — `_run_inner()` lifecycle~~ DONE
+
+**Status:** Covered by `tests/test_tray.py::TestRunInnerSmoke` (4 tests):
+- TC-TRAY-RUN-001 `pystray.Icon` constructed with name `"taskclf"`, PIL Image,
+  title `"taskclf"`, and a non-None menu; `icon.run()` called exactly once
+- TC-TRAY-RUN-002 `_cleanup_ui` called in the finally block after `icon.run()`
+  returns (verified via call ordering list)
+- TC-TRAY-RUN-003 `_cleanup_ui` called even when `icon.run()` raises
+  `RuntimeError`
+- TC-TRAY-RUN-004 menu passed to `pystray.Icon` is a `pystray.Menu` instance
+  whose `.items` access resolves to non-empty items (verifies the callable
+  pattern `pystray.Menu(self._build_menu_items)`)
+
+**Technique:** Patches `pystray.Icon` at the module level (not on `tray.py`)
+since `_run_inner()` imports pystray lazily. UI startup, monitor, logging,
+and atexit are all mocked.
+
+---
+
+## Medium Priority
+
+### ~~65. Menu structure snapshot test~~ DONE
+
+**Status:** Covered by `tests/test_tray.py::TestMenuStructureSnapshot` (8 tests):
+- TC-TRAY-MENU-001 top-level menu has all 14 expected items in correct order
+  (Open Dashboard, Pause, separators, Label Stats, Import/Export, Model,
+  Status, Open Data Folder, Edit Config, Report Issue, Quit)
+- TC-TRAY-MENU-002 separators appear at positions 2, 6, 12
+- TC-TRAY-MENU-003 "Model" is the only item with a submenu
+- TC-TRAY-MENU-004 "Open Dashboard" has `default=True`
+- TC-TRAY-MENU-005 Pause/Resume label changes dynamically with monitor state
+  (pystray resolves callable text via `.text` property)
+- TC-TRAY-MENU-006 Model submenu with empty `models_dir` shows "(no models
+  found)", "Reload Model", "Check Retrain"
+- TC-TRAY-MENU-007 Model submenu with bundles lists IDs plus "(No Model)",
+  "Reload Model", "Check Retrain"
+- TC-TRAY-MENU-008 total top-level item count is 14 (11 items + 3 separators)
+
+---
+
+### ~~66. Crash handler integration test~~ DONE (already covered)
+
+**Status:** Already covered by `tests/test_tray.py::TestTrayCrashHandler` (5 tests):
+- `test_run_writes_crash_report_on_exception` — `_run_inner` raises →
+  crash file written with exception details
+- `test_run_attempts_desktop_notification_on_crash` — notification called
+  with `"taskclf crashed"` title and crash file path
+- `test_run_reraises_original_exception` — original exception propagates
+- `test_system_exit_passes_through` — `SystemExit` not caught
+- `test_keyboard_interrupt_passes_through` — `KeyboardInterrupt` not caught
+
+These tests mock `_run_inner` with `side_effect=RuntimeError("boom")` and
+call `labeler.run()`, which IS the full `run()` → `_run_inner()` →
+exception → `write_crash_report()` → `_send_desktop_notification()` chain.
+No additional test needed.
+
+---
+
+## Low Priority
+
+### 67. Real pystray start/stop smoke test (developer machines only)
+
+**File:** `tests/test_tray.py` (new class `TestPystrayRealSmoke`)
+**Covers:** `pystray.Icon.run(setup=...)` with immediate `icon.stop()`
+
+Uses pystray's `setup` callback to stop the icon immediately after
+it becomes visible. Validates that the icon renders without crashing
+on the host OS. Skipped in CI (requires a display server).
+
+**Test plan:**
+1. Mark with `@pytest.mark.skipif(os.environ.get("CI"), reason="needs display")`.
+2. Create a real `pystray.Icon` with `_make_icon_image()` and a
+   minimal menu.
+3. Pass `setup=lambda icon: icon.stop()` to `icon.run()`.
+4. Assert the function returns without error.
+5. Optionally verify `icon.visible` was `True` at some point
+   (pystray sets this before calling setup).
+
+**Why it matters:** Catches pystray/Pillow version incompatibilities
+and OS-specific rendering issues that mocks cannot detect. Safe to
+run locally; harmless to skip in CI.

@@ -76,6 +76,7 @@ class WindowAPI:
 
     def toggle_dashboard(self) -> None:
         """Toggle all windows. Re-show positions the pill at its default location."""
+        logger.debug("toggle_dashboard called — visible=%s", self._visible)
         if self._visible:
             if self._label_visible:
                 self._do_hide_label()
@@ -356,12 +357,17 @@ def run_window(
     def _stdin_reader() -> None:
         """Read commands from stdin (sent by the tray process)."""
         try:
-            for line in sys.stdin:
+            while True:
+                line = sys.stdin.readline()
+                if not line:
+                    logger.debug("stdin EOF — reader exiting")
+                    break
                 cmd = line.strip()
+                logger.debug("stdin command received: %r", cmd)
                 if cmd == "toggle":
                     api.toggle_dashboard()
         except Exception:
-            pass
+            logger.debug("stdin reader error", exc_info=True)
 
     stdin_thread = threading.Thread(target=_stdin_reader, daemon=True)
     stdin_thread.start()

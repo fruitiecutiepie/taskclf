@@ -34,6 +34,10 @@ function fmtTime(d: Date): string {
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+function fmtTimeSec(d: Date): string {
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
 function fmtDuration(ms: number): string {
   const totalMin = Math.round(ms / 60_000);
   if (totalMin < 1) return "<1m";
@@ -48,8 +52,16 @@ function toTimeInputValue(d: Date): string {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
+function toTimeInputValueSec(d: Date): string {
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
+}
+
 function timeInputToDate(dateStr: string, timeVal: string): Date {
-  return new Date(`${dateStr}T${timeVal}:00`);
+  const parts = timeVal.split(":");
+  const hh = parts[0] ?? "00";
+  const mm = parts[1] ?? "00";
+  const ss = parts[2] ?? "00";
+  return new Date(`${dateStr}T${hh}:${mm}:${ss}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -526,25 +538,37 @@ const GapRow: Component<{
   const gapEndD = () => parseDate(props.gap.end_ts);
   const dur = () => fmtDuration(gapEndD().getTime() - gapStartD().getTime());
 
-  const [startTime, setStartTime] = createSignal(toTimeInputValue(gapStartD()));
-  const [endTime, setEndTime] = createSignal(toTimeInputValue(gapEndD()));
+  const [startIso, setStartIso] = createSignal(props.gap.start_ts);
+  const [endIso, setEndIso] = createSignal(props.gap.end_ts);
+
+  const [startTimeDisplay, setStartTimeDisplay] = createSignal(toTimeInputValueSec(gapStartD()));
+  const [endTimeDisplay, setEndTimeDisplay] = createSignal(toTimeInputValueSec(gapEndD()));
 
   createEffect(() => {
-    setStartTime(toTimeInputValue(gapStartD()));
-    setEndTime(toTimeInputValue(gapEndD()));
+    setStartIso(props.gap.start_ts);
+    setEndIso(props.gap.end_ts);
+    setStartTimeDisplay(toTimeInputValueSec(gapStartD()));
+    setEndTimeDisplay(toTimeInputValueSec(gapEndD()));
   });
 
+  function handleStartChange(val: string) {
+    setStartTimeDisplay(val);
+    setStartIso(timeInputToDate(props.dateStr, val).toISOString());
+  }
+
+  function handleEndChange(val: string) {
+    setEndTimeDisplay(val);
+    setEndIso(timeInputToDate(props.dateStr, val).toISOString());
+  }
+
   const selectedRange = (): TimeRange | null => {
-    const s = timeInputToDate(props.dateStr, startTime());
-    const e = timeInputToDate(props.dateStr, endTime());
-    if (e.getTime() <= s.getTime()) return null;
-    return { start: s.toISOString(), end: e.toISOString() };
+    const s = parseDate(startIso()).getTime();
+    const e = parseDate(endIso()).getTime();
+    if (e <= s) return null;
+    return { start: startIso(), end: endIso() };
   };
 
-  const rangeValid = () => {
-    const r = selectedRange();
-    return r !== null;
-  };
+  const rangeValid = () => selectedRange() !== null;
 
   const timeInputStyle = {
     background: "#111",
@@ -554,7 +578,7 @@ const GapRow: Component<{
     "font-size": "0.6rem",
     "font-family": "inherit",
     padding: "2px 4px",
-    width: "70px",
+    width: "78px",
     "text-align": "center" as const,
   };
 
@@ -604,7 +628,7 @@ const GapRow: Component<{
         <span
           style={{ color: "#666", "font-size": "0.65rem", "white-space": "nowrap" }}
         >
-          {fmtTime(gapStartD())} – {fmtTime(gapEndD())}{" "}
+          {fmtTimeSec(gapStartD())} – {fmtTimeSec(gapEndD())}{" "}
           <span style={{ color: "#555" }}>({dur()})</span>
         </span>
       </div>
@@ -631,19 +655,19 @@ const GapRow: Component<{
             <span style={{ color: "#888", "font-size": "0.58rem" }}>From</span>
             <input
               type="time"
-              value={startTime()}
-              min={toTimeInputValue(gapStartD())}
-              max={endTime()}
-              onInput={(e) => setStartTime(e.currentTarget.value)}
+              step="1"
+              value={startTimeDisplay()}
+              max={endTimeDisplay()}
+              onInput={(e) => handleStartChange(e.currentTarget.value)}
               style={timeInputStyle}
             />
             <span style={{ color: "#888", "font-size": "0.58rem" }}>to</span>
             <input
               type="time"
-              value={endTime()}
-              min={startTime()}
-              max={toTimeInputValue(gapEndD())}
-              onInput={(e) => setEndTime(e.currentTarget.value)}
+              step="1"
+              value={endTimeDisplay()}
+              min={startTimeDisplay()}
+              onInput={(e) => handleEndChange(e.currentTarget.value)}
               style={timeInputStyle}
             />
           </div>
