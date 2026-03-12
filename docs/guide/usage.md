@@ -397,6 +397,7 @@ choosing "Label Last N min" with a label from the submenu.
 | `taskclf labels add-block` | Create a manual label block for a time range |
 | `taskclf labels label-now` | Label the last N minutes (queries AW for live summary) |
 | `taskclf labels show-queue` | Show pending labeling requests |
+| `taskclf labels export` | Export labels.parquet to CSV |
 | `taskclf train lgbm` | Train a LightGBM multiclass classifier |
 | `taskclf infer batch` | Batch predict, smooth, and segmentize |
 | `taskclf infer online` | Real-time poll-predict loop (supports `--label-queue`) |

@@ -23,6 +23,7 @@ details.
 | `taskclf labels add-block` | Create a manual label block for a time range |
 | `taskclf labels label-now` | Label the last N minutes (no timestamps needed) |
 | `taskclf labels show-queue` | Show pending items in the active labeling queue |
+| `taskclf labels export` | Export labels.parquet to CSV |
 | `taskclf labels project` | Project label blocks onto feature windows |
 | `taskclf train build-dataset` | Build training dataset (X/y/splits artifacts) |
 | `taskclf train lgbm` | Train a LightGBM multiclass model |
@@ -112,6 +113,27 @@ Display pending labeling requests sorted by confidence (lowest first).
 ```bash
 taskclf labels show-queue --user-id my-user --limit 10
 ```
+
+### labels export
+
+Export label spans from `labels.parquet` to a CSV file.  Columns
+written: `start_ts`, `end_ts`, `label`, `provenance`, `user_id`,
+`confidence`, `extend_forward`.
+
+```bash
+taskclf labels export
+```
+
+With a custom output path:
+
+```bash
+taskclf labels export --out ~/Desktop/my_labels.csv
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--out`, `-o` | `labels.csv` | Destination CSV file path |
+| `--data-dir` | `<TASKCLF_HOME>/data/processed` | Processed data directory (reads `labels_v1/labels.parquet`) |
 
 ### labels project
 

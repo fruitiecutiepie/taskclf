@@ -144,6 +144,12 @@ uv run taskclf labels label-now --minutes 10 --label Build
 This queries ActivityWatch for a live summary of apps used in the last N minutes
 and creates the label span automatically.
 
+### Export labels to CSV
+
+```bash
+uv run taskclf labels export --out my_labels.csv
+```
+
 ### Train
 
 ```bash
