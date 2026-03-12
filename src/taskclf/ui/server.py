@@ -847,13 +847,19 @@ def create_app(
                 if lp.exists():
                     from taskclf.labels.store import read_label_spans as _read_ls
                     all_spans = _read_ls(lp)
-                    start_dt = dt.datetime(start.year, start.month, start.day, tzinfo=dt.timezone.utc)
-                    end_dt = dt.datetime(end.year, end.month, end.day, 23, 59, 59, tzinfo=dt.timezone.utc)
+                    start_dt = pd.Timestamp(
+                        year=start.year, month=start.month, day=start.day, tz="UTC",
+                    )
+                    end_dt = pd.Timestamp(
+                        year=end.year, month=end.month, day=end.day,
+                        hour=23, minute=59, second=59, tz="UTC",
+                    )
 
-                    def _to_utc(ts: dt.datetime) -> dt.datetime:
-                        if ts.tzinfo is None:
-                            return ts.replace(tzinfo=dt.timezone.utc)
-                        return ts
+                    def _to_utc(ts: dt.datetime) -> pd.Timestamp:
+                        t = pd.Timestamp(ts)
+                        if t.tzinfo is None:
+                            return t.tz_localize("UTC")
+                        return t.tz_convert("UTC")
 
                     all_labels = [
                         s for s in all_spans
@@ -1184,8 +1190,8 @@ def create_app(
         if lp.exists():
             try:
                 spans = read_label_spans(lp)
-                start_dt = dt.datetime(start.year, start.month, start.day, tzinfo=dt.timezone.utc)
-                end_dt = dt.datetime(end.year, end.month, end.day, 23, 59, 59, tzinfo=dt.timezone.utc)
+                start_dt = dt.datetime(start.year, start.month, start.day)
+                end_dt = dt.datetime(end.year, end.month, end.day, 23, 59, 59)
                 label_count = sum(
                     1 for s in spans
                     if s.end_ts >= start_dt and s.start_ts <= end_dt
