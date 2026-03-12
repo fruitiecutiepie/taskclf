@@ -157,7 +157,7 @@ function itemKey(item: TimelineItem): string {
 
 const TimelineStrip: Component<{
   segments: TimelineSegment[];
-  onGapClick?: (seg: TimelineSegment) => void;
+  onSegmentClick?: (seg: TimelineSegment, index: number) => void;
 }> = (props) => {
   const [tooltip, setTooltip] = createSignal<{ text: string; x: number } | null>(null);
 
@@ -173,7 +173,7 @@ const TimelineStrip: Component<{
         }}
       >
         <For each={props.segments}>
-          {(seg) => (
+          {(seg, idx) => (
             <div
               style={{
                 "flex-grow": seg.fraction,
@@ -204,8 +204,8 @@ const TimelineStrip: Component<{
                 }
               }}
               onClick={() => {
-                if (!seg.label && props.onGapClick) {
-                  props.onGapClick(seg);
+                if (props.onSegmentClick) {
+                  props.onSegmentClick(seg, idx());
                 }
               }}
             />
@@ -857,10 +857,6 @@ export const LabelHistory: Component<{
     setFlash(null);
   }
 
-  function gapSegToKey(seg: TimelineSegment): string {
-    return `gap|${new Date(seg.startMs).toISOString()}|${new Date(seg.endMs).toISOString()}`;
-  }
-
   async function handleUpdate(item: LabelItem, newLabel: string, newStart: string, newEnd: string) {
     setBusy(true);
     setFlash(null);
@@ -1035,8 +1031,10 @@ export const LabelHistory: Component<{
       >
         <TimelineStrip
           segments={dayData().segments}
-          onGapClick={(seg) => {
-            const key = gapSegToKey(seg);
+          onSegmentClick={(_seg, index) => {
+            const item = dayData().items[index];
+            if (!item) return;
+            const key = itemKey(item);
             setExpandedKey(expandedKey() === key ? null : key);
             setFlash(null);
           }}
