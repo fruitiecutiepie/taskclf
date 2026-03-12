@@ -20,13 +20,13 @@ function loadExtendForward(): boolean {
   } catch { return true; }
 }
 
-interface LabelGridProps {
+interface LabelRecorderProps {
   maxHeight?: number;
   onCollapse: () => void;
   prediction?: Accessor<Prediction | null>;
 }
 
-export const LabelGrid: Component<LabelGridProps> = (props) => {
+export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
   const [labels] = createResource(fetchCoreLabels);
   const [labelVersion, setLabelVersion] = createSignal(0);
   const [lastLabel] = createResource(

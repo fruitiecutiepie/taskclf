@@ -5,10 +5,10 @@ import {
   Show,
   type Component,
 } from "solid-js";
-import { LabelGrid } from "./components/LabelGrid";
+import { LabelRecorder } from "./components/LabelRecorder";
 import { PredictionBadge } from "./components/PredictionBadge";
 import { StatusPanel } from "./components/StatusPanel";
-import { LabelShell } from "./components/LabelShell";
+import { LabelRecorderWindow } from "./components/LabelRecorderWindow";
 import { StatusShell } from "./components/StatusShell";
 import {
   requestPermission,
@@ -34,7 +34,7 @@ if (!isBrowserMode()) {
 }
 
 const App: Component = () => {
-  if (isLabelView) return <LabelShell />;
+  if (isLabelView) return <LabelRecorderWindow />;
   if (isPanelView) return <StatusShell />;
 
   const inBrowser = isBrowserMode();
@@ -208,7 +208,7 @@ const App: Component = () => {
               "border-radius": "12px",
             }}
           >
-            <LabelGrid
+            <LabelRecorder
               onCollapse={() => {
                 setLabelPinned(false);
                 setBadgeHovered(false);

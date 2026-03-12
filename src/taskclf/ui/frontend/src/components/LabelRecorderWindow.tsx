@@ -1,5 +1,5 @@
 import { type Component, Show } from "solid-js";
-import { LabelGrid } from "./LabelGrid";
+import { LabelRecorder } from "./LabelRecorder";
 import { useWebSocket } from "../lib/ws";
 import { host } from "../lib/host";
 
@@ -7,7 +7,7 @@ const CONTENT_W = 280;
 const LABEL_MAX_H = 330;
 const isBrowserMode = () => window.innerWidth > 300 && !host.isNativeWindow;
 
-export const LabelShell: Component = () => {
+export const LabelRecorderWindow: Component = () => {
   const ws = useWebSocket();
   const inBrowser = isBrowserMode();
 
@@ -68,7 +68,7 @@ export const LabelShell: Component = () => {
             />
           </div>
         </Show>
-        <LabelGrid onCollapse={collapse} prediction={ws.latestPrediction} />
+        <LabelRecorder onCollapse={collapse} prediction={ws.latestPrediction} />
       </div>
     </div>
   );
