@@ -49,6 +49,7 @@ def _build_features(tmp_path: Path, date: str = "2025-06-15") -> Path:
         "features", "build",
         "--date", date,
         "--data-dir", str(data_dir),
+        "--synthetic",
     ])
     assert result.exit_code == 0, result.output
     return data_dir

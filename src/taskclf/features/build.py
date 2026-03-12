@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import datetime as dt
+import logging
 from collections import defaultdict
 from pathlib import Path
 from typing import Sequence
+
+logger = logging.getLogger(__name__)
 
 import pandas as pd
 
@@ -414,24 +417,108 @@ def build_features_from_aw_events(
     return rows
 
 
-def build_features_for_date(date: dt.date, data_dir: Path) -> Path:
-    """Generate dummy features for *date*, validate, and write to parquet.
+def _fetch_aw_features_for_date(
+    date: dt.date,
+    *,
+    aw_host: str,
+    title_salt: str,
+    user_id: str = "default-user",
+    device_id: str | None = None,
+) -> list[FeatureRow]:
+    """Fetch real ActivityWatch events for *date* and build feature rows.
+
+    Queries the AW REST API for ``aw-watcher-window`` events spanning
+    the full calendar day (00:00 UTC to 00:00 UTC next day).  If an
+    ``aw-watcher-input`` bucket exists, keyboard/mouse features are
+    populated; otherwise those columns are ``None``.
+
+    Raises on connection or bucket-discovery errors so the caller can
+    decide whether to fall back.
+    """
+    from taskclf.adapters.activitywatch.client import (
+        fetch_aw_events,
+        fetch_aw_input_events,
+        find_input_bucket_id,
+        find_window_bucket_id,
+    )
+
+    start = dt.datetime(date.year, date.month, date.day, tzinfo=dt.timezone.utc)
+    end = start + dt.timedelta(days=1)
+
+    bucket_id = find_window_bucket_id(aw_host)
+    events = fetch_aw_events(aw_host, bucket_id, start, end, title_salt=title_salt)
+    if not events:
+        return []
+
+    input_events = None
+    input_bucket_id = find_input_bucket_id(aw_host)
+    if input_bucket_id:
+        input_events = fetch_aw_input_events(aw_host, input_bucket_id, start, end) or None
+
+    return build_features_from_aw_events(
+        events,
+        user_id=user_id,
+        device_id=device_id,
+        input_events=input_events,
+    )
+
+
+def build_features_for_date(
+    date: dt.date,
+    data_dir: Path,
+    *,
+    aw_host: str | None = None,
+    title_salt: str | None = None,
+    user_id: str = "default-user",
+    device_id: str | None = None,
+    synthetic: bool = False,
+) -> Path:
+    """Build feature rows for *date*, validate, and write to parquet.
+
+    When *aw_host* is provided (and *synthetic* is ``False``), events
+    are fetched live from a running ActivityWatch server.  Otherwise
+    dummy/synthetic rows are generated for testing.
 
     Args:
         date: Calendar date to build features for.
         data_dir: Root of processed data (e.g. ``Path("data/processed")``).
             Output lands at ``data_dir/features_v1/date=YYYY-MM-DD/features.parquet``.
+        aw_host: Base URL of a running AW server
+            (e.g. ``"http://localhost:5600"``).  When ``None`` or
+            *synthetic* is ``True``, dummy features are generated.
+        title_salt: Salt for hashing window titles.  Required when
+            *aw_host* is set.
+        user_id: Pseudonymous user identifier.
+        device_id: Optional device identifier.
+        synthetic: Force dummy feature generation even if *aw_host* is
+            set.
 
     Returns:
         Path of the written parquet file.
 
     Raises:
-        ValueError: If generated data fails ``FeatureSchemaV1`` validation.
+        ValueError: If generated data fails ``FeatureSchemaV1`` validation
+            or if *aw_host* is set but *title_salt* is missing.
     """
-    rows = generate_dummy_features(date)
+    if not synthetic and aw_host is not None:
+        if title_salt is None:
+            raise ValueError("title_salt is required when fetching from ActivityWatch")
+        rows = _fetch_aw_features_for_date(
+            date,
+            aw_host=aw_host,
+            title_salt=title_salt,
+            user_id=user_id,
+            device_id=device_id,
+        )
+        if not rows:
+            logger.warning("No AW events found for %s — writing empty parquet", date)
+    else:
+        rows = generate_dummy_features(date, user_id=user_id, device_id=device_id)
+
     df = pd.DataFrame([r.model_dump() for r in rows])
 
-    FeatureSchemaV1.validate_dataframe(df)
+    if not df.empty:
+        FeatureSchemaV1.validate_dataframe(df)
 
     out_path = (
         data_dir / f"features_v1/date={date.isoformat()}" / "features.parquet"

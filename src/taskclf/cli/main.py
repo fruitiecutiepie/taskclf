@@ -150,15 +150,58 @@ app.add_typer(features_app, name="features")
 
 @features_app.command("build")
 def features_build(
-    date: str = typer.Option(..., help="Date in YYYY-MM-DD format"),
+    date: str = typer.Option(None, help="Single date in YYYY-MM-DD format (mutually exclusive with --date-from/--date-to)"),
+    date_from: str = typer.Option(None, "--date-from", help="Start of date range (YYYY-MM-DD, inclusive)"),
+    date_to: str = typer.Option(None, "--date-to", help="End of date range (YYYY-MM-DD, inclusive)"),
     data_dir: str = typer.Option(DEFAULT_DATA_DIR, help="Processed data directory (derived from TASKCLF_HOME)"),
+    aw_host: str = typer.Option(DEFAULT_AW_HOST, "--aw-host", help="ActivityWatch server URL"),
+    title_salt: str = typer.Option(DEFAULT_TITLE_SALT, "--title-salt", help="Salt for hashing window titles"),
+    synthetic: bool = typer.Option(False, "--synthetic", help="Generate dummy features instead of fetching from AW"),
 ) -> None:
-    """Build per-minute feature rows for a given date and write to parquet."""
+    """Build per-minute feature rows by fetching from a running ActivityWatch server.
+
+    Supports a single --date or a --date-from / --date-to range.
+    Use --synthetic to generate dummy data for testing.
+    """
     from taskclf.features.build import build_features_for_date
 
-    parsed_date = dt.date.fromisoformat(date)
-    out_path = build_features_for_date(parsed_date, Path(data_dir))
-    typer.echo(f"Wrote features to {out_path}")
+    if date and (date_from or date_to):
+        typer.echo("Use either --date or --date-from/--date-to, not both.", err=True)
+        raise typer.Exit(code=1)
+    if not date and not date_from:
+        typer.echo("Provide --date or --date-from/--date-to.", err=True)
+        raise typer.Exit(code=1)
+
+    if date:
+        start = dt.date.fromisoformat(date)
+        end = start
+    else:
+        start = dt.date.fromisoformat(date_from)  # type: ignore[arg-type]
+        end = dt.date.fromisoformat(date_to) if date_to else start
+
+    if end < start:
+        typer.echo(f"--date-to ({end}) is before --date-from ({start}).", err=True)
+        raise typer.Exit(code=1)
+
+    effective_host = None if synthetic else aw_host
+    current = start
+    total_days = 0
+    while current <= end:
+        try:
+            out_path = build_features_for_date(
+                current,
+                Path(data_dir),
+                aw_host=effective_host,
+                title_salt=title_salt,
+                synthetic=synthetic,
+            )
+            typer.echo(f"  {current}: wrote features to {out_path}")
+            total_days += 1
+        except Exception as exc:
+            typer.echo(f"  {current}: FAILED — {exc}", err=True)
+        current += dt.timedelta(days=1)
+
+    typer.echo(f"Done — built features for {total_days} day(s).")
 
 
 # -- labels -------------------------------------------------------------------

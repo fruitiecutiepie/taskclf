@@ -144,6 +144,7 @@ class TestFeaturesBuild:
             "features", "build",
             "--date", "2025-06-15",
             "--data-dir", str(tmp_path),
+            "--synthetic",
         ])
         assert result.exit_code == 0, result.output
 
@@ -152,6 +153,7 @@ class TestFeaturesBuild:
             "features", "build",
             "--date", "2025-06-15",
             "--data-dir", str(tmp_path),
+            "--synthetic",
         ])
         expected = tmp_path / "features_v1" / "date=2025-06-15" / "features.parquet"
         assert expected.exists()
@@ -161,6 +163,7 @@ class TestFeaturesBuild:
             "features", "build",
             "--date", "2025-06-15",
             "--data-dir", str(tmp_path),
+            "--synthetic",
         ])
         parquet = tmp_path / "features_v1" / "date=2025-06-15" / "features.parquet"
         df = pd.read_parquet(parquet)
@@ -175,6 +178,7 @@ class TestFeaturesBuild:
             "features", "build",
             "--date", "2025-06-15",
             "--data-dir", str(tmp_path),
+            "--synthetic",
         ])
         parquet = tmp_path / "features_v1" / "date=2025-06-15" / "features.parquet"
         df = pd.read_parquet(parquet)

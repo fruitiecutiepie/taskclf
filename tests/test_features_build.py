@@ -2,6 +2,7 @@
 and _aggregate_input_for_bucket.
 
 Covers: TC-FEAT-BUILD-001 through TC-FEAT-BUILD-013,
+        TC-FEAT-BUILD-AW-001 through TC-FEAT-BUILD-AW-005,
         TC-FEAT-AGG-001 through TC-FEAT-AGG-006.
 """
 
@@ -9,8 +10,10 @@ from __future__ import annotations
 
 import datetime as dt
 from pathlib import Path
+from unittest.mock import patch
 
 import pandas as pd
+import pytest
 
 from taskclf.adapters.activitywatch.types import AWInputEvent
 from taskclf.core.defaults import DEFAULT_BUCKET_SECONDS, DEFAULT_DUMMY_ROWS
@@ -115,6 +118,61 @@ class TestBuildFeaturesForDate:
     def test_row_count_matches_default(self, tmp_path: Path) -> None:
         """TC-FEAT-BUILD-013: row count matches DEFAULT_DUMMY_ROWS."""
         result = build_features_for_date(_DATE, tmp_path)
+        df = pd.read_parquet(result)
+        assert len(df) == DEFAULT_DUMMY_ROWS
+
+
+_AW_PATCH_BASE = "taskclf.features.build"
+
+
+class TestBuildFeaturesForDateAW:
+    """TC-FEAT-BUILD-AW-001 through TC-FEAT-BUILD-AW-005: AW REST fetch path."""
+
+    def test_aw_host_requires_title_salt(self, tmp_path: Path) -> None:
+        """TC-FEAT-BUILD-AW-001: aw_host without title_salt raises ValueError."""
+        with pytest.raises(ValueError, match="title_salt"):
+            build_features_for_date(_DATE, tmp_path, aw_host="http://localhost:5600")
+
+    @patch(f"{_AW_PATCH_BASE}._fetch_aw_features_for_date")
+    def test_aw_features_written_to_parquet(self, mock_fetch, tmp_path: Path) -> None:
+        """TC-FEAT-BUILD-AW-002: real AW features are written when aw_host is set."""
+        ts = dt.datetime(2025, 6, 15, 10, 0, 0, tzinfo=dt.timezone.utc)
+        dummy_rows = generate_dummy_features(_DATE, n_rows=3)
+        mock_fetch.return_value = dummy_rows
+
+        result = build_features_for_date(
+            _DATE, tmp_path, aw_host="http://localhost:5600", title_salt="salt",
+        )
+        assert result.exists()
+        df = pd.read_parquet(result)
+        assert len(df) == 3
+        mock_fetch.assert_called_once()
+
+    @patch(f"{_AW_PATCH_BASE}._fetch_aw_features_for_date")
+    def test_empty_aw_writes_empty_parquet(self, mock_fetch, tmp_path: Path) -> None:
+        """TC-FEAT-BUILD-AW-003: no events produces empty parquet (no crash)."""
+        mock_fetch.return_value = []
+        result = build_features_for_date(
+            _DATE, tmp_path, aw_host="http://localhost:5600", title_salt="salt",
+        )
+        assert result.exists()
+        df = pd.read_parquet(result)
+        assert len(df) == 0
+
+    def test_synthetic_flag_ignores_aw_host(self, tmp_path: Path) -> None:
+        """TC-FEAT-BUILD-AW-004: synthetic=True generates dummies even with aw_host."""
+        result = build_features_for_date(
+            _DATE, tmp_path,
+            aw_host="http://localhost:5600", title_salt="salt", synthetic=True,
+        )
+        assert result.exists()
+        df = pd.read_parquet(result)
+        assert len(df) == DEFAULT_DUMMY_ROWS
+
+    def test_no_aw_host_falls_back_to_dummy(self, tmp_path: Path) -> None:
+        """TC-FEAT-BUILD-AW-005: no aw_host generates dummy features (backwards compat)."""
+        result = build_features_for_date(_DATE, tmp_path)
+        assert result.exists()
         df = pd.read_parquet(result)
         assert len(df) == DEFAULT_DUMMY_ROWS
 

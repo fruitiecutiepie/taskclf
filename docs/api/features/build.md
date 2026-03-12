@@ -13,8 +13,9 @@ The feature build pipeline operates in three modes:
    objects) into per-bucket `FeatureRow` instances.
 2. **Dummy** (`generate_dummy_features`) -- produces synthetic feature
    rows for a given date, useful for testing and development.
-3. **File** (`build_features_for_date`) -- generates dummy features
-   for a date and writes them to the Parquet partition layout.
+3. **File** (`build_features_for_date`) -- fetches events from a
+   running ActivityWatch server (or generates dummy features when no
+   server is available) and writes them to the Parquet partition layout.
 
 The batch pipeline follows this data flow:
 
@@ -90,15 +91,31 @@ ActivityWatch data.
 
 ## build_features_for_date
 
-Convenience function that calls `generate_dummy_features`, validates
-the result against `FeatureSchemaV1`, and writes to Parquet using the
-partitioned layout:
+Builds feature rows for a given date and writes them to Parquet using
+the partitioned layout:
 
 ```
 data_dir/features_v1/date=YYYY-MM-DD/features.parquet
 ```
 
-Raises `ValueError` if generated data fails schema validation.
+When `aw_host` is provided (and `synthetic` is `False`), events are
+fetched live from a running ActivityWatch server via the REST API.
+Both `aw-watcher-window` and `aw-watcher-input` buckets are queried
+automatically.  Without `aw_host` (or with `synthetic=True`), dummy
+features are generated for testing.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `date` | `date` | -- | Calendar date to build features for |
+| `data_dir` | `Path` | -- | Root of processed data |
+| `aw_host` | `str \| None` | `None` | AW server URL; `None` falls back to dummy generation |
+| `title_salt` | `str \| None` | `None` | Salt for hashing window titles (required when `aw_host` is set) |
+| `user_id` | `str` | `"default-user"` | Pseudonymous user identifier |
+| `device_id` | `str \| None` | `None` | Optional device identifier |
+| `synthetic` | `bool` | `False` | Force dummy feature generation |
+
+Raises `ValueError` if generated data fails schema validation or if
+`aw_host` is set without `title_salt`.
 
 ## See also
 

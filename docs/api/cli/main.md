@@ -18,7 +18,7 @@ details.
 | Command | Description |
 |---------|-------------|
 | `taskclf ingest aw` | Ingest an ActivityWatch JSON export |
-| `taskclf features build` | Build per-minute feature rows for a date |
+| `taskclf features build` | Build per-minute feature rows by fetching from ActivityWatch (supports single date or date range) |
 | `taskclf labels import` | Import label spans from CSV |
 | `taskclf labels add-block` | Create a manual label block for a time range |
 | `taskclf labels label-now` | Label the last N minutes (no timestamps needed) |
@@ -47,6 +47,33 @@ details.
 | `taskclf diagnostics` | Collect environment info for bug reports |
 | `taskclf ui` | Launch the labeling UI as a native floating window |
 | `taskclf tray` | Run system tray labeling app with activity transition detection |
+
+### features build
+
+Build per-minute feature rows by fetching from a running ActivityWatch
+server.  Supports a single `--date` or a `--date-from` / `--date-to`
+range for backfilling multiple days.
+
+```bash
+# Single date
+taskclf features build --date 2026-03-10
+
+# Date range (backfill)
+taskclf features build --date-from 2026-02-16 --date-to 2026-03-12
+
+# Dummy/synthetic features for testing
+taskclf features build --date 2026-03-10 --synthetic
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--date` | -- | Single date (YYYY-MM-DD) |
+| `--date-from` | -- | Start of date range (inclusive) |
+| `--date-to` | -- | End of date range (inclusive; defaults to `--date-from` if omitted) |
+| `--aw-host` | `http://localhost:5600` | ActivityWatch server URL |
+| `--title-salt` | `taskclf-default-salt` | Salt for hashing window titles |
+| `--synthetic` | `False` | Generate dummy features instead of fetching from AW |
+| `--data-dir` | `<TASKCLF_HOME>/data/processed` | Output directory for parquet files |
 
 ### labels add-block
 
