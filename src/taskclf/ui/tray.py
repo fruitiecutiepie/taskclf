@@ -50,6 +50,9 @@ def _send_desktop_notification(title: str, message: str, timeout: int = 10) -> N
     The primary notification mechanism is the Web Notifications API
     in the frontend (cross-platform, works on mobile).  This function
     serves as a backup for when no browser client is connected.
+
+    The osascript call runs in a daemon thread so a slow or hung
+    macOS notification subsystem never blocks the caller.
     """
     if platform.system() == "Darwin":
         safe_title = title.replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ")
@@ -58,14 +61,25 @@ def _send_desktop_notification(title: str, message: str, timeout: int = 10) -> N
             f'display notification "{safe_message}" '
             f'with title "{safe_title}"'
         )
-        try:
-            subprocess.run(
-                ["osascript", "-e", script],
-                capture_output=True, timeout=5, check=False,
-            )
-            return
-        except Exception:
-            logger.debug("osascript notification failed", exc_info=True)
+
+        def _fire() -> None:
+            try:
+                proc = subprocess.Popen(
+                    ["osascript", "-e", script],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                try:
+                    proc.wait(timeout=timeout)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait()
+                    logger.debug("osascript notification timed out after %ds", timeout)
+            except Exception:
+                logger.debug("osascript notification failed", exc_info=True)
+
+        threading.Thread(target=_fire, daemon=True).start()
+        return
 
     logger.info("[%s] %s", title, message)
 
