@@ -407,6 +407,8 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
         </div>
       </div>
 
+      <ActivityContext minutes={selectedMinutes} prediction={props.prediction} />
+
       <div
         onClick={toggleExtendFwd}
         style={{
@@ -511,7 +513,35 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
         </span>
       </div>
 
-      <ActivityContext minutes={selectedMinutes} prediction={props.prediction} />
+      <div
+        style={{
+          display: "grid",
+          "grid-template-columns": "1fr 1fr",
+          gap: "6px",
+        }}
+      >
+        <For each={labels() ?? []}>
+          {(lbl) => (
+            <button
+              onClick={() => labelNow(lbl)}
+              style={{
+                padding: "8px 4px",
+                "border-radius": "var(--radius)",
+                border: "1px solid var(--border)",
+                background: "var(--surface)",
+                color: LABEL_COLORS[lbl] ?? "var(--text)",
+                cursor: "pointer",
+                "font-size": "0.8rem",
+                "font-weight": "600",
+                "text-align": "center",
+                transition: "background 0.1s ease",
+              }}
+            >
+              {lbl}
+            </button>
+          )}
+        </For>
+      </div>
 
       <Show when={overwritePending()}>
         {(pending) => {
@@ -522,6 +552,7 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
               style={{
                 "text-align": "center",
                 "font-size": "0.8rem",
+                "margin-top": "8px",
                 "margin-bottom": "8px",
                 color: "var(--danger)",
               }}
@@ -594,6 +625,7 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
           style={{
             "text-align": "center",
             "font-size": "0.8rem",
+            "margin-top": "8px",
             "margin-bottom": "8px",
             cursor: "pointer",
             color: flash()!.startsWith("Error")
@@ -604,36 +636,6 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
           {flash()!.startsWith("Error") ? flash() : `Saved: ${flash()}`}
         </div>
       </Show>
-
-      <div
-        style={{
-          display: "grid",
-          "grid-template-columns": "1fr 1fr",
-          gap: "6px",
-        }}
-      >
-        <For each={labels() ?? []}>
-          {(lbl) => (
-            <button
-              onClick={() => labelNow(lbl)}
-              style={{
-                padding: "8px 4px",
-                "border-radius": "var(--radius)",
-                border: "1px solid var(--border)",
-                background: "var(--surface)",
-                color: LABEL_COLORS[lbl] ?? "var(--text)",
-                cursor: "pointer",
-                "font-size": "0.8rem",
-                "font-weight": "600",
-                "text-align": "center",
-                transition: "background 0.1s ease",
-              }}
-            >
-              {lbl}
-            </button>
-          )}
-        </For>
-      </div>
 
       <div
         style={{

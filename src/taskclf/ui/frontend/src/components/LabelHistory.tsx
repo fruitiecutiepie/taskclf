@@ -2,6 +2,7 @@ import { type Accessor, type Component, createEffect, createResource, createMemo
 import { createLabel, deleteLabel, fetchCoreLabels, fetchLabelsByDate, updateLabel } from "../lib/api";
 import type { Prediction } from "../lib/ws";
 import { ActivityContext, type TimeRange } from "./ActivityContext";
+import { FlashMessage } from "./FlashMessage";
 import { LABEL_COLORS } from "./StatePanel";
 
 function parseDate(iso: string): Date {
@@ -257,7 +258,7 @@ const LabelRow: Component<{
   const endD = () => parseDate(props.lbl.end_ts);
   const dur = () => fmtDuration(endD().getTime() - startD().getTime());
   const [confirmDelete, setConfirmDelete] = createSignal(false);
-  const [confirmEdit, setConfirmEdit] = createSignal<{ label: string; start: string; end: string } | null>(null);
+  const [pendingLabel, setPendingLabel] = createSignal<string | null>(null);
 
   const [startTime, setStartTime] = createSignal(toTimeInputValue(startD()));
   const [endTime, setEndTime] = createSignal(toTimeInputValue(endD()));
@@ -279,6 +280,10 @@ const LabelRow: Component<{
   const timeChanged = () =>
     startTime() !== toTimeInputValue(startD()) ||
     endTime() !== toTimeInputValue(endD());
+
+  const labelChanged = () => pendingLabel() !== null && pendingLabel() !== props.lbl.label;
+  const effectiveLabel = () => pendingLabel() ?? props.lbl.label;
+  const hasChanges = () => labelChanged() || timeChanged();
 
   const timeInputStyle = {
     background: "#111",
@@ -383,7 +388,6 @@ const LabelRow: Component<{
                   e.stopPropagation();
                   setStartTime(toTimeInputValue(startD()));
                   setEndTime(toTimeInputValue(endD()));
-                  setConfirmEdit(null);
                 }}
                 title="Reset time"
                 style={{
@@ -405,180 +409,124 @@ const LabelRow: Component<{
             </Show>
           </div>
 
-          <ActivityContext timeRange={() => editedRange()} showEmpty />
+          <ActivityContext timeRange={() => editedRange()} />
 
           <Show when={props.flash}>
+            <FlashMessage flash={props.flash!} />
+          </Show>
+
+          <div
+            style={{
+              display: "grid",
+              "grid-template-columns": "repeat(4, 1fr)",
+              gap: "3px",
+              "margin-bottom": "6px",
+            }}
+          >
+            <For each={props.coreLabels}>
+              {(lbl) => {
+                const isOriginal = () => lbl === props.lbl.label;
+                const isSelected = () => lbl === effectiveLabel();
+                return (
+                  <button
+                    disabled={props.busy}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (lbl === props.lbl.label) {
+                        setPendingLabel(null);
+                      } else {
+                        setPendingLabel(lbl);
+                      }
+                    }}
+                    style={{
+                      padding: "4px 2px",
+                      "border-radius": "4px",
+                      border: isSelected()
+                        ? `1.5px solid ${LABEL_COLORS[lbl] ?? "#888"}`
+                        : "1px solid #333",
+                      background: isSelected() ? "#1e1e2e" : "#111",
+                      color: LABEL_COLORS[lbl] ?? "#e0e0e0",
+                      cursor: "pointer",
+                      "font-size": "0.58rem",
+                      "font-weight": isSelected() ? "700" : "500",
+                      "text-align": "center",
+                      opacity: props.busy ? "0.5" : isSelected() ? "1" : isOriginal() && labelChanged() ? "0.5" : "0.8",
+                      transition: "all 0.1s ease",
+                    }}
+                  >
+                    {lbl}
+                  </button>
+                );
+              }}
+            </For>
+          </div>
+
+          <Show when={hasChanges() && rangeValid()}>
             <div
               style={{
                 "text-align": "center",
-                "font-size": "0.65rem",
-                "margin-bottom": "4px",
-                color: props.flash!.startsWith("Error")
-                  ? "#ef4444"
-                  : "#22c55e",
-              }}
-            >
-              {props.flash!.startsWith("Error") ? props.flash : `Saved: ${props.flash}`}
-            </div>
-          </Show>
-
-          <Show when={timeChanged() && rangeValid() && !confirmEdit()}>
-            <div
-              style={{
-                display: "flex",
-                "justify-content": "center",
                 "margin-bottom": "6px",
               }}
             >
-              <button
-                disabled={props.busy}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  const r = editedRange();
-                  if (r) setConfirmEdit({ label: props.lbl.label, start: r.start, end: r.end });
-                }}
+              <Show when={labelChanged()}>
+                <div style={{ "font-size": "0.58rem", color: "#999", "margin-bottom": "4px" }}>
+                  {timeChanged()
+                    ? <>Change to <span style={{ color: LABEL_COLORS[effectiveLabel()] ?? "#e0e0e0", "font-weight": "700" }}>{effectiveLabel()}</span> and update time?</>
+                    : <>Change to <span style={{ color: LABEL_COLORS[effectiveLabel()] ?? "#e0e0e0", "font-weight": "700" }}>{effectiveLabel()}</span>?</>}
+                </div>
+              </Show>
+              <div
                 style={{
-                  padding: "3px 12px",
-                  "border-radius": "4px",
-                  border: "1px solid #444",
-                  background: "#252530",
-                  color: "#e0e0e0",
-                  cursor: "pointer",
-                  "font-size": "0.58rem",
-                  "font-weight": "600",
-                  opacity: props.busy ? "0.5" : "1",
-                  transition: "all 0.1s ease",
+                  display: "flex",
+                  "justify-content": "center",
+                  gap: "6px",
                 }}
               >
-                Update Time
-              </button>
-            </div>
-          </Show>
-
-          <Show
-            when={!confirmEdit()}
-            fallback={(() => {
-              const pending = () => confirmEdit()!;
-              const labelChanged = () => pending().label !== props.lbl.label;
-              const tChanged = () => {
-                const ps = new Date(pending().start);
-                const pe = new Date(pending().end);
-                return toTimeInputValue(ps) !== toTimeInputValue(startD()) ||
-                       toTimeInputValue(pe) !== toTimeInputValue(endD());
-              };
-              const color = () => LABEL_COLORS[pending().label] ?? "#e0e0e0";
-              return (
-                <div
+                <button
+                  disabled={props.busy}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setPendingLabel(null);
+                    setStartTime(toTimeInputValue(startD()));
+                    setEndTime(toTimeInputValue(endD()));
+                  }}
                   style={{
-                    "text-align": "center",
+                    padding: "2px 8px",
+                    "border-radius": "4px",
+                    border: "1px solid #333",
+                    background: "transparent",
+                    color: "#999",
+                    cursor: "pointer",
                     "font-size": "0.58rem",
-                    "margin-bottom": "6px",
                   }}
                 >
-                  <span style={{ color: "#999" }}>
-                    {labelChanged() && tChanged()
-                      ? <>Change to <span style={{ color: color(), "font-weight": "700" }}>{pending().label}</span> and update time?</>
-                      : labelChanged()
-                        ? <>Change to <span style={{ color: color(), "font-weight": "700" }}>{pending().label}</span>?</>
-                        : "Update time?"}
-                  </span>
-                  <div
-                    style={{
-                      display: "flex",
-                      "justify-content": "center",
-                      gap: "6px",
-                      "margin-top": "4px",
-                    }}
-                  >
-                    <button
-                      disabled={props.busy}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setConfirmEdit(null);
-                      }}
-                      style={{
-                        padding: "2px 8px",
-                        "border-radius": "4px",
-                        border: "1px solid #333",
-                        background: "transparent",
-                        color: "#999",
-                        cursor: "pointer",
-                        "font-size": "0.58rem",
-                      }}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      disabled={props.busy}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const p = confirmEdit();
-                        if (p) {
-                          setConfirmEdit(null);
-                          props.onUpdate(p.label, p.start, p.end);
-                        }
-                      }}
-                      style={{
-                        padding: "2px 8px",
-                        "border-radius": "4px",
-                        border: `1px solid ${color()}`,
-                        background: color(),
-                        color: "#fff",
-                        cursor: "pointer",
-                        "font-size": "0.58rem",
-                        "font-weight": "600",
-                      }}
-                    >
-                      Confirm
-                    </button>
-                  </div>
-                </div>
-              );
-            })()}
-          >
-            <div
-              style={{
-                display: "grid",
-                "grid-template-columns": "repeat(4, 1fr)",
-                gap: "3px",
-                "margin-bottom": "6px",
-              }}
-            >
-              <For each={props.coreLabels}>
-                {(lbl) => {
-                  const isActive = () => lbl === props.lbl.label && !timeChanged();
-                  const canClick = () => rangeValid() && (lbl !== props.lbl.label || timeChanged());
-                  return (
-                    <button
-                      disabled={props.busy || !canClick()}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const r = editedRange();
-                        if (r && canClick()) {
-                          setConfirmEdit({ label: lbl, start: r.start, end: r.end });
-                        }
-                      }}
-                      style={{
-                        padding: "4px 2px",
-                        "border-radius": "4px",
-                        border: isActive()
-                          ? `1.5px solid ${LABEL_COLORS[lbl] ?? "#888"}`
-                          : "1px solid #333",
-                        background: isActive() ? "#1e1e2e" : "#111",
-                        color: LABEL_COLORS[lbl] ?? "#e0e0e0",
-                        cursor: canClick() ? "pointer" : "default",
-                        "font-size": "0.58rem",
-                        "font-weight": isActive() ? "700" : "500",
-                        "text-align": "center",
-                        opacity: props.busy ? "0.5" : isActive() ? "1" : "0.8",
-                        transition: "all 0.1s ease",
-                      }}
-                    >
-                      {lbl}
-                    </button>
-                  );
-                }}
-              </For>
+                  {labelChanged() ? "Cancel" : "Reset"}
+                </button>
+                <button
+                  disabled={props.busy}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const r = editedRange();
+                    if (r) {
+                      const lbl = effectiveLabel();
+                      setPendingLabel(null);
+                      props.onUpdate(lbl, r.start, r.end);
+                    }
+                  }}
+                  style={{
+                    padding: "2px 8px",
+                    "border-radius": "4px",
+                    border: `1px solid ${LABEL_COLORS[effectiveLabel()] ?? "#888"}`,
+                    background: LABEL_COLORS[effectiveLabel()] ?? "#888",
+                    color: "#fff",
+                    cursor: "pointer",
+                    "font-size": "0.58rem",
+                    "font-weight": "600",
+                  }}
+                >
+                  {labelChanged() ? "Confirm" : "Update Time"}
+                </button>
+              </div>
             </div>
           </Show>
 
@@ -816,21 +764,10 @@ const GapRow: Component<{
             />
           </div>
 
-          <ActivityContext timeRange={() => selectedRange()} showEmpty />
+          <ActivityContext timeRange={() => selectedRange()} />
 
           <Show when={props.flash}>
-            <div
-              style={{
-                "text-align": "center",
-                "font-size": "0.65rem",
-                "margin-bottom": "4px",
-                color: props.flash!.startsWith("Error")
-                  ? "#ef4444"
-                  : "#22c55e",
-              }}
-            >
-              {props.flash!.startsWith("Error") ? props.flash : `Saved: ${props.flash}`}
-            </div>
+            <FlashMessage flash={props.flash!} />
           </Show>
 
           <div
