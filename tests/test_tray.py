@@ -625,16 +625,21 @@ class TestPublishStatus:
 
 class TestSendDesktopNotification:
 
-    @patch("taskclf.ui.tray.subprocess.run")
+    @patch("taskclf.ui.tray.threading.Thread")
+    @patch("taskclf.ui.tray.subprocess.Popen")
     @patch("taskclf.ui.tray.platform.system", return_value="Darwin")
     def test_macos_calls_osascript(
-        self, _mock_sys: MagicMock, mock_run: MagicMock,
+        self, _mock_sys: MagicMock, mock_popen: MagicMock,
+        mock_thread_cls: MagicMock,
     ) -> None:
         """TC-UI-NOTIF-001"""
+        mock_thread_cls.return_value = MagicMock()
+        mock_thread_cls.side_effect = lambda target, daemon: (target(), MagicMock())[1]
+
         _send_desktop_notification("Test Title", "Hello world")
 
-        mock_run.assert_called_once()
-        args = mock_run.call_args
+        mock_popen.assert_called_once()
+        args = mock_popen.call_args
         cmd = args[0][0]
         assert cmd[0] == "osascript"
         assert cmd[1] == "-e"
@@ -655,30 +660,37 @@ class TestSendDesktopNotification:
         assert "Hello world" in str(log_args)
 
     @patch("taskclf.ui.tray.logger")
+    @patch("taskclf.ui.tray.threading.Thread")
     @patch(
-        "taskclf.ui.tray.subprocess.run",
+        "taskclf.ui.tray.subprocess.Popen",
         side_effect=OSError("osascript not found"),
     )
     @patch("taskclf.ui.tray.platform.system", return_value="Darwin")
     def test_subprocess_failure_falls_back_to_logger(
-        self, _mock_sys: MagicMock, _mock_run: MagicMock,
-        mock_logger: MagicMock,
+        self, _mock_sys: MagicMock, _mock_popen: MagicMock,
+        mock_thread_cls: MagicMock, mock_logger: MagicMock,
     ) -> None:
         """TC-UI-NOTIF-003"""
+        mock_thread_cls.side_effect = lambda target, daemon: (target(), MagicMock())[1]
+
         _send_desktop_notification("Title", "Body")
 
-        mock_logger.info.assert_called_once()
+        mock_logger.debug.assert_called_once()
 
-    @patch("taskclf.ui.tray.subprocess.run")
+    @patch("taskclf.ui.tray.threading.Thread")
+    @patch("taskclf.ui.tray.subprocess.Popen")
     @patch("taskclf.ui.tray.platform.system", return_value="Darwin")
     def test_newlines_and_quotes_escaped(
-        self, _mock_sys: MagicMock, mock_run: MagicMock,
+        self, _mock_sys: MagicMock, mock_popen: MagicMock,
+        mock_thread_cls: MagicMock,
     ) -> None:
         """Regression: newlines and double quotes must not break the AppleScript."""
+        mock_thread_cls.side_effect = lambda target, daemon: (target(), MagicMock())[1]
+
         _send_desktop_notification('Has "quotes"', "Line1\nLine2")
 
-        mock_run.assert_called_once()
-        script = mock_run.call_args[0][0][2]
+        mock_popen.assert_called_once()
+        script = mock_popen.call_args[0][0][2]
         assert "\n" not in script
         assert '"Has \\"quotes\\""' in script or '\\"quotes\\"' in script
         assert "Line1 Line2" in script

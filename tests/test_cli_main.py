@@ -567,6 +567,17 @@ class TestDiagnostics:
         (self.home / "models").mkdir(parents=True)
         (self.home / "logs").mkdir(parents=True)
 
+        # DEFAULT_* are resolved at import time, so patch them in the CLI
+        # module to honour the temp TASKCLF_HOME for this test class.
+        monkeypatch.setattr(
+            "taskclf.cli.main.DEFAULT_MODELS_DIR",
+            str(self.home / "models"),
+        )
+        monkeypatch.setattr(
+            "taskclf.cli.main.DEFAULT_DATA_DIR",
+            str(self.home / "data" / "processed"),
+        )
+
         # Remove any leftover file handlers from other tests
         root = logging.getLogger()
         for h in list(root.handlers):
