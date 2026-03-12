@@ -14,7 +14,7 @@ const LABEL_COLORS: Record<string, string> = {
   BreakIdle: "#6b7280",
 };
 
-const MINUTE_OPTIONS = [0, 1, 5, 10, 15, 30, 60] as const;
+const MINUTE_OPTIONS = [0, 1, 5, 15, 30, 60] as const;
 type TimeUnit = "s" | "m" | "h" | "d";
 const UNIT_TO_MINUTES: Record<TimeUnit, number> = { s: 1 / 60, m: 1, h: 60, d: 1440 };
 
@@ -74,6 +74,7 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
   const [customValue, setCustomValue] = createSignal("");
   const [customUnit, setCustomUnit] = createSignal<TimeUnit>("m");
   const [extendFwd, setExtendFwd] = createSignal(loadExtendForward());
+  const [fillFromLast, setFillFromLast] = createSignal(false);
   const [confPercent, setConfPercent] = createSignal(100);
 
   function toggleExtendFwd() {
@@ -86,6 +87,7 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
     setSelectedMinutes(m);
     setCustomActive(false);
     setCustomValue("");
+    setFillFromLast(false);
   }
 
   function applyCustom(raw: string, unit: TimeUnit) {
@@ -93,6 +95,7 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
     if (!isNaN(n) && n >= 0) {
       setSelectedMinutes(n * UNIT_TO_MINUTES[unit]);
       setCustomActive(true);
+      setFillFromLast(false);
     }
   }
 
@@ -104,30 +107,28 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
     applyCustom(v, customUnit());
   }
 
-  function computeNowStart(now: Date): Date {
-    const ll = lastLabel();
-    if (ll?.end_ts) {
-      const lastEnd = parseISODate(ll.end_ts);
-      if (now.getTime() - lastEnd.getTime() >= 60_000) {
-        return lastEnd;
-      }
-    }
-    return new Date(now.getTime() - 60_000);
-  }
-
   async function labelNow(label: string) {
     const mins = selectedMinutes();
     const now = new Date();
-    const start = mins === 0
-      ? computeNowStart(now)
-      : new Date(now.getTime() - mins * 60_000);
+    let start: Date;
+    let forceExtendFwd = false;
+
+    if (fillFromLast() && lastLabel()?.end_ts) {
+      start = parseISODate(lastLabel()!.end_ts);
+    } else if (mins === 0) {
+      start = now;
+      forceExtendFwd = true;
+    } else {
+      start = new Date(now.getTime() - mins * 60_000);
+    }
+    const effectiveExtend = forceExtendFwd || extendFwd();
     try {
       await createLabel({
         start_ts: start.toISOString(),
         end_ts: now.toISOString(),
         label,
         confidence: confPercent() / 100,
-        extend_forward: extendFwd(),
+        extend_forward: effectiveExtend,
       });
       setFlash(label);
       setLabelVersion((v) => v + 1);
@@ -155,7 +156,7 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
               end: now.toISOString(),
               conflicts: spans,
               confidence: confPercent() / 100,
-              extendForward: extendFwd(),
+              extendForward: effectiveExtend,
             });
             return;
           }
@@ -222,40 +223,60 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
           Last
         </span>
         <For each={[...MINUTE_OPTIONS]}>
-          {(m) => (
+          {(m) => {
+            const active = () => !customActive() && !fillFromLast() && selectedMinutes() === m;
+            return (
+              <button
+                onClick={() => selectPreset(m)}
+                style={{
+                  padding: "2px 7px",
+                  "border-radius": "10px",
+                  border: "1px solid var(--border)",
+                  background: active() ? "var(--text-muted)" : "var(--surface)",
+                  color: active() ? "var(--bg)" : "var(--text-muted)",
+                  cursor: "pointer",
+                  "font-size": "0.7rem",
+                  "font-weight": active() ? "700" : "500",
+                  "line-height": "1.4",
+                  transition: "all 0.1s ease",
+                }}
+              >
+                {m === 0 ? "now" : `${m}m`}
+              </button>
+            );
+          }}
+        </For>
+        {(() => {
+          const ll = lastLabel();
+          if (!ll?.end_ts) return null;
+          const ago = Math.round((Date.now() - parseISODate(ll.end_ts).getTime()) / 60_000);
+          if (ago < 1) return null;
+          const label = ago >= 60
+            ? `gap ${Math.floor(ago / 60)}h${ago % 60 ? `${ago % 60}m` : ""}`
+            : `gap ${ago}m`;
+          return (
             <button
-              onClick={() => selectPreset(m)}
+              onClick={() => {
+                setFillFromLast(true);
+                setCustomActive(false);
+              }}
               style={{
                 padding: "2px 7px",
                 "border-radius": "10px",
                 border: "1px solid var(--border)",
-                background:
-                  !customActive() && selectedMinutes() === m
-                    ? "var(--text-muted)"
-                    : "var(--surface)",
-                color:
-                  !customActive() && selectedMinutes() === m
-                    ? "var(--bg)"
-                    : "var(--text-muted)",
+                background: fillFromLast() ? "var(--text-muted)" : "var(--surface)",
+                color: fillFromLast() ? "var(--bg)" : "var(--text-muted)",
                 cursor: "pointer",
                 "font-size": "0.7rem",
-                "font-weight":
-                  !customActive() && selectedMinutes() === m ? "700" : "500",
+                "font-weight": fillFromLast() ? "700" : "500",
                 "line-height": "1.4",
                 transition: "all 0.1s ease",
               }}
             >
-              {m === 0 ? (() => {
-                const ll = lastLabel();
-                if (ll?.end_ts) {
-                  const ago = Math.round((Date.now() - parseISODate(ll.end_ts).getTime()) / 60_000);
-                  if (ago >= 1) return `now (${ago >= 60 ? `${Math.floor(ago / 60)}h${ago % 60 ? ` ${ago % 60}m` : ""}` : `${ago}m`})`;
-                }
-                return "now";
-              })() : `${m}m`}
+              {label}
             </button>
-          )}
-        </For>
+          );
+        })()}
         <div
           style={{
             display: "flex",
