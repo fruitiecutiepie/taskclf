@@ -381,12 +381,21 @@ def create_app(
     async def list_labels(
         limit: int = Query(50, ge=1, le=500),
         date: str | None = Query(None, description="ISO-8601 date to filter labels by (e.g. 2025-03-07)"),
+        range_start: str | None = Query(None, description="UTC start of visible range (ISO-8601)"),
+        range_end: str | None = Query(None, description="UTC end of visible range (ISO-8601)"),
     ) -> list[LabelResponse]:
         if not labels_path.exists():
             return []
         spans = read_label_spans(labels_path)
 
-        if date is not None:
+        if range_start is not None and range_end is not None:
+            try:
+                rs = _to_naive_utc(dt.datetime.fromisoformat(range_start))
+                re_ = _to_naive_utc(dt.datetime.fromisoformat(range_end))
+            except (ValueError, Exception) as exc:
+                raise HTTPException(status_code=400, detail=f"Invalid range: {exc}") from exc
+            spans = [s for s in spans if s.end_ts > rs and s.start_ts < re_]
+        elif date is not None:
             try:
                 target = dt.date.fromisoformat(date)
             except ValueError as exc:

@@ -49,7 +49,11 @@ export async function fetchLabels(limit = 50): Promise<LabelResponse[]> {
 }
 
 export async function fetchLabelsByDate(date: string): Promise<LabelResponse[]> {
-  return json(`${BASE}/labels?limit=500&date=${date}`);
+  const dayStart = new Date(`${date}T00:00:00`);
+  const dayEnd = new Date(`${date}T23:59:59.999`);
+  const rs = encodeURIComponent(dayStart.toISOString());
+  const re = encodeURIComponent(dayEnd.toISOString());
+  return json(`${BASE}/labels?limit=500&range_start=${rs}&range_end=${re}`);
 }
 
 export async function createLabel(body: {
