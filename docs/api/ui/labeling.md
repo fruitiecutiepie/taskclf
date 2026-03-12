@@ -37,7 +37,7 @@ Options:
 ## Live Features
 
 - **Live badge (compact)** -- Header pill showing the current label/app and connection dot. Visible in the collapsed tray window.
-- **State panel** -- Tabbed panel with two views, selected via a segmented control at the top:
+- **State panel** -- Tabbed panel with three views, selected via a segmented control at the top:
   - **System tab** -- Internal-state debug panel with a collapsible accordion layout: each section header shows an inline summary badge (e.g., current app, predicted label, connection status) so all states are scannable at a glance. Click any header to expand its detail rows. **Activity Monitor** and **Last Prediction** default to open; all other sections start collapsed. Eight sections:
     - **Activity Monitor** -- summary: `state · current_app`. Details: `state`, `current_app`, `since`, `poll_interval`, `poll_count`, `last_poll` timestamp, `uptime`. When a transition candidate exists: `candidate_app`, `candidate_progress` with duration/threshold/percentage and a visual progress bar.
     - **Last Prediction** -- summary: `mapped_label confidence%`. Details: `label`, `mapped_label`, `confidence` (color-coded green/red at 50% threshold), `ts`, `trigger_app`.
@@ -47,6 +47,7 @@ Options:
     - **ActivityWatch** -- summary: `connected`/`disconnected` (color-coded). Details: AW `connection` status, `host`, `bucket_id`, `last_events` count, and **app distribution** (top 5 apps with event counts from the last poll).
     - **WebSocket** -- summary: connection status (color-coded). Details: `status`, `messages` total, per-type `breakdown` (st/pred/tray/sug), `last_received` timestamp, `reconnects` count, `connected_since`.
     - **Config** -- summary: `dev`/`prod`. Details: `data_dir`, `ui_port`, `dev_mode`, `labels_saved` count.
+  - **Training tab** -- Model training interface with data readiness checks, a training form (date range, boost rounds, class weight, synthetic toggle), real-time progress via WebSocket, result display (macro/weighted F1), and a model bundle list. See [training.md](training.md) for endpoint details.
   - **History tab** -- Single-day view with date navigation (prev/next arrows and a date picker). Shows a full-day timeline strip (00:00–23:59) with color-coded labeled segments and clickable unlabeled gaps. Click any label row to expand an inline editor showing the ActivityContext for that time window (apps used, input stats), a label-change grid (current label highlighted), and a delete button with confirmation. Click any unlabeled gap row to expand an inline editor with time range inputs (pre-filled to the gap boundaries, adjustable to label a sub-range), ActivityContext for the selected range, and a label picker grid; selecting a label creates a new label span for the chosen sub-range. Navigating to a past date with no labels shows the entire day as a single labelable gap. Provides a dedicated review surface separate from the quick-label popup, with the full panel height available for browsing.
 - **Suggestion banner** -- Appears when the ActivityMonitor detects a task change. Accept or dismiss with one click.
 
@@ -54,7 +55,7 @@ Options:
 
 The UI is a SolidJS single-page application served by a FastAPI backend:
 
-- **REST endpoints** (`/api/labels`, `/api/labels/export`, `/api/labels/import`, `/api/labels/stats`, `/api/queue`, `/api/features/summary`, `/api/aw/live`, `/api/config/labels`, `/api/config/user`, `/api/tray/pause`, `/api/tray/state`) handle label CRUD, import/export, stats, queue management, user configuration, tray control, and data queries.
+- **REST endpoints** (`/api/labels`, `/api/labels/export`, `/api/labels/import`, `/api/labels/stats`, `/api/queue`, `/api/features/summary`, `/api/aw/live`, `/api/config/labels`, `/api/config/user`, `/api/tray/pause`, `/api/tray/state`, `/api/train/*`) handle label CRUD, import/export, stats, queue management, user configuration, tray control, model training, and data queries. See [training.md](training.md) for the `/api/train/*` endpoints.
   - `GET /api/labels` accepts optional `limit` (default 50, max 500) and `date` (ISO-8601 date string, e.g. `2025-03-07`) query parameters. When `date` is provided, only labels overlapping that day are returned. The History tab uses this to fetch labels for the selected date.
   - `POST /api/labels` accepts optional `extend_forward` and `overwrite` booleans. `extend_forward` persists the label with `extend_forward=true`; when the *next* label is created for the same user, this label's `end_ts` is automatically stretched to the new label's `start_ts`, producing contiguous coverage. The quick-label UI sets this flag by default. When `overwrite` is `true`, conflicting same-user spans are truncated, split, or removed to make room for the new label (no 409 is returned). When `overwrite` is `false` (default), an overlap returns 409 with structured conflict details: `{"detail": {"error": "...", "conflicting_start_ts": "...", "conflicting_end_ts": "..."}}` so the frontend can prompt the user to overwrite.
   - `PUT /api/labels` changes the label on an existing span identified by `start_ts` + `end_ts`. Returns 404 if no matching span exists.
@@ -75,6 +76,9 @@ The UI is a SolidJS single-page application served by a FastAPI backend:
   - `suggest_label` -- on app transition with model suggestion: `suggested`, `confidence`, `reason`, `old_label`, `block_start`, `block_end`.
   - `prompt_label` -- on task transition with labeling prompt: `prev_app`, `new_app`, `block_start`, `block_end`, `duration_min`, `suggested_label`, `suggested_confidence`.
   - `show_label_grid` -- triggered by `POST /api/window/show-label-grid`: `type` (`"show_label_grid"`, no other fields).
+  - `train_progress` -- during training: `job_id`, `step`, `progress_pct`, `message`.
+  - `train_complete` -- on training success: `job_id`, `metrics` (`macro_f1`, `weighted_f1`), `model_dir`.
+  - `train_failed` -- on training failure: `job_id`, `error`.
 
   **Backpressure policy:** Each WebSocket subscriber has a 256-event queue. When the queue is full, the oldest event is evicted to make room for the new one. The subscriber is never silently dropped; it continues receiving events at the cost of missing stale ones.
 

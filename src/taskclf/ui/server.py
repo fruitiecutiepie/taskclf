@@ -1,7 +1,8 @@
 """FastAPI backend for the taskclf labeling web UI.
 
-Provides REST endpoints for label CRUD, queue management, and feature
-summaries, plus a WebSocket channel for live prediction streaming.
+Provides REST endpoints for label CRUD, queue management, feature
+summaries, and model training, plus a WebSocket channel for live
+prediction streaming and training progress.
 """
 
 from __future__ import annotations
@@ -10,8 +11,11 @@ import asyncio
 import datetime as dt
 import logging
 import re
+import threading
+import uuid
 from collections import Counter
 from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
 from pathlib import Path
 from collections.abc import Callable
 from typing import Any, Literal
@@ -22,7 +26,13 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from taskclf.core.config import UserConfig
-from taskclf.core.defaults import DEFAULT_AW_HOST, DEFAULT_DATA_DIR, DEFAULT_TITLE_SALT
+from taskclf.core.defaults import (
+    DEFAULT_AW_HOST,
+    DEFAULT_DATA_DIR,
+    DEFAULT_MODELS_DIR,
+    DEFAULT_NUM_BOOST_ROUND,
+    DEFAULT_TITLE_SALT,
+)
 from taskclf.core.store import read_parquet
 from taskclf.core.time import to_naive_utc
 from taskclf.core.types import CoreLabel, LabelSpan
@@ -164,6 +174,83 @@ class OverlapErrorDetail(BaseModel):
     conflicting_spans: list[ConflictingSpan] = []
 
 
+class TrainStartRequest(BaseModel):
+    date_from: str = Field(description="Start date (YYYY-MM-DD)")
+    date_to: str = Field(description="End date (YYYY-MM-DD, inclusive)")
+    num_boost_round: int = Field(default=DEFAULT_NUM_BOOST_ROUND)
+    class_weight: Literal["balanced", "none"] = "balanced"
+    synthetic: bool = False
+
+
+class BuildFeaturesRequest(BaseModel):
+    date_from: str = Field(description="Start date (YYYY-MM-DD)")
+    date_to: str = Field(description="End date (YYYY-MM-DD, inclusive)")
+
+
+class TrainStatusResponse(BaseModel):
+    job_id: str | None = None
+    status: Literal["idle", "running", "complete", "failed"]
+    step: str | None = None
+    progress_pct: int | None = None
+    message: str | None = None
+    error: str | None = None
+    metrics: dict[str, Any] | None = None
+    model_dir: str | None = None
+    started_at: str | None = None
+    finished_at: str | None = None
+
+
+class ModelBundleResponse(BaseModel):
+    model_id: str
+    path: str
+    valid: bool
+    invalid_reason: str | None = None
+    macro_f1: float | None = None
+    weighted_f1: float | None = None
+    created_at: str | None = None
+
+
+class DataCheckResponse(BaseModel):
+    date_from: str
+    date_to: str
+    dates_with_features: list[str]
+    dates_missing_features: list[str]
+    total_feature_rows: int
+    label_span_count: int
+
+
+@dataclass
+class _TrainJob:
+    """Mutable state for a single background training job."""
+
+    job_id: str = ""
+    status: str = "idle"
+    step: str | None = None
+    progress_pct: int | None = None
+    message: str | None = None
+    error: str | None = None
+    metrics: dict[str, Any] | None = None
+    model_dir: str | None = None
+    started_at: str | None = None
+    finished_at: str | None = None
+    _cancel: threading.Event = field(default_factory=threading.Event)
+    _lock: threading.Lock = field(default_factory=threading.Lock)
+
+    def to_response(self) -> TrainStatusResponse:
+        return TrainStatusResponse(
+            job_id=self.job_id or None,
+            status=self.status,  # type: ignore[arg-type]
+            step=self.step,
+            progress_pct=self.progress_pct,
+            message=self.message,
+            error=self.error,
+            metrics=self.metrics,
+            model_dir=self.model_dir,
+            started_at=self.started_at,
+            finished_at=self.finished_at,
+        )
+
+
 def _utc_iso(ts: dt.datetime) -> str:
     """Format a datetime as ISO-8601 with explicit UTC timezone suffix."""
     if ts.tzinfo is None:
@@ -241,11 +328,13 @@ def _parse_overlap_error(
 def create_app(
     *,
     data_dir: Path = Path(DEFAULT_DATA_DIR),
+    models_dir: Path | None = None,
     aw_host: str = DEFAULT_AW_HOST,
     title_salt: str = DEFAULT_TITLE_SALT,
     event_bus: EventBus | None = None,
     window_api: Any = None,
     on_label_saved: Callable[[], None] | None = None,
+    on_model_trained: Callable[[str], None] | None = None,
     pause_toggle: Callable[[], bool] | None = None,
     is_paused: Callable[[], bool] | None = None,
 ) -> FastAPI:
@@ -253,6 +342,7 @@ def create_app(
 
     Args:
         data_dir: Path to the processed data directory.
+        models_dir: Path to the directory containing model bundles.
         aw_host: ActivityWatch server URL.
         title_salt: Salt for hashing window titles.
         event_bus: Shared event bus for WebSocket broadcasting.
@@ -260,6 +350,8 @@ def create_app(
         on_label_saved: Optional callback invoked after a label is
             successfully saved (via ``POST /api/labels`` or
             ``POST /api/notification/accept``).
+        on_model_trained: Optional callback invoked with the model run
+            directory path after training completes successfully.
         pause_toggle: Optional callback to toggle pause state; returns
             new paused boolean.
         is_paused: Optional callable returning current paused state.
@@ -268,6 +360,8 @@ def create_app(
     labels_path = data_dir / "labels_v1" / "labels.parquet"
     queue_path = data_dir / "labels_v1" / "queue.json"
     user_config = UserConfig(data_dir)
+    effective_models_dir = models_dir or Path(DEFAULT_MODELS_DIR)
+    train_job = _TrainJob()
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):  # type: ignore[no-untyped-def]
@@ -704,6 +798,400 @@ def create_app(
         if is_paused is None:
             return {"available": False, "paused": False}
         return {"available": True, "paused": is_paused()}
+
+    # -- REST: training -------------------------------------------------------
+
+    def _run_training_pipeline(
+        job: _TrainJob,
+        *,
+        date_from: str,
+        date_to: str,
+        num_boost_round: int,
+        class_weight: str,
+        synthetic: bool,
+    ) -> None:
+        """Background thread: load data, train, save bundle, publish progress."""
+        import pandas as pd
+
+        try:
+            start = dt.date.fromisoformat(date_from)
+            end = dt.date.fromisoformat(date_to)
+
+            def _update(step: str, pct: int, msg: str) -> None:
+                job.step = step
+                job.progress_pct = pct
+                job.message = msg
+                bus.publish_threadsafe({
+                    "type": "train_progress",
+                    "job_id": job.job_id,
+                    "step": step,
+                    "progress_pct": pct,
+                    "message": msg,
+                })
+
+            if job._cancel.is_set():
+                raise InterruptedError("Cancelled")
+
+            _update("loading_features", 10, "Loading features…")
+
+            from taskclf.core.store import read_parquet as _read_pq
+            from taskclf.features.build import generate_dummy_features
+            from taskclf.labels.store import generate_dummy_labels
+
+            all_features: list[pd.DataFrame] = []
+            all_labels: list = []
+            current = start
+
+            if not synthetic:
+                lp = data_dir / "labels_v1" / "labels.parquet"
+                if lp.exists():
+                    from taskclf.labels.store import read_label_spans as _read_ls
+                    all_spans = _read_ls(lp)
+                    start_dt = dt.datetime(start.year, start.month, start.day, tzinfo=dt.timezone.utc)
+                    end_dt = dt.datetime(end.year, end.month, end.day, 23, 59, 59, tzinfo=dt.timezone.utc)
+                    all_labels = [s for s in all_spans if s.end_ts >= start_dt and s.start_ts <= end_dt]
+
+            while current <= end:
+                if job._cancel.is_set():
+                    raise InterruptedError("Cancelled")
+                if synthetic:
+                    rows = generate_dummy_features(current, n_rows=60)
+                    df = pd.DataFrame([r.model_dump() for r in rows])
+                    labels = generate_dummy_labels(current, n_rows=60)
+                    all_labels.extend(labels)
+                else:
+                    fp = data_dir / f"features_v1/date={current.isoformat()}" / "features.parquet"
+                    if fp.exists():
+                        df = _read_pq(fp)
+                    else:
+                        current += dt.timedelta(days=1)
+                        continue
+                all_features.append(df)
+                current += dt.timedelta(days=1)
+
+            if not all_features:
+                raise ValueError("No feature data found for the given date range")
+
+            features_df = pd.concat(all_features, ignore_index=True)
+
+            if job._cancel.is_set():
+                raise InterruptedError("Cancelled")
+
+            _update("projecting_labels", 30, f"Projecting {len(all_labels)} labels onto {len(features_df)} rows…")
+
+            from taskclf.labels.projection import project_blocks_to_windows
+
+            labeled_df = project_blocks_to_windows(features_df, all_labels)
+            if labeled_df.empty:
+                raise ValueError("No labeled rows — cannot train")
+
+            if job._cancel.is_set():
+                raise InterruptedError("Cancelled")
+
+            _update("splitting", 40, f"Splitting {len(labeled_df)} labeled rows…")
+
+            from taskclf.train.dataset import split_by_time
+
+            splits = split_by_time(labeled_df)
+            train_df = labeled_df.iloc[splits["train"]].reset_index(drop=True)
+            val_df = labeled_df.iloc[splits["val"]].reset_index(drop=True)
+
+            if job._cancel.is_set():
+                raise InterruptedError("Cancelled")
+
+            _update(
+                "training", 50,
+                f"Training LightGBM ({num_boost_round} rounds, "
+                f"{len(train_df)} train / {len(val_df)} val)…",
+            )
+
+            from taskclf.train.lgbm import train_lgbm as _train
+
+            cw = class_weight if class_weight in ("balanced", "none") else "balanced"
+            model, metrics, cm_df, params, cat_encoders = _train(
+                train_df, val_df,
+                num_boost_round=num_boost_round,
+                class_weight=cw,
+            )
+
+            if job._cancel.is_set():
+                raise InterruptedError("Cancelled")
+
+            _update("saving", 85, f"Saving bundle (macro_f1={metrics['macro_f1']:.3f})…")
+
+            from taskclf.core.model_io import build_metadata, save_model_bundle
+            from taskclf.train.retrain import compute_dataset_hash
+
+            dataset_hash = compute_dataset_hash(features_df, all_labels)
+            metadata = build_metadata(
+                label_set=metrics["label_names"],
+                train_date_from=start,
+                train_date_to=end,
+                params=params,
+                dataset_hash=dataset_hash,
+                data_provenance="synthetic" if synthetic else "real",
+            )
+
+            run_dir = save_model_bundle(
+                model=model,
+                metadata=metadata,
+                metrics=metrics,
+                confusion_df=cm_df,
+                base_dir=effective_models_dir,
+                cat_encoders=cat_encoders,
+            )
+
+            job.metrics = metrics
+            job.model_dir = str(run_dir)
+            job.status = "complete"
+            job.finished_at = dt.datetime.now(dt.timezone.utc).isoformat()
+            _update("done", 100, f"Model saved to {run_dir.name}")
+
+            bus.publish_threadsafe({
+                "type": "train_complete",
+                "job_id": job.job_id,
+                "metrics": {
+                    "macro_f1": metrics.get("macro_f1"),
+                    "weighted_f1": metrics.get("weighted_f1"),
+                },
+                "model_dir": str(run_dir),
+            })
+
+            if on_model_trained is not None:
+                try:
+                    on_model_trained(str(run_dir))
+                except Exception:
+                    logger.debug("on_model_trained callback failed", exc_info=True)
+
+        except InterruptedError:
+            job.status = "failed"
+            job.error = "Cancelled by user"
+            job.finished_at = dt.datetime.now(dt.timezone.utc).isoformat()
+            bus.publish_threadsafe({
+                "type": "train_failed",
+                "job_id": job.job_id,
+                "error": "Cancelled by user",
+            })
+        except Exception as exc:
+            logger.warning("Training failed: %s", exc, exc_info=True)
+            job.status = "failed"
+            job.error = str(exc)
+            job.finished_at = dt.datetime.now(dt.timezone.utc).isoformat()
+            bus.publish_threadsafe({
+                "type": "train_failed",
+                "job_id": job.job_id,
+                "error": str(exc),
+            })
+
+    def _run_feature_build(
+        job: _TrainJob,
+        *,
+        date_from: str,
+        date_to: str,
+    ) -> None:
+        """Background thread: build features for each date in the range."""
+        try:
+            from taskclf.features.build import build_features_for_date
+
+            start = dt.date.fromisoformat(date_from)
+            end = dt.date.fromisoformat(date_to)
+            total_days = (end - start).days + 1
+            current = start
+            built = 0
+
+            while current <= end:
+                if job._cancel.is_set():
+                    raise InterruptedError("Cancelled")
+                pct = int((built / total_days) * 100)
+                job.step = "building_features"
+                job.progress_pct = pct
+                job.message = f"Building features for {current} ({built + 1}/{total_days})…"
+                bus.publish_threadsafe({
+                    "type": "train_progress",
+                    "job_id": job.job_id,
+                    "step": "building_features",
+                    "progress_pct": pct,
+                    "message": job.message,
+                })
+
+                build_features_for_date(current, data_dir)
+                built += 1
+                current += dt.timedelta(days=1)
+
+            job.status = "complete"
+            job.step = "done"
+            job.progress_pct = 100
+            job.message = f"Built features for {built} day(s)"
+            job.finished_at = dt.datetime.now(dt.timezone.utc).isoformat()
+            bus.publish_threadsafe({
+                "type": "train_complete",
+                "job_id": job.job_id,
+                "metrics": None,
+                "model_dir": None,
+            })
+        except InterruptedError:
+            job.status = "failed"
+            job.error = "Cancelled by user"
+            job.finished_at = dt.datetime.now(dt.timezone.utc).isoformat()
+            bus.publish_threadsafe({
+                "type": "train_failed",
+                "job_id": job.job_id,
+                "error": "Cancelled by user",
+            })
+        except Exception as exc:
+            logger.warning("Feature build failed: %s", exc, exc_info=True)
+            job.status = "failed"
+            job.error = str(exc)
+            job.finished_at = dt.datetime.now(dt.timezone.utc).isoformat()
+            bus.publish_threadsafe({
+                "type": "train_failed",
+                "job_id": job.job_id,
+                "error": str(exc),
+            })
+
+    @app.post("/api/train/start", status_code=202)
+    async def train_start(body: TrainStartRequest) -> TrainStatusResponse:
+        with train_job._lock:
+            if train_job.status == "running":
+                raise HTTPException(
+                    status_code=409,
+                    detail="A training job is already running",
+                )
+            train_job.job_id = uuid.uuid4().hex[:12]
+            train_job.status = "running"
+            train_job.step = "initializing"
+            train_job.progress_pct = 0
+            train_job.message = "Starting…"
+            train_job.error = None
+            train_job.metrics = None
+            train_job.model_dir = None
+            train_job.started_at = dt.datetime.now(dt.timezone.utc).isoformat()
+            train_job.finished_at = None
+            train_job._cancel.clear()
+
+        thread = threading.Thread(
+            target=_run_training_pipeline,
+            args=(train_job,),
+            kwargs={
+                "date_from": body.date_from,
+                "date_to": body.date_to,
+                "num_boost_round": body.num_boost_round,
+                "class_weight": body.class_weight,
+                "synthetic": body.synthetic,
+            },
+            daemon=True,
+        )
+        thread.start()
+        return train_job.to_response()
+
+    @app.post("/api/train/build-features", status_code=202)
+    async def train_build_features(body: BuildFeaturesRequest) -> TrainStatusResponse:
+        with train_job._lock:
+            if train_job.status == "running":
+                raise HTTPException(
+                    status_code=409,
+                    detail="A training job is already running",
+                )
+            train_job.job_id = uuid.uuid4().hex[:12]
+            train_job.status = "running"
+            train_job.step = "building_features"
+            train_job.progress_pct = 0
+            train_job.message = "Starting feature build…"
+            train_job.error = None
+            train_job.metrics = None
+            train_job.model_dir = None
+            train_job.started_at = dt.datetime.now(dt.timezone.utc).isoformat()
+            train_job.finished_at = None
+            train_job._cancel.clear()
+
+        thread = threading.Thread(
+            target=_run_feature_build,
+            args=(train_job,),
+            kwargs={
+                "date_from": body.date_from,
+                "date_to": body.date_to,
+            },
+            daemon=True,
+        )
+        thread.start()
+        return train_job.to_response()
+
+    @app.get("/api/train/status")
+    async def train_status() -> TrainStatusResponse:
+        return train_job.to_response()
+
+    @app.post("/api/train/cancel")
+    async def train_cancel() -> TrainStatusResponse:
+        if train_job.status != "running":
+            raise HTTPException(status_code=409, detail="No running job to cancel")
+        train_job._cancel.set()
+        return train_job.to_response()
+
+    @app.get("/api/train/models")
+    async def train_list_models() -> list[ModelBundleResponse]:
+        from taskclf.model_registry import list_bundles
+
+        bundles = list_bundles(effective_models_dir)
+        return [
+            ModelBundleResponse(
+                model_id=b.model_id,
+                path=str(b.path),
+                valid=b.valid,
+                invalid_reason=b.invalid_reason,
+                macro_f1=b.metrics.macro_f1 if b.metrics else None,
+                weighted_f1=b.metrics.weighted_f1 if b.metrics else None,
+                created_at=b.created_at.isoformat() if b.created_at else None,
+            )
+            for b in bundles
+        ]
+
+    @app.get("/api/train/data-check")
+    async def train_data_check(
+        date_from: str = Query(..., description="Start date (YYYY-MM-DD)"),
+        date_to: str = Query(..., description="End date (YYYY-MM-DD)"),
+    ) -> DataCheckResponse:
+        start = dt.date.fromisoformat(date_from)
+        end = dt.date.fromisoformat(date_to)
+        current = start
+        dates_with: list[str] = []
+        dates_missing: list[str] = []
+        total_rows = 0
+
+        while current <= end:
+            fp = data_dir / f"features_v1/date={current.isoformat()}" / "features.parquet"
+            if fp.exists():
+                dates_with.append(current.isoformat())
+                try:
+                    df = read_parquet(fp)
+                    total_rows += len(df)
+                except Exception:
+                    pass
+            else:
+                dates_missing.append(current.isoformat())
+            current += dt.timedelta(days=1)
+
+        label_count = 0
+        lp = data_dir / "labels_v1" / "labels.parquet"
+        if lp.exists():
+            try:
+                spans = read_label_spans(lp)
+                start_dt = dt.datetime(start.year, start.month, start.day, tzinfo=dt.timezone.utc)
+                end_dt = dt.datetime(end.year, end.month, end.day, 23, 59, 59, tzinfo=dt.timezone.utc)
+                label_count = sum(
+                    1 for s in spans
+                    if s.end_ts >= start_dt and s.start_ts <= end_dt
+                )
+            except Exception:
+                pass
+
+        return DataCheckResponse(
+            date_from=date_from,
+            date_to=date_to,
+            dates_with_features=dates_with,
+            dates_missing_features=dates_missing,
+            total_feature_rows=total_rows,
+            label_span_count=label_count,
+        )
 
     # -- WebSocket ------------------------------------------------------------
 

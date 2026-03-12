@@ -167,6 +167,7 @@ const PanelApp: Component = () => {
           latestTrayState={ws.latestTrayState}
           activeSuggestion={ws.activeSuggestion}
           wsStats={ws.wsStats}
+          trainState={ws.trainState}
         />
       </div>
     </div>
@@ -382,6 +383,7 @@ const App: Component = () => {
             latestTrayState={ws.latestTrayState}
             activeSuggestion={ws.activeSuggestion}
             wsStats={ws.wsStats}
+            trainState={ws.trainState}
           />
         </div>
       </Show>

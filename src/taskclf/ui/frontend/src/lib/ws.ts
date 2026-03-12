@@ -100,6 +100,27 @@ export interface LabelCreatedEvent {
   extend_forward: boolean;
 }
 
+export interface TrainProgressEvent {
+  type: "train_progress";
+  job_id: string;
+  step: string;
+  progress_pct: number | null;
+  message: string | null;
+}
+
+export interface TrainCompleteEvent {
+  type: "train_complete";
+  job_id: string;
+  metrics: { macro_f1?: number; weighted_f1?: number } | null;
+  model_dir: string | null;
+}
+
+export interface TrainFailedEvent {
+  type: "train_failed";
+  job_id: string;
+  error: string;
+}
+
 export type WSEvent =
   | Prediction
   | LabelSuggestion
@@ -109,9 +130,23 @@ export type WSEvent =
   | PromptLabelEvent
   | SuggestionClearedEvent
   | NoModelTransitionEvent
-  | LabelCreatedEvent;
+  | LabelCreatedEvent
+  | TrainProgressEvent
+  | TrainCompleteEvent
+  | TrainFailedEvent;
 
 export type ConnectionStatus = "connecting" | "connected" | "disconnected";
+
+export interface TrainState {
+  job_id: string | null;
+  status: "idle" | "running" | "complete" | "failed";
+  step: string | null;
+  progress_pct: number | null;
+  message: string | null;
+  error: string | null;
+  metrics: { macro_f1?: number; weighted_f1?: number } | null;
+  model_dir: string | null;
+}
 
 export interface WSStats {
   messageCount: number;
@@ -138,6 +173,16 @@ export function useWebSocket() {
   const [latestPrompt, setLatestPrompt] =
     createSignal<PromptLabelEvent | null>(null);
   const [labelGridRequested, setLabelGridRequested] = createSignal(0);
+  const [trainState, setTrainState] = createSignal<TrainState>({
+    job_id: null,
+    status: "idle",
+    step: null,
+    progress_pct: null,
+    message: null,
+    error: null,
+    metrics: null,
+    model_dir: null,
+  });
   const [connectionStatus, setConnectionStatus] =
     createSignal<ConnectionStatus>("connecting");
   const [wsStats, setWsStats] = createSignal<WSStats>({
@@ -279,6 +324,55 @@ export function useWebSocket() {
               lastMessageAt: now,
             }));
             break;
+          case "train_progress":
+            setTrainState((prev) => ({
+              ...prev,
+              job_id: data.job_id,
+              status: "running",
+              step: data.step,
+              progress_pct: data.progress_pct,
+              message: data.message,
+            }));
+            setWsStats((prev) => ({
+              ...prev,
+              messageCount: prev.messageCount + 1,
+              lastMessageAt: now,
+            }));
+            break;
+          case "train_complete":
+            setTrainState((prev) => ({
+              ...prev,
+              job_id: data.job_id,
+              status: "complete",
+              step: "done",
+              progress_pct: 100,
+              message: null,
+              error: null,
+              metrics: data.metrics,
+              model_dir: data.model_dir,
+            }));
+            setWsStats((prev) => ({
+              ...prev,
+              messageCount: prev.messageCount + 1,
+              lastMessageAt: now,
+            }));
+            break;
+          case "train_failed":
+            setTrainState((prev) => ({
+              ...prev,
+              job_id: data.job_id,
+              status: "failed",
+              step: null,
+              progress_pct: null,
+              message: null,
+              error: data.error,
+            }));
+            setWsStats((prev) => ({
+              ...prev,
+              messageCount: prev.messageCount + 1,
+              lastMessageAt: now,
+            }));
+            break;
         }
       } catch {
         // ignore malformed messages
@@ -331,6 +425,7 @@ export function useWebSocket() {
     labelGridRequested,
     connectionStatus,
     wsStats,
+    trainState,
     dismissSuggestion,
   };
 }

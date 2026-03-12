@@ -11,9 +11,20 @@ import type {
   LabelSuggestion,
   Prediction,
   StatusEvent,
+  TrainState,
   TrayState,
   WSStats,
 } from "../lib/ws";
+import {
+  type DataCheck,
+  type ModelBundle,
+  type TrainStatus,
+  cancelTraining,
+  getTrainStatus,
+  listModels,
+  startTraining,
+  trainDataCheck,
+} from "../lib/api";
 import { LabelHistory } from "./LabelHistory";
 
 export const LABEL_COLORS: Record<string, string> = {
@@ -212,10 +223,311 @@ const ProgressBar: Component<{ pct: number; color?: string }> = (props) => (
 );
 
 // ---------------------------------------------------------------------------
+// TrainingPanel
+// ---------------------------------------------------------------------------
+
+const TrainingPanel: Component<{
+  trainState: Accessor<TrainState>;
+}> = (props) => {
+  const today = () => {
+    const d = new Date();
+    return d.toISOString().slice(0, 10);
+  };
+  const thirtyDaysAgo = () => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return d.toISOString().slice(0, 10);
+  };
+
+  const [dateFrom, setDateFrom] = createSignal(thirtyDaysAgo());
+  const [dateTo, setDateTo] = createSignal(today());
+  const [boostRounds, setBoostRounds] = createSignal(100);
+  const [classWeight, setClassWeight] = createSignal<"balanced" | "none">("balanced");
+  const [synthetic, setSynthetic] = createSignal(false);
+
+  const [dataCheck, setDataCheck] = createSignal<DataCheck | null>(null);
+  const [models, setModels] = createSignal<ModelBundle[]>([]);
+  const [loadError, setLoadError] = createSignal<string | null>(null);
+  const [submitting, setSubmitting] = createSignal(false);
+
+  const ts = () => props.trainState();
+  const isRunning = () => ts().status === "running";
+
+  async function refreshData() {
+    try {
+      setLoadError(null);
+      const [dc, ml] = await Promise.all([
+        trainDataCheck(dateFrom(), dateTo()),
+        listModels(),
+      ]);
+      setDataCheck(dc);
+      setModels(ml.filter((m) => m.valid).sort((a, b) => {
+        if (a.created_at && b.created_at) return b.created_at.localeCompare(a.created_at);
+        return 0;
+      }));
+    } catch (e: any) {
+      setLoadError(e?.message ?? "Failed to load data");
+    }
+  }
+
+  refreshData();
+
+  async function handleTrain() {
+    if (submitting()) return;
+    setSubmitting(true);
+    try {
+      await startTraining({
+        date_from: dateFrom(),
+        date_to: dateTo(),
+        num_boost_round: boostRounds(),
+        class_weight: classWeight(),
+        synthetic: synthetic(),
+      });
+    } catch (e: any) {
+      setLoadError(e?.message ?? "Failed to start training");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleCancel() {
+    try {
+      await cancelTraining();
+    } catch (e: any) {
+      setLoadError(e?.message ?? "Failed to cancel");
+    }
+  }
+
+  const inputStyle = {
+    width: "100%",
+    padding: "3px 5px",
+    background: "#252830",
+    border: "1px solid #3a3d4a",
+    "border-radius": "4px",
+    color: "#e0e0e0",
+    "font-size": "0.63rem",
+    "font-family": "inherit",
+    "box-sizing": "border-box" as const,
+  };
+
+  const btnStyle = (variant: "primary" | "danger" | "ghost" = "primary") => ({
+    padding: "4px 10px",
+    border: "none",
+    "border-radius": "5px",
+    "font-size": "0.63rem",
+    "font-family": "inherit",
+    "font-weight": "600",
+    cursor: "pointer",
+    transition: "all 0.15s ease",
+    ...(variant === "primary"
+      ? { background: "#6366f1", color: "#fff" }
+      : variant === "danger"
+        ? { background: "#ef4444", color: "#fff" }
+        : { background: "#333", color: "#e0e0e0" }),
+  });
+
+  return (
+    <div style={{ "font-size": "0.63rem" }}>
+      {/* Data readiness */}
+      <Section title="Data Readiness" defaultOpen>
+        <div style={{ display: "flex", gap: "4px", "margin-bottom": "4px" }}>
+          <div style={{ flex: 1 }}>
+            <label style={{ color: "#9a9a9a", "font-size": "0.58rem", display: "block", "margin-bottom": "1px" }}>From</label>
+            <input
+              type="date"
+              value={dateFrom()}
+              onInput={(e) => setDateFrom(e.currentTarget.value)}
+              style={inputStyle}
+            />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label style={{ color: "#9a9a9a", "font-size": "0.58rem", display: "block", "margin-bottom": "1px" }}>To</label>
+            <input
+              type="date"
+              value={dateTo()}
+              onInput={(e) => setDateTo(e.currentTarget.value)}
+              style={inputStyle}
+            />
+          </div>
+        </div>
+        <button onClick={refreshData} style={btnStyle("ghost")}>Check Data</button>
+        <Show when={dataCheck()}>
+          <div style={{ "margin-top": "4px" }}>
+            <Row label="features_days" value={`${dataCheck()!.dates_with_features.length} / ${dataCheck()!.dates_with_features.length + dataCheck()!.dates_missing_features.length}`} />
+            <Row label="feature_rows" value={String(dataCheck()!.total_feature_rows)} />
+            <Row label="label_spans" value={String(dataCheck()!.label_span_count)} />
+            <Show when={dataCheck()!.dates_missing_features.length > 0}>
+              <Row label="missing_dates" value={String(dataCheck()!.dates_missing_features.length)} color="#f59e0b" />
+            </Show>
+          </div>
+        </Show>
+        <Show when={loadError()}>
+          <div style={{ color: "#ef4444", "margin-top": "3px", "font-size": "0.58rem" }}>{loadError()}</div>
+        </Show>
+      </Section>
+
+      {/* Train form */}
+      <Section title="Train Model" defaultOpen>
+        <div style={{ display: "flex", "flex-direction": "column", gap: "4px" }}>
+          <div style={{ display: "flex", gap: "4px", "align-items": "center" }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ color: "#9a9a9a", "font-size": "0.58rem" }}>Boost Rounds</label>
+              <input
+                type="number"
+                min="10"
+                max="1000"
+                step="10"
+                value={boostRounds()}
+                onInput={(e) => setBoostRounds(parseInt(e.currentTarget.value) || 100)}
+                style={inputStyle}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={{ color: "#9a9a9a", "font-size": "0.58rem" }}>Class Weight</label>
+              <select
+                value={classWeight()}
+                onChange={(e) => setClassWeight(e.currentTarget.value as "balanced" | "none")}
+                style={inputStyle}
+              >
+                <option value="balanced">balanced</option>
+                <option value="none">none</option>
+              </select>
+            </div>
+          </div>
+          <label style={{ display: "flex", "align-items": "center", gap: "4px", color: "#9a9a9a", "font-size": "0.58rem", cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={synthetic()}
+              onChange={(e) => setSynthetic(e.currentTarget.checked)}
+              style={{ "accent-color": "#6366f1" }}
+            />
+            Synthetic data (no real data needed)
+          </label>
+          <div style={{ display: "flex", gap: "4px", "margin-top": "2px" }}>
+            <Show
+              when={!isRunning()}
+              fallback={
+                <button onClick={handleCancel} style={btnStyle("danger")}>Cancel Training</button>
+              }
+            >
+              <button
+                onClick={handleTrain}
+                disabled={submitting()}
+                style={{
+                  ...btnStyle("primary"),
+                  opacity: submitting() ? 0.6 : 1,
+                }}
+              >
+                {submitting() ? "Starting…" : "Train Model"}
+              </button>
+            </Show>
+          </div>
+        </div>
+      </Section>
+
+      {/* Training progress */}
+      <Show when={ts().status !== "idle"}>
+        <Section
+          title="Training Progress"
+          summary={
+            ts().status === "running" ? `${ts().progress_pct ?? 0}%` :
+            ts().status === "complete" ? "done" :
+            ts().status === "failed" ? "failed" : ""
+          }
+          summaryColor={
+            ts().status === "complete" ? "#22c55e" :
+            ts().status === "failed" ? "#ef4444" :
+            "#eab308"
+          }
+          defaultOpen
+        >
+          <Row
+            label="status"
+            value={ts().status}
+            color={
+              ts().status === "complete" ? "#22c55e" :
+              ts().status === "failed" ? "#ef4444" :
+              "#eab308"
+            }
+          />
+          <Show when={ts().step}>
+            <Row label="step" value={ts().step!} dim />
+          </Show>
+          <Show when={ts().message}>
+            <Row label="message" value={ts().message!} dim />
+          </Show>
+          <Show when={ts().progress_pct != null && ts().status === "running"}>
+            <ProgressBar pct={ts().progress_pct!} />
+          </Show>
+          <Show when={ts().error}>
+            <Row label="error" value={ts().error!} color="#ef4444" />
+          </Show>
+          <Show when={ts().metrics}>
+            <Row
+              label="macro_f1"
+              value={((ts().metrics as any)?.macro_f1 as number)?.toFixed(3) ?? "—"}
+              color="#22c55e"
+            />
+            <Row
+              label="weighted_f1"
+              value={((ts().metrics as any)?.weighted_f1 as number)?.toFixed(3) ?? "—"}
+              color="#22c55e"
+            />
+          </Show>
+          <Show when={ts().model_dir}>
+            <Row label="model_dir" value={ts().model_dir!.split("/").pop() ?? ts().model_dir!} dim mono />
+          </Show>
+          <Show when={ts().status === "complete"}>
+            <button
+              onClick={() => refreshData()}
+              style={{ ...btnStyle("ghost"), "margin-top": "4px" }}
+            >
+              Refresh Models
+            </button>
+          </Show>
+        </Section>
+      </Show>
+
+      {/* Model bundles */}
+      <Section title="Models" summary={`${models().length}`}>
+        <Show
+          when={models().length > 0}
+          fallback={<Row label="status" value="no models found" dim />}
+        >
+          <For each={models()}>
+            {(m) => (
+              <div style={{
+                padding: "3px 0",
+                "border-bottom": "1px solid #2a2a2a",
+              }}>
+                <Row label="id" value={m.model_id} mono />
+                <Show when={m.macro_f1 != null}>
+                  <Row label="macro_f1" value={m.macro_f1!.toFixed(3)} color="#22c55e" />
+                </Show>
+                <Show when={m.created_at}>
+                  <Row label="created" value={m.created_at!.slice(0, 19).replace("T", " ")} dim />
+                </Show>
+              </div>
+            )}
+          </For>
+        </Show>
+        <button
+          onClick={refreshData}
+          style={{ ...btnStyle("ghost"), "margin-top": "4px" }}
+        >
+          Refresh
+        </button>
+      </Section>
+    </div>
+  );
+};
+
+
+// ---------------------------------------------------------------------------
 // StatePanel
 // ---------------------------------------------------------------------------
 
-type PanelTab = "system" | "history";
+type PanelTab = "system" | "history" | "training";
 
 export const StatePanel: Component<{
   status: Accessor<ConnectionStatus>;
@@ -224,6 +536,7 @@ export const StatePanel: Component<{
   latestTrayState: Accessor<TrayState | null>;
   activeSuggestion: Accessor<LabelSuggestion | null>;
   wsStats: Accessor<WSStats>;
+  trainState: Accessor<TrainState>;
 }> = (props) => {
   const [tab, setTab] = createSignal<PanelTab>("system");
   const st = () => props.latestStatus();
@@ -329,7 +642,7 @@ export const StatePanel: Component<{
           gap: "0",
         }}
       >
-        {(["system", "history"] as PanelTab[]).map((t) => (
+        {(["system", "history", "training"] as PanelTab[]).map((t) => (
           <button
             onClick={() => setTab(t)}
             style={{
@@ -652,6 +965,10 @@ export const StatePanel: Component<{
 
       <Show when={tab() === "history"}>
         <LabelHistory visible={() => true} latestPrediction={props.latestPrediction} />
+      </Show>
+
+      <Show when={tab() === "training"}>
+        <TrainingPanel trainState={props.trainState} />
       </Show>
     </div>
   );

@@ -148,3 +148,83 @@ export async function updateUserConfig(
     body: JSON.stringify(patch),
   });
 }
+
+// -- Training ----------------------------------------------------------------
+
+export interface TrainStatus {
+  job_id: string | null;
+  status: "idle" | "running" | "complete" | "failed";
+  step: string | null;
+  progress_pct: number | null;
+  message: string | null;
+  error: string | null;
+  metrics: Record<string, unknown> | null;
+  model_dir: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export interface ModelBundle {
+  model_id: string;
+  path: string;
+  valid: boolean;
+  invalid_reason: string | null;
+  macro_f1: number | null;
+  weighted_f1: number | null;
+  created_at: string | null;
+}
+
+export interface DataCheck {
+  date_from: string;
+  date_to: string;
+  dates_with_features: string[];
+  dates_missing_features: string[];
+  total_feature_rows: number;
+  label_span_count: number;
+}
+
+export async function startTraining(params: {
+  date_from: string;
+  date_to: string;
+  num_boost_round?: number;
+  class_weight?: "balanced" | "none";
+  synthetic?: boolean;
+}): Promise<TrainStatus> {
+  return json(`${BASE}/train/start`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+}
+
+export async function buildFeatures(params: {
+  date_from: string;
+  date_to: string;
+}): Promise<TrainStatus> {
+  return json(`${BASE}/train/build-features`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+}
+
+export async function getTrainStatus(): Promise<TrainStatus> {
+  return json(`${BASE}/train/status`);
+}
+
+export async function cancelTraining(): Promise<TrainStatus> {
+  return json(`${BASE}/train/cancel`, { method: "POST" });
+}
+
+export async function listModels(): Promise<ModelBundle[]> {
+  return json(`${BASE}/train/models`);
+}
+
+export async function trainDataCheck(
+  dateFrom: string,
+  dateTo: string
+): Promise<DataCheck> {
+  return json(
+    `${BASE}/train/data-check?date_from=${encodeURIComponent(dateFrom)}&date_to=${encodeURIComponent(dateTo)}`
+  );
+}

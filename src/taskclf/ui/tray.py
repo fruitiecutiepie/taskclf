@@ -527,6 +527,22 @@ class TrayLabeler:
         """Increment the saved-label counter (called by the embedded server)."""
         self._labels_saved_count += 1
 
+    def _on_model_trained(self, model_dir_str: str) -> None:
+        """Auto-reload the model when training completes via the web UI."""
+        model_path = Path(model_dir_str)
+        if not model_path.is_dir():
+            return
+        try:
+            new_suggester = _LabelSuggester(model_path)
+            new_suggester._aw_host = self._aw_host
+            new_suggester._title_salt = self._title_salt
+            self._suggester = new_suggester
+            self._model_dir = model_path
+            self._model_schema_hash = new_suggester._predictor._metadata.schema_hash
+            logger.info("Auto-loaded newly trained model from %s", model_path)
+        except Exception:
+            logger.warning("Could not auto-load trained model from %s", model_path, exc_info=True)
+
     def _toggle_pause(self) -> bool:
         """Toggle pause state on the monitor. Returns new paused state."""
         if self._monitor.is_paused:
@@ -1217,10 +1233,12 @@ class TrayLabeler:
 
         fastapi_app = create_app(
             data_dir=self._data_dir,
+            models_dir=self._models_dir,
             aw_host=self._aw_host,
             title_salt=self._title_salt,
             event_bus=self._event_bus,
             on_label_saved=self._on_label_saved,
+            on_model_trained=self._on_model_trained,
             pause_toggle=self._toggle_pause,
             is_paused=lambda: self._monitor.is_paused,
         )
