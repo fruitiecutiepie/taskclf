@@ -385,62 +385,64 @@ export const LabelGrid: Component<LabelGridProps> = (props) => {
 
       <ActivitySummary minutes={selectedMinutes} prediction={props.prediction} />
 
-      <div
-        onClick={toggleExtendFwd}
-        style={{
-          display: "flex",
-          "align-items": "center",
-          "justify-content": "center",
-          gap: "4px",
-          "margin-bottom": "6px",
-          "font-size": "0.7rem",
-          color: "var(--text-muted)",
-          cursor: "pointer",
-          "user-select": "none",
-        }}
-      >
+      <Show when={selectedMinutes() !== 0 || fillFromLast()}>
         <div
+          onClick={toggleExtendFwd}
           style={{
-            width: "12px",
-            height: "12px",
-            "border-radius": "3px",
-            border: `1.5px solid ${extendFwd() ? "var(--accent)" : "var(--text-muted)"}`,
-            background: extendFwd() ? "var(--accent)" : "transparent",
             display: "flex",
             "align-items": "center",
             "justify-content": "center",
-            cursor: "pointer",
-            "flex-shrink": "0",
-            transition: "all 0.15s ease",
-          }}
-        >
-          <Show when={extendFwd()}>
-            <svg
-              width="8"
-              height="8"
-              viewBox="0 0 12 12"
-              fill="none"
-              style={{ display: "block" }}
-            >
-              <path
-                d="M2.5 6L5 8.5L9.5 3.5"
-                stroke="var(--bg)"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-            </svg>
-          </Show>
-        </div>
-        <span
-          style={{
+            gap: "4px",
+            "margin-bottom": "6px",
             "font-size": "0.7rem",
             color: "var(--text-muted)",
+            cursor: "pointer",
+            "user-select": "none",
           }}
         >
-          Extend until next label
-        </span>
-      </div>
+          <div
+            style={{
+              width: "12px",
+              height: "12px",
+              "border-radius": "3px",
+              border: `1.5px solid ${extendFwd() ? "var(--accent)" : "var(--text-muted)"}`,
+              background: extendFwd() ? "var(--accent)" : "transparent",
+              display: "flex",
+              "align-items": "center",
+              "justify-content": "center",
+              cursor: "pointer",
+              "flex-shrink": "0",
+              transition: "all 0.15s ease",
+            }}
+          >
+            <Show when={extendFwd()}>
+              <svg
+                width="8"
+                height="8"
+                viewBox="0 0 12 12"
+                fill="none"
+                style={{ display: "block" }}
+              >
+                <path
+                  d="M2.5 6L5 8.5L9.5 3.5"
+                  stroke="var(--bg)"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </Show>
+          </div>
+          <span
+            style={{
+              "font-size": "0.7rem",
+              color: "var(--text-muted)",
+            }}
+          >
+            Extend until next label
+          </span>
+        </div>
+      </Show>
 
       <div
         style={{

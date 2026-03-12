@@ -254,7 +254,13 @@ class LabelSpan(BaseModel, frozen=True):
 
     @model_validator(mode="after")
     def _check_invariants(self) -> LabelSpan:
-        if self.end_ts <= self.start_ts:
+        if self.extend_forward:
+            if self.end_ts < self.start_ts:
+                raise ValueError(
+                    f"end_ts ({self.end_ts}) must not be before "
+                    f"start_ts ({self.start_ts})"
+                )
+        elif self.end_ts <= self.start_ts:
             raise ValueError(
                 f"end_ts ({self.end_ts}) must be strictly after "
                 f"start_ts ({self.start_ts})"
