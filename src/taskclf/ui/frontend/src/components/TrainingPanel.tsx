@@ -207,10 +207,10 @@ export const TrainingPanel: Component<{
         <Show when={dataCheck()}>
           <div style={{ "margin-top": "4px" }}>
             <Show when={dataCheck()!.dates_built.length > 0}>
-              <StatusRow label="built" value={`${dataCheck()!.dates_built.length} day(s) from AW`} color="#22c55e" />
+              <StatusRow label="built" value={`${dataCheck()!.dates_built.length} day(s) from AW`} color="#22c55e" tooltip="Days where feature data was freshly fetched from ActivityWatch" />
             </Show>
-            <StatusRow label="features_days" value={`${dataCheck()!.dates_with_features.length} / ${dataCheck()!.dates_with_features.length + dataCheck()!.dates_missing_features.length}`} />
-            <StatusRow label="label_spans" value={String(dataCheck()!.label_span_count)} />
+            <StatusRow label="features_days" value={`${dataCheck()!.dates_with_features.length} / ${dataCheck()!.dates_with_features.length + dataCheck()!.dates_missing_features.length}`} tooltip="Days with activity data out of total days in range" />
+            <StatusRow label="label_spans" value={String(dataCheck()!.label_span_count)} tooltip="Number of labeled time blocks in the selected range" />
           </div>
         </Show>
         <Show when={checkError()}>
@@ -342,33 +342,36 @@ export const TrainingPanel: Component<{
               ts().status === "failed" ? "#ef4444" :
               "#eab308"
             }
+            tooltip="Current state of the training job"
           />
           <Show when={ts().step}>
-            <StatusRow label="step" value={ts().step!} dim />
+            <StatusRow label="step" value={ts().step!} dim tooltip="Current step in the training pipeline" />
           </Show>
           <Show when={ts().message}>
-            <StatusRow label="message" value={ts().message!} dim />
+            <StatusRow label="message" value={ts().message!} dim tooltip="Latest progress message from the trainer" />
           </Show>
           <Show when={ts().progress_pct != null && ts().status === "running"}>
             <StatusProgress pct={ts().progress_pct!} />
           </Show>
           <Show when={ts().error}>
-            <StatusRow label="error" value={ts().error!} color="#ef4444" />
+            <StatusRow label="error" value={ts().error!} color="#ef4444" tooltip="Error message from the failed training run" />
           </Show>
           <Show when={ts().metrics}>
             <StatusRow
               label="macro_f1"
               value={((ts().metrics as any)?.macro_f1 as number)?.toFixed(3) ?? "—"}
               color="#22c55e"
+              tooltip="F1 score averaged equally across all classes — good for imbalanced datasets"
             />
             <StatusRow
               label="weighted_f1"
               value={((ts().metrics as any)?.weighted_f1 as number)?.toFixed(3) ?? "—"}
               color="#22c55e"
+              tooltip="F1 score weighted by class frequency — reflects overall accuracy"
             />
           </Show>
           <Show when={ts().model_dir}>
-            <StatusRow label="model_dir" value={ts().model_dir!.split("/").pop() ?? ts().model_dir!} dim mono />
+            <StatusRow label="model_dir" value={ts().model_dir!.split("/").pop() ?? ts().model_dir!} dim mono tooltip="Output directory for the trained model bundle" />
           </Show>
         </StatusSection>
       </Show>
@@ -376,7 +379,7 @@ export const TrainingPanel: Component<{
       <StatusSection title="Models" summary={`${models().length}`}>
         <Show
           when={models().length > 0}
-          fallback={<StatusRow label="status" value="no models found" dim />}
+          fallback={<StatusRow label="status" value="no models found" dim tooltip="No trained model bundles found — train a model first" />}
         >
           <For each={models()}>
             {(m) => (
@@ -384,12 +387,12 @@ export const TrainingPanel: Component<{
                 padding: "3px 0",
                 "border-bottom": "1px solid #2a2a2a",
               }}>
-                <StatusRow label="id" value={m.model_id} mono />
+                <StatusRow label="id" value={m.model_id} mono tooltip="Unique identifier for this model bundle" />
                 <Show when={m.macro_f1 != null}>
-                  <StatusRow label="macro_f1" value={m.macro_f1!.toFixed(3)} color="#22c55e" />
+                  <StatusRow label="macro_f1" value={m.macro_f1!.toFixed(3)} color="#22c55e" tooltip="Model's macro-averaged F1 score on the validation set" />
                 </Show>
                 <Show when={m.created_at}>
-                  <StatusRow label="created" value={m.created_at!.slice(0, 19).replace("T", " ")} dim />
+                  <StatusRow label="created" value={m.created_at!.slice(0, 19).replace("T", " ")} dim tooltip="When this model was trained" />
                 </Show>
               </div>
             )}

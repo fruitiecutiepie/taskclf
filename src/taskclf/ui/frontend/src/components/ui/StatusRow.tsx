@@ -6,6 +6,7 @@ export const StatusRow: Component<{
   color?: string;
   dim?: boolean;
   mono?: boolean;
+  tooltip?: string;
 }> = (props) => (
   <div
     style={{
@@ -17,11 +18,14 @@ export const StatusRow: Component<{
     }}
   >
     <span
+      title={props.tooltip}
       style={{
         color: "#a0a0a0",
         "font-size": "0.65rem",
         "flex-shrink": "0",
         "user-select": "none",
+        cursor: props.tooltip ? "help" : undefined,
+        "border-bottom": props.tooltip ? "1px dotted #555" : undefined,
       }}
     >
       {props.label}
