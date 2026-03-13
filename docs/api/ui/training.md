@@ -124,11 +124,15 @@ reporting totals.
   "dates_missing_features": [],
   "total_feature_rows": 4320,
   "label_span_count": 25,
+  "trainable_rows": 1800,
+  "trainable_labels": ["coding", "meeting", "writing"],
   "dates_built": ["2026-02-03"],
   "build_errors": []
 }
 ```
 
+- `trainable_rows` — feature rows that survive label projection (strict containment). If 0, training will fail. The UI disables the Train button when this is 0.
+- `trainable_labels` — distinct label classes present in the projected rows.
 - `dates_built` — dates where features were freshly built from AW during this call.
 - `build_errors` — per-date error messages if AW was unreachable or returned no data.
 
@@ -178,6 +182,15 @@ Emitted when training fails or is cancelled.
   "error": "No feature data found for the given date range"
 }
 ```
+
+## Troubleshooting
+
+| Error | Cause | Fix |
+|---|---|---|
+| Feature files exist but contain 0 rows | ActivityWatch is not running or has no data for the date range | Start AW, verify it's collecting events, then re-run "Prepare Data" |
+| No label spans overlap the selected date range | Labels were created for dates outside the training range | Create labels that cover the same dates as your feature data |
+| No labeled rows after projection | Labels exist and features exist, but no label span fully contains a feature window | Ensure label spans are at least 60 s long and cover times when AW recorded activity |
+| No feature data found for the given date range | No `.parquet` files exist at all for the selected dates | Click "Prepare Data" first to build features from AW |
 
 ## Auto-Reload
 

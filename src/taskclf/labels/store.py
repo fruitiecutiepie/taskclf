@@ -431,6 +431,16 @@ def generate_label_summary(
         ``mean_clicks_per_min``, ``mean_scroll_per_min``,
         ``total_buckets``, ``session_count``.
     """
+    if features_df.empty or "bucket_start_ts" not in features_df.columns:
+        return {
+            "top_apps": [],
+            "mean_keys_per_min": None,
+            "mean_clicks_per_min": None,
+            "mean_scroll_per_min": None,
+            "total_buckets": 0,
+            "session_count": 0,
+        }
+
     col = features_df["bucket_start_ts"]
     col_is_utc = hasattr(col.dtype, "tz") and col.dtype.tz is not None
     if col_is_utc:

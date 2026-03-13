@@ -217,6 +217,8 @@ class DataCheckResponse(BaseModel):
     dates_missing_features: list[str]
     total_feature_rows: int
     label_span_count: int
+    trainable_rows: int = 0
+    trainable_labels: list[str] = []
     dates_built: list[str] = []
     build_errors: list[str] = []
 
@@ -925,6 +927,18 @@ def create_app(
 
             features_df = pd.concat(all_features, ignore_index=True)
 
+            if features_df.empty or "bucket_start_ts" not in features_df.columns:
+                raise ValueError(
+                    "Feature files exist but contain 0 rows — "
+                    "ActivityWatch may not be running or has no data for the selected range"
+                )
+
+            if not all_labels:
+                raise ValueError(
+                    "No label spans overlap the selected date range — "
+                    "create or import labels before training"
+                )
+
             if job._cancel.is_set():
                 raise InterruptedError("Cancelled")
 
@@ -934,7 +948,10 @@ def create_app(
 
             labeled_df = project_blocks_to_windows(features_df, all_labels)
             if labeled_df.empty:
-                raise ValueError("No labeled rows — cannot train")
+                raise ValueError(
+                    "No labeled rows after projection — label spans may not "
+                    "temporally overlap any feature windows in the selected range"
+                )
 
             if job._cancel.is_set():
                 raise InterruptedError("Cancelled")
@@ -1249,16 +1266,44 @@ def create_app(
             current += dt.timedelta(days=1)
 
         label_count = 0
+        matching_spans: list = []
         lp = data_dir / "labels_v1" / "labels.parquet"
         if lp.exists():
             try:
                 spans = read_label_spans(lp)
                 start_dt = dt.datetime(start.year, start.month, start.day)
                 end_dt = dt.datetime(end.year, end.month, end.day, 23, 59, 59)
-                label_count = sum(
-                    1 for s in spans
+                matching_spans = [
+                    s for s in spans
                     if s.end_ts >= start_dt and s.start_ts <= end_dt
-                )
+                ]
+                label_count = len(matching_spans)
+            except Exception:
+                pass
+
+        trainable_rows = 0
+        trainable_labels: list[str] = []
+        if total_rows > 0 and matching_spans:
+            try:
+                import pandas as pd
+                from taskclf.labels.projection import project_blocks_to_windows
+
+                feature_frames = []
+                cur = start
+                while cur <= end:
+                    fp = data_dir / f"features_v1/date={cur.isoformat()}" / "features.parquet"
+                    if fp.exists():
+                        frame = read_parquet(fp)
+                        if not frame.empty:
+                            feature_frames.append(frame)
+                    cur += dt.timedelta(days=1)
+
+                if feature_frames:
+                    features_df = pd.concat(feature_frames, ignore_index=True)
+                    projected = project_blocks_to_windows(features_df, matching_spans)
+                    trainable_rows = len(projected)
+                    if not projected.empty and "label" in projected.columns:
+                        trainable_labels = sorted(projected["label"].unique().tolist())
             except Exception:
                 pass
 
@@ -1269,6 +1314,8 @@ def create_app(
             dates_missing_features=dates_missing,
             total_feature_rows=total_rows,
             label_span_count=label_count,
+            trainable_rows=trainable_rows,
+            trainable_labels=trainable_labels,
             dates_built=dates_built,
             build_errors=build_errors,
         )

@@ -64,15 +64,19 @@ export const TrainingPanel: Component<{
     if (synthetic()) return true;
     const dc = dataCheck();
     if (!dc) return false;
-    return dc.dates_with_features.length > 0 && dc.label_span_count > 0;
+    return dc.trainable_rows > 0;
   });
 
   const trainDisabledReason = createMemo(() => {
     if (synthetic()) return null;
     if (!dataCheck()) return "Prepare data before training";
     const dc = dataCheck()!;
-    if (dc.dates_with_features.length === 0) return "No feature data in selected range";
-    if (dc.label_span_count === 0) return "No label spans in selected range";
+    if (dc.dates_with_features.length === 0)
+      return "No feature data — is ActivityWatch running?";
+    if (dc.label_span_count === 0)
+      return "No label spans in selected range";
+    if (dc.trainable_rows === 0)
+      return "Labels don't overlap any feature windows — adjust labels or date range";
     return null;
   });
 
@@ -211,6 +215,14 @@ export const TrainingPanel: Component<{
             </Show>
             <StatusRow label="features_days" value={`${dataCheck()!.dates_with_features.length} / ${dataCheck()!.dates_with_features.length + dataCheck()!.dates_missing_features.length}`} tooltip="Days with activity data out of total days in range" />
             <StatusRow label="label_spans" value={String(dataCheck()!.label_span_count)} tooltip="Number of labeled time blocks in the selected range" />
+            <StatusRow
+              label="trainable_rows"
+              value={dataCheck()!.trainable_rows > 0
+                ? `${dataCheck()!.trainable_rows} (${dataCheck()!.trainable_labels.join(", ")})`
+                : "0"}
+              color={dataCheck()!.trainable_rows > 0 ? "#22c55e" : "#ef4444"}
+              tooltip="Feature rows with a matching label — only these enter training"
+            />
           </div>
         </Show>
         <Show when={checkError()}>
