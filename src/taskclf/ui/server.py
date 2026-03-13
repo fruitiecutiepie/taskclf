@@ -665,16 +665,23 @@ def create_app(
         while current <= end_ts.date():
             fp = data_dir / f"features_v1/date={current.isoformat()}" / "features.parquet"
             if fp.exists():
-                frames.append(read_parquet(fp))
+                tmp = read_parquet(fp)
+                if not tmp.empty:
+                    frames.append(tmp)
             current += dt.timedelta(days=1)
 
+        empty_resp = FeatureSummaryResponse(
+            top_apps=[], mean_keys_per_min=None, mean_clicks_per_min=None,
+            mean_scroll_per_min=None, total_buckets=0, session_count=0,
+        )
+
         if not frames:
-            return FeatureSummaryResponse(
-                top_apps=[], mean_keys_per_min=None, mean_clicks_per_min=None,
-                mean_scroll_per_min=None, total_buckets=0, session_count=0,
-            )
+            return empty_resp
 
         df = pd.concat(frames, ignore_index=True)
+        if "bucket_start_ts" not in df.columns:
+            return empty_resp
+
         summary = generate_label_summary(df, start_ts, end_ts)
         return FeatureSummaryResponse(**summary)
 
