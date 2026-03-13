@@ -660,7 +660,13 @@ def create_app(
         start_ts = _to_naive_utc(dt.datetime.fromisoformat(start))
         end_ts = _to_naive_utc(dt.datetime.fromisoformat(end))
 
+        empty_resp = FeatureSummaryResponse(
+            top_apps=[], mean_keys_per_min=None, mean_clicks_per_min=None,
+            mean_scroll_per_min=None, total_buckets=0, session_count=0,
+        )
+
         frames: list[pd.DataFrame] = []
+        dates_missing_parquet: list[dt.date] = []
         current = start_ts.date()
         while current <= end_ts.date():
             fp = data_dir / f"features_v1/date={current.isoformat()}" / "features.parquet"
@@ -668,12 +674,24 @@ def create_app(
                 tmp = read_parquet(fp)
                 if not tmp.empty:
                     frames.append(tmp)
+                else:
+                    dates_missing_parquet.append(current)
+            else:
+                dates_missing_parquet.append(current)
             current += dt.timedelta(days=1)
 
-        empty_resp = FeatureSummaryResponse(
-            top_apps=[], mean_keys_per_min=None, mean_clicks_per_min=None,
-            mean_scroll_per_min=None, total_buckets=0, session_count=0,
-        )
+        if dates_missing_parquet:
+            try:
+                from taskclf.features.build import _fetch_aw_features_for_date
+
+                for d in dates_missing_parquet:
+                    rows = _fetch_aw_features_for_date(
+                        d, aw_host=aw_host, title_salt=title_salt,
+                    )
+                    if rows:
+                        frames.append(pd.DataFrame([r.model_dump() for r in rows]))
+            except Exception:
+                logger.debug("AW live feature fallback unavailable", exc_info=True)
 
         if not frames:
             return empty_resp
