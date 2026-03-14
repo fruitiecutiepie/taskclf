@@ -23,6 +23,12 @@ py-test:
 py-typecheck:
 	uv run mypy src
 
+py-format:
+	uv run ruff format
+
+py-build: ui-build
+	uv build
+
 # --- ui ---
 
 ui-lint:
@@ -33,6 +39,9 @@ ui-test:
 
 ui-typecheck:
 	$(PNPM) run typecheck
+
+ui-format:
+	$(PNPM) run format
 
 ui-build:
 	$(PNPM) install --frozen-lockfile && $(PNPM) run build
@@ -48,7 +57,11 @@ test: py-test ui-test
 
 typecheck: py-typecheck ui-typecheck
 
-ci: lint test typecheck
+format: py-format ui-format
+
+build: py-build ui-build
+
+ci: lint test typecheck build
 
 # --- docs ---
 

@@ -44,8 +44,9 @@ Repository = "https://github.com/fruitiecutiepie/taskclf"
 [project.scripts]
 taskclf = "taskclf.cli.main:cli_main"
 
-[tool.uv_build]
+[tool.uv.build-backend]
 data-includes = ["src/taskclf/ui/static/**/*"]
+source-exclude = ["src/taskclf/ui/frontend/node_modules/**"]
 
 [build-system]
 requires = ["uv_build>=0.9.5,<0.10.0"]

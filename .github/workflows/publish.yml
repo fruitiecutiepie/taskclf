@@ -69,11 +69,11 @@ jobs:
         with:
           version: latest
 
-      - name: Build frontend
-        run: make ui-build
+      - name: Install uv
+        run: pip install uv
 
-      - name: Build package
-        run: pip install uv && uv build
+      - name: Build
+        run: make build
 
       - uses: actions/upload-artifact@v4
         with:
