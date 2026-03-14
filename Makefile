@@ -1,7 +1,7 @@
 .PHONY: install \
-       py-lint py-test typecheck \
-       ui-lint ui-test ui-build ui-dev \
-       lint test ci \
+       py-lint py-test py-typecheck \
+       ui-lint ui-test ui-typecheck ui-build ui-dev \
+       lint test typecheck ci \
        docs-serve docs-build \
        version bump-patch bump-minor bump-major
 
@@ -20,7 +20,7 @@ py-lint:
 py-test:
 	uv run pytest
 
-typecheck:
+py-typecheck:
 	uv run mypy src
 
 # --- ui ---
@@ -30,6 +30,9 @@ ui-lint:
 
 ui-test:
 	$(PNPM) run test
+
+ui-typecheck:
+	$(PNPM) run typecheck
 
 ui-build:
 	$(PNPM) install --frozen-lockfile && $(PNPM) run build
@@ -43,7 +46,9 @@ lint: py-lint ui-lint
 
 test: py-test ui-test
 
-ci: lint test
+typecheck: py-typecheck ui-typecheck
+
+ci: lint test typecheck
 
 # --- docs ---
 

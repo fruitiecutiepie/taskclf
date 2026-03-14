@@ -41,8 +41,15 @@ jobs:
         working-directory: src/taskclf/ui/frontend
         run: pnpm run test
 
+      - name: Typecheck frontend
+        working-directory: src/taskclf/ui/frontend
+        run: pnpm run typecheck
+
       - name: Run tests
         run: xvfb-run uv run pytest
+
+      - name: Typecheck Python
+        run: uv run mypy src
 
   build:
     needs: test
