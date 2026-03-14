@@ -986,7 +986,7 @@ def create_app(
 
             from taskclf.train.lgbm import train_lgbm as _train
 
-            cw = class_weight if class_weight in ("balanced", "none") else "balanced"
+            cw: Literal["balanced", "none"] = "none" if class_weight == "none" else "balanced"
             model, metrics, cm_df, params, cat_encoders = _train(
                 train_df, val_df,
                 num_boost_round=num_boost_round,

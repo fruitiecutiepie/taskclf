@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from typing import Sequence
 
 import numpy as np
+import pandas as pd
 from pydantic import BaseModel
 
 from taskclf.core.defaults import (

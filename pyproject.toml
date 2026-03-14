@@ -66,3 +66,18 @@ docs = [
     "zensical",
     "mkdocstrings-python",
 ]
+
+[tool.mypy]
+python_version = "3.14"
+warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = [
+    "sklearn.*",
+    "scipy.*",
+    "yaml",
+    "pyarrow.*",
+    "pystray",
+    "lightgbm.*",
+]
+ignore_missing_imports = true

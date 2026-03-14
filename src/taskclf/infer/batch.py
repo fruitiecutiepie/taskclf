@@ -62,7 +62,7 @@ def predict_proba(
     feat_df = features_df[FEATURE_COLUMNS].copy()
     feat_df, _ = encode_categoricals(feat_df, cat_encoders)
     x = feat_df.fillna(0).to_numpy(dtype=np.float64)
-    return model.predict(x)
+    return np.asarray(model.predict(x))
 
 
 def predict_labels(

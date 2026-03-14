@@ -57,13 +57,13 @@ def project_blocks_to_windows(
     df["bucket_start_ts"] = pd.to_datetime(df["bucket_start_ts"], utc=True)
     df["bucket_end_ts"] = pd.to_datetime(df["bucket_end_ts"], utc=True)
 
-    spans_data = [
-        {
-            "span_start": pd.Timestamp(s.start_ts, tz="UTC"),
-            "span_end": pd.Timestamp(s.end_ts, tz="UTC"),
-            "span_label": s.label,
-            "span_user_id": s.user_id,
-        }
+    spans_data: list[tuple[pd.Timestamp, pd.Timestamp, str, str | None]] = [
+        (
+            pd.Timestamp(s.start_ts, tz="UTC"),
+            pd.Timestamp(s.end_ts, tz="UTC"),
+            s.label,
+            s.user_id,
+        )
         for s in label_spans
     ]
 
@@ -71,16 +71,16 @@ def project_blocks_to_windows(
     multi_overlap: list[bool] = [False] * len(df)
 
     for idx in range(len(df)):
-        w_start = df["bucket_start_ts"].iat[idx]
-        w_end = df["bucket_end_ts"].iat[idx]
+        w_start: pd.Timestamp = pd.Timestamp(df["bucket_start_ts"].iat[idx])  # type: ignore[arg-type]
+        w_end: pd.Timestamp = pd.Timestamp(df["bucket_end_ts"].iat[idx])  # type: ignore[arg-type]
         row_user = df["user_id"].iat[idx] if "user_id" in df.columns else None
 
         covering: list[str] = []
-        for sp in spans_data:
-            if sp["span_user_id"] is not None and sp["span_user_id"] != row_user:
+        for span_start, span_end, span_label, span_user_id in spans_data:
+            if span_user_id is not None and span_user_id != row_user:
                 continue
-            if sp["span_start"] <= w_start and w_end <= sp["span_end"]:
-                covering.append(sp["span_label"])
+            if span_start <= w_start and w_end <= span_end:
+                covering.append(span_label)
 
         if not covering:
             pass

@@ -7,6 +7,7 @@ from datetime import timedelta
 from enum import StrEnum
 from typing import Any
 
+import numpy as np
 import pandas as pd
 from pydantic import BaseModel
 
@@ -224,7 +225,7 @@ def _check_monotonic_timestamps(df: pd.DataFrame, report: ValidationReport) -> N
     if "user_id" not in df.columns or "session_id" not in df.columns:
         return
     for (uid, sid), group in df.groupby(["user_id", "session_id"], sort=False):
-        ts = group["bucket_start_ts"].values
+        ts = np.asarray(group["bucket_start_ts"].values)
         if len(ts) < 2:
             continue
         non_mono = int((ts[1:] <= ts[:-1]).sum())

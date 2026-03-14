@@ -203,7 +203,7 @@ def apply_weak_rules(
     expected_gap = dt.timedelta(seconds=bucket_seconds)
 
     for _, row_series in df.iterrows():
-        row = row_series.to_dict()
+        row: dict[str, Any] = {str(k): v for k, v in row_series.to_dict().items()}
         bucket_start = row["bucket_start_ts"]
         bucket_end = row.get("bucket_end_ts", bucket_start + expected_gap)
 

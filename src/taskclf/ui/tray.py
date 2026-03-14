@@ -24,9 +24,12 @@ import threading
 import time
 from collections import Counter
 from pathlib import Path
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 from PIL import Image, ImageDraw
+
+if TYPE_CHECKING:
+    import pystray
 
 from taskclf.core.config import UserConfig
 from taskclf.core.defaults import (

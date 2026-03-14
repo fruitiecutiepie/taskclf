@@ -37,7 +37,7 @@ def _safe_float(value: object, default: float = 0.0) -> float:
     if value is None:
         return default
     try:
-        f = float(value)
+        f = float(value)  # type: ignore[arg-type]
         if f != f:  # NaN
             return default
         return f

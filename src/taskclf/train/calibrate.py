@@ -33,6 +33,7 @@ from taskclf.core.defaults import (
 from taskclf.core.types import LABEL_SET_V1
 from taskclf.infer.batch import predict_proba
 from taskclf.infer.calibration import (
+    Calibrator,
     CalibratorStore,
     IdentityCalibrator,
     IsotonicCalibrator,
@@ -220,7 +221,7 @@ def fit_calibrator_store(
     y_proba = predict_proba(model, labeled_df, cat_encoders)
     y_true = le.transform(labeled_df["label"].values)
 
-    # Global calibrator
+    global_cal: TemperatureCalibrator | IsotonicCalibrator
     if method == "isotonic":
         global_cal = fit_isotonic_calibrator(y_true, y_proba, n_classes)
     else:
@@ -229,7 +230,7 @@ def fit_calibrator_store(
     # Per-user eligibility and calibration
     user_ids = sorted(labeled_df["user_id"].unique())
     eligibility_reports: list[PersonalizationEligibility] = []
-    user_calibrators: dict[str, TemperatureCalibrator | IsotonicCalibrator] = {}
+    user_calibrators: dict[str, Calibrator] = {}
 
     for uid in user_ids:
         elig = check_personalization_eligible(
@@ -251,6 +252,7 @@ def fit_calibrator_store(
         user_proba = y_proba[mask]
         user_true = y_true[mask]
 
+        user_cal: TemperatureCalibrator | IsotonicCalibrator
         if method == "isotonic":
             user_cal = fit_isotonic_calibrator(user_true, user_proba, n_classes)
         else:

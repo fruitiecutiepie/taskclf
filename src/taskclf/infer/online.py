@@ -118,7 +118,7 @@ class OnlinePredictor:
             [[self._encode_value(c, getattr(row, c)) for c in FEATURE_COLUMNS]],
             dtype=np.float64,
         )
-        raw_proba = self._model.predict(x)
+        raw_proba: np.ndarray = np.asarray(self._model.predict(x))
 
         if self._calibrator_store is not None:
             cal = self._calibrator_store.get_calibrator(row.user_id)
@@ -359,7 +359,7 @@ def run_online_loop(
     print(f"Online inference started (polling every {poll_seconds}s, bucket={bucket_id})")
     if input_bucket_id:
         print(f"Input watcher active: {input_bucket_id}")
-    if reloader is not None:
+    if reloader is not None and models_dir is not None:
         print(f"Model reload enabled (watching {models_dir / 'active.json'})")
     print("Press Ctrl+C to stop.\n")
 

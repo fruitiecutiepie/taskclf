@@ -5,6 +5,7 @@ import logging
 import traceback
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
+from typing import Literal
 
 import typer
 
@@ -744,7 +745,7 @@ def train_lgbm_cmd(
         f"Test: {len(splits['test'])} rows (held out)"
     )
 
-    cw = class_weight if class_weight in ("balanced", "none") else "balanced"
+    cw: Literal["balanced", "none"] = "none" if class_weight == "none" else "balanced"
     model, metrics, cm_df, params, cat_encoders = train_lgbm(
         train_df, val_df, num_boost_round=num_boost_round, class_weight=cw,
     )
@@ -1115,7 +1116,7 @@ def train_calibrate_cmd(
 
     typer.echo(f"Fitting {method} calibrators on {len(val_df)} validation rows")
 
-    cal_method = method if method in ("temperature", "isotonic") else "temperature"
+    cal_method: Literal["temperature", "isotonic"] = "isotonic" if method == "isotonic" else "temperature"
     store, eligibility = fit_calibrator_store(
         model, val_df,
         cat_encoders=cat_encoders,

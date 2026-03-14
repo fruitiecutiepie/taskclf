@@ -455,7 +455,8 @@ def generate_label_summary(
         _start = pd.Timestamp(start_ts, tz="UTC") if start_ts.tzinfo is None else pd.Timestamp(start_ts).tz_convert("UTC")
         _end = pd.Timestamp(end_ts, tz="UTC") if end_ts.tzinfo is None else pd.Timestamp(end_ts).tz_convert("UTC")
     else:
-        _start, _end = start_ts, end_ts
+        _start = pd.Timestamp(start_ts)
+        _end = pd.Timestamp(end_ts)
     mask = (col >= _start) & (col < _end)
     window = features_df.loc[mask]
 

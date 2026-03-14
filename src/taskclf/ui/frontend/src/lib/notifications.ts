@@ -1,5 +1,12 @@
 import type { PromptLabelEvent } from "./ws";
 
+// `renotify` is part of the Web Notifications API spec but missing from
+// TypeScript's lib.dom.d.ts. Extend until upstream adds it.
+// https://developer.mozilla.org/en-US/docs/Web/API/Notification/Notification#renotify
+interface NotificationOptionsExtended extends NotificationOptions {
+  renotify?: boolean;
+}
+
 let permissionGranted = false;
 
 export async function requestPermission(): Promise<boolean> {
@@ -26,9 +33,10 @@ export function showTransitionNotification(
 
   const n = new Notification("taskclf — Activity changed", {
     body,
+
     tag: "taskclf-transition",
     renotify: true,
-  });
+  } satisfies NotificationOptionsExtended as NotificationOptions);
 
   n.onclick = () => {
     window.focus();
