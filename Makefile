@@ -1,10 +1,10 @@
-.PHONY: install lint test typecheck docs-serve docs-build ci ui-build ui-dev \
+.PHONY: install lint test typecheck docs-serve docs-build ci ui-build ui-dev ui-test \
        version bump-patch bump-minor bump-major
 
-NPM := npm --prefix src/taskclf/ui/frontend
+PNPM := pnpm --dir src/taskclf/ui/frontend
 
 install:
-	uv sync & $(NPM) ci & wait
+	uv sync & $(PNPM) install --frozen-lockfile & wait
 
 lint:
 	uv run ruff check .
@@ -22,12 +22,15 @@ docs-build:
 	uv run --group docs zensical build
 
 ui-build:
-	$(NPM) ci && $(NPM) run build
+	$(PNPM) install --frozen-lockfile && $(PNPM) run build
 
 ui-dev:
-	$(NPM) run dev
+	$(PNPM) run dev
 
-ci: lint test
+ui-test:
+	$(PNPM) run test
+
+ci: lint test ui-test
 
 CURRENT_VERSION := $(shell python3 -c "import re, pathlib; \
 	m = re.search(r'^version\s*=\s*\"([^\"]+)\"', pathlib.Path('pyproject.toml').read_text(), re.M); \

@@ -2511,11 +2511,11 @@ def ui_serve_cmd(
 
         if not (frontend_dir / "node_modules").is_dir():
             typer.echo("Installing frontend dependencies…")
-            subprocess.run(["npm", "install"], cwd=frontend_dir, check=True)
+            subprocess.run(["pnpm", "install"], cwd=frontend_dir, check=True)
 
         vite_env = {**os.environ, "TASKCLF_PORT": str(port)}
         vite_proc = subprocess.Popen(
-            ["npm", "run", "dev"],
+            ["pnpm", "run", "dev"],
             cwd=frontend_dir,
             env=vite_env,
         )

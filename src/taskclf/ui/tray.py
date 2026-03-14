@@ -1266,7 +1266,7 @@ class TrayLabeler:
 
             if not (frontend_dir / "node_modules").is_dir():
                 print("Installing frontend dependencies…")
-                subprocess.run(["npm", "install"], cwd=frontend_dir, check=True)
+                subprocess.run(["pnpm", "install"], cwd=frontend_dir, check=True)
 
             vite_env = {
                 **os.environ,
@@ -1274,7 +1274,7 @@ class TrayLabeler:
                 "TASKCLF_DEV_PORT": str(_VITE_DEV_PORT),
             }
             self._vite_proc = subprocess.Popen(
-                ["npm", "run", "dev"],
+                ["pnpm", "run", "dev"],
                 cwd=frontend_dir,
                 env=vite_env,
             )

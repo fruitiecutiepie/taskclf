@@ -10,6 +10,7 @@ import { LabelConfidence } from "./LabelConfidence";
 import { LabelOverwrite, type OverwritePending } from "./LabelOverwrite";
 import { LabelFlash } from "./LabelFlash";
 import { LabelLast } from "./LabelLast";
+import { labelOverwritePendingUpdGet } from "../lib/labelOverwritePendingUpdGet";
 
 const EXTEND_FWD_KEY = "taskclf:extendForward";
 const _LEGACY_KEY = "taskclf:extendPrevious";
@@ -55,36 +56,14 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
       const pending = overwritePending();
       if (!pending) return;
 
-      const mins = selectedMinutes();
-      const now = new Date();
-      let start: Date;
-      if (fillFromLast() && lastLabel()?.end_ts) {
-        start = parseISODate(lastLabel()!.end_ts);
-      } else if (mins === 0) {
-        start = now;
-      } else {
-        start = new Date(now.getTime() - mins * 60_000);
-      }
+      const updated = labelOverwritePendingUpdGet(pending, {
+        selectedMinutes: selectedMinutes(),
+        fillFromLast: fillFromLast(),
+        lastLabelEndTs: lastLabel()?.end_ts ?? null,
+        extendFwd: extendFwd(),
+      }, new Date());
 
-      const startMs = start.getTime();
-      const endMs = now.getTime();
-      const remaining = pending.conflicts.filter((c) => {
-        const cs = parseISODate(c.start_ts).getTime();
-        const ce = parseISODate(c.end_ts).getTime();
-        return cs < endMs && startMs < ce;
-      });
-
-      if (remaining.length === 0) {
-        setOverwritePending(null);
-      } else {
-        setOverwritePending({
-          ...pending,
-          start: start.toISOString(),
-          end: now.toISOString(),
-          conflicts: remaining,
-          extendForward: mins === 0 ? true : extendFwd(),
-        });
-      }
+      setOverwritePending(updated);
     },
     { defer: true },
   ));
