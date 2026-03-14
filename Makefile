@@ -1,25 +1,35 @@
-.PHONY: install lint test typecheck docs-serve docs-build ci ui-build ui-dev ui-test \
+.PHONY: install \
+       py-lint py-test typecheck \
+       ui-lint ui-test ui-build ui-dev \
+       lint test ci \
+       docs-serve docs-build \
        version bump-patch bump-minor bump-major
 
 PNPM := pnpm --dir src/taskclf/ui/frontend
 
+# --- setup ---
+
 install:
 	uv sync & $(PNPM) install --frozen-lockfile & wait
 
-lint:
+# --- python ---
+
+py-lint:
 	uv run ruff check .
 
-test:
+py-test:
 	uv run pytest
 
 typecheck:
 	uv run mypy src
 
-docs-serve:
-	uv run --group docs zensical serve
+# --- ui ---
 
-docs-build:
-	uv run --group docs zensical build
+ui-lint:
+	$(PNPM) run lint
+
+ui-test:
+	$(PNPM) run test
 
 ui-build:
 	$(PNPM) install --frozen-lockfile && $(PNPM) run build
@@ -27,10 +37,23 @@ ui-build:
 ui-dev:
 	$(PNPM) run dev
 
-ui-test:
-	$(PNPM) run test
+# --- aggregates ---
 
-ci: lint test ui-test
+lint: py-lint ui-lint
+
+test: py-test ui-test
+
+ci: lint test
+
+# --- docs ---
+
+docs-serve:
+	uv run --group docs zensical serve
+
+docs-build:
+	uv run --group docs zensical build
+
+# --- versioning ---
 
 CURRENT_VERSION := $(shell python3 -c "import re, pathlib; \
 	m = re.search(r'^version\s*=\s*\"([^\"]+)\"', pathlib.Path('pyproject.toml').read_text(), re.M); \
