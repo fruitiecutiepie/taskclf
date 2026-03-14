@@ -53,7 +53,6 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
-    "black>=26.1.0",
     "httpx>=0.28.0",
     "mypy>=1.19.1",
     "pandas-stubs>=3.0.0.260204",
