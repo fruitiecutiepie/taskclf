@@ -50,16 +50,21 @@ export function buildDayTimeline(
   for (const entry of sorted) {
     const s = Math.max(parseDate(entry.start_ts).getTime(), dayStart);
     const e = Math.min(parseDate(entry.end_ts).getTime(), dayEnd);
-    if (e <= cursor) continue;
+    if (e <= s) continue;
 
     if (s > cursor) {
       segments.push({ label: null, startMs: cursor, endMs: s, fraction: (s - cursor) / spanMs });
       items.push({ kind: "gap", start_ts: new Date(cursor).toISOString(), end_ts: new Date(s).toISOString() });
     }
+
     const segStart = Math.max(s, cursor);
-    segments.push({ label: entry.label, startMs: segStart, endMs: e, fraction: (e - segStart) / spanMs });
+    if (segStart < e) {
+      segments.push({ label: entry.label, startMs: segStart, endMs: e, fraction: (e - segStart) / spanMs });
+    } else {
+      segments.push({ label: entry.label, startMs: s, endMs: e, fraction: 0 });
+    }
     items.push({ kind: "label", label: entry.label, start_ts: entry.start_ts, end_ts: entry.end_ts });
-    cursor = e;
+    cursor = Math.max(cursor, e);
   }
 
   if (cursor < dayEnd) {
@@ -71,5 +76,6 @@ export function buildDayTimeline(
 }
 
 export function itemKey(item: TimelineItem): string {
-  return `${item.kind}|${item.start_ts}|${item.end_ts}`;
+  const label = item.kind === "label" ? (item as LabelItem).label : "";
+  return `${item.kind}|${item.start_ts}|${item.end_ts}|${label}`;
 }

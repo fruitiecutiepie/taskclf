@@ -77,6 +77,11 @@ class LabelCreateRequest(BaseModel):
         description="When true, overlapping same-user spans are "
         "truncated/split/removed to make room for this label.",
     )
+    allow_overlap: bool = Field(
+        default=False,
+        description="When true, skip overlap checks and allow "
+        "multiple labels to coexist on the same time range.",
+    )
 
 
 class LabelResponse(BaseModel):
@@ -287,11 +292,15 @@ def _parse_overlap_error(
     new_end_str = str(new_span.end_ts)
 
     if span_a == (new_start_str, new_end_str):
-        first_conflict = span_b
+        fc_raw = span_b
     elif span_b == (new_start_str, new_end_str):
-        first_conflict = span_a
+        fc_raw = span_a
     else:
-        first_conflict = span_a
+        fc_raw = span_a
+    first_conflict = (
+        _utc_iso(dt.datetime.fromisoformat(fc_raw[0])),
+        _utc_iso(dt.datetime.fromisoformat(fc_raw[1])),
+    )
 
     conflicts: list[ConflictingSpan] = []
     first_label: str | None = None
@@ -304,8 +313,8 @@ def _parse_overlap_error(
                          or s.user_id == new_span.user_id)
             if same_user and s.start_ts < new_span.end_ts and new_span.start_ts < s.end_ts:
                 conflicts.append(ConflictingSpan(
-                    start_ts=str(s.start_ts),
-                    end_ts=str(s.end_ts),
+                    start_ts=_utc_iso(s.start_ts),
+                    end_ts=_utc_iso(s.end_ts),
                     label=s.label,
                 ))
 
@@ -441,7 +450,9 @@ def create_app(
             overwrite_label_span(span, labels_path)
         else:
             try:
-                append_label_span(span, labels_path)
+                append_label_span(
+                    span, labels_path, allow_overlap=body.allow_overlap,
+                )
             except ValueError as exc:
                 existing = read_label_spans(labels_path) if labels_path.exists() else []
                 detail = _parse_overlap_error(str(exc), span, existing)

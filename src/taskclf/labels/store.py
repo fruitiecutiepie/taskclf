@@ -208,7 +208,12 @@ def merge_label_spans(
     return merged
 
 
-def append_label_span(span: LabelSpan, path: Path) -> Path:
+def append_label_span(
+    span: LabelSpan,
+    path: Path,
+    *,
+    allow_overlap: bool = False,
+) -> Path:
     """Append a single label span to an existing (or new) parquet file.
 
     If the most recent same-user label has ``extend_forward=True``, its
@@ -218,13 +223,15 @@ def append_label_span(span: LabelSpan, path: Path) -> Path:
     Args:
         span: The label span to append.
         path: Parquet file to read-append-write.
+        allow_overlap: When True, skip the overlap check and allow
+            multiple labels to coexist on overlapping time ranges.
 
     Returns:
         The *path* that was written.
 
     Raises:
         ValueError: If the span overlaps an existing span for the
-            same user (after any extension).
+            same user (after any extension) and *allow_overlap* is False.
     """
     existing: list[LabelSpan] = []
     if path.exists():
@@ -247,17 +254,18 @@ def append_label_span(span: LabelSpan, path: Path) -> Path:
 
     existing.append(span)
 
-    for i, a in enumerate(existing):
-        for j, b in enumerate(existing):
-            if i >= j:
-                continue
-            if not _same_user(a, b):
-                continue
-            if a.start_ts < b.end_ts and b.start_ts < a.end_ts:
-                raise ValueError(
-                    f"Span [{a.start_ts}, {a.end_ts}) overlaps "
-                    f"[{b.start_ts}, {b.end_ts}) for user {a.user_id!r}"
-                )
+    if not allow_overlap:
+        for i, a in enumerate(existing):
+            for j, b in enumerate(existing):
+                if i >= j:
+                    continue
+                if not _same_user(a, b):
+                    continue
+                if a.start_ts < b.end_ts and b.start_ts < a.end_ts:
+                    raise ValueError(
+                        f"Span [{a.start_ts}, {a.end_ts}) overlaps "
+                        f"[{b.start_ts}, {b.end_ts}) for user {a.user_id!r}"
+                    )
 
     return write_label_spans(existing, path)
 

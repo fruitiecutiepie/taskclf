@@ -64,6 +64,7 @@ export async function createLabel(body: {
   confidence?: number;
   extend_forward?: boolean;
   overwrite?: boolean;
+  allow_overlap?: boolean;
 }): Promise<LabelResponse> {
   return json(`${BASE}/labels`, {
     method: "POST",

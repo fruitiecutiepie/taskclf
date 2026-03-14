@@ -1,4 +1,4 @@
-import { createSignal, createResource, For, Show, type Accessor, type Component } from "solid-js";
+import { createSignal, createResource, createEffect, on, For, Show, type Accessor, type Component } from "solid-js";
 import { createLabel, fetchCoreLabels, fetchLabels } from "../lib/api";
 import type { Prediction } from "../lib/ws";
 import { parseISODate } from "../lib/date";
@@ -44,6 +44,50 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
   const [extendFwd, setExtendFwd] = createSignal(loadExtendForward());
   const [fillFromLast, setFillFromLast] = createSignal(false);
   const [confPercent, setConfPercent] = createSignal(100);
+
+  createEffect(on(lastLabel, () => {
+    if (overwritePending()) setOverwritePending(null);
+  }, { defer: true }));
+
+  createEffect(on(
+    () => [selectedMinutes(), fillFromLast()] as const,
+    () => {
+      const pending = overwritePending();
+      if (!pending) return;
+
+      const mins = selectedMinutes();
+      const now = new Date();
+      let start: Date;
+      if (fillFromLast() && lastLabel()?.end_ts) {
+        start = parseISODate(lastLabel()!.end_ts);
+      } else if (mins === 0) {
+        start = now;
+      } else {
+        start = new Date(now.getTime() - mins * 60_000);
+      }
+
+      const startMs = start.getTime();
+      const endMs = now.getTime();
+      const remaining = pending.conflicts.filter((c) => {
+        const cs = parseISODate(c.start_ts).getTime();
+        const ce = parseISODate(c.end_ts).getTime();
+        return cs < endMs && startMs < ce;
+      });
+
+      if (remaining.length === 0) {
+        setOverwritePending(null);
+      } else {
+        setOverwritePending({
+          ...pending,
+          start: start.toISOString(),
+          end: now.toISOString(),
+          conflicts: remaining,
+          extendForward: mins === 0 ? true : extendFwd(),
+        });
+      }
+    },
+    { defer: true },
+  ));
 
   function toggleExtendFwd() {
     const next = !extendFwd();
@@ -133,6 +177,28 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
     }
   }
 
+  async function confirmKeepAll() {
+    const pending = overwritePending();
+    if (!pending) return;
+    setOverwritePending(null);
+    try {
+      await createLabel({
+        start_ts: pending.start,
+        end_ts: pending.end,
+        label: pending.label,
+        confidence: pending.confidence,
+        extend_forward: pending.extendForward,
+        allow_overlap: true,
+      });
+      setFlash(pending.label);
+      setLabelVersion((v) => v + 1);
+      setTimeout(() => setFlash(null), 1500);
+    } catch (err: any) {
+      setFlash(`Error: ${err.message ?? "keep all failed"}`);
+      setTimeout(() => setFlash(null), 3000);
+    }
+  }
+
   return (
     <div
       style={{
@@ -158,6 +224,23 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
       </Show>
 
       <LabelConfidence value={confPercent} onChange={setConfPercent} />
+
+      <Show when={overwritePending()}>
+        {(pending) => (
+          <LabelOverwrite
+            pending={pending()}
+            onConfirm={confirmOverwrite}
+            onKeepAll={confirmKeepAll}
+            onCancel={() => setOverwritePending(null)}
+          />
+        )}
+      </Show>
+
+      <Show when={flash()}>
+        <div onClick={() => setFlash(null)} style={{ cursor: "pointer" }}>
+          <LabelFlash flash={flash()!} />
+        </div>
+      </Show>
 
       <div
         style={{
@@ -188,22 +271,6 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
           )}
         </For>
       </div>
-
-      <Show when={overwritePending()}>
-        {(pending) => (
-          <LabelOverwrite
-            pending={pending()}
-            onConfirm={confirmOverwrite}
-            onCancel={() => setOverwritePending(null)}
-          />
-        )}
-      </Show>
-
-      <Show when={flash()}>
-        <div onClick={() => setFlash(null)} style={{ cursor: "pointer" }}>
-          <LabelFlash flash={flash()!} />
-        </div>
-      </Show>
 
       <LabelLast lastLabel={lastLabel} />
     </div>
