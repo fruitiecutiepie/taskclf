@@ -30,7 +30,7 @@ export const LabelConfidence: Component<LabelConfidenceProps> = (props) => (
       max="100"
       step="5"
       value={props.value()}
-      onInput={(e) => props.onChange(parseInt(e.currentTarget.value))}
+      onInput={(e) => props.onChange(parseInt(e.currentTarget.value, 10))}
       style={{
         flex: "1",
         height: "4px",

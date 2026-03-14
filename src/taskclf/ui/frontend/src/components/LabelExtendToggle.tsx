@@ -1,4 +1,4 @@
-import { Show, type Accessor, type Component } from "solid-js";
+import { type Accessor, type Component, Show } from "solid-js";
 
 interface LabelExtendToggleProps {
   checked: Accessor<boolean>;
@@ -6,7 +6,8 @@ interface LabelExtendToggleProps {
 }
 
 export const LabelExtendToggle: Component<LabelExtendToggleProps> = (props) => (
-  <div
+  <button
+    type="button"
     onClick={props.onToggle}
     style={{
       display: "flex",
@@ -18,6 +19,9 @@ export const LabelExtendToggle: Component<LabelExtendToggleProps> = (props) => (
       color: "var(--text-muted)",
       cursor: "pointer",
       "user-select": "none",
+      background: "none",
+      border: "none",
+      padding: "0",
     }}
   >
     <div
@@ -37,12 +41,14 @@ export const LabelExtendToggle: Component<LabelExtendToggleProps> = (props) => (
     >
       <Show when={props.checked()}>
         <svg
+          role="img"
           width="8"
           height="8"
           viewBox="0 0 12 12"
           fill="none"
           style={{ display: "block" }}
         >
+          <title>Checkmark</title>
           <path
             d="M2.5 6L5 8.5L9.5 3.5"
             stroke="var(--bg)"
@@ -61,5 +67,5 @@ export const LabelExtendToggle: Component<LabelExtendToggleProps> = (props) => (
     >
       Extend until next label
     </span>
-  </div>
+  </button>
 );

@@ -17,7 +17,7 @@ export const LabelTable: Component = () => {
       </h2>
 
       <Show
-        when={labels() && labels()!.length > 0}
+        when={labels() && labels()?.length > 0}
         fallback={
           <div
             style={{
@@ -54,25 +54,23 @@ export const LabelTable: Component = () => {
                   "border-bottom": "1px solid var(--border)",
                 }}
               >
-                {["Start", "End", "Label", "User", "Confidence", "Source"].map(
-                  (h) => (
-                    <th
-                      style={{
-                        "text-align": "left",
-                        padding: "10px 12px",
-                        color: "var(--text-muted)",
-                        "font-weight": "500",
-                        "font-size": "0.8rem",
-                      }}
-                    >
-                      {h}
-                    </th>
-                  )
-                )}
+                {["Start", "End", "Label", "User", "Confidence", "Source"].map((h) => (
+                  <th
+                    style={{
+                      "text-align": "left",
+                      padding: "10px 12px",
+                      color: "var(--text-muted)",
+                      "font-weight": "500",
+                      "font-size": "0.8rem",
+                    }}
+                  >
+                    {h}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              <For each={labels()!}>
+              <For each={labels() ?? []}>
                 {(row) => (
                   <tr
                     style={{

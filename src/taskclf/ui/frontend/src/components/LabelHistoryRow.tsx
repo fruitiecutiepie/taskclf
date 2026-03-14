@@ -1,6 +1,12 @@
 import { type Component, createEffect, createSignal, For, Show } from "solid-js";
-import { fmtDuration, fmtTime, parseDate, toTimeInputValue, timeInputToDate } from "../lib/date";
 import type { TimeRange } from "../lib/date";
+import {
+  fmtDuration,
+  fmtTime,
+  parseDate,
+  timeInputToDate,
+  toTimeInputValue,
+} from "../lib/date";
 import { LABEL_COLORS } from "../lib/labelColors";
 import type { LabelItem } from "../lib/labelTimeline";
 import { ActivitySummary } from "./ActivitySummary";
@@ -44,7 +50,8 @@ export const LabelHistoryRow: Component<{
     startTime() !== toTimeInputValue(startD()) ||
     endTime() !== toTimeInputValue(endD());
 
-  const labelChanged = () => pendingLabel() !== null && pendingLabel() !== props.lbl.label;
+  const labelChanged = () =>
+    pendingLabel() !== null && pendingLabel() !== props.lbl.label;
   const effectiveLabel = () => pendingLabel() ?? props.lbl.label;
   const hasChanges = () => labelChanged() || timeChanged();
 
@@ -62,7 +69,8 @@ export const LabelHistoryRow: Component<{
 
   return (
     <div>
-      <div
+      <button
+        type="button"
         onClick={props.onToggle}
         style={{
           display: "flex",
@@ -74,6 +82,11 @@ export const LabelHistoryRow: Component<{
           "border-radius": "4px",
           background: props.expanded ? "#1e1e2e" : "transparent",
           transition: "background 0.1s ease",
+          border: "none",
+          font: "inherit",
+          color: "inherit",
+          width: "100%",
+          "text-align": "left",
         }}
         onMouseEnter={(e) => {
           if (!props.expanded) e.currentTarget.style.background = "#1a1a24";
@@ -108,7 +121,7 @@ export const LabelHistoryRow: Component<{
           {fmtTime(startD())} – {fmtTime(endD())}{" "}
           <span style={{ color: "#808080" }}>({dur()})</span>
         </span>
-      </div>
+      </button>
 
       <Show when={props.expanded}>
         <div
@@ -147,6 +160,7 @@ export const LabelHistoryRow: Component<{
             />
             <Show when={timeChanged()}>
               <button
+                type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   setStartTime(toTimeInputValue(startD()));
@@ -164,8 +178,12 @@ export const LabelHistoryRow: Component<{
                   "flex-shrink": "0",
                   transition: "color 0.1s",
                 }}
-                onMouseEnter={(e) => { e.currentTarget.style.color = "#e0e0e0"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.color = "#888"; }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = "#e0e0e0";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = "#888";
+                }}
               >
                 ↺
               </button>
@@ -175,7 +193,7 @@ export const LabelHistoryRow: Component<{
           <ActivitySummary timeRange={() => editedRange()} />
 
           <Show when={props.flash}>
-            <LabelFlash flash={props.flash!} />
+            <LabelFlash flash={props.flash as string} />
           </Show>
 
           <div
@@ -192,6 +210,7 @@ export const LabelHistoryRow: Component<{
                 const isSelected = () => lbl === effectiveLabel();
                 return (
                   <button
+                    type="button"
                     disabled={props.busy}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -213,7 +232,13 @@ export const LabelHistoryRow: Component<{
                       "font-size": "0.58rem",
                       "font-weight": isSelected() ? "700" : "500",
                       "text-align": "center",
-                      opacity: props.busy ? "0.5" : isSelected() ? "1" : isOriginal() && labelChanged() ? "0.5" : "0.8",
+                      opacity: props.busy
+                        ? "0.5"
+                        : isSelected()
+                          ? "1"
+                          : isOriginal() && labelChanged()
+                            ? "0.5"
+                            : "0.8",
                       transition: "all 0.1s ease",
                     }}
                   >
@@ -232,10 +257,40 @@ export const LabelHistoryRow: Component<{
               }}
             >
               <Show when={labelChanged()}>
-                <div style={{ "font-size": "0.58rem", color: "#999", "margin-bottom": "4px" }}>
-                  {timeChanged()
-                    ? <>Change to <span style={{ color: LABEL_COLORS[effectiveLabel()] ?? "#e0e0e0", "font-weight": "700" }}>{effectiveLabel()}</span> and update time?</>
-                    : <>Change to <span style={{ color: LABEL_COLORS[effectiveLabel()] ?? "#e0e0e0", "font-weight": "700" }}>{effectiveLabel()}</span>?</>}
+                <div
+                  style={{
+                    "font-size": "0.58rem",
+                    color: "#999",
+                    "margin-bottom": "4px",
+                  }}
+                >
+                  {timeChanged() ? (
+                    <>
+                      Change to{" "}
+                      <span
+                        style={{
+                          color: LABEL_COLORS[effectiveLabel()] ?? "#e0e0e0",
+                          "font-weight": "700",
+                        }}
+                      >
+                        {effectiveLabel()}
+                      </span>{" "}
+                      and update time?
+                    </>
+                  ) : (
+                    <>
+                      Change to{" "}
+                      <span
+                        style={{
+                          color: LABEL_COLORS[effectiveLabel()] ?? "#e0e0e0",
+                          "font-weight": "700",
+                        }}
+                      >
+                        {effectiveLabel()}
+                      </span>
+                      ?
+                    </>
+                  )}
                 </div>
               </Show>
               <div
@@ -246,6 +301,7 @@ export const LabelHistoryRow: Component<{
                 }}
               >
                 <button
+                  type="button"
                   disabled={props.busy}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -266,6 +322,7 @@ export const LabelHistoryRow: Component<{
                   {labelChanged() ? "Cancel" : "Reset"}
                 </button>
                 <button
+                  type="button"
                   disabled={props.busy}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -306,6 +363,7 @@ export const LabelHistoryRow: Component<{
               when={confirmDelete()}
               fallback={
                 <button
+                  type="button"
                   disabled={props.busy}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -327,10 +385,17 @@ export const LabelHistoryRow: Component<{
                 </button>
               }
             >
-              <span style={{ "font-size": "0.58rem", color: "#999", "align-self": "center" }}>
+              <span
+                style={{
+                  "font-size": "0.58rem",
+                  color: "#999",
+                  "align-self": "center",
+                }}
+              >
                 Delete this label?
               </span>
               <button
+                type="button"
                 disabled={props.busy}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -349,6 +414,7 @@ export const LabelHistoryRow: Component<{
                 Cancel
               </button>
               <button
+                type="button"
                 disabled={props.busy}
                 onClick={(e) => {
                   e.stopPropagation();

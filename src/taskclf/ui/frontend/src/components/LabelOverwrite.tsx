@@ -1,4 +1,4 @@
-import { For, Show, createMemo, createSignal, type Component } from "solid-js";
+import { type Component, createMemo, createSignal, For, Show } from "solid-js";
 import { parseISODate } from "../lib/date";
 import { LABEL_COLORS } from "../lib/labelColors";
 
@@ -59,8 +59,7 @@ export const LabelOverwrite: Component<LabelOverwriteProps> = (props) => {
       }}
     >
       <span>
-        Overlaps{" "}
-        {sorted().length === 1 ? "" : `${sorted().length} labels: `}
+        Overlaps {sorted().length === 1 ? "" : `${sorted().length} labels: `}
         <For each={uniqueLabels()}>
           {(lbl, i) => {
             const color = LABEL_COLORS[lbl] ?? "var(--text)";
@@ -95,6 +94,7 @@ export const LabelOverwrite: Component<LabelOverwriteProps> = (props) => {
 
       <Show when={sorted().length > 1}>
         <button
+          type="button"
           onClick={() => setExpanded((v) => !v)}
           style={{
             background: "none",
@@ -125,8 +125,10 @@ export const LabelOverwrite: Component<LabelOverwriteProps> = (props) => {
               const ce = parseISODate(c.end_ts);
               return (
                 <div>
-                  <span style={{ color, "font-weight": "600" }}>{c.label}</span>
-                  {" "}{fmt(cs)}{"\u2013"}{fmt(ce)}
+                  <span style={{ color, "font-weight": "600" }}>{c.label}</span>{" "}
+                  {fmt(cs)}
+                  {"\u2013"}
+                  {fmt(ce)}
                 </div>
               );
             }}
@@ -143,6 +145,7 @@ export const LabelOverwrite: Component<LabelOverwriteProps> = (props) => {
         }}
       >
         <button
+          type="button"
           onClick={props.onConfirm}
           style={{
             padding: "2px 10px",
@@ -158,6 +161,7 @@ export const LabelOverwrite: Component<LabelOverwriteProps> = (props) => {
           Overwrite All
         </button>
         <button
+          type="button"
           onClick={props.onKeepAll}
           style={{
             padding: "2px 10px",
@@ -173,6 +177,7 @@ export const LabelOverwrite: Component<LabelOverwriteProps> = (props) => {
           Keep All
         </button>
         <button
+          type="button"
           onClick={props.onCancel}
           style={{
             padding: "2px 10px",

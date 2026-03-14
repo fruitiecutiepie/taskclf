@@ -25,7 +25,7 @@ export function formatTime(iso: string | null | undefined): string {
 export function truncPath(p: string | null | undefined, maxLen = 30): string {
   if (!p) return "—";
   if (p.length <= maxLen) return p;
-  return "…" + p.slice(-(maxLen - 1));
+  return `…${p.slice(-(maxLen - 1))}`;
 }
 
 export function shortAppName(app: string): string {

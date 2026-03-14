@@ -1,6 +1,12 @@
-import { type Accessor, type Component } from "solid-js";
-import type { ConnectionStatus, LabelSuggestion, Prediction, StatusEvent, TrayState } from "../lib/ws";
+import type { Accessor, Component } from "solid-js";
 import { LABEL_COLORS } from "../lib/labelColors";
+import type {
+  ConnectionStatus,
+  LabelSuggestion,
+  Prediction,
+  StatusEvent,
+  TrayState,
+} from "../lib/ws";
 import { ConnectionDot } from "./ConnectionDot";
 
 export const PredictionBadge: Component<{
@@ -28,11 +34,12 @@ export const PredictionBadge: Component<{
     return tray !== null && !tray.model_loaded;
   };
 
-  const badgeText = () => predictionLabel() ?? (noModel() ? "No Model" : "Unknown Label");
+  const badgeText = () =>
+    predictionLabel() ?? (noModel() ? "No Model" : "Unknown Label");
 
   const predColor = () => {
     const l = predictionLabel();
-    return l ? LABEL_COLORS[l] ?? "#555" : "#333";
+    return l ? (LABEL_COLORS[l] ?? "#555") : "#333";
   };
 
   return (
@@ -45,7 +52,8 @@ export const PredictionBadge: Component<{
         gap: "4px",
       }}
     >
-      <span
+      <button
+        type="button"
         style={{
           padding: "2px 10px",
           "border-radius": "20px",
@@ -56,13 +64,18 @@ export const PredictionBadge: Component<{
           "text-shadow": predictionLabel() ? "0 1px 3px rgba(0,0,0,0.5)" : "none",
           "white-space": "nowrap",
           cursor: "pointer",
-          outline: props.labelPinned?.()
-            ? `2px solid ${predColor()}aa`
-            : "none",
+          outline: props.labelPinned?.() ? `2px solid ${predColor()}aa` : "none",
           "outline-offset": "2px",
           transition: "outline 0.15s ease",
+          border: "none",
+          "font-family": "inherit",
+          "line-height": "inherit",
         }}
-        title={props.labelPinned?.() ? "Label grid pinned — click to unpin" : "Hover for label grid, click to pin"}
+        title={
+          props.labelPinned?.()
+            ? "Label grid pinned — click to unpin"
+            : "Hover for label grid, click to pin"
+        }
         onMouseEnter={() => props.onShowLabel?.()}
         onMouseLeave={() => props.onHideLabel?.()}
         onClick={(e) => {
@@ -71,7 +84,7 @@ export const PredictionBadge: Component<{
         }}
       >
         {badgeText()}
-      </span>
+      </button>
       <ConnectionDot
         status={props.status}
         panelPinned={props.panelPinned}

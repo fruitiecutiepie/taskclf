@@ -1,7 +1,7 @@
 import { type Component, Show } from "solid-js";
-import { LabelRecorder } from "./LabelRecorder";
-import { useWebSocket } from "../lib/ws";
 import { host } from "../lib/host";
+import { useWebSocket } from "../lib/ws";
+import { LabelRecorder } from "./LabelRecorder";
 
 const CONTENT_W = 280;
 const LABEL_MAX_H = 330;
@@ -16,6 +16,7 @@ export const LabelRecorderWindow: Component = () => {
   }
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: hover-only container for native window show/hide
     <div
       onMouseEnter={() => {
         if (!inBrowser) host.invoke({ cmd: "cancelLabelHide" });

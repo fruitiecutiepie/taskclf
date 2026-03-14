@@ -1,6 +1,12 @@
 import { type Component, createEffect, createSignal, For, Show } from "solid-js";
-import { fmtDuration, fmtTimeSec, parseDate, toTimeInputValueSec, timeInputToDate } from "../lib/date";
 import type { TimeRange } from "../lib/date";
+import {
+  fmtDuration,
+  fmtTimeSec,
+  parseDate,
+  timeInputToDate,
+  toTimeInputValueSec,
+} from "../lib/date";
 import { LABEL_COLORS } from "../lib/labelColors";
 import type { GapItem } from "../lib/labelTimeline";
 import { ActivitySummary } from "./ActivitySummary";
@@ -23,8 +29,12 @@ export const LabelHistoryGapRow: Component<{
   const [startIso, setStartIso] = createSignal(props.gap.start_ts);
   const [endIso, setEndIso] = createSignal(props.gap.end_ts);
 
-  const [startTimeDisplay, setStartTimeDisplay] = createSignal(toTimeInputValueSec(gapStartD()));
-  const [endTimeDisplay, setEndTimeDisplay] = createSignal(toTimeInputValueSec(gapEndD()));
+  const [startTimeDisplay, setStartTimeDisplay] = createSignal(
+    toTimeInputValueSec(gapStartD()),
+  );
+  const [endTimeDisplay, setEndTimeDisplay] = createSignal(
+    toTimeInputValueSec(gapEndD()),
+  );
 
   createEffect(() => {
     setStartIso(props.gap.start_ts);
@@ -66,7 +76,8 @@ export const LabelHistoryGapRow: Component<{
 
   return (
     <div>
-      <div
+      <button
+        type="button"
         onClick={props.onToggle}
         style={{
           display: "flex",
@@ -78,6 +89,11 @@ export const LabelHistoryGapRow: Component<{
           "border-radius": "4px",
           background: props.expanded ? "#1a1a22" : "transparent",
           transition: "background 0.1s ease",
+          border: "none",
+          font: "inherit",
+          color: "inherit",
+          width: "100%",
+          "text-align": "left",
         }}
         onMouseEnter={(e) => {
           if (!props.expanded) e.currentTarget.style.background = "#16161e";
@@ -113,7 +129,7 @@ export const LabelHistoryGapRow: Component<{
           {fmtTimeSec(gapStartD())} – {fmtTimeSec(gapEndD())}{" "}
           <span style={{ color: "#555" }}>({dur()})</span>
         </span>
-      </div>
+      </button>
 
       <Show when={props.expanded}>
         <div
@@ -157,7 +173,7 @@ export const LabelHistoryGapRow: Component<{
           <ActivitySummary timeRange={() => selectedRange()} />
 
           <Show when={props.flash}>
-            <LabelFlash flash={props.flash!} />
+            <LabelFlash flash={props.flash as string} />
           </Show>
 
           <div
@@ -170,6 +186,7 @@ export const LabelHistoryGapRow: Component<{
             <For each={props.coreLabels}>
               {(lbl) => (
                 <button
+                  type="button"
                   disabled={props.busy || !rangeValid()}
                   onClick={(e) => {
                     e.stopPropagation();

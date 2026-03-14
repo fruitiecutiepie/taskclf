@@ -1,10 +1,10 @@
 import { type Accessor, type Component, createResource, For, Show } from "solid-js";
 import { fetchAWLive, fetchFeatureSummary } from "../lib/api";
-import type { Prediction } from "../lib/ws";
-import { LABEL_COLORS } from "../lib/labelColors";
-import { shortAppName, fmtRate } from "../lib/format";
 import type { TimeRange } from "../lib/date";
 import { timeRangeForMinutes } from "../lib/date";
+import { fmtRate, shortAppName } from "../lib/format";
+import { LABEL_COLORS } from "../lib/labelColors";
+import type { Prediction } from "../lib/ws";
 
 export const ActivitySummary: Component<{
   minutes?: Accessor<number>;
@@ -13,7 +13,8 @@ export const ActivitySummary: Component<{
   showEmpty?: boolean;
 }> = (props) => {
   const range = () =>
-    props.timeRange?.() ?? (props.minutes ? timeRangeForMinutes(props.minutes()) : null);
+    props.timeRange?.() ??
+    (props.minutes ? timeRangeForMinutes(props.minutes()) : null);
 
   const [awApps] = createResource(range, async (r) => {
     if (!r) return [];
@@ -111,18 +112,20 @@ export const ActivitySummary: Component<{
                 }}
               >
                 <span style={{ color: "var(--text-muted)" }}>
-                  {pred()!.provenance === "manual" ? "Label:" : "Model:"}
+                  {pred()?.provenance === "manual" ? "Label:" : "Model:"}
                 </span>
                 <span
                   style={{
-                    color: LABEL_COLORS[pred()!.mapped_label ?? pred()!.label] ?? "var(--text)",
+                    color:
+                      LABEL_COLORS[pred()?.mapped_label ?? pred()?.label] ??
+                      "var(--text)",
                     "font-weight": "600",
                   }}
                 >
-                  {pred()!.mapped_label || pred()!.label}
+                  {pred()?.mapped_label || pred()?.label}
                 </span>
                 <span style={{ color: "var(--text-muted)" }}>
-                  ({Math.round(pred()!.confidence * 100)}%)
+                  ({Math.round(pred()?.confidence * 100)}%)
                 </span>
               </div>
             </Show>
@@ -199,20 +202,21 @@ export const ActivitySummary: Component<{
                   "flex-wrap": "wrap",
                 }}
               >
-                <Show when={fmtRate(features()!.mean_keys_per_min)}>
+                <Show when={fmtRate(features()?.mean_keys_per_min)}>
                   {(v) => <span>keys {v()}/m</span>}
                 </Show>
-                <Show when={fmtRate(features()!.mean_clicks_per_min)}>
+                <Show when={fmtRate(features()?.mean_clicks_per_min)}>
                   {(v) => <span>clicks {v()}/m</span>}
                 </Show>
-                <Show when={fmtRate(features()!.mean_scroll_per_min)}>
+                <Show when={fmtRate(features()?.mean_scroll_per_min)}>
                   {(v) => <span>scroll {v()}/m</span>}
                 </Show>
                 <Show when={hasCoverage()}>
                   <span style={{ color: "var(--text-muted)", opacity: "0.7" }}>
-                    {features()!.total_buckets}m
-                    <Show when={features()!.session_count > 1}>
-                      {" "}/ {features()!.session_count} sessions
+                    {features()?.total_buckets}m
+                    <Show when={features()?.session_count > 1}>
+                      {" "}
+                      / {features()?.session_count} sessions
                     </Show>
                   </span>
                 </Show>

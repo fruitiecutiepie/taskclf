@@ -18,12 +18,12 @@ export function fmtDateLabel(dateStr: string): string {
   yesterday.setDate(yesterday.getDate() - 1);
   const yStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, "0")}-${String(yesterday.getDate()).padStart(2, "0")}`;
   if (dateStr === yStr) return "Yesterday";
-  const d = new Date(dateStr + "T00:00:00");
+  const d = new Date(`${dateStr}T00:00:00`);
   return d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
 }
 
 export function shiftDate(dateStr: string, delta: number): string {
-  const d = new Date(dateStr + "T12:00:00");
+  const d = new Date(`${dateStr}T12:00:00`);
   d.setDate(d.getDate() + delta);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
@@ -33,7 +33,11 @@ export function fmtTime(d: Date): string {
 }
 
 export function fmtTimeSec(d: Date): string {
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return d.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
 }
 
 export function fmtDuration(ms: number): string {

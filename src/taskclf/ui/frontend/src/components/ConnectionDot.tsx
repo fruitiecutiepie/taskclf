@@ -1,6 +1,6 @@
 import { type Accessor, type Component, createSignal } from "solid-js";
-import type { ConnectionStatus } from "../lib/ws";
 import { dotColor } from "../lib/labelColors";
+import type { ConnectionStatus } from "../lib/ws";
 
 export const ConnectionDot: Component<{
   status: Accessor<ConnectionStatus>;
@@ -20,7 +20,8 @@ export const ConnectionDot: Component<{
   };
 
   return (
-    <span
+    <button
+      type="button"
       style={{
         display: "flex",
         "align-items": "center",
@@ -36,8 +37,16 @@ export const ConnectionDot: Component<{
             ? "rgba(255,255,255,0.05)"
             : "transparent",
         transition: "background 0.15s ease",
+        border: "none",
+        padding: "0",
+        font: "inherit",
+        color: "inherit",
       }}
-      title={pinned() ? `${props.status()} — panel pinned, click to unpin` : `${props.status()} — click to pin panel`}
+      title={
+        pinned()
+          ? `${props.status()} — panel pinned, click to unpin`
+          : `${props.status()} — click to pin panel`
+      }
       onMouseEnter={() => {
         setHovered(true);
         props.onShowPanel?.();
@@ -62,6 +71,6 @@ export const ConnectionDot: Component<{
           transition: "box-shadow 0.15s ease, transform 0.15s ease",
         }}
       />
-    </span>
+    </button>
   );
 };

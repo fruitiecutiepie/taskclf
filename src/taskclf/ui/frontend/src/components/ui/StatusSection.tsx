@@ -1,17 +1,18 @@
-import { type Component, createSignal, Show } from "solid-js";
+import { type Component, createSignal, type JSX, Show } from "solid-js";
 
 export const StatusSection: Component<{
   title: string;
   summary?: string;
   summaryColor?: string;
   defaultOpen?: boolean;
-  children: any;
+  children: JSX.Element;
 }> = (props) => {
   const [open, setOpen] = createSignal(props.defaultOpen ?? false);
 
   return (
     <div style={{ "margin-bottom": "3px" }}>
-      <div
+      <button
+        type="button"
         onClick={() => setOpen((v) => !v)}
         style={{
           display: "flex",
@@ -27,6 +28,8 @@ export const StatusSection: Component<{
           padding: "3px 5px 2px",
           "border-radius": "4px",
           background: "rgba(255, 255, 255, 0.04)",
+          border: "none",
+          width: "100%",
         }}
       >
         <div style={{ display: "flex", "align-items": "center", gap: "4px" }}>
@@ -60,9 +63,9 @@ export const StatusSection: Component<{
             {props.summary}
           </span>
         </Show>
-      </div>
+      </button>
       <Show when={open()}>
-        <div style={{ "padding": "2px 0 0 6px" }}>{props.children}</div>
+        <div style={{ padding: "2px 0 0 6px" }}>{props.children}</div>
       </Show>
     </div>
   );

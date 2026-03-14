@@ -1,9 +1,4 @@
-import {
-  type Component,
-  createResource,
-  createSignal,
-  Show,
-} from "solid-js";
+import { type Component, createResource, createSignal, Show } from "solid-js";
 import { createLabel, fetchCoreLabels } from "../lib/api";
 
 const inputStyle = {
@@ -52,8 +47,11 @@ export const LabelForm: Component = () => {
         type: "success",
         msg: `Saved: ${result.label} [${result.start_ts} → ${result.end_ts}]`,
       });
-    } catch (err: any) {
-      setStatus({ type: "error", msg: err.message || "Failed to save label" });
+    } catch (err: unknown) {
+      setStatus({
+        type: "error",
+        msg: err instanceof Error ? err.message : "Failed to save label",
+      });
     }
   }
 
@@ -81,12 +79,23 @@ export const LabelForm: Component = () => {
           border: "1px solid var(--border)",
         }}
       >
-        <div style={{ display: "grid", "grid-template-columns": "1fr 1fr", gap: "12px" }}>
+        <div
+          style={{ display: "grid", "grid-template-columns": "1fr 1fr", gap: "12px" }}
+        >
           <div>
-            <label style={{ "font-size": "0.85rem", color: "var(--text-muted)", "margin-bottom": "4px", display: "block" }}>
+            <label
+              for="lf-start"
+              style={{
+                "font-size": "0.85rem",
+                color: "var(--text-muted)",
+                "margin-bottom": "4px",
+                display: "block",
+              }}
+            >
               Start
             </label>
             <input
+              id="lf-start"
               type="datetime-local"
               value={startTs()}
               onInput={(e) => setStartTs(e.currentTarget.value)}
@@ -95,10 +104,19 @@ export const LabelForm: Component = () => {
             />
           </div>
           <div>
-            <label style={{ "font-size": "0.85rem", color: "var(--text-muted)", "margin-bottom": "4px", display: "block" }}>
+            <label
+              for="lf-end"
+              style={{
+                "font-size": "0.85rem",
+                color: "var(--text-muted)",
+                "margin-bottom": "4px",
+                display: "block",
+              }}
+            >
               End
             </label>
             <input
+              id="lf-end"
               type="datetime-local"
               value={endTs()}
               onInput={(e) => setEndTs(e.currentTarget.value)}
@@ -109,10 +127,19 @@ export const LabelForm: Component = () => {
         </div>
 
         <div>
-          <label style={{ "font-size": "0.85rem", color: "var(--text-muted)", "margin-bottom": "4px", display: "block" }}>
+          <label
+            for="lf-label"
+            style={{
+              "font-size": "0.85rem",
+              color: "var(--text-muted)",
+              "margin-bottom": "4px",
+              display: "block",
+            }}
+          >
             Label
           </label>
           <select
+            id="lf-label"
             value={label()}
             onChange={(e) => setLabel(e.currentTarget.value)}
             required
@@ -126,10 +153,19 @@ export const LabelForm: Component = () => {
         </div>
 
         <div>
-          <label style={{ "font-size": "0.85rem", color: "var(--text-muted)", "margin-bottom": "4px", display: "block" }}>
+          <label
+            for="lf-confidence"
+            style={{
+              "font-size": "0.85rem",
+              color: "var(--text-muted)",
+              "margin-bottom": "4px",
+              display: "block",
+            }}
+          >
             Confidence: {confidence().toFixed(2)}
           </label>
           <input
+            id="lf-confidence"
             type="range"
             min="0"
             max="1"
@@ -152,17 +188,14 @@ export const LabelForm: Component = () => {
             padding: "10px 16px",
             "border-radius": "var(--radius)",
             background:
-              status()!.type === "success"
+              status()?.type === "success"
                 ? "rgba(34,197,94,0.15)"
                 : "rgba(239,68,68,0.15)",
-            color:
-              status()!.type === "success"
-                ? "var(--success)"
-                : "var(--danger)",
+            color: status()?.type === "success" ? "var(--success)" : "var(--danger)",
             "font-size": "0.9rem",
           }}
         >
-          {status()!.msg}
+          {status()?.msg}
         </div>
       </Show>
     </div>

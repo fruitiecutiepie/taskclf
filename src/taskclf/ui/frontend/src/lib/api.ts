@@ -79,7 +79,7 @@ export async function fetchQueue(limit = 20): Promise<QueueItem[]> {
 
 export async function markQueueDone(
   requestId: string,
-  status: "labeled" | "skipped" = "labeled"
+  status: "labeled" | "skipped" = "labeled",
 ): Promise<{ status: string }> {
   return json(`${BASE}/queue/${requestId}/done`, {
     method: "POST",
@@ -90,19 +90,16 @@ export async function markQueueDone(
 
 export async function fetchFeatureSummary(
   start: string,
-  end: string
+  end: string,
 ): Promise<FeatureSummary> {
   return json(
-    `${BASE}/features/summary?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`
+    `${BASE}/features/summary?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
   );
 }
 
-export async function fetchAWLive(
-  start: string,
-  end: string
-): Promise<AWLiveEntry[]> {
+export async function fetchAWLive(start: string, end: string): Promise<AWLiveEntry[]> {
   return json(
-    `${BASE}/aw/live?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`
+    `${BASE}/aw/live?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
   );
 }
 
@@ -144,9 +141,9 @@ export async function fetchUserConfig(): Promise<UserConfig> {
   return json(`${BASE}/config/user`);
 }
 
-export async function updateUserConfig(
-  patch: { username?: string }
-): Promise<UserConfig> {
+export async function updateUserConfig(patch: {
+  username?: string;
+}): Promise<UserConfig> {
   return json(`${BASE}/config/user`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -231,9 +228,9 @@ export async function listModels(): Promise<ModelBundle[]> {
 
 export async function trainDataCheck(
   dateFrom: string,
-  dateTo: string
+  dateTo: string,
 ): Promise<DataCheck> {
   return json(
-    `${BASE}/train/data-check?date_from=${encodeURIComponent(dateFrom)}&date_to=${encodeURIComponent(dateTo)}`
+    `${BASE}/train/data-check?date_from=${encodeURIComponent(dateFrom)}&date_to=${encodeURIComponent(dateTo)}`,
   );
 }

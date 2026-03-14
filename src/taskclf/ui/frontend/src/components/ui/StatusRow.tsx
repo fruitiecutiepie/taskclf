@@ -35,9 +35,7 @@ export const StatusRow: Component<{
       style={{
         "font-size": "0.65rem",
         "font-weight": props.dim ? "400" : "600",
-        "font-family": props.mono
-          ? "'SF Mono', 'Fira Code', monospace"
-          : "inherit",
+        "font-family": props.mono ? "'SF Mono', 'Fira Code', monospace" : "inherit",
         color: props.color ?? (props.dim ? "#a0a0a0" : "#e0e0e0"),
         "text-align": "right",
         overflow: "hidden",

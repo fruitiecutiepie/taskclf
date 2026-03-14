@@ -160,18 +160,13 @@ export interface WSStats {
 }
 
 export function useWebSocket() {
-  const [latestStatus, setLatestStatus] = createSignal<StatusEvent | null>(
+  const [latestStatus, setLatestStatus] = createSignal<StatusEvent | null>(null);
+  const [latestPrediction, setLatestPrediction] = createSignal<Prediction | null>(null);
+  const [latestTrayState, setLatestTrayState] = createSignal<TrayState | null>(null);
+  const [activeSuggestion, setActiveSuggestion] = createSignal<LabelSuggestion | null>(
     null,
   );
-  const [latestPrediction, setLatestPrediction] =
-    createSignal<Prediction | null>(null);
-  const [latestTrayState, setLatestTrayState] = createSignal<TrayState | null>(
-    null,
-  );
-  const [activeSuggestion, setActiveSuggestion] =
-    createSignal<LabelSuggestion | null>(null);
-  const [latestPrompt, setLatestPrompt] =
-    createSignal<PromptLabelEvent | null>(null);
+  const [latestPrompt, setLatestPrompt] = createSignal<PromptLabelEvent | null>(null);
   const [labelGridRequested, setLabelGridRequested] = createSignal(0);
   const [trainState, setTrainState] = createSignal<TrainState>({
     job_id: null,

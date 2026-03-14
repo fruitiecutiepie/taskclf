@@ -1,9 +1,4 @@
-import {
-  type Component,
-  createResource,
-  For,
-  Show,
-} from "solid-js";
+import { type Component, createResource, For, Show } from "solid-js";
 import { fetchQueue, markQueueDone } from "../lib/api";
 
 export const LabelQueue: Component = () => {
@@ -27,7 +22,7 @@ export const LabelQueue: Component = () => {
       </h2>
 
       <Show
-        when={queue() && queue()!.length > 0}
+        when={queue() && queue()?.length > 0}
         fallback={
           <div
             style={{
@@ -44,7 +39,7 @@ export const LabelQueue: Component = () => {
         }
       >
         <div style={{ display: "flex", "flex-direction": "column", gap: "8px" }}>
-          <For each={queue()!}>
+          <For each={queue() ?? []}>
             {(item) => (
               <div
                 style={{
@@ -81,6 +76,7 @@ export const LabelQueue: Component = () => {
                   </div>
                 </div>
                 <button
+                  type="button"
                   onClick={() => skip(item.request_id)}
                   style={{
                     padding: "6px 14px",

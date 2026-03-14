@@ -1,4 +1,4 @@
-import { Show, type Accessor, type Component } from "solid-js";
+import { type Accessor, type Component, Show } from "solid-js";
 import { timeAgo } from "../lib/date";
 import { LABEL_COLORS } from "../lib/labelColors";
 
@@ -25,13 +25,13 @@ export const LabelLast: Component<LabelLastProps> = (props) => (
       Last:{" "}
       <span
         style={{
-          color: LABEL_COLORS[props.lastLabel()!.label] ?? "var(--text)",
+          color: LABEL_COLORS[props.lastLabel()?.label] ?? "var(--text)",
           "font-weight": "600",
         }}
       >
-        {props.lastLabel()!.label}
+        {props.lastLabel()?.label}
       </span>{" "}
-      {timeAgo(props.lastLabel()!.end_ts)}
+      {timeAgo(props.lastLabel()?.end_ts)}
     </Show>
   </div>
 );

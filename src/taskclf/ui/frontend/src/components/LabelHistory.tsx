@@ -1,11 +1,34 @@
-import { type Accessor, type Component, createEffect, createResource, createMemo, createSignal, For, on, Show } from "solid-js";
-import { createLabel, deleteLabel, fetchCoreLabels, fetchLabelsByDate, updateLabel } from "../lib/api";
-import type { Prediction } from "../lib/ws";
+import {
+  type Accessor,
+  type Component,
+  createEffect,
+  createMemo,
+  createResource,
+  createSignal,
+  For,
+  on,
+  Show,
+} from "solid-js";
+import {
+  createLabel,
+  deleteLabel,
+  fetchCoreLabels,
+  fetchLabelsByDate,
+  updateLabel,
+} from "../lib/api";
 import { fmtDateLabel, shiftDate, todayDateStr } from "../lib/date";
-import { buildDayTimeline, itemKey, type LabelEntry, type LabelItem, type GapItem, type TimelineItem } from "../lib/labelTimeline";
-import { LabelHistoryTimeline } from "./LabelHistoryTimeline";
-import { LabelHistoryRow } from "./LabelHistoryRow";
+import {
+  buildDayTimeline,
+  type GapItem,
+  itemKey,
+  type LabelEntry,
+  type LabelItem,
+  type TimelineItem,
+} from "../lib/labelTimeline";
+import type { Prediction } from "../lib/ws";
 import { LabelHistoryGapRow } from "./LabelHistoryGapRow";
+import { LabelHistoryRow } from "./LabelHistoryRow";
+import { LabelHistoryTimeline } from "./LabelHistoryTimeline";
 
 export const LabelHistory: Component<{
   visible: Accessor<boolean>;
@@ -27,11 +50,15 @@ export const LabelHistory: Component<{
   const [busy, setBusy] = createSignal(false);
   const [flash, setFlash] = createSignal<string | null>(null);
 
-  createEffect(on(
-    () => props.latestPrediction?.(),
-    () => { if (props.visible()) refetch(); },
-    { defer: true },
-  ));
+  createEffect(
+    on(
+      () => props.latestPrediction?.(),
+      () => {
+        if (props.visible()) refetch();
+      },
+      { defer: true },
+    ),
+  );
 
   const dayData = createMemo(() => {
     const l = labels();
@@ -49,7 +76,12 @@ export const LabelHistory: Component<{
     setFlash(null);
   }
 
-  async function handleUpdate(item: LabelItem, newLabel: string, newStart: string, newEnd: string) {
+  async function handleUpdate(
+    item: LabelItem,
+    newLabel: string,
+    newStart: string,
+    newEnd: string,
+  ) {
     setBusy(true);
     setFlash(null);
     try {
@@ -66,8 +98,8 @@ export const LabelHistory: Component<{
         setExpandedKey(null);
         refetch();
       }, 800);
-    } catch (err: any) {
-      setFlash(`Error: ${err.message}`);
+    } catch (err: unknown) {
+      setFlash(`Error: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setBusy(false);
     }
@@ -83,8 +115,8 @@ export const LabelHistory: Component<{
       });
       setExpandedKey(null);
       refetch();
-    } catch (err: any) {
-      setFlash(`Error: ${err.message}`);
+    } catch (err: unknown) {
+      setFlash(`Error: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setBusy(false);
     }
@@ -105,8 +137,8 @@ export const LabelHistory: Component<{
         setExpandedKey(null);
         refetch();
       }, 800);
-    } catch (err: any) {
-      setFlash(`Error: ${err.message}`);
+    } catch (err: unknown) {
+      setFlash(`Error: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setBusy(false);
     }
@@ -134,6 +166,7 @@ export const LabelHistory: Component<{
         }}
       >
         <button
+          type="button"
           onClick={() => setSelectedDate(shiftDate(selectedDate(), -1))}
           style={{
             background: "none",
@@ -145,13 +178,18 @@ export const LabelHistory: Component<{
             "border-radius": "4px",
             transition: "color 0.1s",
           }}
-          onMouseEnter={(e) => { e.currentTarget.style.color = "#e0e0e0"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.color = "#999"; }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = "#e0e0e0";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = "#999";
+          }}
         >
           ◀
         </button>
         <div style={{ position: "relative" }}>
-          <span
+          <button
+            type="button"
             onClick={() => dateInputRef?.showPicker()}
             style={{
               "font-size": "0.75rem",
@@ -160,10 +198,14 @@ export const LabelHistory: Component<{
               "letter-spacing": "0.02em",
               cursor: "pointer",
               "user-select": "none",
+              background: "none",
+              border: "none",
+              padding: "0",
+              font: "inherit",
             }}
           >
             {fmtDateLabel(selectedDate())}
-          </span>
+          </button>
           <input
             ref={dateInputRef}
             type="date"
@@ -185,7 +227,10 @@ export const LabelHistory: Component<{
           />
         </div>
         <button
-          onClick={() => { if (!isFutureDate()) setSelectedDate(shiftDate(selectedDate(), 1)); }}
+          type="button"
+          onClick={() => {
+            if (!isFutureDate()) setSelectedDate(shiftDate(selectedDate(), 1));
+          }}
           disabled={isFutureDate()}
           style={{
             background: "none",
@@ -197,8 +242,12 @@ export const LabelHistory: Component<{
             "border-radius": "4px",
             transition: "color 0.1s",
           }}
-          onMouseEnter={(e) => { if (!isFutureDate()) e.currentTarget.style.color = "#e0e0e0"; }}
-          onMouseLeave={(e) => { if (!isFutureDate()) e.currentTarget.style.color = "#999"; }}
+          onMouseEnter={(e) => {
+            if (!isFutureDate()) e.currentTarget.style.color = "#e0e0e0";
+          }}
+          onMouseLeave={(e) => {
+            if (!isFutureDate()) e.currentTarget.style.color = "#999";
+          }}
         >
           ▶
         </button>
@@ -251,7 +300,9 @@ export const LabelHistory: Component<{
                 dateStr={selectedDate()}
                 expanded={expandedKey() === itemKey(item)}
                 onToggle={() => toggleRow(item)}
-                onUpdate={(newLabel, newStart, newEnd) => handleUpdate(item as LabelItem, newLabel, newStart, newEnd)}
+                onUpdate={(newLabel, newStart, newEnd) =>
+                  handleUpdate(item as LabelItem, newLabel, newStart, newEnd)
+                }
                 onDelete={() => handleDelete(item as LabelItem)}
                 coreLabels={coreLabels() ?? []}
                 busy={busy()}

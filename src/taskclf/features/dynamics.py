@@ -133,6 +133,7 @@ class DynamicsTracker:
         Args:
             keys_series: keys_per_min values, one per bucket.
             clicks_series: clicks_per_min values, one per bucket.
+
             mouse_series: mouse_distance values, one per bucket.
             rolling_5: Short rolling window size.
             rolling_15: Long rolling window size.

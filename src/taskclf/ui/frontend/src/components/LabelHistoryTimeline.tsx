@@ -22,7 +22,8 @@ export const LabelHistoryTimeline: Component<{
       >
         <For each={props.segments}>
           {(seg, idx) => (
-            <div
+            <button
+              type="button"
               style={{
                 "flex-grow": seg.fraction,
                 "flex-basis": "0",
@@ -32,10 +33,18 @@ export const LabelHistoryTimeline: Component<{
                   : "rgba(255,255,255,0.04)",
                 cursor: "pointer",
                 transition: "opacity 0.1s, background 0.1s",
+                border: "none",
+                padding: "0",
+                height: "100%",
               }}
               onMouseEnter={(e) => {
-                const rect = (e.currentTarget.parentElement as HTMLElement).getBoundingClientRect();
-                const x = e.currentTarget.getBoundingClientRect().left - rect.left + e.currentTarget.offsetWidth / 2;
+                const rect = (
+                  e.currentTarget.parentElement as HTMLElement
+                ).getBoundingClientRect();
+                const x =
+                  e.currentTarget.getBoundingClientRect().left -
+                  rect.left +
+                  e.currentTarget.offsetWidth / 2;
                 const dur = fmtDuration(seg.endMs - seg.startMs);
                 const start = fmtTime(new Date(seg.startMs));
                 const end = fmtTime(new Date(seg.endMs));

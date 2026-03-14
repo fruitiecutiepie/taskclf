@@ -1,16 +1,25 @@
-import { createSignal, createResource, createEffect, on, For, Show, type Accessor, type Component } from "solid-js";
+import {
+  type Accessor,
+  type Component,
+  createEffect,
+  createResource,
+  createSignal,
+  For,
+  on,
+  Show,
+} from "solid-js";
 import { createLabel, fetchCoreLabels, fetchLabels } from "../lib/api";
-import type { Prediction } from "../lib/ws";
 import { parseISODate } from "../lib/date";
 import { LABEL_COLORS } from "../lib/labelColors";
+import { labelOverwritePendingUpdGet } from "../lib/labelOverwritePendingUpdGet";
+import type { Prediction } from "../lib/ws";
 import { ActivitySummary } from "./ActivitySummary";
-import { LabelTimePicker } from "./LabelTimePicker";
-import { LabelExtendToggle } from "./LabelExtendToggle";
 import { LabelConfidence } from "./LabelConfidence";
-import { LabelOverwrite, type OverwritePending } from "./LabelOverwrite";
+import { LabelExtendToggle } from "./LabelExtendToggle";
 import { LabelFlash } from "./LabelFlash";
 import { LabelLast } from "./LabelLast";
-import { labelOverwritePendingUpdGet } from "../lib/labelOverwritePendingUpdGet";
+import { LabelOverwrite, type OverwritePending } from "./LabelOverwrite";
+import { LabelTimePicker } from "./LabelTimePicker";
 
 const EXTEND_FWD_KEY = "taskclf:extendForward";
 const _LEGACY_KEY = "taskclf:extendPrevious";
@@ -18,7 +27,9 @@ function loadExtendForward(): boolean {
   try {
     const v = localStorage.getItem(EXTEND_FWD_KEY) ?? localStorage.getItem(_LEGACY_KEY);
     return v !== "false";
-  } catch { return true; }
+  } catch {
+    return true;
+  }
 }
 
 interface LabelRecorderProps {
@@ -30,48 +41,63 @@ interface LabelRecorderProps {
 export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
   const [labels] = createResource(fetchCoreLabels);
   const [labelVersion, setLabelVersion] = createSignal(0);
-  const [lastLabel] = createResource(
-    labelVersion,
-    async () => {
-      try {
-        const rows = await fetchLabels(1);
-        return rows.length ? rows[0] : null;
-      } catch { return null; }
-    },
-  );
+  const [lastLabel] = createResource(labelVersion, async () => {
+    try {
+      const rows = await fetchLabels(1);
+      return rows.length ? rows[0] : null;
+    } catch {
+      return null;
+    }
+  });
   const [flash, setFlash] = createSignal<string | null>(null);
-  const [overwritePending, setOverwritePending] = createSignal<OverwritePending | null>(null);
+  const [overwritePending, setOverwritePending] = createSignal<OverwritePending | null>(
+    null,
+  );
   const [selectedMinutes, setSelectedMinutes] = createSignal(0);
   const [extendFwd, setExtendFwd] = createSignal(loadExtendForward());
   const [fillFromLast, setFillFromLast] = createSignal(false);
   const [confPercent, setConfPercent] = createSignal(100);
 
-  createEffect(on(lastLabel, () => {
-    if (overwritePending()) setOverwritePending(null);
-  }, { defer: true }));
+  createEffect(
+    on(
+      lastLabel,
+      () => {
+        if (overwritePending()) setOverwritePending(null);
+      },
+      { defer: true },
+    ),
+  );
 
-  createEffect(on(
-    () => [selectedMinutes(), fillFromLast()] as const,
-    () => {
-      const pending = overwritePending();
-      if (!pending) return;
+  createEffect(
+    on(
+      () => [selectedMinutes(), fillFromLast()] as const,
+      () => {
+        const pending = overwritePending();
+        if (!pending) return;
 
-      const updated = labelOverwritePendingUpdGet(pending, {
-        selectedMinutes: selectedMinutes(),
-        fillFromLast: fillFromLast(),
-        lastLabelEndTs: lastLabel()?.end_ts ?? null,
-        extendFwd: extendFwd(),
-      }, new Date());
+        const updated = labelOverwritePendingUpdGet(
+          pending,
+          {
+            selectedMinutes: selectedMinutes(),
+            fillFromLast: fillFromLast(),
+            lastLabelEndTs: lastLabel()?.end_ts ?? null,
+            extendFwd: extendFwd(),
+          },
+          new Date(),
+        );
 
-      setOverwritePending(updated);
-    },
-    { defer: true },
-  ));
+        setOverwritePending(updated);
+      },
+      { defer: true },
+    ),
+  );
 
   function toggleExtendFwd() {
     const next = !extendFwd();
     setExtendFwd(next);
-    try { localStorage.setItem(EXTEND_FWD_KEY, String(next)); } catch {}
+    try {
+      localStorage.setItem(EXTEND_FWD_KEY, String(next));
+    } catch {}
   }
 
   async function labelNow(label: string) {
@@ -81,7 +107,7 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
     let forceExtendFwd = false;
 
     if (fillFromLast() && lastLabel()?.end_ts) {
-      start = parseISODate(lastLabel()!.end_ts);
+      start = parseISODate(lastLabel()?.end_ts);
     } else if (mins === 0) {
       start = now;
       forceExtendFwd = true;
@@ -100,8 +126,8 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
       setFlash(label);
       setLabelVersion((v) => v + 1);
       setTimeout(() => setFlash(null), 1500);
-    } catch (err: any) {
-      const msg: string = err.message ?? "";
+    } catch (err: unknown) {
+      const msg: string = err instanceof Error ? err.message : "";
       const jsonMatch = msg.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         try {
@@ -109,7 +135,11 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
           const overlap = parsed.detail ?? parsed;
           const spans: { start_ts: string; end_ts: string; label: string }[] =
             overlap.conflicting_spans ?? [];
-          if (spans.length === 0 && overlap.conflicting_start_ts && overlap.conflicting_end_ts) {
+          if (
+            spans.length === 0 &&
+            overlap.conflicting_start_ts &&
+            overlap.conflicting_end_ts
+          ) {
             spans.push({
               start_ts: overlap.conflicting_start_ts,
               end_ts: overlap.conflicting_end_ts,
@@ -127,7 +157,9 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
             });
             return;
           }
-        } catch { /* fall through to generic error */ }
+        } catch {
+          /* fall through to generic error */
+        }
       }
       setFlash(`Error: ${msg}`);
       setTimeout(() => setFlash(null), 3000);
@@ -150,8 +182,8 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
       setFlash(pending.label);
       setLabelVersion((v) => v + 1);
       setTimeout(() => setFlash(null), 1500);
-    } catch (err: any) {
-      setFlash(`Error: ${err.message ?? "overwrite failed"}`);
+    } catch (err: unknown) {
+      setFlash(`Error: ${err instanceof Error ? err.message : "overwrite failed"}`);
       setTimeout(() => setFlash(null), 3000);
     }
   }
@@ -172,8 +204,8 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
       setFlash(pending.label);
       setLabelVersion((v) => v + 1);
       setTimeout(() => setFlash(null), 1500);
-    } catch (err: any) {
-      setFlash(`Error: ${err.message ?? "keep all failed"}`);
+    } catch (err: unknown) {
+      setFlash(`Error: ${err instanceof Error ? err.message : "keep all failed"}`);
       setTimeout(() => setFlash(null), 3000);
     }
   }
@@ -216,9 +248,21 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
       </Show>
 
       <Show when={flash()}>
-        <div onClick={() => setFlash(null)} style={{ cursor: "pointer" }}>
-          <LabelFlash flash={flash()!} />
-        </div>
+        <button
+          type="button"
+          onClick={() => setFlash(null)}
+          style={{
+            cursor: "pointer",
+            background: "none",
+            border: "none",
+            padding: "0",
+            width: "100%",
+            color: "inherit",
+            font: "inherit",
+          }}
+        >
+          <LabelFlash flash={flash() ?? ""} />
+        </button>
       </Show>
 
       <div
@@ -231,6 +275,7 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
         <For each={labels() ?? []}>
           {(lbl) => (
             <button
+              type="button"
               onClick={() => labelNow(lbl)}
               style={{
                 padding: "8px 4px",

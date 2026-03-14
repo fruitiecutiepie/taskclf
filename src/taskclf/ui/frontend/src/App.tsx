@@ -1,21 +1,12 @@
-import {
-  createEffect,
-  createSignal,
-  onMount,
-  Show,
-  type Component,
-} from "solid-js";
+import { type Component, createEffect, createSignal, onMount, Show } from "solid-js";
 import { LabelRecorder } from "./components/LabelRecorder";
+import { LabelRecorderWindow } from "./components/LabelRecorderWindow";
 import { PredictionBadge } from "./components/PredictionBadge";
 import { StatusPanel } from "./components/StatusPanel";
-import { LabelRecorderWindow } from "./components/LabelRecorderWindow";
 import { StatusPanelWindow } from "./components/StatusPanelWindow";
-import {
-  requestPermission,
-  showTransitionNotification,
-} from "./lib/notifications";
-import { useWebSocket } from "./lib/ws";
 import { host } from "./lib/host";
+import { requestPermission, showTransitionNotification } from "./lib/notifications";
+import { useWebSocket } from "./lib/ws";
 
 const viewParam = new URLSearchParams(window.location.search).get("view");
 const isPanelView = viewParam === "panel";
@@ -196,6 +187,7 @@ const App: Component = () => {
         </div>
 
         <Show when={inBrowser && labelVisible()}>
+          {/* biome-ignore lint/a11y/noStaticElementInteractions: hover container */}
           <div
             onMouseEnter={() => setLabelHovered(true)}
             onMouseLeave={() => setLabelHovered(false)}
@@ -221,6 +213,7 @@ const App: Component = () => {
       </div>
 
       <Show when={inBrowser && panelVisible()}>
+        {/* biome-ignore lint/a11y/noStaticElementInteractions: hover container */}
         <div
           onMouseEnter={() => setPanelHovered(true)}
           onMouseLeave={() => setPanelHovered(false)}

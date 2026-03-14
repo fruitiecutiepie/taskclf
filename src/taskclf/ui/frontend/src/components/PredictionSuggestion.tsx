@@ -1,6 +1,6 @@
-import { type Accessor, type Component, Show, createSignal } from "solid-js";
-import type { LabelSuggestion } from "../lib/ws";
+import { type Accessor, type Component, createSignal, Show } from "solid-js";
 import { createLabel } from "../lib/api";
+import type { LabelSuggestion } from "../lib/ws";
 
 export const PredictionSuggestion: Component<{
   suggestion: Accessor<LabelSuggestion | null>;
@@ -19,8 +19,8 @@ export const PredictionSuggestion: Component<{
         label: sg.suggested,
         confidence: sg.confidence,
       });
-    } catch (err: any) {
-      const msg = err?.message || "Failed to accept suggestion";
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to accept suggestion";
       console.error("Failed to accept suggestion", err);
       setError(msg);
       setTimeout(() => setError(null), 4000);
@@ -46,15 +46,16 @@ export const PredictionSuggestion: Component<{
         <div>
           <strong style={{ color: "var(--warning)" }}>Task changed?</strong>{" "}
           <span style={{ color: "var(--text-muted)" }}>
-            {s()!.old_label} → suggested:{" "}
+            {s()?.old_label} → suggested:{" "}
           </span>
-          <strong>{s()!.suggested}</strong>{" "}
+          <strong>{s()?.suggested}</strong>{" "}
           <span style={{ color: "var(--text-muted)" }}>
-            ({Math.round(s()!.confidence * 100)}%)
+            ({Math.round(s()?.confidence * 100)}%)
           </span>
         </div>
         <div style={{ display: "flex", gap: "8px", "flex-shrink": "0" }}>
           <button
+            type="button"
             onClick={accept}
             style={{
               padding: "6px 16px",
@@ -70,6 +71,7 @@ export const PredictionSuggestion: Component<{
             Accept
           </button>
           <button
+            type="button"
             onClick={() => {
               /* parent dismisses via ws.dismissSuggestion */
             }}
