@@ -13,6 +13,7 @@ repos:
       - id: check-yaml
         args: [--unsafe]
       - id: check-json
+        exclude: tests/fixtures/models/corrupt_json_bundle/
       - id: check-toml
       - id: check-added-large-files
       - id: check-merge-conflict
@@ -26,14 +27,13 @@ repos:
         args: [--fix]
       - id: ruff-format
 
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.19.1
+  - repo: local
     hooks:
       - id: mypy
-        additional_dependencies:
-          - pydantic>=2.12.5
-          - types-PyYAML
-          - pandas-stubs>=3.0.0.260204
+        name: mypy
+        entry: uv run mypy
+        language: system
+        types: [python]
         args: [--python-version=3.14]
 
   - repo: local
