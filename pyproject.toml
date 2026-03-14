@@ -78,5 +78,13 @@ module = [
     "pyarrow.*",
     "pystray",
     "lightgbm.*",
+    "pytest",
+    "typer.*",
+    "fastapi.*",
+    "PIL.*",
+    "uvicorn.*",
+    "webview.*",
+    "tomli_w",
+    "matplotlib.*",
 ]
 ignore_missing_imports = true

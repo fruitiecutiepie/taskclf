@@ -38,9 +38,9 @@ repos:
 
   - repo: local
     hooks:
-      - id: ui-lint
-        name: Frontend lint
-        entry: make ui-lint
+      - id: biome-check
+        name: biome check frontend
+        entry: pnpm --dir src/taskclf/ui/frontend exec biome check --write --diagnostic-level=error src/
         language: system
+        files: ^src/taskclf/ui/frontend/src/
         pass_filenames: false
-        files: ^src/taskclf/ui/frontend/

@@ -1,0 +1,29 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.4.7/schema.json",
+  "files": {
+    "includes": ["src/**"]
+  },
+  "formatter": {
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 88
+  },
+  "linter": {
+    "rules": {
+      "recommended": true,
+      "a11y": {
+        "noStaticElementInteractions": "warn",
+        "useKeyWithClickEvents": "warn",
+        "noSvgWithoutTitle": "warn",
+        "noLabelWithoutControl": "warn",
+        "useButtonType": "warn"
+      },
+      "suspicious": {
+        "noExplicitAny": "warn"
+      },
+      "style": {
+        "noNonNullAssertion": "warn"
+      }
+    }
+  }
+}
