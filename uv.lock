@@ -1352,7 +1352,7 @@ wheels = [
 
 [[package]]
 name = "taskclf"
-version = "0.3.7"
+version = "0.3.8"
 source = { editable = "." }
 dependencies = [
     { name = "duckdb" },
