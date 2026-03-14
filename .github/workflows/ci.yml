@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: Install dependencies
+        run: pip install uv && make install
+
+      - name: Lint Python
+        run: make py-lint
+
+      - name: Lint frontend
+        run: make ui-lint
+
+      - name: Test Python
+        run: xvfb-run make py-test
+
+      - name: Test frontend
+        run: make ui-test
+
+      - name: Typecheck Python
+        run: make py-typecheck
+
+      - name: Typecheck frontend
+        run: make ui-typecheck

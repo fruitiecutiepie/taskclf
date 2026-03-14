@@ -37,6 +37,13 @@ jobs:
         working-directory: src/taskclf/ui/frontend
         run: pnpm install --frozen-lockfile
 
+      - name: Lint Python
+        run: uv run ruff check .
+
+      - name: Lint frontend
+        working-directory: src/taskclf/ui/frontend
+        run: pnpm run lint
+
       - name: Run frontend tests
         working-directory: src/taskclf/ui/frontend
         run: pnpm run test
