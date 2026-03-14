@@ -21,13 +21,15 @@ def _predictions_df(
     base = dt.datetime(2025, 6, 15, 10, 0)
     rows = []
     for i in range(n):
-        rows.append({
-            "user_id": user_id,
-            "bucket_start_ts": base + dt.timedelta(minutes=i),
-            "bucket_end_ts": base + dt.timedelta(minutes=i + 1),
-            "confidence": confidence,
-            "predicted_label": "Build",
-        })
+        rows.append(
+            {
+                "user_id": user_id,
+                "bucket_start_ts": base + dt.timedelta(minutes=i),
+                "bucket_end_ts": base + dt.timedelta(minutes=i + 1),
+                "confidence": confidence,
+                "predicted_label": "Build",
+            }
+        )
     return pd.DataFrame(rows)
 
 

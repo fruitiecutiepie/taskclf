@@ -58,7 +58,10 @@ class TestAppSwitchCountInWindow:
         single = [_ev(base, "app.one")]
         assert app_switch_count_in_window(single, base) == 0
 
-        two_apps = [_ev(base, "app.one"), _ev(base + dt.timedelta(seconds=30), "app.two")]
+        two_apps = [
+            _ev(base, "app.one"),
+            _ev(base + dt.timedelta(seconds=30), "app.two"),
+        ]
         assert app_switch_count_in_window(two_apps, base) == 1
 
         assert app_switch_count_in_window([], base) == 0

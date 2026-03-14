@@ -11,7 +11,10 @@ from __future__ import annotations
 import datetime as dt
 from typing import Sequence
 
-from taskclf.core.defaults import DEFAULT_APP_SWITCH_WINDOW_MINUTES, DEFAULT_BUCKET_SECONDS
+from taskclf.core.defaults import (
+    DEFAULT_APP_SWITCH_WINDOW_MINUTES,
+    DEFAULT_BUCKET_SECONDS,
+)
 from taskclf.core.types import Event
 
 

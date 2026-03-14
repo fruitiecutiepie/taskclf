@@ -374,9 +374,7 @@ def score(
         ValueError: If the bundle is invalid or missing metrics/metadata.
     """
     if not bundle.valid or bundle.metrics is None or bundle.metadata is None:
-        raise ValueError(
-            f"Cannot score invalid bundle {bundle.model_id!r}"
-        )
+        raise ValueError(f"Cannot score invalid bundle {bundle.model_id!r}")
     return (
         bundle.metrics.macro_f1,
         bundle.metrics.weighted_f1,
@@ -431,11 +429,13 @@ def find_best_model(
 
     for bundle in bundles:
         if not bundle.valid:
-            excluded.append(ExclusionRecord(
-                model_id=bundle.model_id,
-                path=bundle.path,
-                reason=f"invalid: {bundle.invalid_reason}",
-            ))
+            excluded.append(
+                ExclusionRecord(
+                    model_id=bundle.model_id,
+                    path=bundle.path,
+                    reason=f"invalid: {bundle.invalid_reason}",
+                )
+            )
             continue
 
         if not is_compatible(bundle, required_schema_hash, required_label_set):
@@ -444,19 +444,23 @@ def find_best_model(
                 detail = "schema_hash mismatch"
             else:
                 detail = "label_set mismatch"
-            excluded.append(ExclusionRecord(
-                model_id=bundle.model_id,
-                path=bundle.path,
-                reason=f"incompatible: {detail}",
-            ))
+            excluded.append(
+                ExclusionRecord(
+                    model_id=bundle.model_id,
+                    path=bundle.path,
+                    reason=f"incompatible: {detail}",
+                )
+            )
             continue
 
         if not passes_constraints(bundle, policy):
-            excluded.append(ExclusionRecord(
-                model_id=bundle.model_id,
-                path=bundle.path,
-                reason="constraint: failed policy constraints",
-            ))
+            excluded.append(
+                ExclusionRecord(
+                    model_id=bundle.model_id,
+                    path=bundle.path,
+                    reason="constraint: failed policy constraints",
+                )
+            )
             continue
 
         eligible.append(bundle)
@@ -628,13 +632,15 @@ def resolve_active_model(
             )
         else:
             logger.warning(
-                "active.json points to missing directory %s; "
-                "falling back to selection",
+                "active.json points to missing directory %s; falling back to selection",
                 pointer.model_dir,
             )
 
     report = find_best_model(
-        models_dir, policy, required_schema_hash, required_label_set,
+        models_dir,
+        policy,
+        required_schema_hash,
+        required_label_set,
     )
 
     if report.best is not None:
@@ -666,14 +672,16 @@ def write_index_cache(
     """
     ranked_summaries: list[IndexCacheBundleSummary] = []
     for b in report.ranked:
-        ranked_summaries.append(IndexCacheBundleSummary(
-            model_id=b.model_id,
-            path=str(b.path),
-            macro_f1=b.metrics.macro_f1 if b.metrics else None,
-            weighted_f1=b.metrics.weighted_f1 if b.metrics else None,
-            created_at=b.metadata.created_at if b.metadata else None,
-            eligible=True,
-        ))
+        ranked_summaries.append(
+            IndexCacheBundleSummary(
+                model_id=b.model_id,
+                path=str(b.path),
+                macro_f1=b.metrics.macro_f1 if b.metrics else None,
+                weighted_f1=b.metrics.weighted_f1 if b.metrics else None,
+                created_at=b.metadata.created_at if b.metadata else None,
+                eligible=True,
+            )
+        )
 
     cache = IndexCache(
         generated_at=datetime.now(UTC).isoformat(),
@@ -751,8 +759,10 @@ def should_switch_active(
     if current.reason and "macro_f1" in current.reason:
         try:
             current_f1 = float(current.reason["macro_f1"])  # type: ignore[arg-type]
-        except (TypeError, ValueError):
-            logger.debug("Could not parse macro_f1 from active pointer reason", exc_info=True)
+        except TypeError, ValueError:
+            logger.debug(
+                "Could not parse macro_f1 from active pointer reason", exc_info=True
+            )
 
     if current_f1 is None:
         return True

@@ -189,9 +189,7 @@ def main() -> None:
         (d / "metadata.json").write_text(
             json.dumps(bundle["metadata"].model_dump(), indent=2) + "\n"
         )
-        (d / "metrics.json").write_text(
-            json.dumps(bundle["metrics"], indent=2) + "\n"
-        )
+        (d / "metrics.json").write_text(json.dumps(bundle["metrics"], indent=2) + "\n")
         print(f"wrote {d}")
 
     for name, bundle in EDGE_CASE_BUNDLES.items():

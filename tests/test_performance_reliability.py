@@ -82,20 +82,31 @@ def test_tc_rel_001_online_handles_missing_minute(tmp_path: Path) -> None:
 
     runner = CliRunner()
     models_dir = tmp_path / "models"
-    result = runner.invoke(app, [
-        "train", "lgbm",
-        "--from", "2025-06-14",
-        "--to", "2025-06-15",
-        "--synthetic",
-        "--models-dir", str(models_dir),
-        "--num-boost-round", "5",
-    ])
+    result = runner.invoke(
+        app,
+        [
+            "train",
+            "lgbm",
+            "--from",
+            "2025-06-14",
+            "--to",
+            "2025-06-15",
+            "--synthetic",
+            "--models-dir",
+            str(models_dir),
+            "--num-boost-round",
+            "5",
+        ],
+    )
     assert result.exit_code == 0, result.output
     model_dir = next(models_dir.iterdir())
 
     model, metadata, cat_encoders = load_model_bundle(model_dir)
     predictor = OnlinePredictor(
-        model, metadata, cat_encoders=cat_encoders, smooth_window=3,
+        model,
+        metadata,
+        cat_encoders=cat_encoders,
+        smooth_window=3,
     )
 
     valid_labels = LABEL_SET_V1 | {MIXED_UNKNOWN}
@@ -109,10 +120,14 @@ def test_tc_rel_001_online_handles_missing_minute(tmp_path: Path) -> None:
     for i, row in enumerate(rows_after):
         new_start = last_ts + gap + dt.timedelta(minutes=i + 1)
         new_end = new_start + dt.timedelta(seconds=60)
-        rows_after_shifted.append(row.model_copy(update={
-            "bucket_start_ts": new_start,
-            "bucket_end_ts": new_end,
-        }))
+        rows_after_shifted.append(
+            row.model_copy(
+                update={
+                    "bucket_start_ts": new_start,
+                    "bucket_end_ts": new_end,
+                }
+            )
+        )
 
     all_rows = list(rows_before) + rows_after_shifted
     for row in all_rows:
@@ -199,4 +214,6 @@ class TestAtomicWrites:
                 write_parquet(pd.DataFrame({"v": [999]}), out)
 
         result = read_parquet(out)
-        assert result["v"].iloc[0] == 100, "Original file should survive a failed overwrite"
+        assert result["v"].iloc[0] == 100, (
+            "Original file should survive a failed overwrite"
+        )

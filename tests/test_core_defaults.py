@@ -66,7 +66,9 @@ class TestDefaultsTypes:
         ]
         for name in float_names:
             value = getattr(defaults, name)
-            assert isinstance(value, float), f"{name} should be float, got {type(value)}"
+            assert isinstance(value, float), (
+                f"{name} should be float, got {type(value)}"
+            )
 
     def test_str_constants(self) -> None:
         str_names = [
@@ -97,47 +99,68 @@ class TestDefaultsTypes:
         ]
         for name in path_names:
             value = getattr(defaults, name)
-            assert Path(value).is_absolute(), f"{name} should be absolute, got {value!r}"
+            assert Path(value).is_absolute(), (
+                f"{name} should be absolute, got {value!r}"
+            )
 
     def test_all_public_names_covered(self) -> None:
         """Every non-dunder, non-import name in the module is checked above."""
         _imports = {"Final", "annotations", "taskclf_home"}
         public = {
-            n for n in dir(defaults)
-            if not n.startswith("_") and n not in _imports
+            n for n in dir(defaults) if not n.startswith("_") and n not in _imports
         }
         covered = {
-            "DEFAULT_BUCKET_SECONDS", "DEFAULT_POLL_SECONDS",
-            "DEFAULT_IDLE_GAP_SECONDS", "DEFAULT_SMOOTH_WINDOW",
-            "DEFAULT_APP_SWITCH_WINDOW_MINUTES", "DEFAULT_APP_SWITCH_WINDOW_15M",
-            "DEFAULT_ROLLING_WINDOW_5", "DEFAULT_ROLLING_WINDOW_15",
+            "DEFAULT_BUCKET_SECONDS",
+            "DEFAULT_POLL_SECONDS",
+            "DEFAULT_IDLE_GAP_SECONDS",
+            "DEFAULT_SMOOTH_WINDOW",
+            "DEFAULT_APP_SWITCH_WINDOW_MINUTES",
+            "DEFAULT_APP_SWITCH_WINDOW_15M",
+            "DEFAULT_ROLLING_WINDOW_5",
+            "DEFAULT_ROLLING_WINDOW_15",
             "DEFAULT_TITLE_HASH_BUCKETS",
-            "DEFAULT_OUT_DIR", "DEFAULT_DATA_DIR", "DEFAULT_RAW_AW_DIR",
+            "DEFAULT_OUT_DIR",
+            "DEFAULT_DATA_DIR",
+            "DEFAULT_RAW_AW_DIR",
             "DEFAULT_MODELS_DIR",
-            "DEFAULT_AW_HOST", "DEFAULT_AW_TIMEOUT_SECONDS",
-            "DEFAULT_TITLE_SALT", "DEFAULT_TITLE_POLICY",
+            "DEFAULT_AW_HOST",
+            "DEFAULT_AW_TIMEOUT_SECONDS",
+            "DEFAULT_TITLE_SALT",
+            "DEFAULT_TITLE_POLICY",
             "MIN_BLOCK_DURATION_SECONDS",
             "DEFAULT_LABEL_MAX_ASKS_PER_DAY",
             "DEFAULT_LABEL_CONFIDENCE_THRESHOLD",
-            "DEFAULT_LABEL_SUMMARY_MINUTES", "DEFAULT_TRANSITION_MINUTES",
-            "DEFAULT_NUM_BOOST_ROUND", "DEFAULT_REJECT_THRESHOLD",
-            "DEFAULT_MIN_LABELED_WINDOWS", "DEFAULT_MIN_LABELED_DAYS",
-            "DEFAULT_MIN_DISTINCT_LABELS", "DEFAULT_CALIBRATION_METHOD",
+            "DEFAULT_LABEL_SUMMARY_MINUTES",
+            "DEFAULT_TRANSITION_MINUTES",
+            "DEFAULT_NUM_BOOST_ROUND",
+            "DEFAULT_REJECT_THRESHOLD",
+            "DEFAULT_MIN_LABELED_WINDOWS",
+            "DEFAULT_MIN_LABELED_DAYS",
+            "DEFAULT_MIN_DISTINCT_LABELS",
+            "DEFAULT_CALIBRATION_METHOD",
             "MIXED_UNKNOWN",
-            "BASELINE_IDLE_ACTIVE_THRESHOLD", "BASELINE_IDLE_RUN_THRESHOLD",
-            "BASELINE_SCROLL_HIGH", "BASELINE_KEYS_LOW",
-            "BASELINE_KEYS_HIGH", "BASELINE_SHORTCUT_HIGH",
-            "DEFAULT_PSI_THRESHOLD", "DEFAULT_KS_ALPHA",
+            "BASELINE_IDLE_ACTIVE_THRESHOLD",
+            "BASELINE_IDLE_RUN_THRESHOLD",
+            "BASELINE_SCROLL_HIGH",
+            "BASELINE_KEYS_LOW",
+            "BASELINE_KEYS_HIGH",
+            "BASELINE_SHORTCUT_HIGH",
+            "DEFAULT_PSI_THRESHOLD",
+            "DEFAULT_KS_ALPHA",
             "DEFAULT_REJECT_RATE_INCREASE_THRESHOLD",
             "DEFAULT_ENTROPY_SPIKE_MULTIPLIER",
             "DEFAULT_CLASS_SHIFT_THRESHOLD",
-            "DEFAULT_DRIFT_REFERENCE_DAYS", "DEFAULT_DRIFT_WINDOW_DAYS",
-            "DEFAULT_DRIFT_AUTO_LABEL_LIMIT", "DEFAULT_TELEMETRY_DIR",
+            "DEFAULT_DRIFT_REFERENCE_DAYS",
+            "DEFAULT_DRIFT_WINDOW_DAYS",
+            "DEFAULT_DRIFT_AUTO_LABEL_LIMIT",
+            "DEFAULT_TELEMETRY_DIR",
             "DEFAULT_PSI_BINS",
             "DEFAULT_RETRAIN_CADENCE_DAYS",
             "DEFAULT_CALIBRATOR_UPDATE_CADENCE_DAYS",
-            "DEFAULT_DATA_LOOKBACK_DAYS", "DEFAULT_REGRESSION_TOLERANCE",
-            "DEFAULT_GIT_TIMEOUT_SECONDS", "DEFAULT_DUMMY_ROWS",
+            "DEFAULT_DATA_LOOKBACK_DAYS",
+            "DEFAULT_REGRESSION_TOLERANCE",
+            "DEFAULT_GIT_TIMEOUT_SECONDS",
+            "DEFAULT_DUMMY_ROWS",
             "DEFAULT_LOG_DIR",
         }
         missing = public - covered

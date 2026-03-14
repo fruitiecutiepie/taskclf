@@ -16,6 +16,7 @@ from taskclf.core.metrics import reject_rate_by_group
 # TC-REJECT-008: grouping logic
 # ---------------------------------------------------------------------------
 
+
 class TestRejectRateByGroupBasic:
     def test_single_user_single_day(self) -> None:
         labels = ["Build", MIXED_UNKNOWN, "Build", "Build"]
@@ -64,17 +65,18 @@ class TestRejectRateByGroupBasic:
 # TC-REJECT-009: drift flags
 # ---------------------------------------------------------------------------
 
+
 class TestRejectRateByGroupDrift:
     def test_spike_is_flagged(self) -> None:
         labels = (
-            ["Build"] * 20                          # u1 day1: 0% reject
-            + [MIXED_UNKNOWN] * 5 + ["Build"] * 5   # u2 day2: 50% reject (spike)
+            ["Build"] * 20  # u1 day1: 0% reject
+            + [MIXED_UNKNOWN] * 5
+            + ["Build"] * 5  # u2 day2: 50% reject (spike)
         )
         user_ids = ["u1"] * 20 + ["u2"] * 10
-        timestamps = (
-            [datetime(2025, 6, 14, 9, i) for i in range(20)]
-            + [datetime(2025, 6, 15, 9, i) for i in range(10)]
-        )
+        timestamps = [datetime(2025, 6, 14, 9, i) for i in range(20)] + [
+            datetime(2025, 6, 15, 9, i) for i in range(10)
+        ]
 
         result = reject_rate_by_group(labels, user_ids, timestamps)
 
@@ -92,6 +94,7 @@ class TestRejectRateByGroupDrift:
 # ---------------------------------------------------------------------------
 # TC-REJECT-010: edge cases
 # ---------------------------------------------------------------------------
+
 
 class TestRejectRateByGroupEdge:
     def test_empty_inputs(self) -> None:

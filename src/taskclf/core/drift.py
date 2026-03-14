@@ -203,13 +203,15 @@ def feature_drift_report(
         ks = compute_ks(ref_vals, cur_vals)
         drifted = psi > psi_threshold or ks.is_significant(ks_alpha)
 
-        results.append(FeatureDriftResult(
-            feature=feat,
-            psi=round(psi, 6),
-            ks_statistic=round(ks.statistic, 6),
-            ks_p_value=round(ks.p_value, 6),
-            is_drifted=drifted,
-        ))
+        results.append(
+            FeatureDriftResult(
+                feature=feat,
+                psi=round(psi, 6),
+                ks_statistic=round(ks.statistic, 6),
+                ks_p_value=round(ks.p_value, 6),
+                is_drifted=drifted,
+            )
+        )
         if drifted:
             flagged.append(feat)
 
@@ -238,10 +240,11 @@ def detect_reject_rate_increase(
     Returns:
         A :class:`RejectRateDrift` with comparison data.
     """
+
     def _rate(labels: Sequence[str]) -> float:
         if not labels:
             return 0.0
-        return sum(1 for l in labels if l == reject_label) / len(labels)
+        return sum(1 for lbl in labels if lbl == reject_label) / len(labels)
 
     ref_rate = _rate(ref_labels)
     cur_rate = _rate(cur_labels)
@@ -304,6 +307,7 @@ def detect_class_shift(
     Returns:
         A :class:`ClassShiftResult` with per-class distributions.
     """
+
     def _dist(labels: Sequence[str]) -> dict[str, float]:
         counts = Counter(labels)
         total = sum(counts.values()) or 1

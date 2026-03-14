@@ -22,7 +22,6 @@ import pytest
 from pydantic import ValidationError
 
 from taskclf.core.model_io import (
-    ModelMetadata,
     build_metadata,
     generate_run_id,
     load_model_bundle,
@@ -48,16 +47,34 @@ def _build_labeled_df() -> pd.DataFrame:
     spans: list[LabelSpan] = []
     for d in dates:
         base = dt.datetime(d.year, d.month, d.day)
-        spans.extend([
-            LabelSpan(start_ts=base.replace(hour=9), end_ts=base.replace(hour=12),
-                       label="Build", provenance="test"),
-            LabelSpan(start_ts=base.replace(hour=12), end_ts=base.replace(hour=14),
-                       label="Write", provenance="test"),
-            LabelSpan(start_ts=base.replace(hour=14), end_ts=base.replace(hour=16),
-                       label="Communicate", provenance="test"),
-            LabelSpan(start_ts=base.replace(hour=16), end_ts=base.replace(hour=17),
-                       label="BreakIdle", provenance="test"),
-        ])
+        spans.extend(
+            [
+                LabelSpan(
+                    start_ts=base.replace(hour=9),
+                    end_ts=base.replace(hour=12),
+                    label="Build",
+                    provenance="test",
+                ),
+                LabelSpan(
+                    start_ts=base.replace(hour=12),
+                    end_ts=base.replace(hour=14),
+                    label="Write",
+                    provenance="test",
+                ),
+                LabelSpan(
+                    start_ts=base.replace(hour=14),
+                    end_ts=base.replace(hour=16),
+                    label="Communicate",
+                    provenance="test",
+                ),
+                LabelSpan(
+                    start_ts=base.replace(hour=16),
+                    end_ts=base.replace(hour=17),
+                    label="BreakIdle",
+                    provenance="test",
+                ),
+            ]
+        )
 
     return project_blocks_to_windows(features_df, spans)
 
@@ -71,7 +88,9 @@ def trained_bundle(tmp_path_factory: pytest.TempPathFactory):
     val_df = labeled.iloc[splits["val"]].reset_index(drop=True)
 
     model, metrics, cm_df, params, cat_encoders = train_lgbm(
-        train_df, val_df, num_boost_round=5,
+        train_df,
+        val_df,
+        num_boost_round=5,
     )
 
     base_dir = tmp_path_factory.mktemp("models")
@@ -83,7 +102,9 @@ def trained_bundle(tmp_path_factory: pytest.TempPathFactory):
         dataset_hash="test_hash_abc123",
         data_provenance="synthetic",
     )
-    run_dir = save_model_bundle(model, metadata, metrics, cm_df, base_dir, cat_encoders=cat_encoders)
+    run_dir = save_model_bundle(
+        model, metadata, metrics, cm_df, base_dir, cat_encoders=cat_encoders
+    )
 
     return {
         "model": model,
@@ -105,9 +126,17 @@ class TestSaveModelBundle:
 
     def test_writes_metadata_json_with_required_keys(self, trained_bundle) -> None:
         raw = json.loads((trained_bundle["run_dir"] / "metadata.json").read_text())
-        for key in ("schema_version", "schema_hash", "label_set",
-                     "train_date_from", "train_date_to", "params", "git_commit",
-                     "dataset_hash", "data_provenance"):
+        for key in (
+            "schema_version",
+            "schema_hash",
+            "label_set",
+            "train_date_from",
+            "train_date_to",
+            "params",
+            "git_commit",
+            "dataset_hash",
+            "data_provenance",
+        ):
             assert key in raw, f"metadata.json missing required key: {key}"
 
     def test_metadata_schema_hash_matches_current(self, trained_bundle) -> None:
@@ -211,13 +240,16 @@ class TestLoadModelBundleLabelSetMismatch:
         (run_dir / "metadata.json").write_text(json.dumps(meta_dict))
 
         model, loaded_meta, _ = load_model_bundle(
-            run_dir, validate_schema=False, validate_labels=False,
+            run_dir,
+            validate_schema=False,
+            validate_labels=False,
         )
         assert sorted(loaded_meta.label_set) == ["Build", "sleeping"]
 
     def test_valid_label_set_loads_successfully(self, trained_bundle) -> None:
         model, metadata, _ = load_model_bundle(trained_bundle["run_dir"])
         from taskclf.core.types import LABEL_SET_V1
+
         assert sorted(metadata.label_set) == sorted(LABEL_SET_V1)
 
 
@@ -232,7 +264,9 @@ class TestDataProvenance:
         _, metadata, _ = load_model_bundle(trained_bundle["run_dir"])
         assert metadata.data_provenance == "synthetic"
 
-    def test_missing_provenance_defaults_to_real(self, tmp_path, trained_bundle) -> None:
+    def test_missing_provenance_defaults_to_real(
+        self, tmp_path, trained_bundle
+    ) -> None:
         """Old metadata.json without data_provenance deserializes as 'real'."""
         run_dir = tmp_path / "no_provenance_run"
         run_dir.mkdir()
@@ -309,17 +343,23 @@ class TestLoadCatEncodersRoundTrip:
         run_dir = tmp_path / "no_encoders_run"
         run_dir.mkdir()
         shutil.copy(trained_bundle["run_dir"] / "model.txt", run_dir / "model.txt")
-        shutil.copy(trained_bundle["run_dir"] / "metadata.json", run_dir / "metadata.json")
+        shutil.copy(
+            trained_bundle["run_dir"] / "metadata.json", run_dir / "metadata.json"
+        )
 
         _, _, cat_encoders = load_model_bundle(run_dir)
         assert cat_encoders is None
 
-    def test_unsorted_classes_produce_correct_transform(self, tmp_path, trained_bundle) -> None:
+    def test_unsorted_classes_produce_correct_transform(
+        self, tmp_path, trained_bundle
+    ) -> None:
         """Regression: encoder must transform correctly even when JSON vocab is unsorted."""
         run_dir = tmp_path / "unsorted_enc_run"
         run_dir.mkdir()
         shutil.copy(trained_bundle["run_dir"] / "model.txt", run_dir / "model.txt")
-        shutil.copy(trained_bundle["run_dir"] / "metadata.json", run_dir / "metadata.json")
+        shutil.copy(
+            trained_bundle["run_dir"] / "metadata.json", run_dir / "metadata.json"
+        )
 
         unsorted_vocab = {"test_col": ["zebra", "apple", "mango"]}
         (run_dir / "categorical_encoders.json").write_text(json.dumps(unsorted_vocab))

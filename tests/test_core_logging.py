@@ -91,16 +91,26 @@ class TestSanitizingFilter:
     def test_filter_always_returns_true(self) -> None:
         filt = SanitizingFilter()
         record = logging.LogRecord(
-            name="test", level=logging.INFO, pathname="", lineno=0,
-            msg="raw_keystrokes=secret", args=None, exc_info=None,
+            name="test",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg="raw_keystrokes=secret",
+            args=None,
+            exc_info=None,
         )
         assert filt.filter(record) is True
 
     def test_redacts_msg_without_args(self) -> None:
         filt = SanitizingFilter()
         record = logging.LogRecord(
-            name="test", level=logging.INFO, pathname="", lineno=0,
-            msg="window_title=MyDoc.txt", args=None, exc_info=None,
+            name="test",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg="window_title=MyDoc.txt",
+            args=None,
+            exc_info=None,
         )
         filt.filter(record)
         assert "MyDoc.txt" not in record.msg
@@ -109,9 +119,13 @@ class TestSanitizingFilter:
     def test_redacts_formatted_msg_with_args(self) -> None:
         filt = SanitizingFilter()
         record = logging.LogRecord(
-            name="test", level=logging.INFO, pathname="", lineno=0,
+            name="test",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
             msg="Received %s from input",
-            args=("raw_keystrokes=typing_data",), exc_info=None,
+            args=("raw_keystrokes=typing_data",),
+            exc_info=None,
         )
         filt.filter(record)
         assert "typing_data" not in record.msg
@@ -165,7 +179,9 @@ class TestInstallSanitizingFilter:
 class TestSetupFileLogging:
     """TC-LOG-004: setup_file_logging creates a RotatingFileHandler with sanitization."""
 
-    def _cleanup_handler(self, handler: logging.handlers.RotatingFileHandler | None) -> None:
+    def _cleanup_handler(
+        self, handler: logging.handlers.RotatingFileHandler | None
+    ) -> None:
         if handler is not None:
             logging.getLogger().removeHandler(handler)
             handler.close()
@@ -222,7 +238,9 @@ class TestSetupFileLogging:
 
     def test_respects_rotation_params(self, tmp_path: Path) -> None:
         handler = setup_file_logging(
-            tmp_path / "logs", max_bytes=1_000_000, backup_count=5,
+            tmp_path / "logs",
+            max_bytes=1_000_000,
+            backup_count=5,
         )
         try:
             assert handler is not None
@@ -248,7 +266,9 @@ class TestSetupFileLogging:
             self._cleanup_handler(handler)
 
     def test_default_log_dir_uses_taskclf_home(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.setenv("TASKCLF_HOME", str(tmp_path / "home"))
         handler = setup_file_logging(None)

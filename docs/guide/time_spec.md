@@ -1,8 +1,8 @@
 # Time & Windowing Specification v1
 
-Version: 1.0  
-Status: Stable  
-Last Updated: 2026-02-23  
+Version: 1.0
+Status: Stable
+Last Updated: 2026-02-23
 
 This document defines the canonical time semantics used across:
 
@@ -60,8 +60,8 @@ Windows are aligned to wall clock boundaries.
 
 Example:
 
-05:30:00–05:31:00  
-05:31:00–05:32:00  
+05:30:00–05:31:00
+05:31:00–05:32:00
 
 Rolling windows are NOT allowed.
 

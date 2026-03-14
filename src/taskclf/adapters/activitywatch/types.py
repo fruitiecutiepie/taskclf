@@ -24,7 +24,9 @@ class AWEvent(BaseModel, frozen=True):
     is_browser: bool = Field(description="True if the app is a web browser.")
     is_editor: bool = Field(description="True if the app is a code editor.")
     is_terminal: bool = Field(description="True if the app is a terminal emulator.")
-    app_category: str = Field(description="Semantic app category (e.g. 'editor', 'chat').")
+    app_category: str = Field(
+        description="Semantic app category (e.g. 'editor', 'chat')."
+    )
 
 
 class AWInputEvent(BaseModel, frozen=True):

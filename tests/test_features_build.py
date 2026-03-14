@@ -82,9 +82,7 @@ class TestGenerateDummyFeatures:
         """TC-FEAT-BUILD-008: rolling means are populated after first few rows."""
         rows = generate_dummy_features(_DATE, n_rows=10)
         later_rows = rows[5:]
-        has_rolling = any(
-            r.keys_per_min_rolling_5 is not None for r in later_rows
-        )
+        has_rolling = any(r.keys_per_min_rolling_5 is not None for r in later_rows)
         assert has_rolling
 
     def test_zero_rows(self) -> None:
@@ -105,7 +103,9 @@ class TestBuildFeaturesForDate:
     def test_output_path_structure(self, tmp_path: Path) -> None:
         """TC-FEAT-BUILD-011: output path matches expected directory layout."""
         result = build_features_for_date(_DATE, tmp_path)
-        expected = tmp_path / f"features_v1/date={_DATE.isoformat()}" / "features.parquet"
+        expected = (
+            tmp_path / f"features_v1/date={_DATE.isoformat()}" / "features.parquet"
+        )
         assert result == expected
 
     def test_parquet_readable_with_correct_columns(self, tmp_path: Path) -> None:
@@ -136,12 +136,14 @@ class TestBuildFeaturesForDateAW:
     @patch(f"{_AW_PATCH_BASE}._fetch_aw_features_for_date")
     def test_aw_features_written_to_parquet(self, mock_fetch, tmp_path: Path) -> None:
         """TC-FEAT-BUILD-AW-002: real AW features are written when aw_host is set."""
-        ts = dt.datetime(2025, 6, 15, 10, 0, 0, tzinfo=dt.timezone.utc)
         dummy_rows = generate_dummy_features(_DATE, n_rows=3)
         mock_fetch.return_value = dummy_rows
 
         result = build_features_for_date(
-            _DATE, tmp_path, aw_host="http://localhost:5600", title_salt="salt",
+            _DATE,
+            tmp_path,
+            aw_host="http://localhost:5600",
+            title_salt="salt",
         )
         assert result.exists()
         df = pd.read_parquet(result)
@@ -153,7 +155,10 @@ class TestBuildFeaturesForDateAW:
         """TC-FEAT-BUILD-AW-003: no events produces empty parquet (no crash)."""
         mock_fetch.return_value = []
         result = build_features_for_date(
-            _DATE, tmp_path, aw_host="http://localhost:5600", title_salt="salt",
+            _DATE,
+            tmp_path,
+            aw_host="http://localhost:5600",
+            title_salt="salt",
         )
         assert result.exists()
         df = pd.read_parquet(result)
@@ -162,8 +167,11 @@ class TestBuildFeaturesForDateAW:
     def test_synthetic_flag_ignores_aw_host(self, tmp_path: Path) -> None:
         """TC-FEAT-BUILD-AW-004: synthetic=True generates dummies even with aw_host."""
         result = build_features_for_date(
-            _DATE, tmp_path,
-            aw_host="http://localhost:5600", title_salt="salt", synthetic=True,
+            _DATE,
+            tmp_path,
+            aw_host="http://localhost:5600",
+            title_salt="salt",
+            synthetic=True,
         )
         assert result.exists()
         df = pd.read_parquet(result)
@@ -220,9 +228,18 @@ class TestAggregateInputForBucket:
         ev = _input_ev(_BUCKET_TS, duration=5.0, presses=10, clicks=2)
         result = _aggregate_input_for_bucket(_BUCKET_TS, [ev], DEFAULT_BUCKET_SECONDS)
 
-        assert result["active_seconds_any"] > 0
-        assert result["active_seconds_keyboard"] > 0
-        assert result["active_seconds_mouse"] > 0
+        assert (
+            result["active_seconds_any"] is not None
+            and result["active_seconds_any"] > 0
+        )
+        assert (
+            result["active_seconds_keyboard"] is not None
+            and result["active_seconds_keyboard"] > 0
+        )
+        assert (
+            result["active_seconds_mouse"] is not None
+            and result["active_seconds_mouse"] > 0
+        )
         assert result["max_idle_run_seconds"] == 0.0
 
     def test_mixed_active_idle_events(self) -> None:
@@ -232,16 +249,19 @@ class TestAggregateInputForBucket:
             _input_ev(
                 _BUCKET_TS + dt.timedelta(seconds=5),
                 duration=10.0,
-                presses=0, clicks=0,
+                presses=0,
+                clicks=0,
             ),
             _input_ev(
                 _BUCKET_TS + dt.timedelta(seconds=15),
                 duration=3.0,
-                presses=0, clicks=0,
+                presses=0,
+                clicks=0,
             ),
             _input_ev(
                 _BUCKET_TS + dt.timedelta(seconds=18),
-                duration=5.0, presses=8,
+                duration=5.0,
+                presses=8,
             ),
         ]
         result = _aggregate_input_for_bucket(_BUCKET_TS, events, DEFAULT_BUCKET_SECONDS)
@@ -253,7 +273,10 @@ class TestAggregateInputForBucket:
         ev = _input_ev(_BUCKET_TS, duration=5.0, presses=20)
         result = _aggregate_input_for_bucket(_BUCKET_TS, [ev], DEFAULT_BUCKET_SECONDS)
 
-        assert result["active_seconds_keyboard"] > 0
+        assert (
+            result["active_seconds_keyboard"] is not None
+            and result["active_seconds_keyboard"] > 0
+        )
         assert result["active_seconds_mouse"] == 0.0
 
     def test_mouse_only(self) -> None:
@@ -261,7 +284,10 @@ class TestAggregateInputForBucket:
         ev = _input_ev(_BUCKET_TS, duration=5.0, clicks=3, delta_x=100, delta_y=50)
         result = _aggregate_input_for_bucket(_BUCKET_TS, [ev], DEFAULT_BUCKET_SECONDS)
 
-        assert result["active_seconds_mouse"] > 0
+        assert (
+            result["active_seconds_mouse"] is not None
+            and result["active_seconds_mouse"] > 0
+        )
         assert result["active_seconds_keyboard"] == 0.0
 
     def test_event_density_formula(self) -> None:
@@ -270,10 +296,12 @@ class TestAggregateInputForBucket:
             _input_ev(_BUCKET_TS, duration=10.0, presses=5),
             _input_ev(
                 _BUCKET_TS + dt.timedelta(seconds=10),
-                duration=10.0, clicks=2,
+                duration=10.0,
+                clicks=2,
             ),
         ]
         result = _aggregate_input_for_bucket(_BUCKET_TS, events, DEFAULT_BUCKET_SECONDS)
 
+        assert result["active_seconds_any"] is not None
         expected_density = round(2 / result["active_seconds_any"], 4)
         assert result["event_density"] == expected_density

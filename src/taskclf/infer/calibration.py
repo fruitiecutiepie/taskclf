@@ -176,18 +176,21 @@ class CalibratorStore:
 # Serialization helpers
 # ---------------------------------------------------------------------------
 
+
 def _serialize_isotonic(calibrator: IsotonicCalibrator) -> dict:
     """Convert an IsotonicCalibrator to a JSON-safe dict."""
     regressors_data = []
     for reg in calibrator._regressors:
-        regressors_data.append({
-            "X_thresholds_": reg.X_thresholds_.tolist(),
-            "y_thresholds_": reg.y_thresholds_.tolist(),
-            "X_min_": float(reg.X_min_),
-            "X_max_": float(reg.X_max_),
-            "increasing_": bool(reg.increasing_),
-            "out_of_bounds": reg.out_of_bounds,
-        })
+        regressors_data.append(
+            {
+                "X_thresholds_": reg.X_thresholds_.tolist(),
+                "y_thresholds_": reg.y_thresholds_.tolist(),
+                "X_min_": float(reg.X_min_),
+                "X_max_": float(reg.X_max_),
+                "increasing_": bool(reg.increasing_),
+                "out_of_bounds": reg.out_of_bounds,
+            }
+        )
     return {"type": "isotonic", "regressors": regressors_data}
 
 
@@ -230,7 +233,9 @@ def save_calibrator(calibrator: Calibrator, path: Path) -> Path:
     elif isinstance(calibrator, IdentityCalibrator):
         data = {"type": "identity"}
     else:
-        raise TypeError(f"Cannot serialize calibrator of type {type(calibrator).__name__}")
+        raise TypeError(
+            f"Cannot serialize calibrator of type {type(calibrator).__name__}"
+        )
 
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2))

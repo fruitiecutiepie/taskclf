@@ -29,16 +29,34 @@ def _build_model_and_val():
     spans: list[LabelSpan] = []
     for d in dates:
         base = dt.datetime(d.year, d.month, d.day)
-        spans.extend([
-            LabelSpan(start_ts=base.replace(hour=9), end_ts=base.replace(hour=12),
-                       label="Build", provenance="test"),
-            LabelSpan(start_ts=base.replace(hour=12), end_ts=base.replace(hour=14),
-                       label="Write", provenance="test"),
-            LabelSpan(start_ts=base.replace(hour=14), end_ts=base.replace(hour=16),
-                       label="Communicate", provenance="test"),
-            LabelSpan(start_ts=base.replace(hour=16), end_ts=base.replace(hour=17),
-                       label="BreakIdle", provenance="test"),
-        ])
+        spans.extend(
+            [
+                LabelSpan(
+                    start_ts=base.replace(hour=9),
+                    end_ts=base.replace(hour=12),
+                    label="Build",
+                    provenance="test",
+                ),
+                LabelSpan(
+                    start_ts=base.replace(hour=12),
+                    end_ts=base.replace(hour=14),
+                    label="Write",
+                    provenance="test",
+                ),
+                LabelSpan(
+                    start_ts=base.replace(hour=14),
+                    end_ts=base.replace(hour=16),
+                    label="Communicate",
+                    provenance="test",
+                ),
+                LabelSpan(
+                    start_ts=base.replace(hour=16),
+                    end_ts=base.replace(hour=17),
+                    label="BreakIdle",
+                    provenance="test",
+                ),
+            ]
+        )
 
     labeled = project_blocks_to_windows(features_df, spans)
     splits = split_by_time(labeled)
@@ -46,7 +64,10 @@ def _build_model_and_val():
     val_df = labeled.iloc[splits["val"]].reset_index(drop=True)
 
     model, _, _, _, cat_encoders = train_lgbm(
-        train_df, val_df, num_boost_round=5, class_weight="balanced",
+        train_df,
+        val_df,
+        num_boost_round=5,
+        class_weight="balanced",
     )
     return model, cat_encoders, val_df
 
@@ -60,6 +81,7 @@ def tuning_artifacts():
 # TC-REJECT-005: sweep table structure
 # ---------------------------------------------------------------------------
 
+
 class TestTuneRejectThresholdSweep:
     def test_sweep_has_expected_keys(self, tuning_artifacts) -> None:
         from taskclf.train.evaluate import tune_reject_threshold
@@ -68,7 +90,13 @@ class TestTuneRejectThresholdSweep:
         result = tune_reject_threshold(model, val_df, cat_encoders=cat_encoders)
 
         assert len(result.sweep) > 0
-        expected_keys = {"threshold", "accuracy_on_accepted", "reject_rate", "coverage", "macro_f1"}
+        expected_keys = {
+            "threshold",
+            "accuracy_on_accepted",
+            "reject_rate",
+            "coverage",
+            "macro_f1",
+        }
         for row in result.sweep:
             assert set(row.keys()) == expected_keys
 
@@ -95,6 +123,7 @@ class TestTuneRejectThresholdSweep:
 # TC-REJECT-006: best threshold within acceptance bounds
 # ---------------------------------------------------------------------------
 
+
 class TestTuneRejectThresholdBest:
     def test_best_threshold_is_valid_float(self, tuning_artifacts) -> None:
         from taskclf.train.evaluate import tune_reject_threshold
@@ -110,6 +139,7 @@ class TestTuneRejectThresholdBest:
 # TC-REJECT-007: custom thresholds list
 # ---------------------------------------------------------------------------
 
+
 class TestTuneRejectCustomThresholds:
     def test_custom_thresholds_are_used(self, tuning_artifacts) -> None:
         from taskclf.train.evaluate import tune_reject_threshold
@@ -117,7 +147,10 @@ class TestTuneRejectCustomThresholds:
         model, cat_encoders, val_df = tuning_artifacts
         custom = [0.3, 0.5, 0.7, 0.9]
         result = tune_reject_threshold(
-            model, val_df, cat_encoders=cat_encoders, thresholds=custom,
+            model,
+            val_df,
+            cat_encoders=cat_encoders,
+            thresholds=custom,
         )
 
         assert len(result.sweep) == len(custom)

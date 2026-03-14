@@ -27,13 +27,19 @@ class TestComputeTelemetry:
     def sample_data(self) -> tuple[pd.DataFrame, list[str], np.ndarray, np.ndarray]:
         rng = np.random.default_rng(42)
         n = 50
-        feat_df = pd.DataFrame({
-            "bucket_start_ts": pd.date_range("2026-02-20T08:00", periods=n, freq="1min"),
-            "keys_per_min": rng.normal(30, 5, n),
-            "clicks_per_min": rng.normal(10, 2, n),
-            "mouse_distance": np.concatenate([rng.normal(500, 100, 45), np.full(5, np.nan)]),
-            "scroll_events_per_min": rng.uniform(0, 10, n),
-        })
+        feat_df = pd.DataFrame(
+            {
+                "bucket_start_ts": pd.date_range(
+                    "2026-02-20T08:00", periods=n, freq="1min"
+                ),
+                "keys_per_min": rng.normal(30, 5, n),
+                "clicks_per_min": rng.normal(10, 2, n),
+                "mouse_distance": np.concatenate(
+                    [rng.normal(500, 100, 45), np.full(5, np.nan)]
+                ),
+                "scroll_events_per_min": rng.uniform(0, 10, n),
+            }
+        )
         labels = ["Build"] * 30 + ["Debug"] * 10 + [MIXED_UNKNOWN] * 10
         probs = rng.dirichlet(np.ones(8) * 3, size=n)
         confidences = probs.max(axis=1)
@@ -45,7 +51,10 @@ class TestComputeTelemetry:
     ) -> None:
         feat_df, labels, confidences, probs = sample_data
         snap = compute_telemetry(
-            feat_df, labels=labels, confidences=confidences, core_probs=probs,
+            feat_df,
+            labels=labels,
+            confidences=confidences,
+            core_probs=probs,
         )
         assert isinstance(snap, TelemetrySnapshot)
         assert snap.total_windows == 50
@@ -83,7 +92,9 @@ class TestComputeTelemetry:
         assert snap.window_start < snap.window_end
 
     def test_user_id_propagated(self) -> None:
-        df = pd.DataFrame({"bucket_start_ts": pd.date_range("2026-01-01", periods=5, freq="1min")})
+        df = pd.DataFrame(
+            {"bucket_start_ts": pd.date_range("2026-01-01", periods=5, freq="1min")}
+        )
         snap = compute_telemetry(df, user_id="user-42")
         assert snap.user_id == "user-42"
 
@@ -94,7 +105,9 @@ class TestComputeTelemetry:
         assert snap.reject_rate == 0.0
 
     def test_no_labels(self) -> None:
-        df = pd.DataFrame({"bucket_start_ts": pd.date_range("2026-01-01", periods=5, freq="1min")})
+        df = pd.DataFrame(
+            {"bucket_start_ts": pd.date_range("2026-01-01", periods=5, freq="1min")}
+        )
         snap = compute_telemetry(df)
         assert snap.class_distribution == {}
         assert snap.reject_rate == 0.0

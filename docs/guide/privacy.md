@@ -1,8 +1,8 @@
 # Privacy & Data Handling Policy v1
 
-Version: 1.0  
-Status: Stable  
-Last Updated: 2026-02-23  
+Version: 1.0
+Status: Stable
+Last Updated: 2026-02-23
 
 This document defines mandatory privacy constraints for data collection,
 storage, training, and inference.

@@ -20,7 +20,12 @@ from taskclf.core.defaults import (
 )
 from taskclf.core.types import LABEL_SET_V1
 from taskclf.infer.calibration import Calibrator, CalibratorStore, IdentityCalibrator
-from taskclf.infer.smooth import Segment, merge_short_segments, rolling_majority, segmentize
+from taskclf.infer.smooth import (
+    Segment,
+    merge_short_segments,
+    rolling_majority,
+    segmentize,
+)
 from taskclf.infer.taxonomy import TaxonomyConfig, TaxonomyResolver
 from taskclf.train.lgbm import FEATURE_COLUMNS, encode_categoricals
 
@@ -150,7 +155,8 @@ def run_batch_inference(
 
     if calibrator_store is not None and "user_id" in features_df.columns:
         proba = calibrator_store.calibrate_batch(
-            proba, list(features_df["user_id"].values),
+            proba,
+            list(features_df["user_id"].values),
         )
     else:
         cal = calibrator or IdentityCalibrator()
@@ -165,15 +171,13 @@ def run_batch_inference(
     pred_indices = proba.argmax(axis=1)
     raw_labels: list[str] = list(le.inverse_transform(pred_indices))
     raw_labels = [
-        MIXED_UNKNOWN if rej else lbl
-        for lbl, rej in zip(raw_labels, is_rejected)
+        MIXED_UNKNOWN if rej else lbl for lbl, rej in zip(raw_labels, is_rejected)
     ]
 
     smoothed = rolling_majority(raw_labels, window=smooth_window)
 
     bucket_starts: list[datetime] = [
-        pd.Timestamp(ts).to_pydatetime()
-        for ts in features_df["bucket_start_ts"].values
+        pd.Timestamp(ts).to_pydatetime() for ts in features_df["bucket_start_ts"].values
     ]
     segments = segmentize(bucket_starts, smoothed, bucket_seconds=bucket_seconds)
     segments = merge_short_segments(segments, bucket_seconds=bucket_seconds)
@@ -236,8 +240,7 @@ def write_predictions_csv(
         import json as _json
 
         data["core_probs"] = [
-            _json.dumps([round(float(p), 4) for p in row])
-            for row in core_probs
+            _json.dumps([round(float(p), 4) for p in row]) for row in core_probs
         ]
 
     out = pd.DataFrame(data)

@@ -21,7 +21,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from PIL import Image
 
-from taskclf.core.types import LABEL_SET_V1, LabelSpan
+from taskclf.core.types import LabelSpan
 from taskclf.labels.store import append_label_span, read_label_spans
 from taskclf.ui.events import EventBus
 from taskclf.ui.tray import (
@@ -35,7 +35,9 @@ from taskclf.ui.tray import (
 
 def _t(seconds: int) -> dt.datetime:
     """Return a test timestamp offset by *seconds* from a fixed epoch (UTC-aware)."""
-    return dt.datetime(2026, 3, 1, 10, 0, 0, tzinfo=dt.timezone.utc) + dt.timedelta(seconds=seconds)
+    return dt.datetime(2026, 3, 1, 10, 0, 0, tzinfo=dt.timezone.utc) + dt.timedelta(
+        seconds=seconds
+    )
 
 
 class TestActivityTransitionDetection:
@@ -49,7 +51,9 @@ class TestActivityTransitionDetection:
     ) -> ActivityMonitor:
         captured = transitions if transitions is not None else []
 
-        def on_transition(prev: str, new: str, start: dt.datetime, end: dt.datetime) -> None:
+        def on_transition(
+            prev: str, new: str, start: dt.datetime, end: dt.datetime
+        ) -> None:
             captured.append((prev, new, start, end))
 
         return ActivityMonitor(
@@ -70,7 +74,9 @@ class TestActivityTransitionDetection:
     def test_transition_fires_after_threshold(self) -> None:
         transitions: list = []
         monitor = self._make_monitor(
-            transition_minutes=3, poll_seconds=60, transitions=transitions,
+            transition_minutes=3,
+            poll_seconds=60,
+            transitions=transitions,
         )
 
         monitor.check_transition("com.apple.Terminal", _now=_t(0))
@@ -94,7 +100,9 @@ class TestActivityTransitionDetection:
     def test_no_transition_if_app_flips_back(self) -> None:
         transitions: list = []
         monitor = self._make_monitor(
-            transition_minutes=3, poll_seconds=60, transitions=transitions,
+            transition_minutes=3,
+            poll_seconds=60,
+            transitions=transitions,
         )
 
         monitor.check_transition("com.apple.Terminal", _now=_t(0))
@@ -110,7 +118,9 @@ class TestActivityTransitionDetection:
     def test_transition_resets_after_firing(self) -> None:
         transitions: list = []
         monitor = self._make_monitor(
-            transition_minutes=2, poll_seconds=60, transitions=transitions,
+            transition_minutes=2,
+            poll_seconds=60,
+            transitions=transitions,
         )
 
         monitor.check_transition("com.apple.Terminal", _now=_t(0))
@@ -130,12 +140,16 @@ class TestActivityTransitionDetection:
         """If the app changes to a third app during candidate phase, candidate resets."""
         transitions: list = []
         monitor = self._make_monitor(
-            transition_minutes=3, poll_seconds=60, transitions=transitions,
+            transition_minutes=3,
+            poll_seconds=60,
+            transitions=transitions,
         )
 
         monitor.check_transition("com.apple.Terminal", _now=_t(0))
         monitor.check_transition("us.zoom.xos", _now=_t(60))  # candidate = Zoom
-        monitor.check_transition("com.tinyspeck.slackmacgap", _now=_t(120))  # candidate resets to Slack
+        monitor.check_transition(
+            "com.tinyspeck.slackmacgap", _now=_t(120)
+        )  # candidate resets to Slack
         monitor.check_transition("com.tinyspeck.slackmacgap", _now=_t(180))
         monitor.check_transition("com.tinyspeck.slackmacgap", _now=_t(240))
         assert len(transitions) == 1
@@ -151,26 +165,36 @@ class TestActivityTransitionDetection:
         """With transition_minutes=1 and poll_seconds=60, two polls trigger (first sets candidate, second confirms)."""
         transitions: list = []
         monitor = self._make_monitor(
-            transition_minutes=1, poll_seconds=60, transitions=transitions,
+            transition_minutes=1,
+            poll_seconds=60,
+            transitions=transitions,
         )
 
         monitor.check_transition("com.apple.Terminal", _now=_t(0))
-        monitor.check_transition("us.zoom.xos", _now=_t(60))  # candidate set, duration=60
+        monitor.check_transition(
+            "us.zoom.xos", _now=_t(60)
+        )  # candidate set, duration=60
         assert len(transitions) == 0
-        monitor.check_transition("us.zoom.xos", _now=_t(120))  # duration=120 >= 60, fires
+        monitor.check_transition(
+            "us.zoom.xos", _now=_t(120)
+        )  # duration=120 >= 60, fires
         assert len(transitions) == 1
 
     def test_delayed_poll_accumulates_wall_clock_time(self) -> None:
         """A 90-second gap between polls accumulates 90s, not poll_seconds (60s)."""
         transitions: list = []
         monitor = self._make_monitor(
-            transition_minutes=3, poll_seconds=60, transitions=transitions,
+            transition_minutes=3,
+            poll_seconds=60,
+            transitions=transitions,
         )
 
         monitor.check_transition("com.apple.Terminal", _now=_t(0))
         # Each poll delayed to 90s apart instead of 60s
-        monitor.check_transition("us.zoom.xos", _now=_t(90))   # candidate, duration=90
-        monitor.check_transition("us.zoom.xos", _now=_t(180))  # duration=180 >= 180, fires
+        monitor.check_transition("us.zoom.xos", _now=_t(90))  # candidate, duration=90
+        monitor.check_transition(
+            "us.zoom.xos", _now=_t(180)
+        )  # duration=180 >= 180, fires
         assert len(transitions) == 1
         prev, new, start, end = transitions[0]
         assert new == "us.zoom.xos"
@@ -270,6 +294,7 @@ class TestLabelFromTray:
 # Helpers for TrayLabeler / ActivityMonitor event tests
 # ---------------------------------------------------------------------------
 
+
 def _capture_bus() -> tuple[EventBus, list[dict]]:
     """Return an EventBus whose publish_threadsafe appends to a list."""
     bus = EventBus()
@@ -300,7 +325,6 @@ _BLOCK_END = dt.datetime(2026, 3, 1, 10, 15, 0, tzinfo=dt.timezone.utc)
 
 
 class TestEventBusHasSubscribers:
-
     def test_empty_bus_has_no_subscribers(self) -> None:
         bus = EventBus()
         assert bus.has_subscribers is False
@@ -329,17 +353,21 @@ class TestEventBusHasSubscribers:
 
 
 class TestHandleTransition:
-
     @patch("taskclf.ui.tray._send_desktop_notification")
     def test_transition_without_model_publishes_prompt_and_no_model_transition(
-        self, _mock_notif: MagicMock, tmp_path: Path,
+        self,
+        _mock_notif: MagicMock,
+        tmp_path: Path,
     ) -> None:
         """TC-UI-TRAY-001"""
         bus, captured = _capture_bus()
         labeler = _make_tray_labeler(tmp_path, event_bus=bus)
 
         labeler._handle_transition(
-            "com.apple.Terminal", "us.zoom.xos", _BLOCK_START, _BLOCK_END,
+            "com.apple.Terminal",
+            "us.zoom.xos",
+            _BLOCK_START,
+            _BLOCK_END,
         )
 
         types = [e["type"] for e in captured]
@@ -361,7 +389,9 @@ class TestHandleTransition:
 
     @patch("taskclf.ui.tray._send_desktop_notification")
     def test_transition_with_suggestion_publishes_suggest_label(
-        self, _mock_notif: MagicMock, tmp_path: Path,
+        self,
+        _mock_notif: MagicMock,
+        tmp_path: Path,
     ) -> None:
         """TC-UI-TRAY-002"""
         bus, captured = _capture_bus()
@@ -372,7 +402,10 @@ class TestHandleTransition:
         labeler._suggester = mock_suggester
 
         labeler._handle_transition(
-            "com.apple.Terminal", "us.zoom.xos", _BLOCK_START, _BLOCK_END,
+            "com.apple.Terminal",
+            "us.zoom.xos",
+            _BLOCK_START,
+            _BLOCK_END,
         )
 
         types = [e["type"] for e in captured]
@@ -391,7 +424,9 @@ class TestHandleTransition:
 
     @patch("taskclf.ui.tray._send_desktop_notification")
     def test_transition_count_incremented(
-        self, _mock_notif: MagicMock, tmp_path: Path,
+        self,
+        _mock_notif: MagicMock,
+        tmp_path: Path,
     ) -> None:
         """TC-UI-TRAY-003"""
         bus, _ = _capture_bus()
@@ -399,18 +434,26 @@ class TestHandleTransition:
         assert labeler._transition_count == 0
 
         labeler._handle_transition(
-            "A", "B", _BLOCK_START, _BLOCK_END,
+            "A",
+            "B",
+            _BLOCK_START,
+            _BLOCK_END,
         )
         assert labeler._transition_count == 1
 
         labeler._handle_transition(
-            "B", "C", _BLOCK_START, _BLOCK_END,
+            "B",
+            "C",
+            _BLOCK_START,
+            _BLOCK_END,
         )
         assert labeler._transition_count == 2
 
     @patch("taskclf.ui.tray._send_desktop_notification")
     def test_last_transition_dict_shape(
-        self, _mock_notif: MagicMock, tmp_path: Path,
+        self,
+        _mock_notif: MagicMock,
+        tmp_path: Path,
     ) -> None:
         """TC-UI-TRAY-004"""
         bus, _ = _capture_bus()
@@ -418,13 +461,20 @@ class TestHandleTransition:
         assert labeler._last_transition is None
 
         labeler._handle_transition(
-            "com.apple.Terminal", "us.zoom.xos", _BLOCK_START, _BLOCK_END,
+            "com.apple.Terminal",
+            "us.zoom.xos",
+            _BLOCK_START,
+            _BLOCK_END,
         )
 
         lt = labeler._last_transition
         assert lt is not None
         assert set(lt.keys()) == {
-            "prev_app", "new_app", "block_start", "block_end", "fired_at",
+            "prev_app",
+            "new_app",
+            "block_start",
+            "block_end",
+            "fired_at",
         }
         assert lt["prev_app"] == "com.apple.Terminal"
         assert lt["new_app"] == "us.zoom.xos"
@@ -434,7 +484,9 @@ class TestHandleTransition:
 
     @patch("taskclf.ui.tray._send_desktop_notification")
     def test_osascript_skipped_when_subscriber_connected(
-        self, mock_notif: MagicMock, tmp_path: Path,
+        self,
+        mock_notif: MagicMock,
+        tmp_path: Path,
     ) -> None:
         """Desktop notification is suppressed when a WebSocket client is subscribed."""
         import asyncio
@@ -445,7 +497,10 @@ class TestHandleTransition:
 
         labeler = _make_tray_labeler(tmp_path, event_bus=bus)
         labeler._handle_transition(
-            "com.apple.Terminal", "us.zoom.xos", _BLOCK_START, _BLOCK_END,
+            "com.apple.Terminal",
+            "us.zoom.xos",
+            _BLOCK_START,
+            _BLOCK_END,
         )
 
         mock_notif.assert_not_called()
@@ -453,7 +508,9 @@ class TestHandleTransition:
 
     @patch("taskclf.ui.tray._send_desktop_notification")
     def test_osascript_fires_when_no_subscribers(
-        self, mock_notif: MagicMock, tmp_path: Path,
+        self,
+        mock_notif: MagicMock,
+        tmp_path: Path,
     ) -> None:
         """Desktop notification fires as fallback when no WebSocket clients."""
         bus, captured = _capture_bus()
@@ -461,7 +518,10 @@ class TestHandleTransition:
 
         labeler = _make_tray_labeler(tmp_path, event_bus=bus)
         labeler._handle_transition(
-            "com.apple.Terminal", "us.zoom.xos", _BLOCK_START, _BLOCK_END,
+            "com.apple.Terminal",
+            "us.zoom.xos",
+            _BLOCK_START,
+            _BLOCK_END,
         )
 
         mock_notif.assert_called_once()
@@ -469,14 +529,21 @@ class TestHandleTransition:
 
     @patch("taskclf.ui.tray._send_desktop_notification")
     def test_osascript_fires_when_no_event_bus(
-        self, mock_notif: MagicMock, tmp_path: Path,
+        self,
+        mock_notif: MagicMock,
+        tmp_path: Path,
     ) -> None:
         """Desktop notification fires when event_bus is None."""
         labeler = TrayLabeler(
-            data_dir=tmp_path, model_dir=None, event_bus=None,
+            data_dir=tmp_path,
+            model_dir=None,
+            event_bus=None,
         )
         labeler._handle_transition(
-            "com.apple.Terminal", "us.zoom.xos", _BLOCK_START, _BLOCK_END,
+            "com.apple.Terminal",
+            "us.zoom.xos",
+            _BLOCK_START,
+            _BLOCK_END,
         )
 
         mock_notif.assert_called_once()
@@ -488,9 +555,9 @@ class TestHandleTransition:
 
 
 class TestHandlePoll:
-
     def test_poll_publishes_tray_state_with_expected_keys(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """TC-UI-TRAY-005"""
         bus, captured = _capture_bus()
@@ -502,10 +569,18 @@ class TestHandlePoll:
         event = captured[0]
         assert event["type"] == "tray_state"
         expected_keys = {
-            "type", "model_loaded", "model_dir", "model_schema_hash",
-            "suggested_label", "suggested_confidence",
-            "transition_count", "last_transition",
-            "labels_saved_count", "data_dir", "ui_port", "dev_mode",
+            "type",
+            "model_loaded",
+            "model_dir",
+            "model_schema_hash",
+            "suggested_label",
+            "suggested_confidence",
+            "transition_count",
+            "last_transition",
+            "labels_saved_count",
+            "data_dir",
+            "ui_port",
+            "dev_mode",
             "paused",
         }
         assert set(event.keys()) == expected_keys
@@ -529,7 +604,6 @@ class TestHandlePoll:
 
 
 class TestOnLabelSaved:
-
     def test_counter_increments(self, tmp_path: Path) -> None:
         """TC-UI-TRAY-010: _on_label_saved increments _labels_saved_count."""
         bus, _ = _capture_bus()
@@ -562,12 +636,13 @@ class TestOnLabelSaved:
 
 
 class TestPublishStatus:
-
     def test_status_event_shape(self) -> None:
         """TC-UI-TRAY-007"""
         bus, captured = _capture_bus()
         monitor = ActivityMonitor(
-            poll_seconds=30, transition_minutes=3, event_bus=bus,
+            poll_seconds=30,
+            transition_minutes=3,
+            event_bus=bus,
         )
         monitor._started_at = dt.datetime(2026, 3, 1, 9, 0, 0, tzinfo=dt.timezone.utc)
 
@@ -590,7 +665,9 @@ class TestPublishStatus:
         """TC-UI-TRAY-008"""
         bus, captured = _capture_bus()
         monitor = ActivityMonitor(
-            poll_seconds=60, transition_minutes=3, event_bus=bus,
+            poll_seconds=60,
+            transition_minutes=3,
+            event_bus=bus,
         )
         monitor._started_at = dt.datetime(2026, 3, 1, 9, 0, 0, tzinfo=dt.timezone.utc)
 
@@ -605,7 +682,9 @@ class TestPublishStatus:
         """TC-UI-TRAY-009"""
         bus, captured = _capture_bus()
         monitor = ActivityMonitor(
-            poll_seconds=60, transition_minutes=3, event_bus=bus,
+            poll_seconds=60,
+            transition_minutes=3,
+            event_bus=bus,
         )
         monitor._started_at = dt.datetime(2026, 3, 1, 9, 0, 0, tzinfo=dt.timezone.utc)
         monitor._candidate_app = "us.zoom.xos"
@@ -624,12 +703,13 @@ class TestPublishStatus:
 
 
 class TestSendDesktopNotification:
-
     @patch("taskclf.ui.tray.threading.Thread")
     @patch("taskclf.ui.tray.subprocess.Popen")
     @patch("taskclf.ui.tray.platform.system", return_value="Darwin")
     def test_macos_calls_osascript(
-        self, _mock_sys: MagicMock, mock_popen: MagicMock,
+        self,
+        _mock_sys: MagicMock,
+        mock_popen: MagicMock,
         mock_thread_cls: MagicMock,
     ) -> None:
         """TC-UI-NOTIF-001"""
@@ -649,7 +729,9 @@ class TestSendDesktopNotification:
     @patch("taskclf.ui.tray.logger")
     @patch("taskclf.ui.tray.platform.system", return_value="Linux")
     def test_non_macos_falls_back_to_logger(
-        self, _mock_sys: MagicMock, mock_logger: MagicMock,
+        self,
+        _mock_sys: MagicMock,
+        mock_logger: MagicMock,
     ) -> None:
         """TC-UI-NOTIF-002"""
         _send_desktop_notification("Test Title", "Hello world")
@@ -667,8 +749,11 @@ class TestSendDesktopNotification:
     )
     @patch("taskclf.ui.tray.platform.system", return_value="Darwin")
     def test_subprocess_failure_falls_back_to_logger(
-        self, _mock_sys: MagicMock, _mock_popen: MagicMock,
-        mock_thread_cls: MagicMock, mock_logger: MagicMock,
+        self,
+        _mock_sys: MagicMock,
+        _mock_popen: MagicMock,
+        mock_thread_cls: MagicMock,
+        mock_logger: MagicMock,
     ) -> None:
         """TC-UI-NOTIF-003"""
         mock_thread_cls.side_effect = lambda target, daemon: (target(), MagicMock())[1]
@@ -681,7 +766,9 @@ class TestSendDesktopNotification:
     @patch("taskclf.ui.tray.subprocess.Popen")
     @patch("taskclf.ui.tray.platform.system", return_value="Darwin")
     def test_newlines_and_quotes_escaped(
-        self, _mock_sys: MagicMock, mock_popen: MagicMock,
+        self,
+        _mock_sys: MagicMock,
+        mock_popen: MagicMock,
         mock_thread_cls: MagicMock,
     ) -> None:
         """Regression: newlines and double quotes must not break the AppleScript."""
@@ -702,7 +789,6 @@ class TestSendDesktopNotification:
 
 
 class TestMakeIconImage:
-
     def test_default_returns_rgba_64x64(self) -> None:
         """TC-UI-ICON-001"""
         img = _make_icon_image()
@@ -732,8 +818,10 @@ def _make_suggester(predictor_mock: MagicMock) -> _LabelSuggester:
 
 
 class TestLabelSuggester:
-
-    @patch("taskclf.adapters.activitywatch.client.find_window_bucket_id", return_value="aw-watcher-window_test")
+    @patch(
+        "taskclf.adapters.activitywatch.client.find_window_bucket_id",
+        return_value="aw-watcher-window_test",
+    )
     @patch("taskclf.adapters.activitywatch.client.fetch_aw_events")
     @patch("taskclf.features.build.build_features_from_aw_events")
     def test_successful_suggestion(
@@ -765,10 +853,15 @@ class TestLabelSuggester:
         assert confidence == 0.92
         predictor.predict_bucket.assert_called_once_with(mock_row)
 
-    @patch("taskclf.adapters.activitywatch.client.find_window_bucket_id", return_value="aw-watcher-window_test")
+    @patch(
+        "taskclf.adapters.activitywatch.client.find_window_bucket_id",
+        return_value="aw-watcher-window_test",
+    )
     @patch("taskclf.adapters.activitywatch.client.fetch_aw_events", return_value=[])
     def test_no_events_returns_none(
-        self, _mock_fetch: MagicMock, _mock_find: MagicMock,
+        self,
+        _mock_fetch: MagicMock,
+        _mock_find: MagicMock,
     ) -> None:
         """TC-UI-SUG-002"""
         predictor = MagicMock()
@@ -779,7 +872,10 @@ class TestLabelSuggester:
         assert result is None
         predictor.predict_bucket.assert_not_called()
 
-    @patch("taskclf.adapters.activitywatch.client.find_window_bucket_id", return_value="aw-watcher-window_test")
+    @patch(
+        "taskclf.adapters.activitywatch.client.find_window_bucket_id",
+        return_value="aw-watcher-window_test",
+    )
     @patch("taskclf.adapters.activitywatch.client.fetch_aw_events")
     @patch("taskclf.features.build.build_features_from_aw_events", return_value=[])
     def test_no_features_returns_none(
@@ -804,7 +900,8 @@ class TestLabelSuggester:
         side_effect=ConnectionError("AW unavailable"),
     )
     def test_prediction_exception_returns_none(
-        self, _mock_find: MagicMock,
+        self,
+        _mock_find: MagicMock,
     ) -> None:
         """TC-UI-SUG-004"""
         predictor = MagicMock()
@@ -821,7 +918,6 @@ class TestLabelSuggester:
 
 
 class TestPauseResume:
-
     def test_monitor_starts_unpaused(self) -> None:
         monitor = ActivityMonitor(poll_seconds=60, transition_minutes=3)
         assert monitor.is_paused is False
@@ -841,7 +937,9 @@ class TestPauseResume:
         """When paused, _publish_status emits state='paused'."""
         bus, captured = _capture_bus()
         monitor = ActivityMonitor(
-            poll_seconds=60, transition_minutes=3, event_bus=bus,
+            poll_seconds=60,
+            transition_minutes=3,
+            event_bus=bus,
         )
         monitor._started_at = dt.datetime(2026, 3, 1, 9, 0, 0, tzinfo=dt.timezone.utc)
 
@@ -854,7 +952,9 @@ class TestPauseResume:
     def test_publish_status_defaults_to_collecting(self) -> None:
         bus, captured = _capture_bus()
         monitor = ActivityMonitor(
-            poll_seconds=60, transition_minutes=3, event_bus=bus,
+            poll_seconds=60,
+            transition_minutes=3,
+            event_bus=bus,
         )
         monitor._started_at = dt.datetime(2026, 3, 1, 9, 0, 0, tzinfo=dt.timezone.utc)
 
@@ -867,8 +967,10 @@ class TestPauseResume:
         bus, captured = _capture_bus()
         transitions: list = []
         monitor = ActivityMonitor(
-            poll_seconds=60, transition_minutes=2,
-            event_bus=bus, on_transition=lambda *a: transitions.append(a),
+            poll_seconds=60,
+            transition_minutes=2,
+            event_bus=bus,
+            on_transition=lambda *a: transitions.append(a),
         )
         monitor._started_at = dt.datetime(2026, 3, 1, 9, 0, 0, tzinfo=dt.timezone.utc)
 
@@ -889,7 +991,8 @@ class TestPauseResume:
         """After a long pause, elapsed should not include the pause gap."""
         transitions: list = []
         monitor = ActivityMonitor(
-            poll_seconds=60, transition_minutes=3,
+            poll_seconds=60,
+            transition_minutes=3,
             on_transition=lambda *a: transitions.append(a),
         )
 
@@ -945,33 +1048,46 @@ class TestPauseResume:
 
 
 class TestNotificationPrivacy:
-
     @patch("taskclf.ui.tray._send_desktop_notification")
     def test_notifications_disabled_skips_call(
-        self, mock_notif: MagicMock, tmp_path: Path,
+        self,
+        mock_notif: MagicMock,
+        tmp_path: Path,
     ) -> None:
         bus, _ = _capture_bus()
         labeler = TrayLabeler(
-            data_dir=tmp_path, model_dir=None, event_bus=bus,
+            data_dir=tmp_path,
+            model_dir=None,
+            event_bus=bus,
             notifications_enabled=False,
         )
         labeler._send_notification(
-            "com.apple.Terminal", "us.zoom.xos", _BLOCK_START, _BLOCK_END,
+            "com.apple.Terminal",
+            "us.zoom.xos",
+            _BLOCK_START,
+            _BLOCK_END,
         )
         mock_notif.assert_not_called()
 
     @patch("taskclf.ui.tray._send_desktop_notification")
     def test_privacy_mode_redacts_app_names(
-        self, mock_notif: MagicMock, tmp_path: Path,
+        self,
+        mock_notif: MagicMock,
+        tmp_path: Path,
     ) -> None:
         """Default privacy_notifications=True hides app identifiers."""
         bus, _ = _capture_bus()
         labeler = TrayLabeler(
-            data_dir=tmp_path, model_dir=None, event_bus=bus,
+            data_dir=tmp_path,
+            model_dir=None,
+            event_bus=bus,
             privacy_notifications=True,
         )
         labeler._send_notification(
-            "com.apple.Terminal", "us.zoom.xos", _BLOCK_START, _BLOCK_END,
+            "com.apple.Terminal",
+            "us.zoom.xos",
+            _BLOCK_START,
+            _BLOCK_END,
         )
         mock_notif.assert_called_once()
         message = mock_notif.call_args[1].get("message") or mock_notif.call_args[0][1]
@@ -982,15 +1098,22 @@ class TestNotificationPrivacy:
 
     @patch("taskclf.ui.tray._send_desktop_notification")
     def test_privacy_off_shows_raw_app_names(
-        self, mock_notif: MagicMock, tmp_path: Path,
+        self,
+        mock_notif: MagicMock,
+        tmp_path: Path,
     ) -> None:
         bus, _ = _capture_bus()
         labeler = TrayLabeler(
-            data_dir=tmp_path, model_dir=None, event_bus=bus,
+            data_dir=tmp_path,
+            model_dir=None,
+            event_bus=bus,
             privacy_notifications=False,
         )
         labeler._send_notification(
-            "com.apple.Terminal", "us.zoom.xos", _BLOCK_START, _BLOCK_END,
+            "com.apple.Terminal",
+            "us.zoom.xos",
+            _BLOCK_START,
+            _BLOCK_END,
         )
         mock_notif.assert_called_once()
         message = mock_notif.call_args[0][1]
@@ -999,13 +1122,18 @@ class TestNotificationPrivacy:
 
     @patch("taskclf.ui.tray._send_desktop_notification")
     def test_privacy_default_is_true(
-        self, mock_notif: MagicMock, tmp_path: Path,
+        self,
+        mock_notif: MagicMock,
+        tmp_path: Path,
     ) -> None:
         """Default TrayLabeler has privacy_notifications=True."""
         bus, _ = _capture_bus()
         labeler = _make_tray_labeler(tmp_path, event_bus=bus)
         labeler._send_notification(
-            "com.apple.Terminal", "us.zoom.xos", _BLOCK_START, _BLOCK_END,
+            "com.apple.Terminal",
+            "us.zoom.xos",
+            _BLOCK_START,
+            _BLOCK_END,
         )
         message = mock_notif.call_args[0][1]
         assert "com.apple.Terminal" not in message
@@ -1017,12 +1145,12 @@ class TestNotificationPrivacy:
 
 
 class TestColdStart:
-
     def test_first_poll_fires_on_initial_app(self) -> None:
         """on_initial_app fires on the very first check_transition call."""
         initial_calls: list = []
         monitor = ActivityMonitor(
-            poll_seconds=60, transition_minutes=3,
+            poll_seconds=60,
+            transition_minutes=3,
             on_initial_app=lambda app, ts: initial_calls.append((app, ts)),
         )
 
@@ -1036,7 +1164,8 @@ class TestColdStart:
         """on_initial_app fires only once, not on subsequent polls."""
         initial_calls: list = []
         monitor = ActivityMonitor(
-            poll_seconds=60, transition_minutes=3,
+            poll_seconds=60,
+            transition_minutes=3,
             on_initial_app=lambda app, ts: initial_calls.append((app, ts)),
         )
 
@@ -1049,7 +1178,8 @@ class TestColdStart:
     def test_no_callback_is_safe(self) -> None:
         """on_initial_app=None doesn't raise on first poll."""
         monitor = ActivityMonitor(
-            poll_seconds=60, transition_minutes=3,
+            poll_seconds=60,
+            transition_minutes=3,
             on_initial_app=None,
         )
         monitor.check_transition("com.apple.Terminal", _now=_t(0))
@@ -1093,8 +1223,11 @@ class TestServerStartup:
     @patch("uvicorn.Config")
     @patch("taskclf.ui.server.create_app")
     def test_start_server_passes_shared_event_bus(
-        self, mock_create_app: MagicMock, mock_config: MagicMock,
-        mock_server_cls: MagicMock, tmp_path: Path,
+        self,
+        mock_create_app: MagicMock,
+        mock_config: MagicMock,
+        mock_server_cls: MagicMock,
+        tmp_path: Path,
     ) -> None:
         """_start_server() must pass self._event_bus to create_app()."""
         mock_create_app.return_value = MagicMock()
@@ -1112,8 +1245,11 @@ class TestServerStartup:
     @patch("uvicorn.Config")
     @patch("taskclf.ui.server.create_app")
     def test_start_server_passes_callbacks(
-        self, mock_create_app: MagicMock, mock_config: MagicMock,
-        mock_server_cls: MagicMock, tmp_path: Path,
+        self,
+        mock_create_app: MagicMock,
+        mock_config: MagicMock,
+        mock_server_cls: MagicMock,
+        tmp_path: Path,
     ) -> None:
         """_start_server() must wire on_label_saved, pause_toggle, is_paused."""
         mock_create_app.return_value = MagicMock()
@@ -1132,8 +1268,11 @@ class TestServerStartup:
     @patch("uvicorn.Config")
     @patch("taskclf.ui.server.create_app")
     def test_start_server_sets_ui_server_running(
-        self, mock_create_app: MagicMock, mock_config: MagicMock,
-        mock_server_cls: MagicMock, tmp_path: Path,
+        self,
+        mock_create_app: MagicMock,
+        mock_config: MagicMock,
+        mock_server_cls: MagicMock,
+        tmp_path: Path,
     ) -> None:
         mock_create_app.return_value = MagicMock()
         mock_server_cls.return_value = MagicMock()
@@ -1147,8 +1286,11 @@ class TestServerStartup:
     @patch("uvicorn.Config")
     @patch("taskclf.ui.server.create_app")
     def test_start_server_returns_ui_port(
-        self, mock_create_app: MagicMock, mock_config: MagicMock,
-        mock_server_cls: MagicMock, tmp_path: Path,
+        self,
+        mock_create_app: MagicMock,
+        mock_config: MagicMock,
+        mock_server_cls: MagicMock,
+        tmp_path: Path,
     ) -> None:
         mock_create_app.return_value = MagicMock()
         mock_server_cls.return_value = MagicMock()
@@ -1160,7 +1302,9 @@ class TestServerStartup:
     @patch("taskclf.ui.tray.TrayLabeler._spawn_window")
     @patch("taskclf.ui.tray.TrayLabeler._start_server")
     def test_subprocess_mode_calls_start_server_then_spawn_window(
-        self, mock_start: MagicMock, mock_spawn: MagicMock,
+        self,
+        mock_start: MagicMock,
+        mock_spawn: MagicMock,
         tmp_path: Path,
     ) -> None:
         """_start_ui_subprocess() must call _start_server() then _spawn_window()."""
@@ -1172,7 +1316,9 @@ class TestServerStartup:
 
     @patch("taskclf.ui.tray.TrayLabeler._start_server", return_value=8741)
     def test_embedded_mode_calls_start_server(
-        self, mock_start: MagicMock, tmp_path: Path,
+        self,
+        mock_start: MagicMock,
+        tmp_path: Path,
     ) -> None:
         """_start_ui_embedded() must call _start_server()."""
         labeler = TrayLabeler(data_dir=tmp_path, browser=True)
@@ -1182,7 +1328,9 @@ class TestServerStartup:
 
     @patch("subprocess.Popen")
     def test_spawn_window_launches_pywebview_module(
-        self, mock_popen: MagicMock, tmp_path: Path,
+        self,
+        mock_popen: MagicMock,
+        tmp_path: Path,
     ) -> None:
         """_spawn_window() must invoke python -m taskclf.ui.window."""
         mock_proc = MagicMock()
@@ -1201,7 +1349,9 @@ class TestServerStartup:
 
     @patch("subprocess.Popen")
     def test_spawn_window_failure_does_not_raise(
-        self, mock_popen: MagicMock, tmp_path: Path,
+        self,
+        mock_popen: MagicMock,
+        tmp_path: Path,
     ) -> None:
         """_spawn_window() gracefully handles subprocess failures."""
         mock_popen.side_effect = OSError("pywebview not installed")
@@ -1223,7 +1373,9 @@ class TestOpenDashboard:
             url = mock_open.call_args[0][0]
             assert "127.0.0.1" in url
 
-    def test_native_mode_sends_toggle_via_stdin_when_window_alive(self, tmp_path: Path) -> None:
+    def test_native_mode_sends_toggle_via_stdin_when_window_alive(
+        self, tmp_path: Path
+    ) -> None:
         """If pywebview subprocess is still running, _open_dashboard sends toggle via stdin."""
         bus, _ = _capture_bus()
         labeler = _make_tray_labeler(tmp_path, event_bus=bus)
@@ -1290,6 +1442,7 @@ class TestTrayMenuExportLabels:
             provenance="manual",
         )
         from taskclf.labels.store import write_label_spans
+
         write_label_spans([span], labels_dir / "labels.parquet")
 
         csv_dest = tmp_path / "out.csv"
@@ -1297,7 +1450,10 @@ class TestTrayMenuExportLabels:
         mock_tk.filedialog.asksaveasfilename.return_value = str(csv_dest)
 
         with (
-            patch.dict(sys.modules, {"tkinter": mock_tk, "tkinter.filedialog": mock_tk.filedialog}),
+            patch.dict(
+                sys.modules,
+                {"tkinter": mock_tk, "tkinter.filedialog": mock_tk.filedialog},
+            ),
             patch.object(labeler, "_notify_with_reveal") as mock_reveal,
         ):
             labeler._export_labels()
@@ -1319,7 +1475,10 @@ class TestTrayMenuExportLabels:
         mock_tk.filedialog.asksaveasfilename.return_value = str(csv_dest)
 
         with (
-            patch.dict(sys.modules, {"tkinter": mock_tk, "tkinter.filedialog": mock_tk.filedialog}),
+            patch.dict(
+                sys.modules,
+                {"tkinter": mock_tk, "tkinter.filedialog": mock_tk.filedialog},
+            ),
             patch.object(labeler, "_notify") as mock_notify,
         ):
             labeler._export_labels()
@@ -1339,7 +1498,10 @@ class TestTrayMenuExportLabels:
         mock_tk.filedialog.asksaveasfilename.return_value = ""
 
         with (
-            patch.dict(sys.modules, {"tkinter": mock_tk, "tkinter.filedialog": mock_tk.filedialog}),
+            patch.dict(
+                sys.modules,
+                {"tkinter": mock_tk, "tkinter.filedialog": mock_tk.filedialog},
+            ),
             patch.object(labeler, "_notify") as mock_notify,
         ):
             labeler._export_labels()
@@ -1420,6 +1582,7 @@ class TestImportLabels:
 
     def _write_csv(self, path: Path, rows: list[dict]) -> None:
         import csv
+
         fieldnames = list(rows[0].keys())
         with open(path, "w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -1468,11 +1631,14 @@ class TestImportLabels:
         mock_tk.messagebox.askyesnocancel.return_value = True  # merge
 
         with (
-            patch.dict(sys.modules, {
-                "tkinter": mock_tk,
-                "tkinter.filedialog": mock_tk.filedialog,
-                "tkinter.messagebox": mock_tk.messagebox,
-            }),
+            patch.dict(
+                sys.modules,
+                {
+                    "tkinter": mock_tk,
+                    "tkinter.filedialog": mock_tk.filedialog,
+                    "tkinter.messagebox": mock_tk.messagebox,
+                },
+            ),
             patch.object(labeler, "_notify") as mock_notify,
         ):
             labeler._import_labels()
@@ -1511,11 +1677,14 @@ class TestImportLabels:
         mock_tk.messagebox.askyesnocancel.return_value = False  # overwrite
 
         with (
-            patch.dict(sys.modules, {
-                "tkinter": mock_tk,
-                "tkinter.filedialog": mock_tk.filedialog,
-                "tkinter.messagebox": mock_tk.messagebox,
-            }),
+            patch.dict(
+                sys.modules,
+                {
+                    "tkinter": mock_tk,
+                    "tkinter.filedialog": mock_tk.filedialog,
+                    "tkinter.messagebox": mock_tk.messagebox,
+                },
+            ),
             patch.object(labeler, "_notify") as mock_notify,
         ):
             labeler._import_labels()
@@ -1539,11 +1708,14 @@ class TestImportLabels:
         mock_tk.filedialog.askopenfilename.return_value = ""
 
         with (
-            patch.dict(sys.modules, {
-                "tkinter": mock_tk,
-                "tkinter.filedialog": mock_tk.filedialog,
-                "tkinter.messagebox": mock_tk.messagebox,
-            }),
+            patch.dict(
+                sys.modules,
+                {
+                    "tkinter": mock_tk,
+                    "tkinter.filedialog": mock_tk.filedialog,
+                    "tkinter.messagebox": mock_tk.messagebox,
+                },
+            ),
             patch.object(labeler, "_notify") as mock_notify,
         ):
             labeler._import_labels()
@@ -1566,11 +1738,14 @@ class TestImportLabels:
         mock_tk.messagebox.askyesnocancel.return_value = None  # cancel
 
         with (
-            patch.dict(sys.modules, {
-                "tkinter": mock_tk,
-                "tkinter.filedialog": mock_tk.filedialog,
-                "tkinter.messagebox": mock_tk.messagebox,
-            }),
+            patch.dict(
+                sys.modules,
+                {
+                    "tkinter": mock_tk,
+                    "tkinter.filedialog": mock_tk.filedialog,
+                    "tkinter.messagebox": mock_tk.messagebox,
+                },
+            ),
             patch.object(labeler, "_notify") as mock_notify,
         ):
             labeler._import_labels()
@@ -1592,11 +1767,14 @@ class TestImportLabels:
         mock_tk.messagebox.askyesnocancel.return_value = True
 
         with (
-            patch.dict(sys.modules, {
-                "tkinter": mock_tk,
-                "tkinter.filedialog": mock_tk.filedialog,
-                "tkinter.messagebox": mock_tk.messagebox,
-            }),
+            patch.dict(
+                sys.modules,
+                {
+                    "tkinter": mock_tk,
+                    "tkinter.filedialog": mock_tk.filedialog,
+                    "tkinter.messagebox": mock_tk.messagebox,
+                },
+            ),
             patch.object(labeler, "_notify") as mock_notify,
         ):
             labeler._import_labels()
@@ -1621,13 +1799,17 @@ class TestImportLabels:
         mock_tk.Tk.side_effect = RuntimeError("no display")
 
         with (
-            patch.dict(sys.modules, {
-                "tkinter": mock_tk,
-                "tkinter.filedialog": mock_tk.filedialog,
-                "tkinter.messagebox": mock_tk.messagebox,
-            }),
+            patch.dict(
+                sys.modules,
+                {
+                    "tkinter": mock_tk,
+                    "tkinter.filedialog": mock_tk.filedialog,
+                    "tkinter.messagebox": mock_tk.messagebox,
+                },
+            ),
             patch.object(
-                labeler, "_import_labels_osascript",
+                labeler,
+                "_import_labels_osascript",
                 return_value=(csv_file, "merge"),
             ) as mock_osa,
             patch.object(labeler, "_notify") as mock_notify,
@@ -1649,13 +1831,17 @@ class TestImportLabels:
         mock_tk.Tk.side_effect = RuntimeError("no display")
 
         with (
-            patch.dict(sys.modules, {
-                "tkinter": mock_tk,
-                "tkinter.filedialog": mock_tk.filedialog,
-                "tkinter.messagebox": mock_tk.messagebox,
-            }),
+            patch.dict(
+                sys.modules,
+                {
+                    "tkinter": mock_tk,
+                    "tkinter.filedialog": mock_tk.filedialog,
+                    "tkinter.messagebox": mock_tk.messagebox,
+                },
+            ),
             patch.object(
-                labeler, "_import_labels_osascript",
+                labeler,
+                "_import_labels_osascript",
                 return_value=(None, None),
             ),
             patch.object(labeler, "_notify") as mock_notify,
@@ -1711,6 +1897,7 @@ class TestLabelStats:
             provenance="manual",
         )
         from taskclf.labels.store import write_label_spans
+
         write_label_spans([span], labels_dir / "labels.parquet")
 
         with patch.object(labeler, "_notify") as mock_notify:
@@ -1745,6 +1932,7 @@ class TestLabelStats:
             ),
         ]
         from taskclf.labels.store import write_label_spans
+
         write_label_spans(spans, labels_dir / "labels.parquet")
 
         with patch.object(labeler, "_notify") as mock_notify:
@@ -1770,7 +1958,10 @@ class TestOpenDataDir:
     @patch("taskclf.ui.tray.subprocess.Popen")
     @patch("taskclf.ui.tray.platform.system", return_value="Darwin")
     def test_macos_calls_open(
-        self, _mock_sys: MagicMock, mock_popen: MagicMock, tmp_path: Path,
+        self,
+        _mock_sys: MagicMock,
+        mock_popen: MagicMock,
+        tmp_path: Path,
     ) -> None:
         bus, _ = _capture_bus()
         labeler = _make_tray_labeler(tmp_path, event_bus=bus)
@@ -1781,7 +1972,10 @@ class TestOpenDataDir:
     @patch("taskclf.ui.tray.subprocess.Popen")
     @patch("taskclf.ui.tray.platform.system", return_value="Linux")
     def test_linux_calls_xdg_open(
-        self, _mock_sys: MagicMock, mock_popen: MagicMock, tmp_path: Path,
+        self,
+        _mock_sys: MagicMock,
+        mock_popen: MagicMock,
+        tmp_path: Path,
     ) -> None:
         bus, _ = _capture_bus()
         labeler = _make_tray_labeler(tmp_path, event_bus=bus)
@@ -1792,7 +1986,10 @@ class TestOpenDataDir:
     @patch("taskclf.ui.tray.subprocess.Popen", side_effect=OSError("no open"))
     @patch("taskclf.ui.tray.platform.system", return_value="Darwin")
     def test_fallback_notifies_path_on_error(
-        self, _mock_sys: MagicMock, _mock_popen: MagicMock, tmp_path: Path,
+        self,
+        _mock_sys: MagicMock,
+        _mock_popen: MagicMock,
+        tmp_path: Path,
     ) -> None:
         """When Popen fails, fall back to a notification showing the path."""
         bus, _ = _capture_bus()
@@ -1816,7 +2013,10 @@ class TestEditConfig:
     @patch("taskclf.ui.tray.subprocess.Popen")
     @patch("taskclf.ui.tray.platform.system", return_value="Darwin")
     def test_macos_opens_with_text_flag(
-        self, _mock_sys: MagicMock, mock_popen: MagicMock, tmp_path: Path,
+        self,
+        _mock_sys: MagicMock,
+        mock_popen: MagicMock,
+        tmp_path: Path,
     ) -> None:
         bus, _ = _capture_bus()
         labeler = _make_tray_labeler(tmp_path, event_bus=bus)
@@ -1831,7 +2031,10 @@ class TestEditConfig:
     @patch("taskclf.ui.tray.subprocess.Popen")
     @patch("taskclf.ui.tray.platform.system", return_value="Linux")
     def test_linux_calls_xdg_open(
-        self, _mock_sys: MagicMock, mock_popen: MagicMock, tmp_path: Path,
+        self,
+        _mock_sys: MagicMock,
+        mock_popen: MagicMock,
+        tmp_path: Path,
     ) -> None:
         bus, _ = _capture_bus()
         labeler = _make_tray_labeler(tmp_path, event_bus=bus)
@@ -1845,7 +2048,10 @@ class TestEditConfig:
     @patch("taskclf.ui.tray.subprocess.Popen", side_effect=OSError("no editor"))
     @patch("taskclf.ui.tray.platform.system", return_value="Darwin")
     def test_fallback_notifies_path_on_error(
-        self, _mock_sys: MagicMock, _mock_popen: MagicMock, tmp_path: Path,
+        self,
+        _mock_sys: MagicMock,
+        _mock_popen: MagicMock,
+        tmp_path: Path,
     ) -> None:
         bus, _ = _capture_bus()
         labeler = _make_tray_labeler(tmp_path, event_bus=bus)
@@ -1876,7 +2082,9 @@ class TestSettingsPersistence:
     def test_settings_written_to_config(self, tmp_path: Path) -> None:
         bus, _ = _capture_bus()
         TrayLabeler(
-            data_dir=tmp_path, model_dir=None, event_bus=bus,
+            data_dir=tmp_path,
+            model_dir=None,
+            event_bus=bus,
             notifications_enabled=False,
             privacy_notifications=False,
             poll_seconds=120,
@@ -1887,6 +2095,7 @@ class TestSettingsPersistence:
         )
 
         import tomllib
+
         config = tomllib.loads((tmp_path / "config.toml").read_text())
         assert config["notifications_enabled"] is False
         assert config["privacy_notifications"] is False
@@ -1901,16 +2110,22 @@ class TestSettingsPersistence:
         import tomli_w
 
         config_path = tmp_path / "config.toml"
-        config_path.write_text(tomli_w.dumps({
-            "user_id": "test-id",
-            "poll_seconds": 90,
-            "transition_minutes": 7,
-            "notifications_enabled": False,
-        }))
+        config_path.write_text(
+            tomli_w.dumps(
+                {
+                    "user_id": "test-id",
+                    "poll_seconds": 90,
+                    "transition_minutes": 7,
+                    "notifications_enabled": False,
+                }
+            )
+        )
 
         bus, _ = _capture_bus()
         labeler = TrayLabeler(
-            data_dir=tmp_path, model_dir=None, event_bus=bus,
+            data_dir=tmp_path,
+            model_dir=None,
+            event_bus=bus,
         )
 
         assert labeler._notifications_enabled is False
@@ -1922,15 +2137,21 @@ class TestSettingsPersistence:
         import tomli_w
 
         config_path = tmp_path / "config.toml"
-        config_path.write_text(tomli_w.dumps({
-            "user_id": "test-id",
-            "poll_seconds": 90,
-            "notifications_enabled": True,
-        }))
+        config_path.write_text(
+            tomli_w.dumps(
+                {
+                    "user_id": "test-id",
+                    "poll_seconds": 90,
+                    "notifications_enabled": True,
+                }
+            )
+        )
 
         bus, _ = _capture_bus()
         labeler = TrayLabeler(
-            data_dir=tmp_path, model_dir=None, event_bus=bus,
+            data_dir=tmp_path,
+            model_dir=None,
+            event_bus=bus,
             poll_seconds=30,
             notifications_enabled=False,
         )
@@ -1969,7 +2190,9 @@ class TestReloadModel:
         mock_suggester._predictor._metadata.schema_hash = "abc123"
 
         with (
-            patch("taskclf.ui.tray._LabelSuggester", return_value=mock_suggester) as mock_cls,
+            patch(
+                "taskclf.ui.tray._LabelSuggester", return_value=mock_suggester
+            ) as mock_cls,
             patch.object(labeler, "_notify") as mock_notify,
         ):
             labeler._reload_model()
@@ -1989,7 +2212,9 @@ class TestReloadModel:
         labeler._suggester = old_suggester
 
         with (
-            patch("taskclf.ui.tray._LabelSuggester", side_effect=RuntimeError("bad model")),
+            patch(
+                "taskclf.ui.tray._LabelSuggester", side_effect=RuntimeError("bad model")
+            ),
             patch.object(labeler, "_notify") as mock_notify,
         ):
             labeler._reload_model()
@@ -2098,7 +2323,9 @@ class TestBuildMenuEnhancements:
         assert "Model" in labels
         assert "Export Labels" in labels
 
-    def test_model_submenu_contains_reload_and_check_retrain(self, tmp_path: Path) -> None:
+    def test_model_submenu_contains_reload_and_check_retrain(
+        self, tmp_path: Path
+    ) -> None:
         """Reload Model and Check Retrain live inside the Model submenu, not at top level."""
         bus, _ = _capture_bus()
         labeler = _make_tray_labeler(tmp_path, event_bus=bus)
@@ -2188,14 +2415,18 @@ class TestReportIssue:
 
         info = _sample_diagnostics_info(version)
         stack = ExitStack()
-        stack.enter_context(patch(
-            "taskclf.core.diagnostics.collect_diagnostics",
-            return_value=info,
-        ))
-        stack.enter_context(patch(
-            "taskclf.core.crash._read_log_tail",
-            return_value=log_lines or [],
-        ))
+        stack.enter_context(
+            patch(
+                "taskclf.core.diagnostics.collect_diagnostics",
+                return_value=info,
+            )
+        )
+        stack.enter_context(
+            patch(
+                "taskclf.core.crash._read_log_tail",
+                return_value=log_lines or [],
+            )
+        )
         return stack
 
     def test_menu_contains_report_issue(self, tmp_path: Path) -> None:
@@ -2246,6 +2477,7 @@ class TestReportIssue:
             url = labeler._build_report_issue_url()
 
         import platform as _platform
+
         assert _platform.platform() in url
 
     def test_report_issue_url_is_well_formed(self, tmp_path: Path) -> None:
@@ -2360,7 +2592,8 @@ class TestReportIssue:
         assert "diagnostics" in qs
 
     def test_report_issue_url_survives_diagnostics_failure(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """When collect_diagnostics raises, URL is still valid."""
         from urllib.parse import urlparse
@@ -2391,7 +2624,10 @@ class TestSwitchModel:
     """Tests for the Model submenu, _switch_model, and _unload_model."""
 
     def _make_labeler_with_models_dir(
-        self, tmp_path: Path, *, event_bus: EventBus | None = None,
+        self,
+        tmp_path: Path,
+        *,
+        event_bus: EventBus | None = None,
     ) -> TrayLabeler:
         models_dir = tmp_path / "models"
         models_dir.mkdir(exist_ok=True)
@@ -2416,7 +2652,7 @@ class TestSwitchModel:
         for item in menu.items:  # type: ignore[attr-defined]
             if hasattr(item, "text") and item.text == "Model":
                 return item.submenu
-        pytest.fail("Model submenu not found in menu")
+        raise AssertionError("Model submenu not found in menu")
 
     # -- submenu listing --
 
@@ -2426,8 +2662,16 @@ class TestSwitchModel:
 
         labeler = self._make_labeler_with_models_dir(tmp_path)
         bundles = [
-            ModelBundle(model_id="run_20260301", path=tmp_path / "models" / "run_20260301", valid=True),
-            ModelBundle(model_id="run_20260226", path=tmp_path / "models" / "run_20260226", valid=True),
+            ModelBundle(
+                model_id="run_20260301",
+                path=tmp_path / "models" / "run_20260301",
+                valid=True,
+            ),
+            ModelBundle(
+                model_id="run_20260226",
+                path=tmp_path / "models" / "run_20260226",
+                valid=True,
+            ),
         ]
 
         with patch("taskclf.model_registry.list_bundles", return_value=bundles):
@@ -2445,8 +2689,15 @@ class TestSwitchModel:
 
         labeler = self._make_labeler_with_models_dir(tmp_path)
         bundles = [
-            ModelBundle(model_id="run_good", path=tmp_path / "models" / "run_good", valid=True),
-            ModelBundle(model_id="run_bad", path=tmp_path / "models" / "run_bad", valid=False, invalid_reason="missing metadata"),
+            ModelBundle(
+                model_id="run_good", path=tmp_path / "models" / "run_good", valid=True
+            ),
+            ModelBundle(
+                model_id="run_bad",
+                path=tmp_path / "models" / "run_bad",
+                valid=False,
+                invalid_reason="missing metadata",
+            ),
         ]
 
         with patch("taskclf.model_registry.list_bundles", return_value=bundles):
@@ -2469,7 +2720,11 @@ class TestSwitchModel:
 
         bundles = [
             ModelBundle(model_id="run_20260301", path=model_path, valid=True),
-            ModelBundle(model_id="run_20260226", path=tmp_path / "models" / "run_20260226", valid=True),
+            ModelBundle(
+                model_id="run_20260226",
+                path=tmp_path / "models" / "run_20260226",
+                valid=True,
+            ),
         ]
 
         with patch("taskclf.model_registry.list_bundles", return_value=bundles):
@@ -2491,7 +2746,11 @@ class TestSwitchModel:
         assert labeler._model_dir is None
 
         bundles = [
-            ModelBundle(model_id="run_20260301", path=tmp_path / "models" / "run_20260301", valid=True),
+            ModelBundle(
+                model_id="run_20260301",
+                path=tmp_path / "models" / "run_20260301",
+                valid=True,
+            ),
         ]
 
         with patch("taskclf.model_registry.list_bundles", return_value=bundles):
@@ -2515,7 +2774,9 @@ class TestSwitchModel:
         mock_suggester._predictor._metadata.schema_hash = "hash_301"
 
         with (
-            patch("taskclf.ui.tray._LabelSuggester", return_value=mock_suggester) as mock_cls,
+            patch(
+                "taskclf.ui.tray._LabelSuggester", return_value=mock_suggester
+            ) as mock_cls,
             patch.object(labeler, "_notify") as mock_notify,
         ):
             labeler._switch_model(new_path)
@@ -2539,7 +2800,10 @@ class TestSwitchModel:
         new_path = tmp_path / "models" / "run_broken"
 
         with (
-            patch("taskclf.ui.tray._LabelSuggester", side_effect=RuntimeError("corrupt model")),
+            patch(
+                "taskclf.ui.tray._LabelSuggester",
+                side_effect=RuntimeError("corrupt model"),
+            ),
             patch.object(labeler, "_notify") as mock_notify,
         ):
             labeler._switch_model(new_path)
@@ -2621,7 +2885,12 @@ class TestSwitchModel:
 
         labeler = self._make_labeler_with_models_dir(tmp_path)
         bundles = [
-            ModelBundle(model_id="run_bad", path=tmp_path / "models" / "run_bad", valid=False, invalid_reason="broken"),
+            ModelBundle(
+                model_id="run_bad",
+                path=tmp_path / "models" / "run_bad",
+                valid=False,
+                invalid_reason="broken",
+            ),
         ]
 
         with patch("taskclf.model_registry.list_bundles", return_value=bundles):
@@ -2670,8 +2939,10 @@ class TestCheckRetrain:
         """When no models exist, notify 'Retrain recommended: no models found'."""
         bus, _ = _capture_bus()
         labeler = TrayLabeler(
-            data_dir=tmp_path, model_dir=None,
-            models_dir=tmp_path / "models", event_bus=bus,
+            data_dir=tmp_path,
+            model_dir=None,
+            models_dir=tmp_path / "models",
+            event_bus=bus,
         )
         (tmp_path / "models").mkdir(exist_ok=True)
 
@@ -2700,8 +2971,10 @@ class TestCheckRetrain:
         )
 
         labeler = TrayLabeler(
-            data_dir=tmp_path, model_dir=None,
-            models_dir=models_dir, event_bus=bus,
+            data_dir=tmp_path,
+            model_dir=None,
+            models_dir=models_dir,
+            event_bus=bus,
         )
 
         with (
@@ -2731,8 +3004,10 @@ class TestCheckRetrain:
         )
 
         labeler = TrayLabeler(
-            data_dir=tmp_path, model_dir=None,
-            models_dir=models_dir, event_bus=bus,
+            data_dir=tmp_path,
+            model_dir=None,
+            models_dir=models_dir,
+            event_bus=bus,
         )
 
         with (
@@ -2765,14 +3040,18 @@ class TestCheckRetrain:
         )
 
         labeler = TrayLabeler(
-            data_dir=tmp_path, model_dir=None,
-            models_dir=models_dir, event_bus=bus,
+            data_dir=tmp_path,
+            model_dir=None,
+            models_dir=models_dir,
+            event_bus=bus,
             retrain_config=config_path,
         )
 
         with (
             patch("taskclf.train.retrain.find_latest_model", return_value=model_path),
-            patch("taskclf.train.retrain.check_retrain_due", return_value=False) as mock_check,
+            patch(
+                "taskclf.train.retrain.check_retrain_due", return_value=False
+            ) as mock_check,
             patch.object(labeler, "_notify") as mock_notify,
         ):
             labeler._check_retrain()
@@ -2784,8 +3063,10 @@ class TestCheckRetrain:
         """On exception, notify 'Check failed: ...'."""
         bus, _ = _capture_bus()
         labeler = TrayLabeler(
-            data_dir=tmp_path, model_dir=None,
-            models_dir=tmp_path / "models", event_bus=bus,
+            data_dir=tmp_path,
+            model_dir=None,
+            models_dir=tmp_path / "models",
+            event_bus=bus,
         )
         (tmp_path / "models").mkdir(exist_ok=True)
 
@@ -2807,8 +3088,10 @@ class TestCheckRetrain:
         """Check Retrain is enabled when models_dir is set."""
         bus, _ = _capture_bus()
         labeler = TrayLabeler(
-            data_dir=tmp_path, model_dir=None,
-            models_dir=tmp_path / "models", event_bus=bus,
+            data_dir=tmp_path,
+            model_dir=None,
+            models_dir=tmp_path / "models",
+            event_bus=bus,
         )
         (tmp_path / "models").mkdir(exist_ok=True)
 
@@ -2829,7 +3112,9 @@ class TestCheckRetrain:
         assert retrain_item is not None
         assert retrain_item.enabled is True
 
-    def test_check_retrain_in_submenu_disabled_without_models_dir(self, tmp_path: Path) -> None:
+    def test_check_retrain_in_submenu_disabled_without_models_dir(
+        self, tmp_path: Path
+    ) -> None:
         """Check Retrain is disabled when models_dir is None."""
         bus, _ = _capture_bus()
         labeler = _make_tray_labeler(tmp_path, event_bus=bus)
@@ -2868,7 +3153,10 @@ class TestDynamicModelMenuRefresh:
     """
 
     def _make_labeler_with_models_dir(
-        self, tmp_path: Path, *, event_bus: EventBus | None = None,
+        self,
+        tmp_path: Path,
+        *,
+        event_bus: EventBus | None = None,
     ) -> TrayLabeler:
         models_dir = tmp_path / "models"
         models_dir.mkdir(exist_ok=True)
@@ -2884,7 +3172,7 @@ class TestDynamicModelMenuRefresh:
         for item in menu.items:  # type: ignore[attr-defined]
             if hasattr(item, "text") and item.text == "Model":
                 return item.submenu
-        pytest.fail("Model submenu not found in menu")
+        raise AssertionError("Model submenu not found in menu")
 
     def _submenu_labels(self, submenu: object) -> list[str]:
         labels: list[str] = []
@@ -2904,11 +3192,17 @@ class TestDynamicModelMenuRefresh:
 
         labeler = self._make_labeler_with_models_dir(tmp_path)
         bundles_v1 = [
-            ModelBundle(model_id="run_A", path=tmp_path / "models" / "run_A", valid=True),
+            ModelBundle(
+                model_id="run_A", path=tmp_path / "models" / "run_A", valid=True
+            ),
         ]
         bundles_v2 = [
-            ModelBundle(model_id="run_A", path=tmp_path / "models" / "run_A", valid=True),
-            ModelBundle(model_id="run_B", path=tmp_path / "models" / "run_B", valid=True),
+            ModelBundle(
+                model_id="run_A", path=tmp_path / "models" / "run_A", valid=True
+            ),
+            ModelBundle(
+                model_id="run_B", path=tmp_path / "models" / "run_B", valid=True
+            ),
         ]
 
         dynamic_menu = pystray.Menu(labeler._build_menu_items)
@@ -2934,7 +3228,9 @@ class TestDynamicModelMenuRefresh:
 
         labeler = self._make_labeler_with_models_dir(tmp_path)
         bundles = [
-            ModelBundle(model_id="run_A", path=tmp_path / "models" / "run_A", valid=True),
+            ModelBundle(
+                model_id="run_A", path=tmp_path / "models" / "run_A", valid=True
+            ),
         ]
 
         with patch("taskclf.model_registry.list_bundles", return_value=bundles):
@@ -2953,11 +3249,23 @@ class TestDynamicModelMenuRefresh:
         labeler = self._make_labeler_with_models_dir(tmp_path)
 
         bundles_v1 = [
-            ModelBundle(model_id="run_20260301", path=tmp_path / "models" / "run_20260301", valid=True),
+            ModelBundle(
+                model_id="run_20260301",
+                path=tmp_path / "models" / "run_20260301",
+                valid=True,
+            ),
         ]
         bundles_v2 = [
-            ModelBundle(model_id="run_20260301", path=tmp_path / "models" / "run_20260301", valid=True),
-            ModelBundle(model_id="run_20260306", path=tmp_path / "models" / "run_20260306", valid=True),
+            ModelBundle(
+                model_id="run_20260301",
+                path=tmp_path / "models" / "run_20260301",
+                valid=True,
+            ),
+            ModelBundle(
+                model_id="run_20260306",
+                path=tmp_path / "models" / "run_20260306",
+                valid=True,
+            ),
         ]
 
         with patch("taskclf.model_registry.list_bundles", return_value=bundles_v1):
@@ -2980,11 +3288,17 @@ class TestDynamicModelMenuRefresh:
         labeler = self._make_labeler_with_models_dir(tmp_path)
 
         bundles_v1 = [
-            ModelBundle(model_id="run_old", path=tmp_path / "models" / "run_old", valid=True),
-            ModelBundle(model_id="run_new", path=tmp_path / "models" / "run_new", valid=True),
+            ModelBundle(
+                model_id="run_old", path=tmp_path / "models" / "run_old", valid=True
+            ),
+            ModelBundle(
+                model_id="run_new", path=tmp_path / "models" / "run_new", valid=True
+            ),
         ]
         bundles_v2 = [
-            ModelBundle(model_id="run_new", path=tmp_path / "models" / "run_new", valid=True),
+            ModelBundle(
+                model_id="run_new", path=tmp_path / "models" / "run_new", valid=True
+            ),
         ]
 
         with patch("taskclf.model_registry.list_bundles", return_value=bundles_v1):
@@ -3012,7 +3326,11 @@ class TestDynamicModelMenuRefresh:
         assert "(no models found)" in labels1
 
         bundles = [
-            ModelBundle(model_id="first_model", path=tmp_path / "models" / "first_model", valid=True),
+            ModelBundle(
+                model_id="first_model",
+                path=tmp_path / "models" / "first_model",
+                valid=True,
+            ),
         ]
         with patch("taskclf.model_registry.list_bundles", return_value=bundles):
             menu2 = labeler._build_menu()
@@ -3028,7 +3346,9 @@ class TestDynamicModelMenuRefresh:
         labeler = self._make_labeler_with_models_dir(tmp_path)
 
         bundles = [
-            ModelBundle(model_id="run_A", path=tmp_path / "models" / "run_A", valid=True),
+            ModelBundle(
+                model_id="run_A", path=tmp_path / "models" / "run_A", valid=True
+            ),
         ]
         with patch("taskclf.model_registry.list_bundles", return_value=bundles):
             menu1 = labeler._build_menu()
@@ -3067,7 +3387,9 @@ class TestTrayCrashHandler:
     """TC-CRASH-TRAY: TrayLabeler.run() writes crash report on unhandled exceptions."""
 
     def test_run_writes_crash_report_on_exception(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Unhandled exception in _run_inner produces a crash file."""
         monkeypatch.setenv("TASKCLF_HOME", str(tmp_path))
@@ -3091,7 +3413,9 @@ class TestTrayCrashHandler:
         assert "tray boom" in contents
 
     def test_run_attempts_desktop_notification_on_crash(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """On crash, a desktop notification is attempted with the crash path."""
         monkeypatch.setenv("TASKCLF_HOME", str(tmp_path))
@@ -3102,7 +3426,9 @@ class TestTrayCrashHandler:
         labeler = _make_tray_labeler(tmp_path, event_bus=bus)
 
         with (
-            patch.object(labeler, "_run_inner", side_effect=RuntimeError("notify boom")),
+            patch.object(
+                labeler, "_run_inner", side_effect=RuntimeError("notify boom")
+            ),
             patch("taskclf.ui.tray._send_desktop_notification") as mock_notify,
             pytest.raises(RuntimeError, match="notify boom"),
         ):
@@ -3113,7 +3439,9 @@ class TestTrayCrashHandler:
         assert call_args[0][0] == "taskclf crashed"
         assert "crash_" in call_args[0][1]
 
-    def test_run_reraises_original_exception(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_run_reraises_original_exception(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """The original exception is re-raised after writing the crash report."""
         monkeypatch.setenv("TASKCLF_HOME", str(tmp_path))
         (tmp_path / "logs").mkdir(parents=True, exist_ok=True)
@@ -3177,7 +3505,10 @@ class TestNoTrayIntegration:
         """TC-TRAY-NOTRAY-001: no_tray + browser → _start_ui_embedded."""
         bus, _ = _capture_bus()
         labeler = TrayLabeler(
-            data_dir=tmp_path, no_tray=True, browser=True, event_bus=bus,
+            data_dir=tmp_path,
+            no_tray=True,
+            browser=True,
+            event_bus=bus,
         )
         monitor_called = threading.Event()
 
@@ -3187,7 +3518,8 @@ class TestNoTrayIntegration:
             )
             stack.enter_context(
                 patch.object(
-                    labeler._monitor, "run",
+                    labeler._monitor,
+                    "run",
                     side_effect=lambda: monitor_called.set(),
                 ),
             )
@@ -3200,7 +3532,10 @@ class TestNoTrayIntegration:
         """TC-TRAY-NOTRAY-002: no_tray + browser=False → _start_ui_subprocess."""
         bus, _ = _capture_bus()
         labeler = TrayLabeler(
-            data_dir=tmp_path, no_tray=True, browser=False, event_bus=bus,
+            data_dir=tmp_path,
+            no_tray=True,
+            browser=False,
+            event_bus=bus,
         )
         monitor_called = threading.Event()
 
@@ -3210,7 +3545,8 @@ class TestNoTrayIntegration:
             )
             stack.enter_context(
                 patch.object(
-                    labeler._monitor, "run",
+                    labeler._monitor,
+                    "run",
                     side_effect=lambda: monitor_called.set(),
                 ),
             )
@@ -3223,7 +3559,10 @@ class TestNoTrayIntegration:
         """TC-TRAY-NOTRAY-003: monitor.run() is invoked from a daemon thread."""
         bus, _ = _capture_bus()
         labeler = TrayLabeler(
-            data_dir=tmp_path, no_tray=True, browser=True, event_bus=bus,
+            data_dir=tmp_path,
+            no_tray=True,
+            browser=True,
+            event_bus=bus,
         )
         monitor_called = threading.Event()
         monitor_thread_name: list[str] = []
@@ -3251,7 +3590,10 @@ class TestNoTrayIntegration:
         """
         bus, _ = _capture_bus()
         labeler = TrayLabeler(
-            data_dir=tmp_path, no_tray=True, browser=True, event_bus=bus,
+            data_dir=tmp_path,
+            no_tray=True,
+            browser=True,
+            event_bus=bus,
         )
 
         stop_event = MagicMock()
@@ -3276,7 +3618,10 @@ class TestNoTrayIntegration:
         """TC-TRAY-NOTRAY-005: _cleanup_ui is registered with atexit."""
         bus, _ = _capture_bus()
         labeler = TrayLabeler(
-            data_dir=tmp_path, no_tray=True, browser=True, event_bus=bus,
+            data_dir=tmp_path,
+            no_tray=True,
+            browser=True,
+            event_bus=bus,
         )
         monitor_called = threading.Event()
 
@@ -3286,7 +3631,8 @@ class TestNoTrayIntegration:
             patch.object(labeler, "_start_ui_embedded"),
             patch.object(labeler, "_cleanup_ui"),
             patch.object(
-                labeler._monitor, "run",
+                labeler._monitor,
+                "run",
                 side_effect=lambda: monitor_called.set(),
             ),
         ):
@@ -3308,7 +3654,10 @@ class TestRunInnerSmoke:
         """TC-TRAY-RUN-001: pystray.Icon constructed with correct args and run() called."""
         bus, _ = _capture_bus()
         labeler = TrayLabeler(
-            data_dir=tmp_path, no_tray=False, browser=True, event_bus=bus,
+            data_dir=tmp_path,
+            no_tray=False,
+            browser=True,
+            event_bus=bus,
         )
 
         fake_icon = MagicMock()
@@ -3335,7 +3684,10 @@ class TestRunInnerSmoke:
         """TC-TRAY-RUN-002: _cleanup_ui is called in the finally block after icon.run()."""
         bus, _ = _capture_bus()
         labeler = TrayLabeler(
-            data_dir=tmp_path, no_tray=False, browser=True, event_bus=bus,
+            data_dir=tmp_path,
+            no_tray=False,
+            browser=True,
+            event_bus=bus,
         )
         call_order: list[str] = []
         fake_icon = MagicMock()
@@ -3346,7 +3698,8 @@ class TestRunInnerSmoke:
             patch("atexit.register"),
             patch.object(labeler, "_start_ui_embedded"),
             patch.object(
-                labeler, "_cleanup_ui",
+                labeler,
+                "_cleanup_ui",
                 side_effect=lambda: call_order.append("cleanup"),
             ),
             patch.object(labeler._monitor, "run"),
@@ -3360,7 +3713,10 @@ class TestRunInnerSmoke:
         """TC-TRAY-RUN-003: _cleanup_ui runs even if icon.run() raises."""
         bus, _ = _capture_bus()
         labeler = TrayLabeler(
-            data_dir=tmp_path, no_tray=False, browser=True, event_bus=bus,
+            data_dir=tmp_path,
+            no_tray=False,
+            browser=True,
+            event_bus=bus,
         )
         fake_icon = MagicMock()
         fake_icon.run.side_effect = RuntimeError("icon crashed")
@@ -3382,7 +3738,10 @@ class TestRunInnerSmoke:
         """TC-TRAY-RUN-004: menu is constructed with _build_menu_items as callable."""
         bus, _ = _capture_bus()
         labeler = TrayLabeler(
-            data_dir=tmp_path, no_tray=False, browser=True, event_bus=bus,
+            data_dir=tmp_path,
+            no_tray=False,
+            browser=True,
+            event_bus=bus,
         )
         fake_icon = MagicMock()
 
@@ -3399,6 +3758,7 @@ class TestRunInnerSmoke:
         call_kwargs = mock_icon_cls.call_args[1]
         menu = call_kwargs["menu"]
         import pystray
+
         assert isinstance(menu, pystray.Menu)
         # Accessing .items invokes the callable to get fresh items
         items = menu.items
@@ -3416,7 +3776,8 @@ class TestMenuStructureSnapshot:
     _SEPARATOR_TEXT = "- - - -"
 
     def _extract_top_level(
-        self, labeler: TrayLabeler,
+        self,
+        labeler: TrayLabeler,
     ) -> list[tuple[str, bool]]:
         """Return ``[(label_or_SEPARATOR, has_submenu), ...]`` for the top menu.
 
@@ -3442,7 +3803,8 @@ class TestMenuStructureSnapshot:
         """TC-TRAY-MENU-001: top-level menu has all expected items in order."""
         bus, _ = _capture_bus()
         labeler = TrayLabeler(
-            data_dir=tmp_path, models_dir=tmp_path / "models",
+            data_dir=tmp_path,
+            models_dir=tmp_path / "models",
             event_bus=bus,
         )
         (tmp_path / "models").mkdir(exist_ok=True)
@@ -3471,14 +3833,14 @@ class TestMenuStructureSnapshot:
         """TC-TRAY-MENU-002: separators appear at positions 2, 6, 12."""
         bus, _ = _capture_bus()
         labeler = TrayLabeler(
-            data_dir=tmp_path, models_dir=tmp_path / "models",
+            data_dir=tmp_path,
+            models_dir=tmp_path / "models",
             event_bus=bus,
         )
         (tmp_path / "models").mkdir(exist_ok=True)
         structure = self._extract_top_level(labeler)
         sep_positions = [
-            i for i, (text, _) in enumerate(structure)
-            if text == self._SEPARATOR_TEXT
+            i for i, (text, _) in enumerate(structure) if text == self._SEPARATOR_TEXT
         ]
         assert sep_positions == [2, 6, 12]
 
@@ -3486,14 +3848,13 @@ class TestMenuStructureSnapshot:
         """TC-TRAY-MENU-003: 'Model' is the only item with a submenu."""
         bus, _ = _capture_bus()
         labeler = TrayLabeler(
-            data_dir=tmp_path, models_dir=tmp_path / "models",
+            data_dir=tmp_path,
+            models_dir=tmp_path / "models",
             event_bus=bus,
         )
         (tmp_path / "models").mkdir(exist_ok=True)
         structure = self._extract_top_level(labeler)
-        submenu_items = [
-            label for label, has_sub in structure if has_sub
-        ]
+        submenu_items = [label for label, has_sub in structure if has_sub]
         assert submenu_items == ["Model"]
 
     def test_open_dashboard_is_default(self, tmp_path: Path) -> None:
@@ -3525,7 +3886,8 @@ class TestMenuStructureSnapshot:
         """TC-TRAY-MENU-006: Model submenu shows '(no models found)' when empty."""
         bus, _ = _capture_bus()
         labeler = TrayLabeler(
-            data_dir=tmp_path, models_dir=tmp_path / "models",
+            data_dir=tmp_path,
+            models_dir=tmp_path / "models",
             event_bus=bus,
         )
         (tmp_path / "models").mkdir(exist_ok=True)
@@ -3546,14 +3908,19 @@ class TestMenuStructureSnapshot:
 
         bus, _ = _capture_bus()
         labeler = TrayLabeler(
-            data_dir=tmp_path, models_dir=tmp_path / "models",
+            data_dir=tmp_path,
+            models_dir=tmp_path / "models",
             event_bus=bus,
         )
         (tmp_path / "models").mkdir(exist_ok=True)
 
         bundles = [
-            ModelBundle(model_id="run_X", path=tmp_path / "models" / "run_X", valid=True),
-            ModelBundle(model_id="run_Y", path=tmp_path / "models" / "run_Y", valid=True),
+            ModelBundle(
+                model_id="run_X", path=tmp_path / "models" / "run_X", valid=True
+            ),
+            ModelBundle(
+                model_id="run_Y", path=tmp_path / "models" / "run_Y", valid=True
+            ),
         ]
 
         with patch("taskclf.model_registry.list_bundles", return_value=bundles):
@@ -3574,7 +3941,8 @@ class TestMenuStructureSnapshot:
         """TC-TRAY-MENU-008: total top-level item count is 14 (11 + 3 separators)."""
         bus, _ = _capture_bus()
         labeler = TrayLabeler(
-            data_dir=tmp_path, models_dir=tmp_path / "models",
+            data_dir=tmp_path,
+            models_dir=tmp_path / "models",
             event_bus=bus,
         )
         (tmp_path / "models").mkdir(exist_ok=True)

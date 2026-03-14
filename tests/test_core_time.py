@@ -12,9 +12,16 @@ from taskclf.core.time import align_to_bucket, generate_bucket_range, to_naive_u
 _UTC = timezone.utc
 
 
-def _utc(*args: int) -> datetime:
+def _utc(
+    year: int,
+    month: int,
+    day: int,
+    hour: int = 0,
+    minute: int = 0,
+    second: int = 0,
+) -> datetime:
     """Shorthand for ``datetime(..., tzinfo=timezone.utc)``."""
-    return datetime(*args, tzinfo=_UTC)
+    return datetime(year, month, day, hour, minute, second, tzinfo=_UTC)
 
 
 def test_tc_time_001_bucket_alignment() -> None:
@@ -49,8 +56,8 @@ def test_tc_time_004_dst_transition() -> None:
     eastern_std = timezone(timedelta(hours=-5))
     eastern_dst = timezone(timedelta(hours=-4))
 
-    ts_std = datetime(2025, 3, 9, 1, 30, 15, tzinfo=eastern_std)   # 06:30:15 UTC
-    ts_dst = datetime(2025, 3, 9, 3, 30, 15, tzinfo=eastern_dst)   # 07:30:15 UTC
+    ts_std = datetime(2025, 3, 9, 1, 30, 15, tzinfo=eastern_std)  # 06:30:15 UTC
+    ts_dst = datetime(2025, 3, 9, 3, 30, 15, tzinfo=eastern_dst)  # 07:30:15 UTC
 
     aligned_std = align_to_bucket(ts_std)
     aligned_dst = align_to_bucket(ts_dst)
@@ -102,7 +109,7 @@ def test_tc_time_009_timezone_aware_inputs() -> None:
     """TC-TIME-009: timezone-aware inputs produce aware UTC results."""
     eastern = timezone(timedelta(hours=-5))
     start = datetime(2025, 6, 15, 10, 0, 0, tzinfo=eastern)  # 15:00 UTC
-    end = datetime(2025, 6, 15, 10, 3, 0, tzinfo=eastern)    # 15:03 UTC
+    end = datetime(2025, 6, 15, 10, 3, 0, tzinfo=eastern)  # 15:03 UTC
     buckets = generate_bucket_range(start, end)
     assert len(buckets) == 3
     for b in buckets:

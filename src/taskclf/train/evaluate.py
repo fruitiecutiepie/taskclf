@@ -14,8 +14,6 @@ from pydantic import BaseModel
 from sklearn.metrics import accuracy_score, f1_score
 from sklearn.preprocessing import LabelEncoder
 
-logger = logging.getLogger(__name__)
-
 from taskclf.core.defaults import DEFAULT_REJECT_THRESHOLD, MIXED_UNKNOWN
 from taskclf.core.metrics import (
     calibration_curve_data,
@@ -28,6 +26,8 @@ from taskclf.core.metrics import (
 )
 from taskclf.core.types import LABEL_SET_V1
 from taskclf.infer.batch import predict_proba
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Acceptance thresholds (from docs/guide/acceptance.md)
@@ -90,10 +90,14 @@ def _check_acceptance(
     details: dict[str, str] = {}
 
     checks["macro_f1"] = macro_f1 >= _ACCEPT_MACRO_F1
-    details["macro_f1"] = f"{macro_f1:.4f} >= {_ACCEPT_MACRO_F1} -> {'PASS' if checks['macro_f1'] else 'FAIL'}"
+    details["macro_f1"] = (
+        f"{macro_f1:.4f} >= {_ACCEPT_MACRO_F1} -> {'PASS' if checks['macro_f1'] else 'FAIL'}"
+    )
 
     checks["weighted_f1"] = weighted_f1 >= _ACCEPT_WEIGHTED_F1
-    details["weighted_f1"] = f"{weighted_f1:.4f} >= {_ACCEPT_WEIGHTED_F1} -> {'PASS' if checks['weighted_f1'] else 'FAIL'}"
+    details["weighted_f1"] = (
+        f"{weighted_f1:.4f} >= {_ACCEPT_WEIGHTED_F1} -> {'PASS' if checks['weighted_f1'] else 'FAIL'}"
+    )
 
     bi = per_class.get("BreakIdle", {})
     bi_prec = bi.get("precision", 0.0)
@@ -110,18 +114,21 @@ def _check_acceptance(
     )
 
     low_prec = [
-        (lbl, m["precision"]) for lbl, m in per_class.items()
+        (lbl, m["precision"])
+        for lbl, m in per_class.items()
         if m["precision"] < _ACCEPT_MIN_CLASS_PRECISION
     ]
     checks["no_class_below_50_precision"] = len(low_prec) == 0
     if low_prec:
-        details["no_class_below_50_precision"] = (
-            "FAIL: " + ", ".join(f"{l}={p:.4f}" for l, p in low_prec)
+        details["no_class_below_50_precision"] = "FAIL: " + ", ".join(
+            f"{lbl}={p:.4f}" for lbl, p in low_prec
         )
     else:
         details["no_class_below_50_precision"] = "PASS (all classes >= 0.50)"
 
-    checks["reject_rate_bounds"] = _ACCEPT_REJECT_RATE_MIN <= rr <= _ACCEPT_REJECT_RATE_MAX
+    checks["reject_rate_bounds"] = (
+        _ACCEPT_REJECT_RATE_MIN <= rr <= _ACCEPT_REJECT_RATE_MAX
+    )
     details["reject_rate_bounds"] = (
         f"{rr:.4f} in [{_ACCEPT_REJECT_RATE_MIN}, {_ACCEPT_REJECT_RATE_MAX}] -> "
         f"{'PASS' if checks['reject_rate_bounds'] else 'FAIL'}"
@@ -182,8 +189,7 @@ def evaluate_model(
     confidences = y_proba.max(axis=1)
     rejected = confidences < reject_threshold
     labels_with_reject = [
-        MIXED_UNKNOWN if rej else lbl
-        for lbl, rej in zip(y_pred_labels, rejected)
+        MIXED_UNKNOWN if rej else lbl for lbl, rej in zip(y_pred_labels, rejected)
     ]
 
     y_true = list(test_df["label"].values)
@@ -209,19 +215,42 @@ def evaluate_model(
         if any(seen_mask):
             seen_true = [y for y, m in zip(y_true, seen_mask) if m]
             seen_pred = [y for y, m in zip(y_pred_labels, seen_mask) if m]
-            seen_f1 = round(float(
-                f1_score(seen_true, seen_pred, labels=label_names, average="macro", zero_division=0)
-            ), 4)
+            seen_f1 = round(
+                float(
+                    f1_score(
+                        seen_true,
+                        seen_pred,
+                        labels=label_names,
+                        average="macro",
+                        zero_division=0,
+                    )
+                ),
+                4,
+            )
 
         if any(unseen_mask):
             unseen_true = [y for y, m in zip(y_true, unseen_mask) if m]
             unseen_pred = [y for y, m in zip(y_pred_labels, unseen_mask) if m]
-            unseen_f1 = round(float(
-                f1_score(unseen_true, unseen_pred, labels=label_names, average="macro", zero_division=0)
-            ), 4)
+            unseen_f1 = round(
+                float(
+                    f1_score(
+                        unseen_true,
+                        unseen_pred,
+                        labels=label_names,
+                        average="macro",
+                        zero_division=0,
+                    )
+                ),
+                4,
+            )
 
     checks, check_details = _check_acceptance(
-        metrics["macro_f1"], metrics["weighted_f1"], pc, rr, seen_f1, unseen_f1,
+        metrics["macro_f1"],
+        metrics["weighted_f1"],
+        pc,
+        rr,
+        seen_f1,
+        unseen_f1,
     )
 
     return EvaluationReport(
@@ -296,22 +325,31 @@ def tune_reject_threshold(
 
         accepted_mask = ~rejected
         if accepted_mask.any():
-            acc = float(accuracy_score(y_true[accepted_mask], y_pred_labels[accepted_mask]))
-            mf1 = float(f1_score(
-                y_true[accepted_mask], y_pred_labels[accepted_mask],
-                labels=label_names, average="macro", zero_division=0,
-            ))
+            acc = float(
+                accuracy_score(y_true[accepted_mask], y_pred_labels[accepted_mask])
+            )
+            mf1 = float(
+                f1_score(
+                    y_true[accepted_mask],
+                    y_pred_labels[accepted_mask],
+                    labels=label_names,
+                    average="macro",
+                    zero_division=0,
+                )
+            )
         else:
             acc = 0.0
             mf1 = 0.0
 
-        sweep.append({
-            "threshold": round(float(t), 4),
-            "accuracy_on_accepted": round(acc, 4),
-            "reject_rate": round(rr, 4),
-            "coverage": round(coverage, 4),
-            "macro_f1": round(mf1, 4),
-        })
+        sweep.append(
+            {
+                "threshold": round(float(t), 4),
+                "accuracy_on_accepted": round(acc, 4),
+                "reject_rate": round(rr, 4),
+                "coverage": round(coverage, 4),
+                "macro_f1": round(mf1, 4),
+            }
+        )
 
         if reject_rate_min <= rr <= reject_rate_max and acc > best_acc:
             best_acc = acc

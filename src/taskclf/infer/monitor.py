@@ -6,7 +6,6 @@ the telemetry store and the active labeling queue.
 
 from __future__ import annotations
 
-import json
 from datetime import datetime, timezone
 from enum import StrEnum
 from pathlib import Path
@@ -146,69 +145,80 @@ def run_drift_check(
             severity: Literal["warning", "critical"] = (
                 "critical" if result.psi > psi_threshold * 2 else "warning"
             )
-            alerts.append(DriftAlert(
-                trigger=trigger,
-                details={
-                    "feature": result.feature,
-                    "psi": result.psi,
-                    "ks_statistic": result.ks_statistic,
-                    "ks_p_value": result.ks_p_value,
-                },
-                severity=severity,
-                affected_features=[result.feature],
-                timestamp=now,
-            ))
+            alerts.append(
+                DriftAlert(
+                    trigger=trigger,
+                    details={
+                        "feature": result.feature,
+                        "psi": result.psi,
+                        "ks_statistic": result.ks_statistic,
+                        "ks_p_value": result.ks_p_value,
+                    },
+                    severity=severity,
+                    affected_features=[result.feature],
+                    timestamp=now,
+                )
+            )
 
     rr_drift = detect_reject_rate_increase(
-        ref_labels, cur_labels,
+        ref_labels,
+        cur_labels,
         threshold=reject_increase_threshold,
         reject_label=reject_label,
     )
     if rr_drift.is_flagged:
-        alerts.append(DriftAlert(
-            trigger=DriftTrigger.reject_rate_increase,
-            details={
-                "ref_rate": rr_drift.ref_rate,
-                "cur_rate": rr_drift.cur_rate,
-                "increase": rr_drift.increase,
-            },
-            severity="critical",
-            timestamp=now,
-        ))
+        alerts.append(
+            DriftAlert(
+                trigger=DriftTrigger.reject_rate_increase,
+                details={
+                    "ref_rate": rr_drift.ref_rate,
+                    "cur_rate": rr_drift.cur_rate,
+                    "increase": rr_drift.increase,
+                },
+                severity="critical",
+                timestamp=now,
+            )
+        )
 
     ent_drift: EntropyDrift | None = None
     if ref_probs is not None and cur_probs is not None:
         ent_drift = detect_entropy_spike(
-            ref_probs, cur_probs,
+            ref_probs,
+            cur_probs,
             spike_multiplier=entropy_multiplier,
         )
         if ent_drift.is_flagged:
-            alerts.append(DriftAlert(
-                trigger=DriftTrigger.entropy_spike,
-                details={
-                    "ref_mean_entropy": ent_drift.ref_mean_entropy,
-                    "cur_mean_entropy": ent_drift.cur_mean_entropy,
-                    "ratio": ent_drift.ratio,
-                },
-                severity="warning",
-                timestamp=now,
-            ))
+            alerts.append(
+                DriftAlert(
+                    trigger=DriftTrigger.entropy_spike,
+                    details={
+                        "ref_mean_entropy": ent_drift.ref_mean_entropy,
+                        "cur_mean_entropy": ent_drift.cur_mean_entropy,
+                        "ratio": ent_drift.ratio,
+                    },
+                    severity="warning",
+                    timestamp=now,
+                )
+            )
 
     cls_shift = detect_class_shift(
-        ref_labels, cur_labels,
+        ref_labels,
+        cur_labels,
         threshold=class_shift_threshold,
     )
     if cls_shift.is_flagged:
-        alerts.append(DriftAlert(
-            trigger=DriftTrigger.class_shift,
-            details={
-                "max_shift": cls_shift.max_shift,
-                "shifted_classes": cls_shift.shifted_classes,
-            },
-            severity="warning",
-            affected_features=cls_shift.shifted_classes,
-            timestamp=now,
-        ))
+        alerts.append(
+            DriftAlert(
+                trigger=DriftTrigger.class_shift,
+                details={
+                    "max_shift": cls_shift.max_shift,
+                    "shifted_classes": cls_shift.shifted_classes,
+                },
+                severity="warning",
+                affected_features=cls_shift.shifted_classes,
+                timestamp=now,
+            )
+        )
 
     telemetry = compute_telemetry(
         cur_features_df,
@@ -224,7 +234,9 @@ def run_drift_check(
     else:
         parts.append(f"{len(alerts)} alert(s) raised.")
         if feat_report.flagged_features:
-            parts.append(f"Drifted features: {', '.join(feat_report.flagged_features)}.")
+            parts.append(
+                f"Drifted features: {', '.join(feat_report.flagged_features)}."
+            )
         if rr_drift.is_flagged:
             parts.append(
                 f"Reject rate increased from {rr_drift.ref_rate:.2%} "
@@ -233,9 +245,7 @@ def run_drift_check(
         if ent_drift is not None and ent_drift.is_flagged:
             parts.append(f"Entropy spike: {ent_drift.ratio:.1f}x reference.")
         if cls_shift.is_flagged:
-            parts.append(
-                f"Class shift in: {', '.join(cls_shift.shifted_classes)}."
-            )
+            parts.append(f"Class shift in: {', '.join(cls_shift.shifted_classes)}.")
 
     return DriftReport(
         alerts=alerts,

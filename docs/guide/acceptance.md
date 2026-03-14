@@ -1,8 +1,8 @@
 # Acceptance Criteria & Quality Gates v1
 
-Version: 1.0  
-Status: Stable  
-Last Updated: 2026-02-23  
+Version: 1.0
+Status: Stable
+Last Updated: 2026-02-23
 
 This document defines measurable quality thresholds required for:
 

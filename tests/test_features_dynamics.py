@@ -156,7 +156,12 @@ class TestComputeBatchEdgeCases:
         mouse = [100.0, 200.0, 300.0, 400.0, 500.0]
 
         results = DynamicsTracker.compute_batch(
-            keys, clicks, mouse, rolling_15=3,
+            keys,
+            clicks,
+            mouse,
+            rolling_15=3,
         )
         assert len(results) == 5
-        assert results[2]["keys_per_min_rolling_15"] == 20.0  # mean(10,20,30) with window=3
+        assert (
+            results[2]["keys_per_min_rolling_15"] == 20.0
+        )  # mean(10,20,30) with window=3

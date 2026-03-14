@@ -13,7 +13,7 @@ import logging
 import logging.handlers
 import re
 from pathlib import Path
-from typing import Final, Sequence
+from typing import Final
 
 _SENSITIVE_KEYS: Final[tuple[str, ...]] = (
     "raw_keystrokes",
@@ -46,7 +46,8 @@ def redact_message(message: str) -> str:
         Message with sensitive values replaced by ``[REDACTED]``.
     """
     return _SENSITIVE_PATTERN.sub(
-        lambda m: f"{m.group('key')}={_REDACTED}", message,
+        lambda m: f"{m.group('key')}={_REDACTED}",
+        message,
     )
 
 
@@ -124,6 +125,7 @@ def setup_file_logging(
     """
     if log_dir is None:
         from taskclf.core.paths import taskclf_home
+
         log_dir = taskclf_home() / "logs"
 
     log_dir = Path(log_dir)

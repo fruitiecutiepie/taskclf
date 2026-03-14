@@ -25,11 +25,8 @@ from taskclf.model_registry import (
     ActiveHistoryEntry,
     ActivePointer,
     BundleMetrics,
-    ExclusionRecord,
-    IndexCache,
     ModelBundle,
     SelectionPolicy,
-    SelectionReport,
     append_active_history,
     find_best_model,
     is_compatible,
@@ -185,7 +182,9 @@ class TestListBundlesInvalid:
         assert "metadata.json parse error" in bundles[0].invalid_reason  # type: ignore[operator]
 
     def test_corrupt_metrics_json(self, tmp_path: Path) -> None:
-        _write_bundle(tmp_path / "corrupt_metrics", _VALID_METADATA, metrics="{bad json")
+        _write_bundle(
+            tmp_path / "corrupt_metrics", _VALID_METADATA, metrics="{bad json"
+        )
 
         bundles = list_bundles(tmp_path)
         assert len(bundles) == 1
@@ -284,11 +283,14 @@ class TestIsCompatible:
         _write_bundle(tmp_path / "custom_labels", meta, _VALID_METRICS)
         bundle = list_bundles(tmp_path)[0]
 
-        assert is_compatible(
-            bundle,
-            required_schema_hash=FeatureSchemaV1.SCHEMA_HASH,
-            required_label_set=custom_labels,
-        ) is True
+        assert (
+            is_compatible(
+                bundle,
+                required_schema_hash=FeatureSchemaV1.SCHEMA_HASH,
+                required_label_set=custom_labels,
+            )
+            is True
+        )
         assert is_compatible(bundle) is False
 
 
@@ -339,7 +341,9 @@ class TestScore:
         _write_bundle(tmp_path / "high", _VALID_METADATA, high_metrics)
 
         bundles = list_bundles(tmp_path)
-        ranked = sorted(bundles, key=lambda b: score(b, SelectionPolicy()), reverse=True)
+        ranked = sorted(
+            bundles, key=lambda b: score(b, SelectionPolicy()), reverse=True
+        )
         assert ranked[0].model_id == "high"
         assert ranked[1].model_id == "low"
 
@@ -351,7 +355,9 @@ class TestScore:
         _write_bundle(tmp_path / "lower_wf1", _VALID_METADATA, m2)
 
         bundles = list_bundles(tmp_path)
-        ranked = sorted(bundles, key=lambda b: score(b, SelectionPolicy()), reverse=True)
+        ranked = sorted(
+            bundles, key=lambda b: score(b, SelectionPolicy()), reverse=True
+        )
         assert ranked[0].model_id == "higher_wf1"
 
     def test_tie_break_by_created_at(self, tmp_path: Path) -> None:
@@ -367,7 +373,9 @@ class TestScore:
         _write_bundle(tmp_path / "newer", newer_meta, same_metrics)
 
         bundles = list_bundles(tmp_path)
-        ranked = sorted(bundles, key=lambda b: score(b, SelectionPolicy()), reverse=True)
+        ranked = sorted(
+            bundles, key=lambda b: score(b, SelectionPolicy()), reverse=True
+        )
         assert ranked[0].model_id == "newer"
 
     def test_invalid_bundle_raises(self) -> None:
@@ -503,9 +511,14 @@ class TestFindBestModel:
         bad_hash = _VALID_METADATA.model_copy(update={"schema_hash": "nope"})
         _write_bundle(tmp_path / "incompat", bad_hash, _VALID_METRICS)
         (tmp_path / "broken").mkdir()
-        _write_bundle(tmp_path / "also_good", _VALID_METADATA, {
-            **_VALID_METRICS, "macro_f1": 0.90,
-        })
+        _write_bundle(
+            tmp_path / "also_good",
+            _VALID_METADATA,
+            {
+                **_VALID_METRICS,
+                "macro_f1": 0.90,
+            },
+        )
 
         report = find_best_model(tmp_path)
         assert report.best is not None
@@ -591,9 +604,7 @@ class TestReadActive:
             policy_version=1,
             model_id="my_bundle",
         )
-        (tmp_path / "active.json").write_text(
-            pointer.model_dump_json(indent=2)
-        )
+        (tmp_path / "active.json").write_text(pointer.model_dump_json(indent=2))
         result = read_active(tmp_path)
         assert result is not None
         assert result.model_dir == "models/my_bundle"
@@ -605,9 +616,7 @@ class TestReadActive:
         assert read_active(tmp_path) is None
 
     def test_missing_required_key_returns_none(self, tmp_path: Path) -> None:
-        (tmp_path / "active.json").write_text(
-            json.dumps({"model_dir": "models/x"})
-        )
+        (tmp_path / "active.json").write_text(json.dumps({"model_dir": "models/x"}))
         assert read_active(tmp_path) is None
 
     def test_reason_and_optional_fields(self, tmp_path: Path) -> None:
@@ -617,9 +626,7 @@ class TestReadActive:
             policy_version=1,
             reason={"metric": "macro_f1", "macro_f1": 0.9},
         )
-        (tmp_path / "active.json").write_text(
-            pointer.model_dump_json(indent=2)
-        )
+        (tmp_path / "active.json").write_text(pointer.model_dump_json(indent=2))
         result = read_active(tmp_path)
         assert result is not None
         assert result.reason is not None
@@ -775,9 +782,7 @@ class TestAppendActiveHistory:
         write_active_atomic(models_dir, bundles[0], SelectionPolicy())
         write_active_atomic(models_dir, bundles[1], SelectionPolicy())
 
-        lines = (
-            (models_dir / "active_history.jsonl").read_text().strip().splitlines()
-        )
+        lines = (models_dir / "active_history.jsonl").read_text().strip().splitlines()
         assert len(lines) == 2
 
         first = ActiveHistoryEntry.model_validate_json(lines[0])
@@ -967,10 +972,11 @@ class TestReadIndexCache:
 
 
 def _make_bundle(macro_f1: float) -> ModelBundle:
+    cm: list[list[int]] = _VALID_METRICS["confusion_matrix"]  # type: ignore[assignment]
     metrics = BundleMetrics(
         macro_f1=macro_f1,
         weighted_f1=0.90,
-        confusion_matrix=_VALID_METRICS["confusion_matrix"],
+        confusion_matrix=cm,
         label_names=sorted(LABEL_SET_V1),
     )
     return ModelBundle(

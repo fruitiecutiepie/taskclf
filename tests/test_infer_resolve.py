@@ -20,7 +20,11 @@ import pytest
 from taskclf.core.model_io import ModelMetadata
 from taskclf.core.schema import FeatureSchemaV1
 from taskclf.core.types import LABEL_SET_V1
-from taskclf.infer.resolve import ActiveModelReloader, ModelResolutionError, resolve_model_dir
+from taskclf.infer.resolve import (
+    ActiveModelReloader,
+    ModelResolutionError,
+    resolve_model_dir,
+)
 from taskclf.model_registry import (
     ActivePointer,
     SelectionPolicy,
@@ -98,7 +102,9 @@ class TestActiveExists:
         _write_bundle(models_dir / "low_model", _VALID_METADATA, low_metrics)
         _write_bundle(models_dir / "high_model", _VALID_METADATA, high_metrics)
 
-        low_bundle = [b for b in list_bundles(models_dir) if b.model_id == "low_model"][0]
+        low_bundle = [b for b in list_bundles(models_dir) if b.model_id == "low_model"][
+            0
+        ]
         write_active_atomic(models_dir, low_bundle, SelectionPolicy())
 
         resolved = resolve_model_dir(None, models_dir)
@@ -209,10 +215,14 @@ class TestNoModels:
 
     def test_models_dir_missing_raises(self, tmp_path: Path) -> None:
         """Non-existent models/ directory should raise with a descriptive message."""
-        with pytest.raises(ModelResolutionError, match="Models directory does not exist"):
+        with pytest.raises(
+            ModelResolutionError, match="Models directory does not exist"
+        ):
             resolve_model_dir(None, tmp_path / "nonexistent_models")
 
-    def test_only_incompatible_bundles_raises_with_reasons(self, tmp_path: Path) -> None:
+    def test_only_incompatible_bundles_raises_with_reasons(
+        self, tmp_path: Path
+    ) -> None:
         """When all bundles are incompatible, error message includes exclusion reasons."""
         models_dir = tmp_path / "models"
         bad_meta = _VALID_METADATA.model_copy(update={"schema_hash": "wrong_hash"})
@@ -248,7 +258,9 @@ class TestActiveModelReloader:
 
     @patch("taskclf.infer.resolve.load_model_bundle")
     def test_reload_on_mtime_change(
-        self, mock_load: MagicMock, tmp_path: Path,
+        self,
+        mock_load: MagicMock,
+        tmp_path: Path,
     ) -> None:
         """TC-RELOAD-001: mtime change triggers successful reload."""
         models_dir = tmp_path / "models"
@@ -292,7 +304,9 @@ class TestActiveModelReloader:
 
     @patch("taskclf.infer.resolve.load_model_bundle")
     def test_last_mtime_updated_after_reload(
-        self, mock_load: MagicMock, tmp_path: Path,
+        self,
+        mock_load: MagicMock,
+        tmp_path: Path,
     ) -> None:
         """TC-RELOAD-003: after successful reload, same mtime returns None."""
         models_dir = tmp_path / "models"

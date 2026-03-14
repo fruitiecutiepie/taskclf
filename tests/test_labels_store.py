@@ -162,11 +162,13 @@ class TestAppendLabelSpan:
 
 class TestGenerateLabelSummary:
     def test_empty_window(self) -> None:
-        df = pd.DataFrame({
-            "bucket_start_ts": pd.to_datetime(["2025-06-15T10:00:00"]),
-            "app_id": ["com.apple.Terminal"],
-            "session_id": ["s1"],
-        })
+        df = pd.DataFrame(
+            {
+                "bucket_start_ts": pd.to_datetime(["2025-06-15T10:00:00"]),
+                "app_id": ["com.apple.Terminal"],
+                "session_id": ["s1"],
+            }
+        )
         summary = generate_label_summary(
             df,
             dt.datetime(2025, 6, 15, 12, 0),
@@ -176,14 +178,16 @@ class TestGenerateLabelSummary:
 
     def test_summary_fields(self) -> None:
         base = dt.datetime(2025, 6, 15, 10, 0)
-        df = pd.DataFrame({
-            "bucket_start_ts": [base + dt.timedelta(minutes=i) for i in range(5)],
-            "app_id": ["com.apple.Terminal"] * 3 + ["org.mozilla.firefox"] * 2,
-            "session_id": ["s1"] * 5,
-            "keys_per_min": [50.0, 60.0, 70.0, 10.0, 5.0],
-            "clicks_per_min": [3.0, 4.0, 5.0, 6.0, 7.0],
-            "scroll_events_per_min": [1.0, 2.0, 3.0, 4.0, 5.0],
-        })
+        df = pd.DataFrame(
+            {
+                "bucket_start_ts": [base + dt.timedelta(minutes=i) for i in range(5)],
+                "app_id": ["com.apple.Terminal"] * 3 + ["org.mozilla.firefox"] * 2,
+                "session_id": ["s1"] * 5,
+                "keys_per_min": [50.0, 60.0, 70.0, 10.0, 5.0],
+                "clicks_per_min": [3.0, 4.0, 5.0, 6.0, 7.0],
+                "scroll_events_per_min": [1.0, 2.0, 3.0, 4.0, 5.0],
+            }
+        )
         summary = generate_label_summary(df, base, base + dt.timedelta(minutes=5))
         assert summary["total_buckets"] == 5
         assert summary["session_count"] == 1
@@ -645,7 +649,10 @@ class TestUpdateLabelSpan:
         write_label_spans([s], path)
 
         updated = update_label_span(
-            s.start_ts, s.end_ts, "Build", path,
+            s.start_ts,
+            s.end_ts,
+            "Build",
+            path,
             new_start_ts=dt.datetime(2025, 6, 15, 10, 5),
         )
         assert updated.start_ts == dt.datetime(2025, 6, 15, 10, 5)
@@ -663,7 +670,10 @@ class TestUpdateLabelSpan:
         write_label_spans([s], path)
 
         updated = update_label_span(
-            s.start_ts, s.end_ts, "Build", path,
+            s.start_ts,
+            s.end_ts,
+            "Build",
+            path,
             new_end_ts=dt.datetime(2025, 6, 15, 11, 0),
         )
         assert updated.start_ts == s.start_ts
@@ -678,8 +688,12 @@ class TestUpdateLabelSpan:
         new_start = dt.datetime(2025, 6, 15, 9, 45)
         new_end = dt.datetime(2025, 6, 15, 11, 0)
         updated = update_label_span(
-            s.start_ts, s.end_ts, "Debug", path,
-            new_start_ts=new_start, new_end_ts=new_end,
+            s.start_ts,
+            s.end_ts,
+            "Debug",
+            path,
+            new_start_ts=new_start,
+            new_end_ts=new_end,
         )
         assert updated.start_ts == new_start
         assert updated.end_ts == new_end
@@ -706,7 +720,10 @@ class TestUpdateLabelSpan:
         write_label_spans([span], path)
 
         updated = update_label_span(
-            span.start_ts, span.end_ts, "Build", path,
+            span.start_ts,
+            span.end_ts,
+            "Build",
+            path,
             new_start_ts=dt.datetime(2025, 6, 15, 9, 50),
             new_end_ts=dt.datetime(2025, 6, 15, 10, 40),
         )
@@ -722,8 +739,12 @@ class TestUpdateLabelSpan:
         write_label_spans([s], path)
 
         updated = update_label_span(
-            s.start_ts, s.end_ts, "Debug", path,
-            new_start_ts=None, new_end_ts=None,
+            s.start_ts,
+            s.end_ts,
+            "Debug",
+            path,
+            new_start_ts=None,
+            new_end_ts=None,
         )
         assert updated.start_ts == s.start_ts
         assert updated.end_ts == s.end_ts
@@ -832,8 +853,12 @@ class TestImportLabelsFromCsvErrors:
     def test_missing_multiple_columns(self, tmp_path: Path) -> None:
         """TC-LABEL-CSV-002: missing multiple columns lists all in error."""
         csv_path = tmp_path / "bad.csv"
-        csv_path.write_text("start_ts,end_ts\n2025-06-15T10:00:00,2025-06-15T10:05:00\n")
-        with pytest.raises(ValueError, match="CSV missing required columns") as exc_info:
+        csv_path.write_text(
+            "start_ts,end_ts\n2025-06-15T10:00:00,2025-06-15T10:05:00\n"
+        )
+        with pytest.raises(
+            ValueError, match="CSV missing required columns"
+        ) as exc_info:
             import_labels_from_csv(csv_path)
         msg = str(exc_info.value)
         assert "label" in msg
@@ -916,7 +941,9 @@ class TestExportLabelsToCsv:
     def test_creates_parent_dirs(self, tmp_path: Path) -> None:
         """TC-LABEL-EXP-005: parent directories are created automatically."""
         parquet_path = tmp_path / "labels.parquet"
-        write_label_spans(generate_dummy_labels(dt.date(2025, 6, 15), n_rows=2), parquet_path)
+        write_label_spans(
+            generate_dummy_labels(dt.date(2025, 6, 15), n_rows=2), parquet_path
+        )
 
         csv_path = tmp_path / "nested" / "deep" / "export.csv"
         result = export_labels_to_csv(parquet_path, csv_path)

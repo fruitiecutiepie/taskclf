@@ -20,7 +20,15 @@ from pathlib import Path
 from collections.abc import Callable
 from typing import Any, Literal
 
-from fastapi import FastAPI, Form, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import (
+    FastAPI,
+    Form,
+    HTTPException,
+    Query,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -109,8 +117,12 @@ class LabelUpdateRequest(BaseModel):
     start_ts: str = Field(description="ISO-8601 start timestamp (identifies the span)")
     end_ts: str = Field(description="ISO-8601 end timestamp (identifies the span)")
     label: str = Field(description="New label to assign")
-    new_start_ts: str | None = Field(default=None, description="New start timestamp (if changing time)")
-    new_end_ts: str | None = Field(default=None, description="New end timestamp (if changing time)")
+    new_start_ts: str | None = Field(
+        default=None, description="New start timestamp (if changing time)"
+    )
+    new_end_ts: str | None = Field(
+        default=None, description="New end timestamp (if changing time)"
+    )
 
 
 class LabelDeleteRequest(BaseModel):
@@ -309,14 +321,23 @@ def _parse_overlap_error(
         for s in existing:
             if s.start_ts == new_span.start_ts and s.end_ts == new_span.end_ts:
                 continue
-            same_user = (s.user_id is None or new_span.user_id is None
-                         or s.user_id == new_span.user_id)
-            if same_user and s.start_ts < new_span.end_ts and new_span.start_ts < s.end_ts:
-                conflicts.append(ConflictingSpan(
-                    start_ts=_utc_iso(s.start_ts),
-                    end_ts=_utc_iso(s.end_ts),
-                    label=s.label,
-                ))
+            same_user = (
+                s.user_id is None
+                or new_span.user_id is None
+                or s.user_id == new_span.user_id
+            )
+            if (
+                same_user
+                and s.start_ts < new_span.end_ts
+                and new_span.start_ts < s.end_ts
+            ):
+                conflicts.append(
+                    ConflictingSpan(
+                        start_ts=_utc_iso(s.start_ts),
+                        end_ts=_utc_iso(s.end_ts),
+                        label=s.label,
+                    )
+                )
 
         fc_start, fc_end = first_conflict
         for c in conflicts:
@@ -393,9 +414,15 @@ def create_app(
     @app.get("/api/labels")
     async def list_labels(
         limit: int = Query(50, ge=1, le=500),
-        date: str | None = Query(None, description="ISO-8601 date to filter labels by (e.g. 2025-03-07)"),
-        range_start: str | None = Query(None, description="UTC start of visible range (ISO-8601)"),
-        range_end: str | None = Query(None, description="UTC end of visible range (ISO-8601)"),
+        date: str | None = Query(
+            None, description="ISO-8601 date to filter labels by (e.g. 2025-03-07)"
+        ),
+        range_start: str | None = Query(
+            None, description="UTC start of visible range (ISO-8601)"
+        ),
+        range_end: str | None = Query(
+            None, description="UTC end of visible range (ISO-8601)"
+        ),
     ) -> list[LabelResponse]:
         if not labels_path.exists():
             return []
@@ -406,13 +433,17 @@ def create_app(
                 rs = _to_naive_utc(dt.datetime.fromisoformat(range_start))
                 re_ = _to_naive_utc(dt.datetime.fromisoformat(range_end))
             except (ValueError, Exception) as exc:
-                raise HTTPException(status_code=400, detail=f"Invalid range: {exc}") from exc
+                raise HTTPException(
+                    status_code=400, detail=f"Invalid range: {exc}"
+                ) from exc
             spans = [s for s in spans if s.end_ts > rs and s.start_ts < re_]
         elif date is not None:
             try:
                 target = dt.date.fromisoformat(date)
             except ValueError as exc:
-                raise HTTPException(status_code=400, detail=f"Invalid date: {date}") from exc
+                raise HTTPException(
+                    status_code=400, detail=f"Invalid date: {date}"
+                ) from exc
             day_start = dt.datetime.combine(target, dt.time.min)
             day_end = dt.datetime.combine(target, dt.time.max)
             spans = [s for s in spans if s.end_ts > day_start and s.start_ts < day_end]
@@ -451,13 +482,16 @@ def create_app(
         else:
             try:
                 append_label_span(
-                    span, labels_path, allow_overlap=body.allow_overlap,
+                    span,
+                    labels_path,
+                    allow_overlap=body.allow_overlap,
                 )
             except ValueError as exc:
                 existing = read_label_spans(labels_path) if labels_path.exists() else []
                 detail = _parse_overlap_error(str(exc), span, existing)
                 raise HTTPException(
-                    status_code=409, detail=detail.model_dump(),
+                    status_code=409,
+                    detail=detail.model_dump(),
                 ) from exc
 
         if on_label_saved is not None:
@@ -466,14 +500,18 @@ def create_app(
         await bus.publish({"type": "suggestion_cleared", "reason": "label_saved"})
 
         if span.extend_forward:
-            await bus.publish({
-                "type": "label_created",
-                "label": span.label,
-                "confidence": span.confidence if span.confidence is not None else 1.0,
-                "ts": _utc_iso(span.end_ts),
-                "start_ts": _utc_iso(span.start_ts),
-                "extend_forward": True,
-            })
+            await bus.publish(
+                {
+                    "type": "label_created",
+                    "label": span.label,
+                    "confidence": span.confidence
+                    if span.confidence is not None
+                    else 1.0,
+                    "ts": _utc_iso(span.end_ts),
+                    "start_ts": _utc_iso(span.start_ts),
+                    "extend_forward": True,
+                }
+            )
 
         return LabelResponse(
             start_ts=_utc_iso(span.start_ts),
@@ -490,14 +528,26 @@ def create_app(
         try:
             start = _to_naive_utc(dt.datetime.fromisoformat(body.start_ts))
             end = _to_naive_utc(dt.datetime.fromisoformat(body.end_ts))
-            new_start = _to_naive_utc(dt.datetime.fromisoformat(body.new_start_ts)) if body.new_start_ts else None
-            new_end = _to_naive_utc(dt.datetime.fromisoformat(body.new_end_ts)) if body.new_end_ts else None
+            new_start = (
+                _to_naive_utc(dt.datetime.fromisoformat(body.new_start_ts))
+                if body.new_start_ts
+                else None
+            )
+            new_end = (
+                _to_naive_utc(dt.datetime.fromisoformat(body.new_end_ts))
+                if body.new_end_ts
+                else None
+            )
         except (ValueError, Exception) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         try:
             span = update_label_span(
-                start, end, body.label, labels_path,
-                new_start_ts=new_start, new_end_ts=new_end,
+                start,
+                end,
+                body.label,
+                labels_path,
+                new_start_ts=new_start,
+                new_end_ts=new_end,
             )
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -549,17 +599,22 @@ def create_app(
 
     @app.get("/api/labels/stats")
     async def label_stats(
-        date: str | None = Query(None, description="ISO-8601 date (defaults to today UTC)"),
+        date: str | None = Query(
+            None, description="ISO-8601 date (defaults to today UTC)"
+        ),
     ) -> LabelStatsResponse:
         """Return labeling stats for a given day."""
         target = (
-            dt.date.fromisoformat(date) if date
+            dt.date.fromisoformat(date)
+            if date
             else dt.datetime.now(dt.timezone.utc).date()
         )
         if not labels_path.exists():
             return LabelStatsResponse(
-                date=target.isoformat(), count=0,
-                total_minutes=0.0, breakdown={},
+                date=target.isoformat(),
+                count=0,
+                total_minutes=0.0,
+                breakdown={},
             )
         spans = read_label_spans(labels_path)
         day_spans = [s for s in spans if s.start_ts.date() == target]
@@ -569,8 +624,10 @@ def create_app(
             breakdown[s.label] = round(breakdown.get(s.label, 0) + mins, 1)
         total = round(sum(breakdown.values()), 1)
         return LabelStatsResponse(
-            date=target.isoformat(), count=len(day_spans),
-            total_minutes=total, breakdown=breakdown,
+            date=target.isoformat(),
+            count=len(day_spans),
+            total_minutes=total,
+            breakdown=breakdown,
         )
 
     @app.post("/api/labels/import")
@@ -632,7 +689,9 @@ def create_app(
     # -- REST: queue ----------------------------------------------------------
 
     @app.get("/api/queue")
-    async def list_queue(limit: int = Query(20, ge=1, le=100)) -> list[QueueItemResponse]:
+    async def list_queue(
+        limit: int = Query(20, ge=1, le=100),
+    ) -> list[QueueItemResponse]:
         if not queue_path.exists():
             return []
         queue = ActiveLabelingQueue(queue_path)
@@ -674,15 +733,23 @@ def create_app(
         end_ts = _to_naive_utc(dt.datetime.fromisoformat(end))
 
         empty_resp = FeatureSummaryResponse(
-            top_apps=[], mean_keys_per_min=None, mean_clicks_per_min=None,
-            mean_scroll_per_min=None, total_buckets=0, session_count=0,
+            top_apps=[],
+            mean_keys_per_min=None,
+            mean_clicks_per_min=None,
+            mean_scroll_per_min=None,
+            total_buckets=0,
+            session_count=0,
         )
 
         frames: list[pd.DataFrame] = []
         dates_missing_parquet: list[dt.date] = []
         current = start_ts.date()
         while current <= end_ts.date():
-            fp = data_dir / f"features_v1/date={current.isoformat()}" / "features.parquet"
+            fp = (
+                data_dir
+                / f"features_v1/date={current.isoformat()}"
+                / "features.parquet"
+            )
             if fp.exists():
                 tmp = read_parquet(fp)
                 if not tmp.empty:
@@ -699,7 +766,9 @@ def create_app(
 
                 for d in dates_missing_parquet:
                     rows = _fetch_aw_features_for_date(
-                        d, aw_host=aw_host, title_salt=title_salt,
+                        d,
+                        aw_host=aw_host,
+                        title_salt=title_salt,
                     )
                     if rows:
                         frames.append(pd.DataFrame([r.model_dump() for r in rows]))
@@ -733,11 +802,15 @@ def create_app(
             end_ts = _to_naive_utc(dt.datetime.fromisoformat(end))
 
             bucket_id = find_window_bucket_id(aw_host)
-            events = fetch_aw_events(aw_host, bucket_id, start_ts, end_ts, title_salt=title_salt)
+            events = fetch_aw_events(
+                aw_host, bucket_id, start_ts, end_ts, title_salt=title_salt
+            )
             if not events:
                 return []
             counts = Counter(ev.app_id for ev in events)
-            return [AWLiveEntry(app=app, events=cnt) for app, cnt in counts.most_common(5)]
+            return [
+                AWLiveEntry(app=app, events=cnt) for app, cnt in counts.most_common(5)
+            ]
         except Exception:
             logger.debug("AW live summary unavailable", exc_info=True)
             return []
@@ -816,7 +889,8 @@ def create_app(
             existing = read_label_spans(labels_path) if labels_path.exists() else []
             detail = _parse_overlap_error(str(exc), span, existing)
             raise HTTPException(
-                status_code=409, detail=detail.model_dump(),
+                status_code=409,
+                detail=detail.model_dump(),
             ) from exc
 
         if on_label_saved is not None:
@@ -824,7 +898,12 @@ def create_app(
 
         await bus.publish({"type": "suggestion_cleared", "reason": "label_saved"})
 
-        logger.info("Accepted suggested label: %s (%s → %s)", body.label, body.block_start, body.block_end)
+        logger.info(
+            "Accepted suggested label: %s (%s → %s)",
+            body.label,
+            body.block_start,
+            body.block_end,
+        )
         return LabelResponse(
             start_ts=_utc_iso(span.start_ts),
             end_ts=_utc_iso(span.end_ts),
@@ -870,13 +949,15 @@ def create_app(
                 job.step = step
                 job.progress_pct = pct
                 job.message = msg
-                bus.publish_threadsafe({
-                    "type": "train_progress",
-                    "job_id": job.job_id,
-                    "step": step,
-                    "progress_pct": pct,
-                    "message": msg,
-                })
+                bus.publish_threadsafe(
+                    {
+                        "type": "train_progress",
+                        "job_id": job.job_id,
+                        "step": step,
+                        "progress_pct": pct,
+                        "message": msg,
+                    }
+                )
 
             if job._cancel.is_set():
                 raise InterruptedError("Cancelled")
@@ -895,13 +976,22 @@ def create_app(
                 lp = data_dir / "labels_v1" / "labels.parquet"
                 if lp.exists():
                     from taskclf.labels.store import read_label_spans as _read_ls
+
                     all_spans = _read_ls(lp)
                     start_dt = pd.Timestamp(
-                        year=start.year, month=start.month, day=start.day, tz="UTC",
+                        year=start.year,
+                        month=start.month,
+                        day=start.day,
+                        tz="UTC",
                     )
                     end_dt = pd.Timestamp(
-                        year=end.year, month=end.month, day=end.day,
-                        hour=23, minute=59, second=59, tz="UTC",
+                        year=end.year,
+                        month=end.month,
+                        day=end.day,
+                        hour=23,
+                        minute=59,
+                        second=59,
+                        tz="UTC",
                     )
 
                     def _to_utc(ts: dt.datetime) -> pd.Timestamp:
@@ -911,8 +1001,10 @@ def create_app(
                         return t.tz_convert("UTC")
 
                     all_labels = [
-                        s for s in all_spans
-                        if _to_utc(s.end_ts) >= start_dt and _to_utc(s.start_ts) <= end_dt
+                        s
+                        for s in all_spans
+                        if _to_utc(s.end_ts) >= start_dt
+                        and _to_utc(s.start_ts) <= end_dt
                     ]
 
             while current <= end:
@@ -924,7 +1016,11 @@ def create_app(
                     labels = generate_dummy_labels(current, n_rows=60)
                     all_labels.extend(labels)
                 else:
-                    fp = data_dir / f"features_v1/date={current.isoformat()}" / "features.parquet"
+                    fp = (
+                        data_dir
+                        / f"features_v1/date={current.isoformat()}"
+                        / "features.parquet"
+                    )
                     if fp.exists():
                         df = _read_pq(fp)
                     else:
@@ -953,7 +1049,11 @@ def create_app(
             if job._cancel.is_set():
                 raise InterruptedError("Cancelled")
 
-            _update("projecting_labels", 30, f"Projecting {len(all_labels)} labels onto {len(features_df)} rows…")
+            _update(
+                "projecting_labels",
+                30,
+                f"Projecting {len(all_labels)} labels onto {len(features_df)} rows…",
+            )
 
             from taskclf.labels.projection import project_blocks_to_windows
 
@@ -979,16 +1079,20 @@ def create_app(
                 raise InterruptedError("Cancelled")
 
             _update(
-                "training", 50,
+                "training",
+                50,
                 f"Training LightGBM ({num_boost_round} rounds, "
                 f"{len(train_df)} train / {len(val_df)} val)…",
             )
 
             from taskclf.train.lgbm import train_lgbm as _train
 
-            cw: Literal["balanced", "none"] = "none" if class_weight == "none" else "balanced"
+            cw: Literal["balanced", "none"] = (
+                "none" if class_weight == "none" else "balanced"
+            )
             model, metrics, cm_df, params, cat_encoders = _train(
-                train_df, val_df,
+                train_df,
+                val_df,
                 num_boost_round=num_boost_round,
                 class_weight=cw,
             )
@@ -996,7 +1100,9 @@ def create_app(
             if job._cancel.is_set():
                 raise InterruptedError("Cancelled")
 
-            _update("saving", 85, f"Saving bundle (macro_f1={metrics['macro_f1']:.3f})…")
+            _update(
+                "saving", 85, f"Saving bundle (macro_f1={metrics['macro_f1']:.3f})…"
+            )
 
             from taskclf.core.model_io import build_metadata, save_model_bundle
             from taskclf.train.retrain import compute_dataset_hash
@@ -1026,15 +1132,17 @@ def create_app(
             job.finished_at = dt.datetime.now(dt.timezone.utc).isoformat()
             _update("done", 100, f"Model saved to {run_dir.name}")
 
-            bus.publish_threadsafe({
-                "type": "train_complete",
-                "job_id": job.job_id,
-                "metrics": {
-                    "macro_f1": metrics.get("macro_f1"),
-                    "weighted_f1": metrics.get("weighted_f1"),
-                },
-                "model_dir": str(run_dir),
-            })
+            bus.publish_threadsafe(
+                {
+                    "type": "train_complete",
+                    "job_id": job.job_id,
+                    "metrics": {
+                        "macro_f1": metrics.get("macro_f1"),
+                        "weighted_f1": metrics.get("weighted_f1"),
+                    },
+                    "model_dir": str(run_dir),
+                }
+            )
 
             if on_model_trained is not None:
                 try:
@@ -1046,21 +1154,25 @@ def create_app(
             job.status = "failed"
             job.error = "Cancelled by user"
             job.finished_at = dt.datetime.now(dt.timezone.utc).isoformat()
-            bus.publish_threadsafe({
-                "type": "train_failed",
-                "job_id": job.job_id,
-                "error": "Cancelled by user",
-            })
+            bus.publish_threadsafe(
+                {
+                    "type": "train_failed",
+                    "job_id": job.job_id,
+                    "error": "Cancelled by user",
+                }
+            )
         except Exception as exc:
             logger.warning("Training failed: %s", exc, exc_info=True)
             job.status = "failed"
             job.error = str(exc)
             job.finished_at = dt.datetime.now(dt.timezone.utc).isoformat()
-            bus.publish_threadsafe({
-                "type": "train_failed",
-                "job_id": job.job_id,
-                "error": str(exc),
-            })
+            bus.publish_threadsafe(
+                {
+                    "type": "train_failed",
+                    "job_id": job.job_id,
+                    "error": str(exc),
+                }
+            )
 
     def _run_feature_build(
         job: _TrainJob,
@@ -1084,18 +1196,24 @@ def create_app(
                 pct = int((built / total_days) * 100)
                 job.step = "building_features"
                 job.progress_pct = pct
-                job.message = f"Building features for {current} ({built + 1}/{total_days})…"
-                bus.publish_threadsafe({
-                    "type": "train_progress",
-                    "job_id": job.job_id,
-                    "step": "building_features",
-                    "progress_pct": pct,
-                    "message": job.message,
-                })
+                job.message = (
+                    f"Building features for {current} ({built + 1}/{total_days})…"
+                )
+                bus.publish_threadsafe(
+                    {
+                        "type": "train_progress",
+                        "job_id": job.job_id,
+                        "step": "building_features",
+                        "progress_pct": pct,
+                        "message": job.message,
+                    }
+                )
 
                 build_features_for_date(
-                    current, data_dir,
-                    aw_host=aw_host, title_salt=title_salt,
+                    current,
+                    data_dir,
+                    aw_host=aw_host,
+                    title_salt=title_salt,
                 )
                 built += 1
                 current += dt.timedelta(days=1)
@@ -1105,31 +1223,37 @@ def create_app(
             job.progress_pct = 100
             job.message = f"Built features for {built} day(s)"
             job.finished_at = dt.datetime.now(dt.timezone.utc).isoformat()
-            bus.publish_threadsafe({
-                "type": "train_complete",
-                "job_id": job.job_id,
-                "metrics": None,
-                "model_dir": None,
-            })
+            bus.publish_threadsafe(
+                {
+                    "type": "train_complete",
+                    "job_id": job.job_id,
+                    "metrics": None,
+                    "model_dir": None,
+                }
+            )
         except InterruptedError:
             job.status = "failed"
             job.error = "Cancelled by user"
             job.finished_at = dt.datetime.now(dt.timezone.utc).isoformat()
-            bus.publish_threadsafe({
-                "type": "train_failed",
-                "job_id": job.job_id,
-                "error": "Cancelled by user",
-            })
+            bus.publish_threadsafe(
+                {
+                    "type": "train_failed",
+                    "job_id": job.job_id,
+                    "error": "Cancelled by user",
+                }
+            )
         except Exception as exc:
             logger.warning("Feature build failed: %s", exc, exc_info=True)
             job.status = "failed"
             job.error = str(exc)
             job.finished_at = dt.datetime.now(dt.timezone.utc).isoformat()
-            bus.publish_threadsafe({
-                "type": "train_failed",
-                "job_id": job.job_id,
-                "error": str(exc),
-            })
+            bus.publish_threadsafe(
+                {
+                    "type": "train_failed",
+                    "job_id": job.job_id,
+                    "error": str(exc),
+                }
+            )
 
     @app.post("/api/train/start", status_code=202)
     async def train_start(body: TrainStartRequest) -> TrainStatusResponse:
@@ -1242,12 +1366,18 @@ def create_app(
 
         current = start
         while current <= end:
-            fp = data_dir / f"features_v1/date={current.isoformat()}" / "features.parquet"
+            fp = (
+                data_dir
+                / f"features_v1/date={current.isoformat()}"
+                / "features.parquet"
+            )
             if not fp.exists():
                 try:
                     build_features_for_date(
-                        current, data_dir,
-                        aw_host=aw_host, title_salt=title_salt,
+                        current,
+                        data_dir,
+                        aw_host=aw_host,
+                        title_salt=title_salt,
                     )
                     dates_built.append(current.isoformat())
                 except Exception as exc:
@@ -1260,7 +1390,11 @@ def create_app(
         total_rows = 0
 
         while current <= end:
-            fp = data_dir / f"features_v1/date={current.isoformat()}" / "features.parquet"
+            fp = (
+                data_dir
+                / f"features_v1/date={current.isoformat()}"
+                / "features.parquet"
+            )
             if fp.exists():
                 try:
                     df = read_parquet(fp)
@@ -1285,8 +1419,7 @@ def create_app(
                 start_dt = dt.datetime(start.year, start.month, start.day)
                 end_dt = dt.datetime(end.year, end.month, end.day, 23, 59, 59)
                 matching_spans = [
-                    s for s in spans
-                    if s.end_ts >= start_dt and s.start_ts <= end_dt
+                    s for s in spans if s.end_ts >= start_dt and s.start_ts <= end_dt
                 ]
                 label_count = len(matching_spans)
             except Exception:
@@ -1302,7 +1435,11 @@ def create_app(
                 feature_frames = []
                 cur = start
                 while cur <= end:
-                    fp = data_dir / f"features_v1/date={cur.isoformat()}" / "features.parquet"
+                    fp = (
+                        data_dir
+                        / f"features_v1/date={cur.isoformat()}"
+                        / "features.parquet"
+                    )
                     if fp.exists():
                         frame = read_parquet(fp)
                         if not frame.empty:
@@ -1349,7 +1486,9 @@ def create_app(
     # -- Static files (SPA) ---------------------------------------------------
 
     if _STATIC_DIR.is_dir():
-        app.mount("/assets", StaticFiles(directory=_STATIC_DIR / "assets"), name="assets")
+        app.mount(
+            "/assets", StaticFiles(directory=_STATIC_DIR / "assets"), name="assets"
+        )
 
         @app.get("/{path:path}")
         async def spa_fallback(path: str) -> FileResponse:

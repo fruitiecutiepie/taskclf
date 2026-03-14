@@ -77,14 +77,22 @@ class TestBuildFeaturesFromAWEvents:
         ts = dt.datetime(2026, 2, 23, 10, 0, 45)
         events = [_make_event(ts)]
         rows = build_features_from_aw_events(events)
-        assert rows[0].bucket_start_ts == dt.datetime(2026, 2, 23, 10, 0, 0, tzinfo=dt.timezone.utc)
+        assert rows[0].bucket_start_ts == dt.datetime(
+            2026, 2, 23, 10, 0, 0, tzinfo=dt.timezone.utc
+        )
 
     def test_multiple_events_same_bucket(self) -> None:
         base = dt.datetime(2026, 2, 23, 10, 0, 0)
         events = [
             _make_event(base, duration=20.0, app_id="org.mozilla.firefox"),
-            _make_event(base + dt.timedelta(seconds=20), duration=40.0, app_id="com.microsoft.VSCode",
-                        is_browser=False, is_editor=True, app_category="editor"),
+            _make_event(
+                base + dt.timedelta(seconds=20),
+                duration=40.0,
+                app_id="com.microsoft.VSCode",
+                is_browser=False,
+                is_editor=True,
+                app_category="editor",
+            ),
         ]
         rows = build_features_from_aw_events(events)
         assert len(rows) == 1
@@ -99,7 +107,9 @@ class TestBuildFeaturesFromAWEvents:
         ]
         rows = build_features_from_aw_events(events)
         assert len(rows) == 3
-        assert rows[0].bucket_start_ts < rows[1].bucket_start_ts < rows[2].bucket_start_ts
+        assert (
+            rows[0].bucket_start_ts < rows[1].bucket_start_ts < rows[2].bucket_start_ts
+        )
 
     def test_schema_metadata(self) -> None:
         events = [_make_event(dt.datetime(2026, 2, 23, 10, 0, 0))]
@@ -181,7 +191,9 @@ class TestBuildFeaturesFromAWEvents:
         base = dt.datetime(2026, 2, 23, 10, 0, 0)
         events = [
             _make_event(base, duration=10.0, app_id="app.short"),
-            _make_event(base + dt.timedelta(seconds=10), duration=50.0, app_id="app.long"),
+            _make_event(
+                base + dt.timedelta(seconds=10), duration=50.0, app_id="app.long"
+            ),
         ]
         rows = build_features_from_aw_events(events)
         assert len(rows) == 1
@@ -195,10 +207,24 @@ class TestBuildFeaturesWithInputEvents:
         base = dt.datetime(2026, 2, 23, 10, 0, 0)
         window_events = [_make_event(base)]
         input_events = [
-            _make_input_event(base, presses=30, clicks=6, delta_x=200, delta_y=100,
-                              scroll_x=2, scroll_y=4),
-            _make_input_event(base + dt.timedelta(seconds=5), presses=30, clicks=6,
-                              delta_x=100, delta_y=50, scroll_x=0, scroll_y=2),
+            _make_input_event(
+                base,
+                presses=30,
+                clicks=6,
+                delta_x=200,
+                delta_y=100,
+                scroll_x=2,
+                scroll_y=4,
+            ),
+            _make_input_event(
+                base + dt.timedelta(seconds=5),
+                presses=30,
+                clicks=6,
+                delta_x=100,
+                delta_y=50,
+                scroll_x=0,
+                scroll_y=2,
+            ),
         ]
         rows = build_features_from_aw_events(window_events, input_events=input_events)
         assert len(rows) == 1
@@ -258,8 +284,9 @@ class TestBuildFeaturesWithInputEvents:
         base = dt.datetime(2026, 2, 23, 10, 0, 0)
         window_events = [_make_event(base)]
         input_events = [
-            _make_input_event(base, presses=0, clicks=0, delta_x=0, delta_y=0,
-                              scroll_x=0, scroll_y=0),
+            _make_input_event(
+                base, presses=0, clicks=0, delta_x=0, delta_y=0, scroll_x=0, scroll_y=0
+            ),
         ]
         rows = build_features_from_aw_events(window_events, input_events=input_events)
         row = rows[0]
@@ -379,11 +406,18 @@ class TestNewFeatureUpgrades:
         ]
         input_events = [
             _make_input_event(base, presses=30, clicks=2, delta_x=100, delta_y=50),
-            _make_input_event(base + dt.timedelta(minutes=1), presses=60, clicks=4,
-                              delta_x=200, delta_y=100),
+            _make_input_event(
+                base + dt.timedelta(minutes=1),
+                presses=60,
+                clicks=4,
+                delta_x=200,
+                delta_y=100,
+            ),
         ]
         rows = build_features_from_aw_events(window_events, input_events=input_events)
         assert rows[1].keys_per_min_delta is not None
+        assert rows[1].keys_per_min is not None
+        assert rows[0].keys_per_min is not None
         assert rows[1].keys_per_min_delta == rows[1].keys_per_min - rows[0].keys_per_min
 
     def test_app_switch_count_last_15m(self) -> None:
@@ -409,10 +443,18 @@ class TestIdleSegmentFeatures:
             _make_event(base, duration=60.0),
         ]
         input_events = [
-            _make_input_event(base, presses=0, clicks=0, delta_x=0, delta_y=0,
-                              scroll_x=0, scroll_y=0),
-            _make_input_event(base + dt.timedelta(seconds=5), presses=0, clicks=0,
-                              delta_x=0, delta_y=0, scroll_x=0, scroll_y=0),
+            _make_input_event(
+                base, presses=0, clicks=0, delta_x=0, delta_y=0, scroll_x=0, scroll_y=0
+            ),
+            _make_input_event(
+                base + dt.timedelta(seconds=5),
+                presses=0,
+                clicks=0,
+                delta_x=0,
+                delta_y=0,
+                scroll_x=0,
+                scroll_y=0,
+            ),
         ]
 
         rows = build_features_from_aw_events(window_events, input_events=input_events)

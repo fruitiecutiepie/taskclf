@@ -133,10 +133,12 @@ class TestCalibratorStore:
 
     def test_calibrate_batch_per_user(self) -> None:
         """TC-CAL-009: Different users get different calibrations."""
-        probs = np.array([
-            [0.5, 0.2, 0.1, 0.05, 0.05, 0.05, 0.025, 0.025],
-            [0.5, 0.2, 0.1, 0.05, 0.05, 0.05, 0.025, 0.025],
-        ])
+        probs = np.array(
+            [
+                [0.5, 0.2, 0.1, 0.05, 0.05, 0.05, 0.025, 0.025],
+                [0.5, 0.2, 0.1, 0.05, 0.05, 0.05, 0.025, 0.025],
+            ]
+        )
         store = CalibratorStore(
             global_calibrator=IdentityCalibrator(),
             user_calibrators={"alice": TemperatureCalibrator(5.0)},
@@ -199,6 +201,7 @@ class TestCalibratorStorePersistence:
         assert loaded.user_ids == ["alice", "bob"]
         assert isinstance(loaded.user_calibrators["alice"], TemperatureCalibrator)
         assert loaded.user_calibrators["alice"].temperature == 2.0
+        assert isinstance(loaded.user_calibrators["bob"], TemperatureCalibrator)
         assert loaded.user_calibrators["bob"].temperature == 3.0
 
     def test_roundtrip_isotonic_global(self, tmp_path: Path) -> None:
@@ -236,7 +239,10 @@ class TestCalibratorStorePersistence:
         """TC-CAL-016: store.json contains method, user_count, user_ids."""
         store = CalibratorStore(
             global_calibrator=IdentityCalibrator(),
-            user_calibrators={"a": TemperatureCalibrator(1.5), "b": TemperatureCalibrator(2.5)},
+            user_calibrators={
+                "a": TemperatureCalibrator(1.5),
+                "b": TemperatureCalibrator(2.5),
+            },
             method="temperature",
         )
         store_path = tmp_path / "meta_store"

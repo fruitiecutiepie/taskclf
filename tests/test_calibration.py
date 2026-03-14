@@ -53,7 +53,9 @@ def _make_isotonic_regressors(n_classes: int = _N_CLASSES) -> list[IsotonicRegre
     return regs
 
 
-def _random_probs(n_rows: int, n_classes: int = _N_CLASSES, seed: int = 0) -> np.ndarray:
+def _random_probs(
+    n_rows: int, n_classes: int = _N_CLASSES, seed: int = 0
+) -> np.ndarray:
     rng = np.random.RandomState(seed)
     raw = rng.rand(n_rows, n_classes)
     return raw / raw.sum(axis=1, keepdims=True)
@@ -143,13 +145,17 @@ class TestCalibratorStore:
     def test_user_ids_property(self):
         store = CalibratorStore(
             global_calibrator=IdentityCalibrator(),
-            user_calibrators={"z-user": IdentityCalibrator(), "a-user": IdentityCalibrator()},
+            user_calibrators={
+                "z-user": IdentityCalibrator(),
+                "a-user": IdentityCalibrator(),
+            },
         )
         assert store.user_ids == ["a-user", "z-user"]
 
     def test_method_attribute(self):
         store = CalibratorStore(
-            global_calibrator=IdentityCalibrator(), method="isotonic",
+            global_calibrator=IdentityCalibrator(),
+            method="isotonic",
         )
         assert store.method == "isotonic"
 
@@ -187,7 +193,9 @@ class TestCalibrationSerialization:
 
         probs = _random_probs(5)
         np.testing.assert_allclose(
-            cal.calibrate(probs), loaded.calibrate(probs), atol=1e-10,
+            cal.calibrate(probs),
+            loaded.calibrate(probs),
+            atol=1e-10,
         )
 
     def test_store_round_trip_temperature(self, tmp_path: Path):
@@ -233,7 +241,8 @@ class TestCalibrationSerialization:
 
     def test_store_empty_users(self, tmp_path: Path):
         store = CalibratorStore(
-            global_calibrator=IdentityCalibrator(), method="temperature",
+            global_calibrator=IdentityCalibrator(),
+            method="temperature",
         )
         store_dir = tmp_path / "empty_store"
         save_calibrator_store(store, store_dir)
@@ -258,13 +267,15 @@ class TestPersonalizationEligibility:
         rows = []
         for i in range(n_windows):
             day_offset = i % n_days
-            rows.append({
-                "user_id": user_id,
-                "bucket_start_ts": pd.Timestamp(
-                    f"2025-06-{15 + day_offset:02d}T{10 + i % 12:02d}:00:00"
-                ),
-                "label": labels[i % n_labels],
-            })
+            rows.append(
+                {
+                    "user_id": user_id,
+                    "bucket_start_ts": pd.Timestamp(
+                        f"2025-06-{15 + day_offset:02d}T{10 + i % 12:02d}:00:00"
+                    ),
+                    "label": labels[i % n_labels],
+                }
+            )
         return pd.DataFrame(rows)
 
     def test_eligible(self):
@@ -311,7 +322,11 @@ class TestPersonalizationEligibility:
 
         df = self._make_df("user-A", n_windows=50, n_days=3, n_labels=3)
         result = check_personalization_eligible(
-            df, "user-A", min_windows=40, min_days=2, min_labels=2,
+            df,
+            "user-A",
+            min_windows=40,
+            min_days=2,
+            min_labels=2,
         )
         assert result.is_eligible is True
 
@@ -373,21 +388,23 @@ def _build_synthetic_labeled_df(
     from taskclf.features.build import generate_dummy_features
     from taskclf.labels.store import generate_dummy_labels
 
-    all_frames = []
+    all_frames: list[pd.DataFrame] = []
     for uid, n_windows in users.items():
         days_needed = max(1, n_days)
         per_day = max(1, n_windows // days_needed)
         for d in range(days_needed):
-            if len(all_frames) > 0 and sum(len(f) for f in all_frames) >= n_windows:
+            if (
+                len(all_frames) > 0
+                and sum((len(f) for f in all_frames), 0) >= n_windows
+            ):
                 break
             date = dt.date(2025, 6, 15) + dt.timedelta(days=d)
             rows = generate_dummy_features(date, n_rows=per_day, user_id=uid)
             df = pd.DataFrame([r.model_dump() for r in rows])
             labels = generate_dummy_labels(date, n_rows=per_day)
             for span in labels:
-                mask = (
-                    (df["bucket_start_ts"] >= span.start_ts)
-                    & (df["bucket_start_ts"] < span.end_ts)
+                mask = (df["bucket_start_ts"] >= span.start_ts) & (
+                    df["bucket_start_ts"] < span.end_ts
                 )
                 df.loc[mask, "label"] = span.label
             all_frames.append(df)
@@ -436,7 +453,9 @@ class TestFitCalibratorStore:
             pytest.skip("Insufficient data for train/val split")
 
         model, _metrics, _cm, _params, cat_encoders = train_lgbm(
-            train_df, val_df, num_boost_round=5,
+            train_df,
+            val_df,
+            num_boost_round=5,
         )
         return model, cat_encoders, val_df
 
@@ -445,7 +464,8 @@ class TestFitCalibratorStore:
 
         model, cat_encoders, val_df = self._train_tiny_model()
         store, eligibility = fit_calibrator_store(
-            model, val_df,
+            model,
+            val_df,
             cat_encoders=cat_encoders,
             method="temperature",
             min_windows=5,
@@ -463,7 +483,8 @@ class TestFitCalibratorStore:
 
         model, cat_encoders, val_df = self._train_tiny_model()
         store, eligibility = fit_calibrator_store(
-            model, val_df,
+            model,
+            val_df,
             cat_encoders=cat_encoders,
             method="isotonic",
             min_windows=5,
@@ -480,7 +501,8 @@ class TestFitCalibratorStore:
 
         model, cat_encoders, val_df = self._train_tiny_model()
         store, eligibility = fit_calibrator_store(
-            model, val_df,
+            model,
+            val_df,
             cat_encoders=cat_encoders,
             method="temperature",
             min_windows=999999,
@@ -538,19 +560,25 @@ class TestBatchInferenceWithStore:
             pytest.skip("Insufficient split data")
 
         model, _m, _c, _p, cat_encoders = train_lgbm(
-            train_df, val_df, num_boost_round=5,
+            train_df,
+            val_df,
+            num_boost_round=5,
         )
 
         result_with_store = run_batch_inference(
-            model, features_df,
+            model,
+            features_df,
             cat_encoders=cat_encoders,
             calibrator_store=store,
         )
 
         result_without = run_batch_inference(
-            model, features_df,
+            model,
+            features_df,
             cat_encoders=cat_encoders,
         )
 
-        assert len(result_with_store.smoothed_labels) == len(result_without.smoothed_labels)
+        assert len(result_with_store.smoothed_labels) == len(
+            result_without.smoothed_labels
+        )
         assert result_with_store.core_probs.shape == result_without.core_probs.shape

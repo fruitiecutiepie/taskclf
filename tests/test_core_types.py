@@ -64,17 +64,13 @@ class TestFeatureRowValidation:
         with pytest.raises(ValidationError):
             FeatureRow.model_validate(data)
 
-    def test_hour_of_day_range(
-        self, valid_feature_row_data: dict[str, Any]
-    ) -> None:
+    def test_hour_of_day_range(self, valid_feature_row_data: dict[str, Any]) -> None:
         with pytest.raises(ValidationError):
             FeatureRow.model_validate({**valid_feature_row_data, "hour_of_day": 24})
         with pytest.raises(ValidationError):
             FeatureRow.model_validate({**valid_feature_row_data, "hour_of_day": -1})
 
-    def test_day_of_week_range(
-        self, valid_feature_row_data: dict[str, Any]
-    ) -> None:
+    def test_day_of_week_range(self, valid_feature_row_data: dict[str, Any]) -> None:
         with pytest.raises(ValidationError):
             FeatureRow.model_validate({**valid_feature_row_data, "day_of_week": 7})
 

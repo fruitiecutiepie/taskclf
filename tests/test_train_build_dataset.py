@@ -7,15 +7,12 @@ import json
 from pathlib import Path
 
 import pandas as pd
-import pytest
 
-from taskclf.core.schema import FeatureSchemaV1
 from taskclf.core.store import read_parquet
 from taskclf.core.types import LabelSpan
 from taskclf.features.build import generate_dummy_features
 from taskclf.labels.store import generate_dummy_labels
 from taskclf.train.build_dataset import (
-    DatasetManifest,
     build_training_dataset,
 )
 
@@ -40,7 +37,9 @@ class TestBuildTrainingDataset:
             [dt.date(2025, 6, 14), dt.date(2025, 6, 15)],
         )
         manifest = build_training_dataset(
-            features, labels, output_dir=tmp_path / "ds",
+            features,
+            labels,
+            output_dir=tmp_path / "ds",
         )
         assert Path(manifest.x_path).exists()
         assert Path(manifest.y_path).exists()
@@ -51,7 +50,9 @@ class TestBuildTrainingDataset:
             [dt.date(2025, 6, 14), dt.date(2025, 6, 15)],
         )
         manifest = build_training_dataset(
-            features, labels, output_dir=tmp_path / "ds",
+            features,
+            labels,
+            output_dir=tmp_path / "ds",
         )
         x = read_parquet(Path(manifest.x_path))
         y = read_parquet(Path(manifest.y_path))
@@ -63,7 +64,9 @@ class TestBuildTrainingDataset:
             [dt.date(2025, 6, 14), dt.date(2025, 6, 15)],
         )
         manifest = build_training_dataset(
-            features, labels, output_dir=tmp_path / "ds",
+            features,
+            labels,
+            output_dir=tmp_path / "ds",
         )
         with open(manifest.splits_path) as f:
             splits = json.load(f)
@@ -81,7 +84,9 @@ class TestBuildTrainingDataset:
             [dt.date(2025, 6, 14), dt.date(2025, 6, 15)],
         )
         manifest = build_training_dataset(
-            features, labels, output_dir=tmp_path / "ds",
+            features,
+            labels,
+            output_dir=tmp_path / "ds",
         )
         with open(manifest.splits_path) as f:
             splits = json.load(f)
@@ -99,8 +104,11 @@ class TestBuildTrainingDataset:
             n_per_day=50,
         )
         manifest = build_training_dataset(
-            features, labels, output_dir=tmp_path / "ds",
-            train_ratio=0.70, val_ratio=0.15,
+            features,
+            labels,
+            output_dir=tmp_path / "ds",
+            train_ratio=0.70,
+            val_ratio=0.15,
         )
         total = manifest.total_rows
         if total > 10:
@@ -110,7 +118,9 @@ class TestBuildTrainingDataset:
     def test_x_contains_schema_version(self, tmp_path: Path) -> None:
         features, labels = _features_and_labels([dt.date(2025, 6, 15)])
         manifest = build_training_dataset(
-            features, labels, output_dir=tmp_path / "ds",
+            features,
+            labels,
+            output_dir=tmp_path / "ds",
         )
         x = read_parquet(Path(manifest.x_path))
         assert "schema_version" in x.columns
@@ -118,7 +128,9 @@ class TestBuildTrainingDataset:
     def test_y_contains_label_column(self, tmp_path: Path) -> None:
         features, labels = _features_and_labels([dt.date(2025, 6, 15)])
         manifest = build_training_dataset(
-            features, labels, output_dir=tmp_path / "ds",
+            features,
+            labels,
+            output_dir=tmp_path / "ds",
         )
         y = read_parquet(Path(manifest.y_path))
         assert "label" in y.columns
@@ -130,26 +142,40 @@ class TestExclusionRules:
     def test_all_null_features_excluded(self, tmp_path: Path) -> None:
         features, labels = _features_and_labels([dt.date(2025, 6, 15)], n_per_day=10)
         numeric_cols = [
-            "keys_per_min", "backspace_ratio", "shortcut_rate",
-            "clicks_per_min", "scroll_events_per_min", "mouse_distance",
-            "active_seconds_keyboard", "active_seconds_mouse",
-            "active_seconds_any", "max_idle_run_seconds", "event_density",
-            "app_switch_count_last_5m", "app_foreground_time_ratio",
-            "app_change_count", "hour_of_day", "session_length_so_far",
+            "keys_per_min",
+            "backspace_ratio",
+            "shortcut_rate",
+            "clicks_per_min",
+            "scroll_events_per_min",
+            "mouse_distance",
+            "active_seconds_keyboard",
+            "active_seconds_mouse",
+            "active_seconds_any",
+            "max_idle_run_seconds",
+            "event_density",
+            "app_switch_count_last_5m",
+            "app_foreground_time_ratio",
+            "app_change_count",
+            "hour_of_day",
+            "session_length_so_far",
         ]
         for c in numeric_cols:
             if c in features.columns:
                 features.loc[0, c] = None
 
         manifest = build_training_dataset(
-            features, labels, output_dir=tmp_path / "ds",
+            features,
+            labels,
+            output_dir=tmp_path / "ds",
         )
         assert manifest.total_rows <= len(features)
 
     def test_empty_labels_yields_zero_rows(self, tmp_path: Path) -> None:
         features, _ = _features_and_labels([dt.date(2025, 6, 15)], n_per_day=10)
         manifest = build_training_dataset(
-            features, [], output_dir=tmp_path / "ds",
+            features,
+            [],
+            output_dir=tmp_path / "ds",
         )
         assert manifest.total_rows == 0
 
@@ -159,15 +185,19 @@ class TestHoldoutUsers:
         dfs = []
         labels: list[LabelSpan] = []
         for uid in [f"user-{i}" for i in range(10)]:
-            f, l = _features_and_labels(
-                [dt.date(2025, 6, 15)], n_per_day=20, user_id=uid,
+            feat, lbl = _features_and_labels(
+                [dt.date(2025, 6, 15)],
+                n_per_day=20,
+                user_id=uid,
             )
-            dfs.append(f)
-            labels.extend(l)
+            dfs.append(feat)
+            labels.extend(lbl)
         features = pd.concat(dfs, ignore_index=True)
 
         manifest = build_training_dataset(
-            features, labels, output_dir=tmp_path / "ds",
+            features,
+            labels,
+            output_dir=tmp_path / "ds",
             holdout_user_fraction=0.2,
         )
         assert len(manifest.holdout_users) >= 1

@@ -23,7 +23,11 @@ def test_user_id_stored_in_dot_file(tmp_path):
     cfg = UserConfig(tmp_path)
     assert (tmp_path / ".user_id").exists()
     assert (tmp_path / ".user_id").read_text().strip() == cfg.user_id
-    toml_text = (tmp_path / "config.toml").read_text() if (tmp_path / "config.toml").exists() else ""
+    toml_text = (
+        (tmp_path / "config.toml").read_text()
+        if (tmp_path / "config.toml").exists()
+        else ""
+    )
     assert "user_id" not in toml_text
 
 
@@ -174,7 +178,9 @@ def test_missing_user_id_file_regenerated(tmp_path):
 
 def test_user_id_migrated_from_toml_to_dot_file(tmp_path):
     """If old code wrote user_id into config.toml, move it to .user_id."""
-    (tmp_path / "config.toml").write_text('user_id = "in-toml-uuid"\nusername = "bob"\n')
+    (tmp_path / "config.toml").write_text(
+        'user_id = "in-toml-uuid"\nusername = "bob"\n'
+    )
     cfg = UserConfig(tmp_path)
     assert cfg.user_id == "in-toml-uuid"
     assert (tmp_path / ".user_id").read_text().strip() == "in-toml-uuid"
@@ -190,11 +196,15 @@ def test_user_id_migrated_from_toml_to_dot_file(tmp_path):
 def test_json_to_toml_migration(tmp_path):
     """Existing config.json is migrated to config.toml + .user_id."""
     json_path = tmp_path / "config.json"
-    json_path.write_text(json.dumps({
-        "user_id": "migrated-uuid",
-        "username": "migrator",
-        "poll_seconds": 90,
-    }))
+    json_path.write_text(
+        json.dumps(
+            {
+                "user_id": "migrated-uuid",
+                "username": "migrator",
+                "poll_seconds": 90,
+            }
+        )
+    )
 
     cfg = UserConfig(tmp_path)
 
@@ -212,11 +222,15 @@ def test_json_to_toml_migration(tmp_path):
 def test_json_migration_strips_help_key(tmp_path):
     """The _help dict from JSON-era configs is dropped during migration."""
     json_path = tmp_path / "config.json"
-    json_path.write_text(json.dumps({
-        "user_id": "help-uuid",
-        "_help": {"user_id": "old help text"},
-        "poll_seconds": 60,
-    }))
+    json_path.write_text(
+        json.dumps(
+            {
+                "user_id": "help-uuid",
+                "_help": {"user_id": "old help text"},
+                "poll_seconds": 60,
+            }
+        )
+    )
 
     cfg = UserConfig(tmp_path)
     assert "_help" not in cfg.as_dict()

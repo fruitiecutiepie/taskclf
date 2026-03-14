@@ -125,7 +125,9 @@ def format_diagnostics_text(info: dict[str, object]) -> str:
         for b in bundles:
             if isinstance(b, dict):
                 tag = "valid" if b.get("valid") else "INVALID"
-                lines.append(f"  {b.get('model_id', '?')} [{tag}] created={b.get('created_at', '?')}")
+                lines.append(
+                    f"  {b.get('model_id', '?')} [{tag}] created={b.get('created_at', '?')}"
+                )
     else:
         lines.append("  (none)")
 

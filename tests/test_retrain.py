@@ -40,7 +40,6 @@ from taskclf.train.retrain import (
     DatasetSnapshot,
     RetrainConfig,
     RegressionGate,
-    RegressionResult,
     TrainParams,
     check_calibrator_update_due,
     check_candidate_gates,
@@ -59,7 +58,8 @@ from taskclf.train.retrain import (
 
 
 def _make_features_and_labels(
-    dates: list[dt.date], n_rows: int = 60,
+    dates: list[dt.date],
+    n_rows: int = 60,
 ) -> tuple[pd.DataFrame, list[LabelSpan]]:
     all_features: list[pd.DataFrame] = []
     all_labels: list[LabelSpan] = []
@@ -88,7 +88,11 @@ def _make_eval_report(
     for name in label_names:
         prec = breakidle_precision if name == "BreakIdle" else all_class_precision
         rec = breakidle_recall if name == "BreakIdle" else 0.70
-        per_class[name] = {"precision": prec, "recall": rec, "f1": 2 * prec * rec / (prec + rec) if (prec + rec) > 0 else 0.0}
+        per_class[name] = {
+            "precision": prec,
+            "recall": rec,
+            "f1": 2 * prec * rec / (prec + rec) if (prec + rec) > 0 else 0.0,
+        }
 
     acceptance_checks = {
         "macro_f1": macro_f1 >= 0.65,
@@ -98,7 +102,9 @@ def _make_eval_report(
         "no_class_below_50_precision": all_class_precision >= 0.50,
         "reject_rate_bounds": 0.05 <= reject_rate <= 0.30,
     }
-    acceptance_details = {k: f"{'PASS' if v else 'FAIL'}" for k, v in acceptance_checks.items()}
+    acceptance_details = {
+        k: f"{'PASS' if v else 'FAIL'}" for k, v in acceptance_checks.items()
+    }
 
     return EvaluationReport(
         macro_f1=macro_f1,
@@ -132,7 +138,9 @@ def _create_dummy_model_bundle(
     val_df = labeled.iloc[splits["val"]].reset_index(drop=True)
 
     model, metrics, cm_df, params, cat_encoders = train_lgbm(
-        train_df, val_df, num_boost_round=5,
+        train_df,
+        val_df,
+        num_boost_round=5,
     )
     dataset_hash = compute_dataset_hash(features_df, labels)
     metadata = build_metadata(
@@ -145,7 +153,12 @@ def _create_dummy_model_bundle(
     )
 
     run_dir = save_model_bundle(
-        model, metadata, metrics, cm_df, models_dir, cat_encoders=cat_encoders,
+        model,
+        metadata,
+        metrics,
+        cm_df,
+        models_dir,
+        cat_encoders=cat_encoders,
     )
 
     if created_at is not None:
@@ -307,7 +320,9 @@ class TestRetrainPipeline:
         features_df, labels = _make_features_and_labels(dates)
 
         result = run_retrain_pipeline(
-            config, features_df, labels,
+            config,
+            features_df,
+            labels,
             models_dir=models_dir,
             out_dir=out_dir,
             force=True,
@@ -330,7 +345,9 @@ class TestRetrainPipeline:
         features_df, labels = _make_features_and_labels(dates)
 
         result = run_retrain_pipeline(
-            config, features_df, labels,
+            config,
+            features_df,
+            labels,
             models_dir=models_dir,
             out_dir=out_dir,
             force=True,
@@ -353,7 +370,9 @@ class TestRetrainPipeline:
         features_df, labels = _make_features_and_labels(dates)
 
         result = run_retrain_pipeline(
-            config, features_df, labels,
+            config,
+            features_df,
+            labels,
             models_dir=models_dir,
             out_dir=out_dir,
             force=True,
@@ -384,7 +403,9 @@ class TestRetrainPipeline:
         features_df, labels = _make_features_and_labels(dates)
 
         result = run_retrain_pipeline(
-            config, features_df, labels,
+            config,
+            features_df,
+            labels,
             models_dir=models_dir,
             out_dir=out_dir,
             force=True,
@@ -408,7 +429,9 @@ class TestRetrainPipeline:
         features_df, labels = _make_features_and_labels(dates)
 
         result = run_retrain_pipeline(
-            config, features_df, labels,
+            config,
+            features_df,
+            labels,
             models_dir=models_dir,
             out_dir=out_dir,
             force=True,
@@ -433,7 +456,9 @@ class TestRetrainPipeline:
         features_df, labels = _make_features_and_labels(dates)
 
         result = run_retrain_pipeline(
-            config, features_df, labels,
+            config,
+            features_df,
+            labels,
             models_dir=models_dir,
             out_dir=out_dir,
             force=True,
@@ -459,7 +484,9 @@ class TestRetrainPipeline:
         features_df, labels = _make_features_and_labels(dates)
 
         r1 = run_retrain_pipeline(
-            config, features_df, labels,
+            config,
+            features_df,
+            labels,
             models_dir=models_dir,
             out_dir=out_dir,
             force=True,
@@ -469,7 +496,9 @@ class TestRetrainPipeline:
 
         # Second run: champion should be the first promoted model
         r2 = run_retrain_pipeline(
-            config, features_df, labels,
+            config,
+            features_df,
+            labels,
             models_dir=models_dir,
             out_dir=out_dir,
             force=True,
@@ -487,7 +516,9 @@ class TestRetrainPipeline:
 class TestCandidateGates:
     def test_all_pass(self) -> None:
         report = _make_eval_report(
-            macro_f1=0.75, breakidle_precision=0.98, all_class_precision=0.70,
+            macro_f1=0.75,
+            breakidle_precision=0.98,
+            all_class_precision=0.70,
         )
         result = check_candidate_gates(report)
         assert result.all_passed is True
@@ -504,7 +535,9 @@ class TestCandidateGates:
         report = _make_eval_report(all_class_precision=0.40)
         result = check_candidate_gates(report)
         assert result.all_passed is False
-        prec_gate = next(g for g in result.gates if g.name == "no_class_below_50_precision")
+        prec_gate = next(
+            g for g in result.gates if g.name == "no_class_below_50_precision"
+        )
         assert prec_gate.passed is False
 
     def test_fail_acceptance(self) -> None:
@@ -550,7 +583,9 @@ class TestCheckCalibratorUpdateDue:
     def test_fresh_store(self, tmp_path: Path) -> None:
         """TC-RETRAIN-021: freshly created store → not due."""
         store = tmp_path / "store.json"
-        store.write_text(json.dumps({"created_at": dt.datetime.now(dt.UTC).isoformat()}))
+        store.write_text(
+            json.dumps({"created_at": dt.datetime.now(dt.UTC).isoformat()})
+        )
         assert check_calibrator_update_due(tmp_path) is False
 
     def test_stale_store(self, tmp_path: Path) -> None:
@@ -594,15 +629,21 @@ class TestFindLatestModel:
         """TC-RETRAIN-027: single valid bundle is returned."""
         run = tmp_path / "run_001"
         run.mkdir()
-        (run / "metadata.json").write_text(json.dumps({
-            "created_at": "2025-07-01T00:00:00",
-        }))
+        (run / "metadata.json").write_text(
+            json.dumps(
+                {
+                    "created_at": "2025-07-01T00:00:00",
+                }
+            )
+        )
         result = find_latest_model(tmp_path)
         assert result == run
 
     def test_multiple_bundles_returns_latest(self, tmp_path: Path) -> None:
         """TC-RETRAIN-028: with multiple bundles, the latest is returned."""
-        for i, ts in enumerate(["2025-07-01T00:00:00", "2025-07-03T00:00:00", "2025-07-02T00:00:00"]):
+        for i, ts in enumerate(
+            ["2025-07-01T00:00:00", "2025-07-03T00:00:00", "2025-07-02T00:00:00"]
+        ):
             run = tmp_path / f"run_{i:03d}"
             run.mkdir()
             (run / "metadata.json").write_text(json.dumps({"created_at": ts}))
@@ -618,9 +659,13 @@ class TestFindLatestModel:
 
         good_run = tmp_path / "good_run"
         good_run.mkdir()
-        (good_run / "metadata.json").write_text(json.dumps({
-            "created_at": "2025-07-01T00:00:00",
-        }))
+        (good_run / "metadata.json").write_text(
+            json.dumps(
+                {
+                    "created_at": "2025-07-01T00:00:00",
+                }
+            )
+        )
 
         result = find_latest_model(tmp_path)
         assert result == good_run

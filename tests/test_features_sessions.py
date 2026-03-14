@@ -13,7 +13,10 @@ from __future__ import annotations
 import datetime as dt
 
 from taskclf.adapters.activitywatch.types import AWEvent
-from taskclf.features.sessions import detect_session_boundaries, session_start_for_bucket
+from taskclf.features.sessions import (
+    detect_session_boundaries,
+    session_start_for_bucket,
+)
 
 
 def _ev(ts: dt.datetime, duration: float = 30.0) -> AWEvent:

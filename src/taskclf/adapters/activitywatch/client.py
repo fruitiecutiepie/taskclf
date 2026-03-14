@@ -261,9 +261,7 @@ def fetch_aw_events(
     url = f"{base}/api/0/buckets/{bucket_id}/events?{qs}"
     raw_events: list[dict] = _api_get(url)
 
-    events = [
-        _raw_event_to_aw_event(e, title_salt=title_salt) for e in raw_events
-    ]
+    events = [_raw_event_to_aw_event(e, title_salt=title_salt) for e in raw_events]
     events.sort(key=lambda e: e.timestamp)
     return events
 

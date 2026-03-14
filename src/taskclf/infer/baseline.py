@@ -13,7 +13,6 @@ This establishes the cold-start performance floor that ML models must beat.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Sequence
 
 import pandas as pd
 
@@ -41,7 +40,7 @@ def _safe_float(value: object, default: float = 0.0) -> float:
         if f != f:  # NaN
             return default
         return f
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return default
 
 
@@ -196,8 +195,7 @@ def run_baseline_inference(
     smoothed = rolling_majority(raw_labels, window=smooth_window)
 
     bucket_starts: list[datetime] = [
-        pd.Timestamp(ts).to_pydatetime()
-        for ts in features_df["bucket_start_ts"].values
+        pd.Timestamp(ts).to_pydatetime() for ts in features_df["bucket_start_ts"].values
     ]
     segments = segmentize(bucket_starts, smoothed, bucket_seconds=bucket_seconds)
 

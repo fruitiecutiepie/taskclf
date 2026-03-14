@@ -55,4 +55,7 @@ def title_hash_bucket(title_hash: str, n_buckets: int = 256) -> int:
     try:
         return int(title_hash, 16) % n_buckets
     except ValueError:
-        return int.from_bytes(hashlib.sha256(title_hash.encode()).digest()[:8], "big") % n_buckets
+        return (
+            int.from_bytes(hashlib.sha256(title_hash.encode()).digest()[:8], "big")
+            % n_buckets
+        )

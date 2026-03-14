@@ -20,8 +20,17 @@ from taskclf.train.lgbm import FEATURE_COLUMNS
 _ID_COLUMNS = ["user_id", "bucket_start_ts", "session_id"]
 
 _NUMERIC_FEATURES = [
-    c for c in FEATURE_COLUMNS
-    if c not in {"app_id", "app_category", "is_browser", "is_editor", "is_terminal", "day_of_week"}
+    c
+    for c in FEATURE_COLUMNS
+    if c
+    not in {
+        "app_id",
+        "app_category",
+        "is_browser",
+        "is_editor",
+        "is_terminal",
+        "day_of_week",
+    }
 ]
 
 

@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import datetime as dt
 from pathlib import Path
-from unittest.mock import patch
 
 import pandas as pd
 import pytest
@@ -122,13 +121,17 @@ class TestOnlineQueueEnqueue:
         bucket_start = dt.datetime(2026, 2, 26, 14, 0, 0)
         bucket_end = dt.datetime(2026, 2, 26, 14, 1, 0)
 
-        enqueue_df = pd.DataFrame([{
-            "user_id": "default-user",
-            "bucket_start_ts": bucket_start,
-            "bucket_end_ts": bucket_end,
-            "confidence": 0.30,
-            "predicted_label": "Build",
-        }])
+        enqueue_df = pd.DataFrame(
+            [
+                {
+                    "user_id": "default-user",
+                    "bucket_start_ts": bucket_start,
+                    "bucket_end_ts": bucket_end,
+                    "confidence": 0.30,
+                    "predicted_label": "Build",
+                }
+            ]
+        )
         added = queue.enqueue_low_confidence(enqueue_df, threshold=0.55)
         assert added == 1
         items = queue.all_items
@@ -140,13 +143,17 @@ class TestOnlineQueueEnqueue:
         queue = ActiveLabelingQueue(tmp_path / "queue.json")
         bucket_start = dt.datetime(2026, 2, 26, 14, 0, 0)
 
-        enqueue_df = pd.DataFrame([{
-            "user_id": "default-user",
-            "bucket_start_ts": bucket_start,
-            "bucket_end_ts": bucket_start + dt.timedelta(minutes=1),
-            "confidence": 0.80,
-            "predicted_label": "Build",
-        }])
+        enqueue_df = pd.DataFrame(
+            [
+                {
+                    "user_id": "default-user",
+                    "bucket_start_ts": bucket_start,
+                    "bucket_end_ts": bucket_start + dt.timedelta(minutes=1),
+                    "confidence": 0.80,
+                    "predicted_label": "Build",
+                }
+            ]
+        )
         added = queue.enqueue_low_confidence(enqueue_df, threshold=0.55)
         assert added == 0
 
@@ -154,13 +161,17 @@ class TestOnlineQueueEnqueue:
         queue = ActiveLabelingQueue(tmp_path / "queue.json")
         bucket_start = dt.datetime(2026, 2, 26, 14, 0, 0)
 
-        enqueue_df = pd.DataFrame([{
-            "user_id": "default-user",
-            "bucket_start_ts": bucket_start,
-            "bucket_end_ts": bucket_start + dt.timedelta(minutes=1),
-            "confidence": 0.30,
-            "predicted_label": "Build",
-        }])
+        enqueue_df = pd.DataFrame(
+            [
+                {
+                    "user_id": "default-user",
+                    "bucket_start_ts": bucket_start,
+                    "bucket_end_ts": bucket_start + dt.timedelta(minutes=1),
+                    "confidence": 0.30,
+                    "predicted_label": "Build",
+                }
+            ]
+        )
         queue.enqueue_low_confidence(enqueue_df, threshold=0.55)
         added = queue.enqueue_low_confidence(enqueue_df, threshold=0.55)
         assert added == 0
@@ -171,17 +182,21 @@ class TestOnlineQueueEnqueue:
         base = dt.datetime(2026, 2, 26, 14, 0, 0)
         rows = []
         for i in range(5):
-            rows.append({
-                "user_id": "default-user",
-                "bucket_start_ts": base + dt.timedelta(minutes=i),
-                "bucket_end_ts": base + dt.timedelta(minutes=i + 1),
-                "confidence": 0.20 + i * 0.05,
-                "predicted_label": "Build",
-            })
+            rows.append(
+                {
+                    "user_id": "default-user",
+                    "bucket_start_ts": base + dt.timedelta(minutes=i),
+                    "bucket_end_ts": base + dt.timedelta(minutes=i + 1),
+                    "confidence": 0.20 + i * 0.05,
+                    "predicted_label": "Build",
+                }
+            )
         enqueue_df = pd.DataFrame(rows)
         added = queue.enqueue_low_confidence(enqueue_df, threshold=0.55)
         assert added == 5
 
         pending = queue.get_pending()
-        confidences = [r.confidence for r in pending]
-        assert confidences == sorted(confidences)
+        confidences: list[float | None] = [r.confidence for r in pending]
+        assert confidences == sorted(
+            confidences, key=lambda x: x if x is not None else float("-inf")
+        )

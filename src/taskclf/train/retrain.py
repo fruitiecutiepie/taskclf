@@ -22,7 +22,7 @@ import json
 import logging
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Literal, Sequence
+from typing import Literal, Sequence
 
 import pandas as pd
 import yaml
@@ -38,7 +38,6 @@ from taskclf.core.defaults import (
     DEFAULT_RETRAIN_CADENCE_DAYS,
 )
 from taskclf.core.model_io import (
-    ModelMetadata,
     build_metadata,
     load_model_bundle,
     save_model_bundle,
@@ -132,9 +131,9 @@ def compute_dataset_hash(features_df: pd.DataFrame, labels: Sequence[LabelSpan])
     cols = sorted(features_df.columns.tolist())
     h.update(json.dumps(cols, sort_keys=True).encode())
 
-    sorted_df = features_df.sort_values(
-        ["user_id", "bucket_start_ts"]
-    ).reset_index(drop=True)
+    sorted_df = features_df.sort_values(["user_id", "bucket_start_ts"]).reset_index(
+        drop=True
+    )
     h.update(sorted_df.to_csv(index=False).encode())
 
     sorted_spans = sorted(labels, key=lambda s: (s.start_ts, s.end_ts))
@@ -177,7 +176,7 @@ def find_latest_model(models_dir: Path) -> Path | None:
             if created > best_ts:
                 best_ts = created
                 best_path = candidate
-        except (json.JSONDecodeError, OSError):
+        except json.JSONDecodeError, OSError:
             logger.debug("Skipping unreadable metadata at %s", meta_path, exc_info=True)
             continue
 
@@ -212,7 +211,7 @@ def check_retrain_due(
             model_ts = model_ts.replace(tzinfo=UTC)
         age = datetime.now(UTC) - model_ts
         return age >= timedelta(days=cadence_days)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         logger.debug("Could not parse model created_at timestamp", exc_info=True)
         return True
 
@@ -244,7 +243,7 @@ def check_calibrator_update_due(
         if store_ts.tzinfo is None:
             store_ts = store_ts.replace(tzinfo=UTC)
         return datetime.now(UTC) - store_ts >= timedelta(days=cadence_days)
-    except (json.JSONDecodeError, ValueError, TypeError, OSError):
+    except json.JSONDecodeError, ValueError, TypeError, OSError:
         logger.debug("Could not parse calibrator store.json", exc_info=True)
         return True
 
@@ -291,40 +290,44 @@ def check_candidate_gates(
 
     bi = challenger_report.per_class.get("BreakIdle", {})
     bi_prec = bi.get("precision", 0.0)
-    gates.append(RegressionGate(
-        name="breakidle_precision",
-        passed=bi_prec >= 0.95,
-        detail=f"BreakIdle precision={bi_prec:.4f} (>= 0.95 required)",
-    ))
+    gates.append(
+        RegressionGate(
+            name="breakidle_precision",
+            passed=bi_prec >= 0.95,
+            detail=f"BreakIdle precision={bi_prec:.4f} (>= 0.95 required)",
+        )
+    )
 
     low_classes = [
         (name, m["precision"])
         for name, m in challenger_report.per_class.items()
         if m.get("precision", 0.0) < 0.50
     ]
-    gates.append(RegressionGate(
-        name="no_class_below_50_precision",
-        passed=len(low_classes) == 0,
-        detail=(
-            "all classes >= 0.50"
-            if not low_classes
-            else "FAIL: " + ", ".join(f"{n}={p:.4f}" for n, p in low_classes)
-        ),
-    ))
+    gates.append(
+        RegressionGate(
+            name="no_class_below_50_precision",
+            passed=len(low_classes) == 0,
+            detail=(
+                "all classes >= 0.50"
+                if not low_classes
+                else "FAIL: " + ", ".join(f"{n}={p:.4f}" for n, p in low_classes)
+            ),
+        )
+    )
 
     all_acceptance = all(challenger_report.acceptance_checks.values())
-    failed_checks = [
-        k for k, v in challenger_report.acceptance_checks.items() if not v
-    ]
-    gates.append(RegressionGate(
-        name="challenger_acceptance",
-        passed=all_acceptance,
-        detail=(
-            "all acceptance checks passed"
-            if all_acceptance
-            else "FAIL: " + ", ".join(failed_checks)
-        ),
-    ))
+    failed_checks = [k for k, v in challenger_report.acceptance_checks.items() if not v]
+    gates.append(
+        RegressionGate(
+            name="challenger_acceptance",
+            passed=all_acceptance,
+            detail=(
+                "all acceptance checks passed"
+                if all_acceptance
+                else "FAIL: " + ", ".join(failed_checks)
+            ),
+        )
+    )
 
     return RegressionResult(
         all_passed=all(g.passed for g in gates),
@@ -361,15 +364,17 @@ def check_regression_gates(
 
     delta = champion_report.macro_f1 - challenger_report.macro_f1
     passed = delta <= config.regression_tolerance
-    gates.append(RegressionGate(
-        name="macro_f1_no_regression",
-        passed=passed,
-        detail=(
-            f"champion={champion_report.macro_f1:.4f} "
-            f"challenger={challenger_report.macro_f1:.4f} "
-            f"delta={delta:+.4f} tolerance={config.regression_tolerance}"
-        ),
-    ))
+    gates.append(
+        RegressionGate(
+            name="macro_f1_no_regression",
+            passed=passed,
+            detail=(
+                f"champion={champion_report.macro_f1:.4f} "
+                f"challenger={challenger_report.macro_f1:.4f} "
+                f"delta={delta:+.4f} tolerance={config.regression_tolerance}"
+            ),
+        )
+    )
 
     return RegressionResult(
         all_passed=all(g.passed for g in gates),
@@ -401,7 +406,8 @@ def _resolve_champion(models_dir: Path) -> Path | None:
         bundle_path = models_dir.parent / pointer.model_dir
         if bundle_path.is_dir() and (bundle_path / "metadata.json").is_file():
             logger.info(
-                "Champion resolved from active.json: %s", pointer.model_dir,
+                "Champion resolved from active.json: %s",
+                pointer.model_dir,
             )
             return bundle_path
         logger.warning(
@@ -412,7 +418,8 @@ def _resolve_champion(models_dir: Path) -> Path | None:
     report = find_best_model(models_dir)
     if report.best is not None:
         logger.info(
-            "Champion resolved via find_best_model: %s", report.best.model_id,
+            "Champion resolved via find_best_model: %s",
+            report.best.model_id,
         )
         return report.best.path
 
@@ -483,7 +490,9 @@ def run_retrain_pipeline(
     from taskclf.train.dataset import split_by_time
     from taskclf.train.lgbm import train_lgbm
 
-    if not force and not check_retrain_due(models_dir, config.global_retrain_cadence_days):
+    if not force and not check_retrain_due(
+        models_dir, config.global_retrain_cadence_days
+    ):
         dataset_hash = compute_dataset_hash(features_df, label_spans)
         return RetrainResult(
             promoted=False,
@@ -533,9 +542,12 @@ def run_retrain_pipeline(
         raise ValueError("Train or validation split is empty — need more data")
 
     # Train challenger
-    logger.info("Training challenger model (%d train, %d val rows)", len(train_df), len(val_df))
+    logger.info(
+        "Training challenger model (%d train, %d val rows)", len(train_df), len(val_df)
+    )
     model, metrics, cm_df, params, cat_encoders = train_lgbm(
-        train_df, val_df,
+        train_df,
+        val_df,
         num_boost_round=config.train_params.num_boost_round,
         class_weight=config.train_params.class_weight,
     )
@@ -543,7 +555,8 @@ def run_retrain_pipeline(
     # Evaluate challenger
     eval_df = test_df if not test_df.empty else val_df
     challenger_report = evaluate_model(
-        model, eval_df,
+        model,
+        eval_df,
         cat_encoders=cat_encoders,
         holdout_users=holdout_users,
         reject_threshold=reject_threshold,
@@ -577,15 +590,20 @@ def run_retrain_pipeline(
         try:
             champ_model, champ_meta, champ_encoders = load_model_bundle(champion_path)
             champion_report = evaluate_model(
-                champ_model, eval_df,
+                champ_model,
+                eval_df,
                 cat_encoders=champ_encoders,
                 holdout_users=holdout_users,
                 reject_threshold=reject_threshold,
             )
             champion_macro_f1 = champion_report.macro_f1
-            regression = check_regression_gates(champion_report, challenger_report, config)
+            regression = check_regression_gates(
+                champion_report, challenger_report, config
+            )
         except (ValueError, OSError) as exc:
-            logger.warning("Could not evaluate champion: %s — skipping regression gates", exc)
+            logger.warning(
+                "Could not evaluate champion: %s — skipping regression gates", exc
+            )
 
     # Promotion decision
     comparative_passed = regression is None or regression.all_passed
@@ -596,7 +614,12 @@ def run_retrain_pipeline(
 
     if should_promote:
         run_dir = save_model_bundle(
-            model, metadata, metrics, cm_df, models_dir, cat_encoders=cat_encoders,
+            model,
+            metadata,
+            metrics,
+            cm_df,
+            models_dir,
+            cat_encoders=cat_encoders,
         )
         reason = "Promoted: all gates passed"
 
@@ -607,12 +630,12 @@ def run_retrain_pipeline(
             write_index_cache(models_dir, report)
             current = read_active(models_dir)
             if report.best is not None and should_switch_active(
-                current, report.best, policy,
+                current,
+                report.best,
+                policy,
             ):
                 current_model_dir = current.model_dir if current else None
-                best_model_dir = str(
-                    report.best.path.relative_to(models_dir.parent)
-                )
+                best_model_dir = str(report.best.path.relative_to(models_dir.parent))
                 if current_model_dir != best_model_dir:
                     write_active_atomic(
                         models_dir,
@@ -630,7 +653,12 @@ def run_retrain_pipeline(
             logger.warning("Failed to update active pointer: %s", exc)
     else:
         run_dir = save_model_bundle(
-            model, metadata, metrics, cm_df, out_dir / "rejected_models", cat_encoders=cat_encoders,
+            model,
+            metadata,
+            metrics,
+            cm_df,
+            out_dir / "rejected_models",
+            cat_encoders=cat_encoders,
         )
         if dry_run:
             reason = "Dry run: model saved to rejected_models"

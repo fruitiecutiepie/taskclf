@@ -115,15 +115,27 @@ def build_default_rules() -> list[WeakRule]:
     """
     rules: list[WeakRule] = []
     for app_id, label in APP_ID_RULES.items():
-        rules.append(WeakRule(name=f"app_id:{app_id}", field="app_id", pattern=app_id, label=label))
+        rules.append(
+            WeakRule(
+                name=f"app_id:{app_id}", field="app_id", pattern=app_id, label=label
+            )
+        )
     for cat, label in APP_CATEGORY_RULES.items():
         rules.append(
-            WeakRule(name=f"app_category:{cat}", field="app_category", pattern=cat, label=label)
+            WeakRule(
+                name=f"app_category:{cat}",
+                field="app_category",
+                pattern=cat,
+                label=label,
+            )
         )
     for dom, label in DOMAIN_CATEGORY_RULES.items():
         rules.append(
             WeakRule(
-                name=f"domain_category:{dom}", field="domain_category", pattern=dom, label=label
+                name=f"domain_category:{dom}",
+                field="domain_category",
+                pattern=dom,
+                label=label,
             )
         )
     return rules

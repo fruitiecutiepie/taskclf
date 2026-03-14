@@ -52,7 +52,9 @@ def project_blocks_to_windows(
     df = features_df.copy()
 
     if "bucket_end_ts" not in df.columns:
-        df["bucket_end_ts"] = df["bucket_start_ts"] + pd.Timedelta(seconds=bucket_seconds)
+        df["bucket_end_ts"] = df["bucket_start_ts"] + pd.Timedelta(
+            seconds=bucket_seconds
+        )
 
     df["bucket_start_ts"] = pd.to_datetime(df["bucket_start_ts"], utc=True)
     df["bucket_end_ts"] = pd.to_datetime(df["bucket_end_ts"], utc=True)

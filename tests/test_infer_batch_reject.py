@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import datetime as dt
 
-import numpy as np
 import pandas as pd
 import pytest
 
@@ -32,16 +31,34 @@ def _build_model_and_data():
     spans: list[LabelSpan] = []
     for d in dates:
         base = dt.datetime(d.year, d.month, d.day)
-        spans.extend([
-            LabelSpan(start_ts=base.replace(hour=9), end_ts=base.replace(hour=12),
-                       label="Build", provenance="test"),
-            LabelSpan(start_ts=base.replace(hour=12), end_ts=base.replace(hour=14),
-                       label="Write", provenance="test"),
-            LabelSpan(start_ts=base.replace(hour=14), end_ts=base.replace(hour=16),
-                       label="Communicate", provenance="test"),
-            LabelSpan(start_ts=base.replace(hour=16), end_ts=base.replace(hour=17),
-                       label="BreakIdle", provenance="test"),
-        ])
+        spans.extend(
+            [
+                LabelSpan(
+                    start_ts=base.replace(hour=9),
+                    end_ts=base.replace(hour=12),
+                    label="Build",
+                    provenance="test",
+                ),
+                LabelSpan(
+                    start_ts=base.replace(hour=12),
+                    end_ts=base.replace(hour=14),
+                    label="Write",
+                    provenance="test",
+                ),
+                LabelSpan(
+                    start_ts=base.replace(hour=14),
+                    end_ts=base.replace(hour=16),
+                    label="Communicate",
+                    provenance="test",
+                ),
+                LabelSpan(
+                    start_ts=base.replace(hour=16),
+                    end_ts=base.replace(hour=17),
+                    label="BreakIdle",
+                    provenance="test",
+                ),
+            ]
+        )
 
     labeled = project_blocks_to_windows(features_df, spans)
     splits = split_by_time(labeled)
@@ -49,7 +66,10 @@ def _build_model_and_data():
     val_df = labeled.iloc[splits["val"]].reset_index(drop=True)
 
     model, _, _, _, cat_encoders = train_lgbm(
-        train_df, val_df, num_boost_round=5, class_weight="balanced",
+        train_df,
+        val_df,
+        num_boost_round=5,
+        class_weight="balanced",
     )
     return model, cat_encoders, labeled
 
@@ -63,6 +83,7 @@ def artifacts():
 # TC-REJECT-001: predict_labels with reject threshold
 # ---------------------------------------------------------------------------
 
+
 class TestPredictLabelsReject:
     def test_high_threshold_produces_rejections(self, artifacts) -> None:
         from sklearn.preprocessing import LabelEncoder
@@ -73,7 +94,10 @@ class TestPredictLabelsReject:
         le.fit(sorted(LABEL_SET_V1))
 
         labels = predict_labels(
-            model, labeled_df, le, cat_encoders=cat_encoders,
+            model,
+            labeled_df,
+            le,
+            cat_encoders=cat_encoders,
             reject_threshold=0.99,
         )
 
@@ -88,7 +112,10 @@ class TestPredictLabelsReject:
         le.fit(sorted(LABEL_SET_V1))
 
         labels = predict_labels(
-            model, labeled_df, le, cat_encoders=cat_encoders,
+            model,
+            labeled_df,
+            le,
+            cat_encoders=cat_encoders,
             reject_threshold=0.01,
         )
 
@@ -98,6 +125,7 @@ class TestPredictLabelsReject:
 # ---------------------------------------------------------------------------
 # TC-REJECT-002: backward compatibility (no reject_threshold)
 # ---------------------------------------------------------------------------
+
 
 class TestPredictLabelsBackwardCompat:
     def test_none_threshold_never_rejects(self, artifacts) -> None:
@@ -109,7 +137,10 @@ class TestPredictLabelsBackwardCompat:
         le.fit(sorted(LABEL_SET_V1))
 
         labels = predict_labels(
-            model, labeled_df, le, cat_encoders=cat_encoders,
+            model,
+            labeled_df,
+            le,
+            cat_encoders=cat_encoders,
             reject_threshold=None,
         )
 
@@ -120,6 +151,7 @@ class TestPredictLabelsBackwardCompat:
 # TC-REJECT-003: run_batch_inference returns reject metadata
 # ---------------------------------------------------------------------------
 
+
 class TestRunBatchInferenceReject:
     def test_returns_result_object(self, artifacts) -> None:
         from taskclf.infer.batch import BatchInferenceResult, run_batch_inference
@@ -127,7 +159,8 @@ class TestRunBatchInferenceReject:
         model, cat_encoders, labeled_df = artifacts
 
         result = run_batch_inference(
-            model, labeled_df,
+            model,
+            labeled_df,
             cat_encoders=cat_encoders,
             reject_threshold=0.55,
         )
@@ -143,7 +176,8 @@ class TestRunBatchInferenceReject:
 
         model, cat_encoders, labeled_df = artifacts
         result = run_batch_inference(
-            model, labeled_df,
+            model,
+            labeled_df,
             cat_encoders=cat_encoders,
             reject_threshold=0.99,
         )
@@ -154,7 +188,8 @@ class TestRunBatchInferenceReject:
 
         model, cat_encoders, labeled_df = artifacts
         result = run_batch_inference(
-            model, labeled_df,
+            model,
+            labeled_df,
             cat_encoders=cat_encoders,
             reject_threshold=None,
         )
@@ -165,20 +200,25 @@ class TestRunBatchInferenceReject:
 # TC-REJECT-004: write_predictions_csv includes reject columns
 # ---------------------------------------------------------------------------
 
+
 class TestWritePredictionsCsvReject:
     def test_csv_includes_confidence_and_rejected(self, tmp_path, artifacts) -> None:
         from taskclf.infer.batch import run_batch_inference, write_predictions_csv
 
         model, cat_encoders, labeled_df = artifacts
         result = run_batch_inference(
-            model, labeled_df,
+            model,
+            labeled_df,
             cat_encoders=cat_encoders,
             reject_threshold=0.55,
         )
 
         csv_path = write_predictions_csv(
-            labeled_df, result.smoothed_labels, tmp_path / "preds.csv",
-            confidences=result.confidences, is_rejected=result.is_rejected,
+            labeled_df,
+            result.smoothed_labels,
+            tmp_path / "preds.csv",
+            confidences=result.confidences,
+            is_rejected=result.is_rejected,
         )
         out = pd.read_csv(csv_path)
         assert "confidence" in out.columns
@@ -190,11 +230,15 @@ class TestWritePredictionsCsvReject:
 
         model, cat_encoders, labeled_df = artifacts
         result = run_batch_inference(
-            model, labeled_df, cat_encoders=cat_encoders,
+            model,
+            labeled_df,
+            cat_encoders=cat_encoders,
         )
 
         csv_path = write_predictions_csv(
-            labeled_df, result.smoothed_labels, tmp_path / "preds_basic.csv",
+            labeled_df,
+            result.smoothed_labels,
+            tmp_path / "preds_basic.csv",
         )
         out = pd.read_csv(csv_path)
         assert "confidence" not in out.columns

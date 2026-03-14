@@ -23,6 +23,7 @@ _LOG_FILENAME: Final[str] = "taskclf.log"
 def _get_version() -> str:
     try:
         from importlib.metadata import version as _pkg_version
+
         return _pkg_version("taskclf")
     except Exception:
         return "unknown"
@@ -62,6 +63,7 @@ def write_crash_report(
     """
     if log_dir is None:
         from taskclf.core.paths import taskclf_home
+
         log_dir = taskclf_home() / "logs"
 
     log_dir = Path(log_dir)

@@ -8,7 +8,6 @@ duplicate or missing buckets.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Sequence
 
 from taskclf.core.defaults import DEFAULT_BUCKET_SECONDS
 

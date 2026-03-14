@@ -14,17 +14,21 @@ from taskclf.train.dataset import split_by_time
 
 
 def _make_multi_user_df(
-    users: list[str], rows_per_user: int = 20,
+    users: list[str],
+    rows_per_user: int = 20,
 ) -> pd.DataFrame:
     """Build a DataFrame with multiple users and chronological timestamps."""
     records = []
     for uid in users:
         for i in range(rows_per_user):
-            records.append({
-                "user_id": uid,
-                "bucket_start_ts": dt.datetime(2025, 6, 15, 9, 0) + dt.timedelta(minutes=i),
-                "x": i,
-            })
+            records.append(
+                {
+                    "user_id": uid,
+                    "bucket_start_ts": dt.datetime(2025, 6, 15, 9, 0)
+                    + dt.timedelta(minutes=i),
+                    "x": i,
+                }
+            )
     return pd.DataFrame(records)
 
 
@@ -78,10 +82,12 @@ class TestSplitByTime:
         assert r1["holdout_users"] == r2["holdout_users"]
 
     def test_missing_user_id_raises(self) -> None:
-        df = pd.DataFrame({
-            "bucket_start_ts": [dt.datetime(2025, 6, 15, 10, 0)],
-            "x": [1],
-        })
+        df = pd.DataFrame(
+            {
+                "bucket_start_ts": [dt.datetime(2025, 6, 15, 10, 0)],
+                "x": [1],
+            }
+        )
         with pytest.raises(ValueError, match="user_id"):
             split_by_time(df)
 

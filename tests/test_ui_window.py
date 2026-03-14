@@ -671,7 +671,7 @@ class TestRepositionLabel:
 
         label.move.assert_called_once_with(
             200 + 150 - 280,  # x - 130
-            100 + 30 + 4,     # y + 34
+            100 + 30 + 4,  # y + 34
         )
 
     def test_expected_pos_set_after_reposition(self) -> None:
@@ -772,7 +772,7 @@ class TestPositionPanel:
 
         panel.move.assert_called_once_with(
             200 + 150 - 280,  # x - 130
-            100 + 30 + 4,     # y + 34
+            100 + 30 + 4,  # y + 34
         )
 
     def test_panel_below_label_when_visible(self) -> None:
@@ -789,8 +789,8 @@ class TestPositionPanel:
         api.toggle_state_panel()
 
         panel.move.assert_called_once_with(
-            200 + 150 - 280,          # x - 130
-            100 + 30 + 4 + 330 + 4,   # y + 368
+            200 + 150 - 280,  # x - 130
+            100 + 30 + 4 + 330 + 4,  # y + 368
         )
 
     def test_panel_expected_pos_set(self) -> None:

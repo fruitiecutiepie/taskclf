@@ -30,7 +30,9 @@ class TestFeatureBuildProducesParquet:
 
     def test_parquet_path_follows_partition_convention(self, tmp_path: Path) -> None:
         out = build_features_for_date(self.DATE, tmp_path)
-        expected = tmp_path / f"features_v1/date={self.DATE.isoformat()}" / "features.parquet"
+        expected = (
+            tmp_path / f"features_v1/date={self.DATE.isoformat()}" / "features.parquet"
+        )
         assert out == expected
 
     def test_schema_validates(self, tmp_path: Path) -> None:

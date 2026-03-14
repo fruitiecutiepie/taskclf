@@ -19,24 +19,29 @@ import datetime as dt
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 import pytest
 from typer.testing import CliRunner
 
 from taskclf.adapters.activitywatch.types import AWEvent
 from taskclf.cli.main import app
-from taskclf.core.model_io import load_model_bundle
-from taskclf.core.schema import FeatureSchemaV1
 from taskclf.core.defaults import MIXED_UNKNOWN
-from taskclf.core.types import LABEL_SET_V1, FeatureRow
-from taskclf.infer.calibration import CalibratorStore, IdentityCalibrator, TemperatureCalibrator
-from taskclf.infer.taxonomy import TaxonomyBucket, TaxonomyConfig
-
-_VALID_LABELS = LABEL_SET_V1 | {MIXED_UNKNOWN}
-from taskclf.features.build import build_features_from_aw_events, generate_dummy_features
+from taskclf.core.model_io import load_model_bundle
+from taskclf.core.types import LABEL_SET_V1
+from taskclf.features.build import (
+    build_features_from_aw_events,
+    generate_dummy_features,
+)
+from taskclf.infer.calibration import (
+    CalibratorStore,
+    IdentityCalibrator,
+    TemperatureCalibrator,
+)
 from taskclf.infer.online import OnlinePredictor, run_online_loop
 from taskclf.infer.prediction import WindowPrediction
+from taskclf.infer.taxonomy import TaxonomyBucket, TaxonomyConfig
 from taskclf.train.lgbm import CATEGORICAL_COLUMNS
+
+_VALID_LABELS = LABEL_SET_V1 | {MIXED_UNKNOWN}
 
 runner = CliRunner()
 
@@ -44,9 +49,17 @@ runner = CliRunner()
 def _example_taxonomy() -> TaxonomyConfig:
     return TaxonomyConfig(
         buckets=[
-            TaxonomyBucket(name="Deep Work", core_labels=["Build", "Debug", "Write"], color="#2E86DE"),
-            TaxonomyBucket(name="Research", core_labels=["ReadResearch", "Review"], color="#9B59B6"),
-            TaxonomyBucket(name="Communication", core_labels=["Communicate"], color="#27AE60"),
+            TaxonomyBucket(
+                name="Deep Work",
+                core_labels=["Build", "Debug", "Write"],
+                color="#2E86DE",
+            ),
+            TaxonomyBucket(
+                name="Research", core_labels=["ReadResearch", "Review"], color="#9B59B6"
+            ),
+            TaxonomyBucket(
+                name="Communication", core_labels=["Communicate"], color="#27AE60"
+            ),
             TaxonomyBucket(name="Meetings", core_labels=["Meet"], color="#E67E22"),
             TaxonomyBucket(name="Break", core_labels=["BreakIdle"], color="#7F8C8D"),
         ],
@@ -57,14 +70,22 @@ def _example_taxonomy() -> TaxonomyConfig:
 def trained_model_dir(tmp_path: Path) -> Path:
     """Train a small model for testing."""
     models_dir = tmp_path / "models"
-    result = runner.invoke(app, [
-        "train", "lgbm",
-        "--from", "2025-06-14",
-        "--to", "2025-06-15",
-        "--synthetic",
-        "--models-dir", str(models_dir),
-        "--num-boost-round", "5",
-    ])
+    result = runner.invoke(
+        app,
+        [
+            "train",
+            "lgbm",
+            "--from",
+            "2025-06-14",
+            "--to",
+            "2025-06-15",
+            "--synthetic",
+            "--models-dir",
+            str(models_dir),
+            "--num-boost-round",
+            "5",
+        ],
+    )
     assert result.exit_code == 0, result.output
     return next(models_dir.iterdir())
 
@@ -113,8 +134,12 @@ class TestOnlinePredictor:
 
     def test_smoothing_window_respected(self, trained_model_dir: Path) -> None:
         model, metadata, cat_encoders = load_model_bundle(trained_model_dir)
-        pred_w1 = OnlinePredictor(model, metadata, cat_encoders=cat_encoders, smooth_window=1)
-        pred_w5 = OnlinePredictor(model, metadata, cat_encoders=cat_encoders, smooth_window=5)
+        pred_w1 = OnlinePredictor(
+            model, metadata, cat_encoders=cat_encoders, smooth_window=1
+        )
+        pred_w5 = OnlinePredictor(
+            model, metadata, cat_encoders=cat_encoders, smooth_window=5
+        )
 
         rows = generate_dummy_features(dt.date(2025, 6, 15), n_rows=10)
         preds_w1 = [pred_w1.predict_bucket(r) for r in rows]
@@ -160,8 +185,12 @@ class TestOnlineSessionTracking:
         poll_1_events = [self._ev(dt.datetime(2026, 2, 23, 10, 0, 0))]
         poll_2_events = [self._ev(dt.datetime(2026, 2, 23, 10, 1, 0))]
 
-        rows_1 = build_features_from_aw_events(poll_1_events, session_start=session_start)
-        rows_2 = build_features_from_aw_events(poll_2_events, session_start=session_start)
+        rows_1 = build_features_from_aw_events(
+            poll_1_events, session_start=session_start
+        )
+        rows_2 = build_features_from_aw_events(
+            poll_2_events, session_start=session_start
+        )
 
         assert rows_1[0].session_length_so_far == 0.0
         assert rows_2[0].session_length_so_far == 1.0
@@ -188,8 +217,12 @@ class TestOnlinePredictorTaxonomy:
         model, metadata, cat_encoders = load_model_bundle(trained_model_dir)
         taxonomy = _example_taxonomy()
         pred = OnlinePredictor(
-            model, metadata, cat_encoders=cat_encoders,
-            smooth_window=1, reject_threshold=None, taxonomy=taxonomy,
+            model,
+            metadata,
+            cat_encoders=cat_encoders,
+            smooth_window=1,
+            reject_threshold=None,
+            taxonomy=taxonomy,
         )
         rows = generate_dummy_features(dt.date(2025, 6, 15), n_rows=5)
         for row in rows:
@@ -201,8 +234,12 @@ class TestOnlinePredictorTaxonomy:
         model, metadata, cat_encoders = load_model_bundle(trained_model_dir)
         taxonomy = _example_taxonomy()
         pred = OnlinePredictor(
-            model, metadata, cat_encoders=cat_encoders,
-            smooth_window=1, reject_threshold=None, taxonomy=taxonomy,
+            model,
+            metadata,
+            cat_encoders=cat_encoders,
+            smooth_window=1,
+            reject_threshold=None,
+            taxonomy=taxonomy,
         )
         rows = generate_dummy_features(dt.date(2025, 6, 15), n_rows=5)
         for row in rows:
@@ -218,7 +255,8 @@ class TestOnlinePredictorTaxonomy:
 
 class TestOnlinePredictorCalibratorStore:
     def test_per_user_calibration_changes_confidence(
-        self, trained_model_dir: Path,
+        self,
+        trained_model_dir: Path,
     ) -> None:
         """TC-ONLINE-003: per-user calibration applied via CalibratorStore."""
         model, metadata, cat_encoders = load_model_bundle(trained_model_dir)
@@ -226,8 +264,11 @@ class TestOnlinePredictorCalibratorStore:
         user_id = rows[0].user_id
 
         pred_identity = OnlinePredictor(
-            model, metadata, cat_encoders=cat_encoders,
-            smooth_window=1, reject_threshold=None,
+            model,
+            metadata,
+            cat_encoders=cat_encoders,
+            smooth_window=1,
+            reject_threshold=None,
             calibrator=IdentityCalibrator(),
         )
 
@@ -236,8 +277,11 @@ class TestOnlinePredictorCalibratorStore:
             user_calibrators={user_id: TemperatureCalibrator(temperature=5.0)},
         )
         pred_store = OnlinePredictor(
-            model, metadata, cat_encoders=cat_encoders,
-            smooth_window=1, reject_threshold=None,
+            model,
+            metadata,
+            cat_encoders=cat_encoders,
+            smooth_window=1,
+            reject_threshold=None,
             calibrator_store=store,
         )
 
@@ -258,6 +302,7 @@ class TestEncodeValue:
         model, metadata, cat_encoders = load_model_bundle(trained_model_dir)
         pred = OnlinePredictor(model, metadata, cat_encoders=cat_encoders)
 
+        assert cat_encoders is not None
         cat_col = CATEGORICAL_COLUMNS[0]
         le = cat_encoders[cat_col]
         known_val = le.classes_[0]
@@ -284,13 +329,17 @@ class TestEncodeValue:
 
 class TestOnlinePredictorRejectSegments:
     def test_rejected_predictions_produce_mixed_unknown_segments(
-        self, trained_model_dir: Path,
+        self,
+        trained_model_dir: Path,
     ) -> None:
         """TC-ONLINE-006: after rejected predictions, segments use MIXED_UNKNOWN."""
         model, metadata, cat_encoders = load_model_bundle(trained_model_dir)
         pred = OnlinePredictor(
-            model, metadata, cat_encoders=cat_encoders,
-            smooth_window=1, reject_threshold=1.0,
+            model,
+            metadata,
+            cat_encoders=cat_encoders,
+            smooth_window=1,
+            reject_threshold=1.0,
         )
         rows = generate_dummy_features(dt.date(2025, 6, 15), n_rows=5)
         for row in rows:
@@ -341,7 +390,9 @@ class TestRunOnlineLoop:
             lambda aw_host: None,
         )
 
-        def fake_fetch_aw_events(aw_host, bucket_id, window_start, window_end, title_salt):
+        def fake_fetch_aw_events(
+            aw_host, bucket_id, window_start, window_end, title_salt
+        ):
             fetch_calls["aw_host"] = aw_host
             fetch_calls["bucket_id"] = bucket_id
             fetch_calls["window_start"] = window_start

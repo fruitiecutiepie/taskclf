@@ -14,9 +14,6 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from taskclf.core.types import LabelSpan
-from taskclf.labels.queue import ActiveLabelingQueue, LabelRequest
-from taskclf.labels.store import append_label_span
 from taskclf.ui.events import EventBus
 from taskclf.ui.server import create_app
 
@@ -189,7 +186,7 @@ class TestExtendForwardAPI:
 
         labels = client.get("/api/labels").json()
         assert len(labels) == 2
-        build = [l for l in labels if l["label"] == "Build"][0]
+        build = [rec for rec in labels if rec["label"] == "Build"][0]
         assert build["end_ts"] == "2026-02-27T10:29:00+00:00"
 
     def test_extend_forward_off_no_extension(self, client: TestClient) -> None:
@@ -210,10 +207,12 @@ class TestExtendForwardAPI:
         assert resp.status_code == 201
 
         labels = client.get("/api/labels").json()
-        build = [l for l in labels if l["label"] == "Build"][0]
+        build = [rec for rec in labels if rec["label"] == "Build"][0]
         assert build["end_ts"] == "2026-02-27T10:00:00+00:00"
 
-    def test_extend_forward_flag_on_previous_not_request(self, client: TestClient) -> None:
+    def test_extend_forward_flag_on_previous_not_request(
+        self, client: TestClient
+    ) -> None:
         """Extension is driven by the *previous* label's flag, not the current request."""
         body1 = {
             "start_ts": "2026-02-27T09:55:00",
@@ -232,7 +231,7 @@ class TestExtendForwardAPI:
         client.post("/api/labels", json=body2)
 
         labels = client.get("/api/labels").json()
-        build = [l for l in labels if l["label"] == "Build"][0]
+        build = [rec for rec in labels if rec["label"] == "Build"][0]
         assert build["end_ts"] == "2026-02-27T10:29:00+00:00"
 
     def test_extend_forward_defaults_to_false(self, client: TestClient) -> None:
@@ -251,7 +250,7 @@ class TestExtendForwardAPI:
         client.post("/api/labels", json=body2)
 
         labels = client.get("/api/labels").json()
-        build = [l for l in labels if l["label"] == "Build"][0]
+        build = [rec for rec in labels if rec["label"] == "Build"][0]
         assert build["end_ts"] == "2026-02-27T10:00:00+00:00"
 
     def test_extend_forward_201_response_correct(self, client: TestClient) -> None:
@@ -334,8 +333,11 @@ class TestWebSocket:
         client = TestClient(app)
 
         with client.websocket_connect("/ws/predictions") as ws:
-            bus.publish_threadsafe({"type": "status", "state": "idle", "current_app": "test"})
+            bus.publish_threadsafe(
+                {"type": "status", "state": "idle", "current_app": "test"}
+            )
             import time
+
             time.sleep(0.1)
             ws.close()
 
@@ -347,23 +349,28 @@ class TestWebSocket:
         app = create_app(data_dir=data_dir, event_bus=bus)
         event = {"type": "status", "state": "collecting", "current_app": "Terminal"}
 
-        with TestClient(app) as client, client.websocket_connect("/ws/predictions") as ws:
-            threading.Thread(
-                target=lambda: (
-                    __import__("time").sleep(0.05),
-                    bus.publish_threadsafe(event),
-                ),
-            ).start()
+        with (
+            TestClient(app) as client,
+            client.websocket_connect("/ws/predictions") as ws,
+        ):
+
+            def _send() -> None:
+                __import__("time").sleep(0.05)
+                bus.publish_threadsafe(event)
+
+            threading.Thread(target=_send).start()
             received = ws.receive_json()
             assert received == event
 
     def test_multiple_event_types_in_order(self, data_dir: Path) -> None:
         """TC-UI-WS-004: multiple event types received in publish order."""
-        import threading, time
+        import threading
+        import time
+        from typing import Any
 
         bus = EventBus()
         app = create_app(data_dir=data_dir, event_bus=bus)
-        events = [
+        events: list[dict[str, Any]] = [
             {"type": "status", "state": "idle"},
             {"type": "prediction", "label": "Build", "confidence": 0.9},
             {"type": "tray_state", "model_loaded": True},
@@ -375,7 +382,10 @@ class TestWebSocket:
             for ev in events:
                 bus.publish_threadsafe(ev)
 
-        with TestClient(app) as client, client.websocket_connect("/ws/predictions") as ws:
+        with (
+            TestClient(app) as client,
+            client.websocket_connect("/ws/predictions") as ws,
+        ):
             threading.Thread(target=_publish_all).start()
             received = [ws.receive_json() for _ in events]
             assert received == events
@@ -393,12 +403,12 @@ class TestWebSocket:
                 client.websocket_connect("/ws/predictions") as ws1,
                 client.websocket_connect("/ws/predictions") as ws2,
             ):
-                threading.Thread(
-                    target=lambda: (
-                        __import__("time").sleep(0.05),
-                        bus.publish_threadsafe(event),
-                    ),
-                ).start()
+
+                def _send() -> None:
+                    __import__("time").sleep(0.05)
+                    bus.publish_threadsafe(event)
+
+                threading.Thread(target=_send).start()
                 r1 = ws1.receive_json()
                 r2 = ws2.receive_json()
                 assert r1 == event
@@ -431,50 +441,65 @@ class TestUpdateLabel:
     """TC-UI-UPD-001 through TC-UI-UPD-004."""
 
     def _create_label(self, client: TestClient) -> None:
-        client.post("/api/labels", json={
-            "start_ts": "2026-02-27T09:00:00",
-            "end_ts": "2026-02-27T10:00:00",
-            "label": "Build",
-        })
+        client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:00:00",
+                "end_ts": "2026-02-27T10:00:00",
+                "label": "Build",
+            },
+        )
 
     def test_happy_path_update(self, client: TestClient) -> None:
         """TC-UI-UPD-001: POST then PUT with new label -> 200, label changed."""
         self._create_label(client)
-        resp = client.put("/api/labels", json={
-            "start_ts": "2026-02-27T09:00:00",
-            "end_ts": "2026-02-27T10:00:00",
-            "label": "Write",
-        })
+        resp = client.put(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:00:00",
+                "end_ts": "2026-02-27T10:00:00",
+                "label": "Write",
+            },
+        )
         assert resp.status_code == 200
         assert resp.json()["label"] == "Write"
 
     def test_404_no_matching_span(self, client: TestClient) -> None:
         """TC-UI-UPD-002: PUT with non-existent timestamps -> 404."""
         self._create_label(client)
-        resp = client.put("/api/labels", json={
-            "start_ts": "2026-02-27T11:00:00",
-            "end_ts": "2026-02-27T12:00:00",
-            "label": "Write",
-        })
+        resp = client.put(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T11:00:00",
+                "end_ts": "2026-02-27T12:00:00",
+                "label": "Write",
+            },
+        )
         assert resp.status_code == 404
 
     def test_422_invalid_timestamp(self, client: TestClient) -> None:
         """TC-UI-UPD-003: Malformed start_ts -> 422."""
-        resp = client.put("/api/labels", json={
-            "start_ts": "not-a-date",
-            "end_ts": "2026-02-27T10:00:00",
-            "label": "Write",
-        })
+        resp = client.put(
+            "/api/labels",
+            json={
+                "start_ts": "not-a-date",
+                "end_ts": "2026-02-27T10:00:00",
+                "label": "Write",
+            },
+        )
         assert resp.status_code == 422
 
     def test_updated_label_persisted(self, client: TestClient) -> None:
         """TC-UI-UPD-004: PUT then GET -> updated label visible."""
         self._create_label(client)
-        client.put("/api/labels", json={
-            "start_ts": "2026-02-27T09:00:00",
-            "end_ts": "2026-02-27T10:00:00",
-            "label": "Debug",
-        })
+        client.put(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:00:00",
+                "end_ts": "2026-02-27T10:00:00",
+                "label": "Debug",
+            },
+        )
         labels = client.get("/api/labels").json()
         assert len(labels) == 1
         assert labels[0]["label"] == "Debug"
@@ -482,13 +507,16 @@ class TestUpdateLabel:
     def test_update_timestamps(self, client: TestClient) -> None:
         """TC-UI-UPD-005: PUT with new_start_ts/new_end_ts changes the time range."""
         self._create_label(client)
-        resp = client.put("/api/labels", json={
-            "start_ts": "2026-02-27T09:00:00",
-            "end_ts": "2026-02-27T10:00:00",
-            "label": "Build",
-            "new_start_ts": "2026-02-27T08:30:00",
-            "new_end_ts": "2026-02-27T10:30:00",
-        })
+        resp = client.put(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:00:00",
+                "end_ts": "2026-02-27T10:00:00",
+                "label": "Build",
+                "new_start_ts": "2026-02-27T08:30:00",
+                "new_end_ts": "2026-02-27T10:30:00",
+            },
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert data["start_ts"] == "2026-02-27T08:30:00+00:00"
@@ -498,13 +526,16 @@ class TestUpdateLabel:
     def test_update_timestamps_and_label(self, client: TestClient) -> None:
         """TC-UI-UPD-006: PUT with new timestamps and new label together."""
         self._create_label(client)
-        resp = client.put("/api/labels", json={
-            "start_ts": "2026-02-27T09:00:00",
-            "end_ts": "2026-02-27T10:00:00",
-            "label": "Debug",
-            "new_start_ts": "2026-02-27T09:15:00",
-            "new_end_ts": "2026-02-27T09:45:00",
-        })
+        resp = client.put(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:00:00",
+                "end_ts": "2026-02-27T10:00:00",
+                "label": "Debug",
+                "new_start_ts": "2026-02-27T09:15:00",
+                "new_end_ts": "2026-02-27T09:45:00",
+            },
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert data["label"] == "Debug"
@@ -514,13 +545,16 @@ class TestUpdateLabel:
     def test_update_timestamps_persisted(self, client: TestClient) -> None:
         """TC-UI-UPD-007: PUT with new timestamps then GET shows updated times."""
         self._create_label(client)
-        client.put("/api/labels", json={
-            "start_ts": "2026-02-27T09:00:00",
-            "end_ts": "2026-02-27T10:00:00",
-            "label": "Build",
-            "new_start_ts": "2026-02-27T08:00:00",
-            "new_end_ts": "2026-02-27T11:00:00",
-        })
+        client.put(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:00:00",
+                "end_ts": "2026-02-27T10:00:00",
+                "label": "Build",
+                "new_start_ts": "2026-02-27T08:00:00",
+                "new_end_ts": "2026-02-27T11:00:00",
+            },
+        )
         labels = client.get("/api/labels").json()
         assert len(labels) == 1
         assert labels[0]["start_ts"] == "2026-02-27T08:00:00+00:00"
@@ -529,11 +563,14 @@ class TestUpdateLabel:
     def test_update_without_new_timestamps(self, client: TestClient) -> None:
         """TC-UI-UPD-008: PUT without new_start_ts/new_end_ts keeps original times."""
         self._create_label(client)
-        resp = client.put("/api/labels", json={
-            "start_ts": "2026-02-27T09:00:00",
-            "end_ts": "2026-02-27T10:00:00",
-            "label": "Write",
-        })
+        resp = client.put(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:00:00",
+                "end_ts": "2026-02-27T10:00:00",
+                "label": "Write",
+            },
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert data["start_ts"] == "2026-02-27T09:00:00+00:00"
@@ -549,49 +586,70 @@ class TestUpdateLabel:
 class TestDeleteLabel:
     """TC-UI-DEL-001 through TC-UI-DEL-004."""
 
-    def _create_label(self, client: TestClient, start: str, end: str, label: str = "Build") -> None:
-        resp = client.post("/api/labels", json={
-            "start_ts": start,
-            "end_ts": end,
-            "label": label,
-        })
+    def _create_label(
+        self, client: TestClient, start: str, end: str, label: str = "Build"
+    ) -> None:
+        resp = client.post(
+            "/api/labels",
+            json={
+                "start_ts": start,
+                "end_ts": end,
+                "label": label,
+            },
+        )
         assert resp.status_code == 201
 
     def test_happy_path_delete(self, client: TestClient) -> None:
         """TC-UI-DEL-001: POST then DELETE -> 200, status deleted."""
         self._create_label(client, "2026-02-27T09:00:00", "2026-02-27T10:00:00")
-        resp = client.request("DELETE", "/api/labels", json={
-            "start_ts": "2026-02-27T09:00:00",
-            "end_ts": "2026-02-27T10:00:00",
-        })
+        resp = client.request(
+            "DELETE",
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:00:00",
+                "end_ts": "2026-02-27T10:00:00",
+            },
+        )
         assert resp.status_code == 200
         assert resp.json() == {"status": "deleted"}
 
     def test_404_no_matching_span(self, client: TestClient) -> None:
         """TC-UI-DEL-002: DELETE with non-existent timestamps -> 404."""
         self._create_label(client, "2026-02-27T09:00:00", "2026-02-27T10:00:00")
-        resp = client.request("DELETE", "/api/labels", json={
-            "start_ts": "2026-02-27T11:00:00",
-            "end_ts": "2026-02-27T12:00:00",
-        })
+        resp = client.request(
+            "DELETE",
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T11:00:00",
+                "end_ts": "2026-02-27T12:00:00",
+            },
+        )
         assert resp.status_code == 404
 
     def test_span_removed_from_storage(self, client: TestClient) -> None:
         """TC-UI-DEL-003: POST, DELETE, then GET -> empty list."""
         self._create_label(client, "2026-02-27T09:00:00", "2026-02-27T10:00:00")
-        client.request("DELETE", "/api/labels", json={
-            "start_ts": "2026-02-27T09:00:00",
-            "end_ts": "2026-02-27T10:00:00",
-        })
+        client.request(
+            "DELETE",
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:00:00",
+                "end_ts": "2026-02-27T10:00:00",
+            },
+        )
         labels = client.get("/api/labels").json()
         assert labels == []
 
     def test_422_invalid_timestamp(self, client: TestClient) -> None:
         """TC-UI-DEL-004: Malformed timestamps -> 422."""
-        resp = client.request("DELETE", "/api/labels", json={
-            "start_ts": "garbage",
-            "end_ts": "2026-02-27T10:00:00",
-        })
+        resp = client.request(
+            "DELETE",
+            "/api/labels",
+            json={
+                "start_ts": "garbage",
+                "end_ts": "2026-02-27T10:00:00",
+            },
+        )
         assert resp.status_code == 422
 
 
@@ -718,11 +776,14 @@ class TestNotificationAccept:
 
     def test_accept_valid_suggestion(self, client: TestClient) -> None:
         """TC-UI-NA-001: Accept -> 200, provenance is 'suggestion'."""
-        resp = client.post("/api/notification/accept", json={
-            "block_start": "2026-02-27T09:00:00",
-            "block_end": "2026-02-27T10:00:00",
-            "label": "Build",
-        })
+        resp = client.post(
+            "/api/notification/accept",
+            json={
+                "block_start": "2026-02-27T09:00:00",
+                "block_end": "2026-02-27T10:00:00",
+                "label": "Build",
+            },
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert data["provenance"] == "suggestion"
@@ -731,43 +792,58 @@ class TestNotificationAccept:
 
     def test_invalid_label_422(self, client: TestClient) -> None:
         """TC-UI-NA-002: Invalid label -> 422."""
-        resp = client.post("/api/notification/accept", json={
-            "block_start": "2026-02-27T09:00:00",
-            "block_end": "2026-02-27T10:00:00",
-            "label": "NotReal",
-        })
+        resp = client.post(
+            "/api/notification/accept",
+            json={
+                "block_start": "2026-02-27T09:00:00",
+                "block_end": "2026-02-27T10:00:00",
+                "label": "NotReal",
+            },
+        )
         assert resp.status_code == 422
 
     def test_invalid_timestamps_422(self, client: TestClient) -> None:
         """TC-UI-NA-003: Malformed ISO timestamps -> 422."""
-        resp = client.post("/api/notification/accept", json={
-            "block_start": "not-a-date",
-            "block_end": "2026-02-27T10:00:00",
-            "label": "Build",
-        })
+        resp = client.post(
+            "/api/notification/accept",
+            json={
+                "block_start": "not-a-date",
+                "block_end": "2026-02-27T10:00:00",
+                "label": "Build",
+            },
+        )
         assert resp.status_code == 422
 
     def test_overlap_409(self, client: TestClient) -> None:
         """TC-UI-NA-004: Overlap with existing span -> 409."""
-        client.post("/api/labels", json={
-            "start_ts": "2026-02-27T09:00:00",
-            "end_ts": "2026-02-27T10:00:00",
-            "label": "Build",
-        })
-        resp = client.post("/api/notification/accept", json={
-            "block_start": "2026-02-27T09:30:00",
-            "block_end": "2026-02-27T10:30:00",
-            "label": "Write",
-        })
+        client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:00:00",
+                "end_ts": "2026-02-27T10:00:00",
+                "label": "Build",
+            },
+        )
+        resp = client.post(
+            "/api/notification/accept",
+            json={
+                "block_start": "2026-02-27T09:30:00",
+                "block_end": "2026-02-27T10:30:00",
+                "label": "Write",
+            },
+        )
         assert resp.status_code == 409
 
     def test_label_persisted(self, client: TestClient) -> None:
         """TC-UI-NA-005: Accept, then GET -> label visible."""
-        client.post("/api/notification/accept", json={
-            "block_start": "2026-02-27T09:00:00",
-            "block_end": "2026-02-27T10:00:00",
-            "label": "Build",
-        })
+        client.post(
+            "/api/notification/accept",
+            json={
+                "block_start": "2026-02-27T09:00:00",
+                "block_end": "2026-02-27T10:00:00",
+                "label": "Build",
+            },
+        )
         labels = client.get("/api/labels").json()
         assert len(labels) == 1
         assert labels[0]["provenance"] == "suggestion"
@@ -826,11 +902,14 @@ class TestLabelsLimit:
 
     def _seed_labels(self, client: TestClient, count: int = 3) -> None:
         for i in range(count):
-            client.post("/api/labels", json={
-                "start_ts": f"2026-02-27T{8 + i:02d}:00:00",
-                "end_ts": f"2026-02-27T{8 + i:02d}:30:00",
-                "label": "Build",
-            })
+            client.post(
+                "/api/labels",
+                json={
+                    "start_ts": f"2026-02-27T{8 + i:02d}:00:00",
+                    "end_ts": f"2026-02-27T{8 + i:02d}:30:00",
+                    "label": "Build",
+                },
+            )
 
     def test_limit_1(self, client: TestClient) -> None:
         """TC-UI-LL-001: limit=1 with 3 labels -> exactly 1."""
@@ -873,11 +952,14 @@ class TestOnLabelSavedCallback:
         app = create_app(data_dir=data_dir, event_bus=EventBus(), on_label_saved=cb)
         client = TestClient(app)
 
-        client.post("/api/labels", json={
-            "start_ts": "2026-02-27T09:00:00",
-            "end_ts": "2026-02-27T10:00:00",
-            "label": "Build",
-        })
+        client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:00:00",
+                "end_ts": "2026-02-27T10:00:00",
+                "label": "Build",
+            },
+        )
         cb.assert_called_once()
 
     def test_callback_invoked_on_notification_accept(self, data_dir: Path) -> None:
@@ -888,11 +970,14 @@ class TestOnLabelSavedCallback:
         app = create_app(data_dir=data_dir, event_bus=EventBus(), on_label_saved=cb)
         client = TestClient(app)
 
-        client.post("/api/notification/accept", json={
-            "block_start": "2026-02-27T09:00:00",
-            "block_end": "2026-02-27T10:00:00",
-            "label": "Build",
-        })
+        client.post(
+            "/api/notification/accept",
+            json={
+                "block_start": "2026-02-27T09:00:00",
+                "block_end": "2026-02-27T10:00:00",
+                "label": "Build",
+            },
+        )
         cb.assert_called_once()
 
     def test_callback_not_invoked_on_validation_error(self, data_dir: Path) -> None:
@@ -903,11 +988,14 @@ class TestOnLabelSavedCallback:
         app = create_app(data_dir=data_dir, event_bus=EventBus(), on_label_saved=cb)
         client = TestClient(app)
 
-        client.post("/api/labels", json={
-            "start_ts": "2026-02-27T09:00:00",
-            "end_ts": "2026-02-27T10:00:00",
-            "label": "NotALabel",
-        })
+        client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:00:00",
+                "end_ts": "2026-02-27T10:00:00",
+                "label": "NotALabel",
+            },
+        )
         cb.assert_not_called()
 
     def test_callback_not_invoked_on_overlap_error(self, data_dir: Path) -> None:
@@ -918,18 +1006,24 @@ class TestOnLabelSavedCallback:
         app = create_app(data_dir=data_dir, event_bus=EventBus(), on_label_saved=cb)
         client = TestClient(app)
 
-        client.post("/api/labels", json={
-            "start_ts": "2026-02-27T09:00:00",
-            "end_ts": "2026-02-27T10:00:00",
-            "label": "Build",
-        })
+        client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:00:00",
+                "end_ts": "2026-02-27T10:00:00",
+                "label": "Build",
+            },
+        )
         cb.reset_mock()
 
-        client.post("/api/labels", json={
-            "start_ts": "2026-02-27T09:30:00",
-            "end_ts": "2026-02-27T10:30:00",
-            "label": "Meet",
-        })
+        client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:30:00",
+                "end_ts": "2026-02-27T10:30:00",
+                "label": "Meet",
+            },
+        )
         cb.assert_not_called()
 
 
@@ -939,7 +1033,6 @@ class TestOnLabelSavedCallback:
 
 
 class TestPauseAPI:
-
     def test_pause_unavailable_without_callbacks(self, client: TestClient) -> None:
         resp = client.post("/api/tray/pause")
         assert resp.status_code == 200
@@ -961,8 +1054,10 @@ class TestPauseAPI:
             return paused_state["paused"]
 
         app = create_app(
-            data_dir=data_dir, event_bus=EventBus(),
-            pause_toggle=toggle, is_paused=is_paused,
+            data_dir=data_dir,
+            event_bus=EventBus(),
+            pause_toggle=toggle,
+            is_paused=is_paused,
         )
         client = TestClient(app)
 
@@ -977,7 +1072,8 @@ class TestPauseAPI:
         paused_state = {"paused": False}
 
         app = create_app(
-            data_dir=data_dir, event_bus=EventBus(),
+            data_dir=data_dir,
+            event_bus=EventBus(),
             pause_toggle=lambda: True,
             is_paused=lambda: paused_state["paused"],
         )
@@ -1002,16 +1098,22 @@ class TestStructuredOverlapError:
 
     def test_overlap_returns_structured_detail(self, client: TestClient) -> None:
         """TC-UI-OVL-001: POST /api/labels overlap includes conflicting span."""
-        client.post("/api/labels", json={
-            "start_ts": "2026-02-27T09:00:00",
-            "end_ts": "2026-02-27T10:00:00",
-            "label": "Build",
-        })
-        resp = client.post("/api/labels", json={
-            "start_ts": "2026-02-27T09:30:00",
-            "end_ts": "2026-02-27T10:30:00",
-            "label": "Meet",
-        })
+        client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:00:00",
+                "end_ts": "2026-02-27T10:00:00",
+                "label": "Build",
+            },
+        )
+        resp = client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:30:00",
+                "end_ts": "2026-02-27T10:30:00",
+                "label": "Meet",
+            },
+        )
         assert resp.status_code == 409
         detail = resp.json()["detail"]
         assert "error" in detail
@@ -1023,32 +1125,44 @@ class TestStructuredOverlapError:
 
     def test_overlap_conflicting_span_is_existing(self, client: TestClient) -> None:
         """TC-UI-OVL-002: the conflicting span points to the previously saved label."""
-        client.post("/api/labels", json={
-            "start_ts": "2026-02-27T09:00:00",
-            "end_ts": "2026-02-27T10:00:00",
-            "label": "Build",
-        })
-        resp = client.post("/api/labels", json={
-            "start_ts": "2026-02-27T09:30:00",
-            "end_ts": "2026-02-27T10:30:00",
-            "label": "Meet",
-        })
+        client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:00:00",
+                "end_ts": "2026-02-27T10:00:00",
+                "label": "Build",
+            },
+        )
+        resp = client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:30:00",
+                "end_ts": "2026-02-27T10:30:00",
+                "label": "Meet",
+            },
+        )
         detail = resp.json()["detail"]
         assert "09:00:00" in detail["conflicting_start_ts"]
         assert "10:00:00" in detail["conflicting_end_ts"]
 
     def test_notification_accept_overlap_structured(self, client: TestClient) -> None:
         """TC-UI-OVL-003: POST /api/notification/accept overlap is also structured."""
-        client.post("/api/labels", json={
-            "start_ts": "2026-02-27T09:00:00",
-            "end_ts": "2026-02-27T10:00:00",
-            "label": "Build",
-        })
-        resp = client.post("/api/notification/accept", json={
-            "block_start": "2026-02-27T09:30:00",
-            "block_end": "2026-02-27T10:30:00",
-            "label": "Write",
-        })
+        client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:00:00",
+                "end_ts": "2026-02-27T10:00:00",
+                "label": "Build",
+            },
+        )
+        resp = client.post(
+            "/api/notification/accept",
+            json={
+                "block_start": "2026-02-27T09:30:00",
+                "block_end": "2026-02-27T10:30:00",
+                "label": "Write",
+            },
+        )
         assert resp.status_code == 409
         detail = resp.json()["detail"]
         assert "error" in detail
@@ -1066,39 +1180,51 @@ class TestOverwriteLabel:
 
     def test_overwrite_truncates_existing(self, client: TestClient) -> None:
         """Overlapping span is truncated when overwrite is true."""
-        client.post("/api/labels", json={
-            "start_ts": "2026-02-27T09:00:00",
-            "end_ts": "2026-02-27T10:00:00",
-            "label": "Build",
-        })
-        resp = client.post("/api/labels", json={
-            "start_ts": "2026-02-27T09:30:00",
-            "end_ts": "2026-02-27T10:30:00",
-            "label": "Meet",
-            "overwrite": True,
-        })
+        client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:00:00",
+                "end_ts": "2026-02-27T10:00:00",
+                "label": "Build",
+            },
+        )
+        resp = client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:30:00",
+                "end_ts": "2026-02-27T10:30:00",
+                "label": "Meet",
+                "overwrite": True,
+            },
+        )
         assert resp.status_code == 201
         assert resp.json()["label"] == "Meet"
 
         labels = client.get("/api/labels").json()
         assert len(labels) == 2
-        by_label = {l["label"]: l for l in labels}
+        by_label = {rec["label"]: rec for rec in labels}
         assert "09:30:00" in by_label["Build"]["end_ts"]
         assert "09:30:00" in by_label["Meet"]["start_ts"]
 
     def test_overwrite_removes_contained(self, client: TestClient) -> None:
         """Existing span fully inside new span is removed."""
-        client.post("/api/labels", json={
-            "start_ts": "2026-02-27T09:10:00",
-            "end_ts": "2026-02-27T09:20:00",
-            "label": "Build",
-        })
-        resp = client.post("/api/labels", json={
-            "start_ts": "2026-02-27T09:00:00",
-            "end_ts": "2026-02-27T09:30:00",
-            "label": "Debug",
-            "overwrite": True,
-        })
+        client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:10:00",
+                "end_ts": "2026-02-27T09:20:00",
+                "label": "Build",
+            },
+        )
+        resp = client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:00:00",
+                "end_ts": "2026-02-27T09:30:00",
+                "label": "Debug",
+                "overwrite": True,
+            },
+        )
         assert resp.status_code == 201
         labels = client.get("/api/labels").json()
         assert len(labels) == 1
@@ -1106,36 +1232,51 @@ class TestOverwriteLabel:
 
     def test_overwrite_false_still_rejects(self, client: TestClient) -> None:
         """overwrite=false (default) still returns 409."""
-        client.post("/api/labels", json={
-            "start_ts": "2026-02-27T09:00:00",
-            "end_ts": "2026-02-27T10:00:00",
-            "label": "Build",
-        })
-        resp = client.post("/api/labels", json={
-            "start_ts": "2026-02-27T09:30:00",
-            "end_ts": "2026-02-27T10:30:00",
-            "label": "Meet",
-            "overwrite": False,
-        })
+        client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:00:00",
+                "end_ts": "2026-02-27T10:00:00",
+                "label": "Build",
+            },
+        )
+        resp = client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:30:00",
+                "end_ts": "2026-02-27T10:30:00",
+                "label": "Meet",
+                "overwrite": False,
+            },
+        )
         assert resp.status_code == 409
 
     def test_overlap_409_lists_all_conflicts(self, client: TestClient) -> None:
         """409 response lists every conflicting span, not just the first."""
-        client.post("/api/labels", json={
-            "start_ts": "2026-02-27T09:00:00",
-            "end_ts": "2026-02-27T09:30:00",
-            "label": "Build",
-        })
-        client.post("/api/labels", json={
-            "start_ts": "2026-02-27T09:40:00",
-            "end_ts": "2026-02-27T10:10:00",
-            "label": "Debug",
-        })
-        resp = client.post("/api/labels", json={
-            "start_ts": "2026-02-27T09:15:00",
-            "end_ts": "2026-02-27T10:00:00",
-            "label": "Meet",
-        })
+        client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:00:00",
+                "end_ts": "2026-02-27T09:30:00",
+                "label": "Build",
+            },
+        )
+        client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:40:00",
+                "end_ts": "2026-02-27T10:10:00",
+                "label": "Debug",
+            },
+        )
+        resp = client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:15:00",
+                "end_ts": "2026-02-27T10:00:00",
+                "label": "Meet",
+            },
+        )
         assert resp.status_code == 409
         detail = resp.json()["detail"]
         spans = detail["conflicting_spans"]
@@ -1160,15 +1301,20 @@ class TestLabelCreatedEvent:
         app = create_app(data_dir=data_dir, event_bus=bus)
 
         with TestClient(app) as tc, tc.websocket_connect("/ws/predictions") as ws:
+
             def _post() -> None:
                 import time
+
                 time.sleep(0.05)
-                tc.post("/api/labels", json={
-                    "start_ts": "2026-02-27T09:00:00",
-                    "end_ts": "2026-02-27T10:00:00",
-                    "label": "Build",
-                    "extend_forward": True,
-                })
+                tc.post(
+                    "/api/labels",
+                    json={
+                        "start_ts": "2026-02-27T09:00:00",
+                        "end_ts": "2026-02-27T10:00:00",
+                        "label": "Build",
+                        "extend_forward": True,
+                    },
+                )
 
             threading.Thread(target=_post).start()
             cleared = ws.receive_json()
@@ -1184,20 +1330,25 @@ class TestLabelCreatedEvent:
 
     def test_no_event_without_extend_forward(self, data_dir: Path) -> None:
         """TC-UI-LC-002: extend_forward=False does not emit label_created."""
-        import threading, time
+        import threading
+        import time
 
         bus = EventBus()
         app = create_app(data_dir=data_dir, event_bus=bus)
 
         with TestClient(app) as tc, tc.websocket_connect("/ws/predictions") as ws:
+
             def _post() -> None:
                 time.sleep(0.05)
-                tc.post("/api/labels", json={
-                    "start_ts": "2026-02-27T09:00:00",
-                    "end_ts": "2026-02-27T10:00:00",
-                    "label": "Build",
-                    "extend_forward": False,
-                })
+                tc.post(
+                    "/api/labels",
+                    json={
+                        "start_ts": "2026-02-27T09:00:00",
+                        "end_ts": "2026-02-27T10:00:00",
+                        "label": "Build",
+                        "extend_forward": False,
+                    },
+                )
                 time.sleep(0.1)
                 bus.publish_threadsafe({"type": "status", "state": "sentinel"})
 
@@ -1225,21 +1376,28 @@ class TestSuggestionCleared:
         app = create_app(data_dir=data_dir, event_bus=bus)
 
         with TestClient(app) as tc, tc.websocket_connect("/ws/predictions") as ws:
+
             def _post() -> None:
                 import time
+
                 time.sleep(0.05)
-                tc.post("/api/labels", json={
-                    "start_ts": "2026-02-27T09:00:00",
-                    "end_ts": "2026-02-27T10:00:00",
-                    "label": "Build",
-                })
+                tc.post(
+                    "/api/labels",
+                    json={
+                        "start_ts": "2026-02-27T09:00:00",
+                        "end_ts": "2026-02-27T10:00:00",
+                        "label": "Build",
+                    },
+                )
 
             threading.Thread(target=_post).start()
             received = ws.receive_json()
             assert received["type"] == "suggestion_cleared"
             assert received["reason"] == "label_saved"
 
-    def test_notification_accept_publishes_suggestion_cleared(self, data_dir: Path) -> None:
+    def test_notification_accept_publishes_suggestion_cleared(
+        self, data_dir: Path
+    ) -> None:
         """TC-UI-SC-002: POST /api/notification/accept emits suggestion_cleared."""
         import threading
 
@@ -1247,14 +1405,19 @@ class TestSuggestionCleared:
         app = create_app(data_dir=data_dir, event_bus=bus)
 
         with TestClient(app) as tc, tc.websocket_connect("/ws/predictions") as ws:
+
             def _post() -> None:
                 import time
+
                 time.sleep(0.05)
-                tc.post("/api/notification/accept", json={
-                    "block_start": "2026-02-27T09:00:00",
-                    "block_end": "2026-02-27T10:00:00",
-                    "label": "Build",
-                })
+                tc.post(
+                    "/api/notification/accept",
+                    json={
+                        "block_start": "2026-02-27T09:00:00",
+                        "block_end": "2026-02-27T10:00:00",
+                        "label": "Build",
+                    },
+                )
 
             threading.Thread(target=_post).start()
             received = ws.receive_json()
@@ -1263,19 +1426,24 @@ class TestSuggestionCleared:
 
     def test_validation_error_no_suggestion_cleared(self, data_dir: Path) -> None:
         """TC-UI-SC-003: Invalid label does not emit suggestion_cleared."""
-        import threading, time
+        import threading
+        import time
 
         bus = EventBus()
         app = create_app(data_dir=data_dir, event_bus=bus)
 
         with TestClient(app) as tc, tc.websocket_connect("/ws/predictions") as ws:
+
             def _post() -> None:
                 time.sleep(0.05)
-                tc.post("/api/labels", json={
-                    "start_ts": "2026-02-27T09:00:00",
-                    "end_ts": "2026-02-27T10:00:00",
-                    "label": "NotALabel",
-                })
+                tc.post(
+                    "/api/labels",
+                    json={
+                        "start_ts": "2026-02-27T09:00:00",
+                        "end_ts": "2026-02-27T10:00:00",
+                        "label": "NotALabel",
+                    },
+                )
                 time.sleep(0.1)
                 bus.publish_threadsafe({"type": "status", "state": "sentinel"})
 
@@ -1286,26 +1454,34 @@ class TestSuggestionCleared:
 
     def test_overlap_error_no_suggestion_cleared(self, data_dir: Path) -> None:
         """TC-UI-SC-004: Overlap error does not emit suggestion_cleared."""
-        import threading, time
+        import threading
+        import time
 
         bus = EventBus()
         app = create_app(data_dir=data_dir, event_bus=bus)
 
         with TestClient(app) as tc:
-            tc.post("/api/labels", json={
-                "start_ts": "2026-02-27T09:00:00",
-                "end_ts": "2026-02-27T10:00:00",
-                "label": "Build",
-            })
+            tc.post(
+                "/api/labels",
+                json={
+                    "start_ts": "2026-02-27T09:00:00",
+                    "end_ts": "2026-02-27T10:00:00",
+                    "label": "Build",
+                },
+            )
 
         with TestClient(app) as tc, tc.websocket_connect("/ws/predictions") as ws:
+
             def _post() -> None:
                 time.sleep(0.05)
-                tc.post("/api/labels", json={
-                    "start_ts": "2026-02-27T09:30:00",
-                    "end_ts": "2026-02-27T10:30:00",
-                    "label": "Meet",
-                })
+                tc.post(
+                    "/api/labels",
+                    json={
+                        "start_ts": "2026-02-27T09:30:00",
+                        "end_ts": "2026-02-27T10:30:00",
+                        "label": "Meet",
+                    },
+                )
                 time.sleep(0.1)
                 bus.publish_threadsafe({"type": "status", "state": "sentinel"})
 
@@ -1379,11 +1555,14 @@ class TestAwareTimestampRoundTrip:
 
     def test_z_suffixed_timestamps_accepted(self, client: TestClient) -> None:
         """Frontend sends Z-suffixed ISO strings after the item-17 fix."""
-        resp = client.post("/api/labels", json={
-            "start_ts": "2026-02-27T09:00:00Z",
-            "end_ts": "2026-02-27T10:00:00Z",
-            "label": "Build",
-        })
+        resp = client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:00:00Z",
+                "end_ts": "2026-02-27T10:00:00Z",
+                "label": "Build",
+            },
+        )
         assert resp.status_code == 201
         data = resp.json()
         assert data["start_ts"] == "2026-02-27T09:00:00+00:00"
@@ -1391,11 +1570,14 @@ class TestAwareTimestampRoundTrip:
 
     def test_z_suffixed_persisted_correctly(self, client: TestClient) -> None:
         """Labels created with Z-suffixed timestamps appear in GET /api/labels."""
-        client.post("/api/labels", json={
-            "start_ts": "2026-02-27T09:00:00Z",
-            "end_ts": "2026-02-27T10:00:00Z",
-            "label": "Build",
-        })
+        client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:00:00Z",
+                "end_ts": "2026-02-27T10:00:00Z",
+                "label": "Build",
+            },
+        )
         labels = client.get("/api/labels").json()
         assert len(labels) == 1
         assert labels[0]["start_ts"] == "2026-02-27T09:00:00+00:00"
@@ -1403,11 +1585,14 @@ class TestAwareTimestampRoundTrip:
 
     def test_offset_timestamps_normalized(self, client: TestClient) -> None:
         """Non-UTC aware timestamps are converted to UTC for storage."""
-        resp = client.post("/api/labels", json={
-            "start_ts": "2026-02-27T14:30:00+05:30",
-            "end_ts": "2026-02-27T15:30:00+05:30",
-            "label": "Build",
-        })
+        resp = client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T14:30:00+05:30",
+                "end_ts": "2026-02-27T15:30:00+05:30",
+                "label": "Build",
+            },
+        )
         assert resp.status_code == 201
         data = resp.json()
         assert data["start_ts"] == "2026-02-27T09:00:00+00:00"
@@ -1415,11 +1600,14 @@ class TestAwareTimestampRoundTrip:
 
     def test_naive_timestamps_still_accepted(self, client: TestClient) -> None:
         """Backward compat: naive timestamps (no tz suffix) still work."""
-        resp = client.post("/api/labels", json={
-            "start_ts": "2026-02-27T09:00:00",
-            "end_ts": "2026-02-27T10:00:00",
-            "label": "Build",
-        })
+        resp = client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:00:00",
+                "end_ts": "2026-02-27T10:00:00",
+                "label": "Build",
+            },
+        )
         assert resp.status_code == 201
         data = resp.json()
         assert data["start_ts"] == "2026-02-27T09:00:00+00:00"
@@ -1427,30 +1615,43 @@ class TestAwareTimestampRoundTrip:
 
     def test_update_with_aware_timestamps(self, client: TestClient) -> None:
         """PUT /api/labels accepts aware timestamps for matching."""
-        client.post("/api/labels", json={
-            "start_ts": "2026-02-27T09:00:00",
-            "end_ts": "2026-02-27T10:00:00",
-            "label": "Build",
-        })
-        resp = client.put("/api/labels", json={
-            "start_ts": "2026-02-27T09:00:00+00:00",
-            "end_ts": "2026-02-27T10:00:00+00:00",
-            "label": "Debug",
-        })
+        client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:00:00",
+                "end_ts": "2026-02-27T10:00:00",
+                "label": "Build",
+            },
+        )
+        resp = client.put(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:00:00+00:00",
+                "end_ts": "2026-02-27T10:00:00+00:00",
+                "label": "Debug",
+            },
+        )
         assert resp.status_code == 200
         assert resp.json()["label"] == "Debug"
 
     def test_delete_with_aware_timestamps(self, client: TestClient) -> None:
         """DELETE /api/labels accepts aware timestamps for matching."""
-        client.post("/api/labels", json={
-            "start_ts": "2026-02-27T09:00:00",
-            "end_ts": "2026-02-27T10:00:00",
-            "label": "Build",
-        })
-        resp = client.request("DELETE", "/api/labels", json={
-            "start_ts": "2026-02-27T09:00:00+00:00",
-            "end_ts": "2026-02-27T10:00:00+00:00",
-        })
+        client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:00:00",
+                "end_ts": "2026-02-27T10:00:00",
+                "label": "Build",
+            },
+        )
+        resp = client.request(
+            "DELETE",
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:00:00+00:00",
+                "end_ts": "2026-02-27T10:00:00+00:00",
+            },
+        )
         assert resp.status_code == 200
         assert client.get("/api/labels").json() == []
 
@@ -1461,7 +1662,6 @@ class TestAwareTimestampRoundTrip:
 
 
 class TestLabelStats:
-
     def test_no_labels_file(self, client: TestClient) -> None:
         resp = client.get("/api/labels/stats", params={"date": "2026-03-01"})
         assert resp.status_code == 200
@@ -1472,16 +1672,22 @@ class TestLabelStats:
         assert data["breakdown"] == {}
 
     def test_stats_with_labels(self, client: TestClient) -> None:
-        client.post("/api/labels", json={
-            "start_ts": "2026-03-01T09:00:00",
-            "end_ts": "2026-03-01T09:45:00",
-            "label": "Build",
-        })
-        client.post("/api/labels", json={
-            "start_ts": "2026-03-01T10:00:00",
-            "end_ts": "2026-03-01T10:20:00",
-            "label": "Meet",
-        })
+        client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-03-01T09:00:00",
+                "end_ts": "2026-03-01T09:45:00",
+                "label": "Build",
+            },
+        )
+        client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-03-01T10:00:00",
+                "end_ts": "2026-03-01T10:20:00",
+                "label": "Meet",
+            },
+        )
 
         resp = client.get("/api/labels/stats", params={"date": "2026-03-01"})
         assert resp.status_code == 200
@@ -1493,11 +1699,14 @@ class TestLabelStats:
         assert data["breakdown"]["Meet"] == 20.0
 
     def test_stats_filters_by_date(self, client: TestClient) -> None:
-        client.post("/api/labels", json={
-            "start_ts": "2026-03-01T09:00:00",
-            "end_ts": "2026-03-01T09:30:00",
-            "label": "Build",
-        })
+        client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-03-01T09:00:00",
+                "end_ts": "2026-03-01T09:30:00",
+                "label": "Build",
+            },
+        )
 
         resp = client.get("/api/labels/stats", params={"date": "2026-03-02"})
         assert resp.status_code == 200
@@ -1551,11 +1760,14 @@ class TestImportLabels:
 
     def test_import_merge_happy_path(self, client: TestClient) -> None:
         """Merge preserves existing labels and adds new ones."""
-        client.post("/api/labels", json={
-            "start_ts": "2026-03-01T08:00:00",
-            "end_ts": "2026-03-01T08:30:00",
-            "label": "Write",
-        })
+        client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-03-01T08:00:00",
+                "end_ts": "2026-03-01T08:30:00",
+                "label": "Write",
+            },
+        )
 
         csv_bytes = _make_csv_bytes(_IMPORT_ROWS)
         resp = client.post(
@@ -1575,11 +1787,14 @@ class TestImportLabels:
 
     def test_import_overwrite_happy_path(self, client: TestClient) -> None:
         """Overwrite replaces all existing labels with the imported ones."""
-        client.post("/api/labels", json={
-            "start_ts": "2026-03-01T08:00:00",
-            "end_ts": "2026-03-01T08:30:00",
-            "label": "Write",
-        })
+        client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-03-01T08:00:00",
+                "end_ts": "2026-03-01T08:30:00",
+                "label": "Write",
+            },
+        )
 
         csv_bytes = _make_csv_bytes(_IMPORT_ROWS)
         resp = client.post(
@@ -1596,16 +1811,19 @@ class TestImportLabels:
 
         labels = client.get("/api/labels").json()
         assert len(labels) == 2
-        label_names = {l["label"] for l in labels}
+        label_names = {rec["label"] for rec in labels}
         assert "Write" not in label_names
 
     def test_import_merge_overlap_409(self, client: TestClient) -> None:
         """Merge fails with 409 when imported spans overlap existing ones."""
-        client.post("/api/labels", json={
-            "start_ts": "2026-03-01T09:10:00",
-            "end_ts": "2026-03-01T09:40:00",
-            "label": "Debug",
-        })
+        client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-03-01T09:10:00",
+                "end_ts": "2026-03-01T09:40:00",
+                "label": "Debug",
+            },
+        )
 
         csv_bytes = _make_csv_bytes(_IMPORT_ROWS)
         resp = client.post(

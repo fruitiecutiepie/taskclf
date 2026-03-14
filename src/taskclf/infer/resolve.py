@@ -145,7 +145,9 @@ class ActiveModelReloader:
         if mtime == self._last_mtime:
             return None
 
-        logger.info("active.json changed (mtime %s -> %s), reloading", self._last_mtime, mtime)
+        logger.info(
+            "active.json changed (mtime %s -> %s), reloading", self._last_mtime, mtime
+        )
 
         try:
             resolved = resolve_model_dir(None, self._models_dir)
@@ -158,5 +160,7 @@ class ActiveModelReloader:
             return None
 
         self._last_mtime = mtime
-        logger.info("Reloaded model from %s (schema=%s)", resolved, metadata.schema_hash)
+        logger.info(
+            "Reloaded model from %s (schema=%s)", resolved, metadata.schema_hash
+        )
         return model, metadata, cat_encoders

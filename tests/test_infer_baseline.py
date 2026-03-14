@@ -14,11 +14,6 @@ import pytest
 
 from taskclf.core.defaults import (
     BASELINE_IDLE_ACTIVE_THRESHOLD,
-    BASELINE_IDLE_RUN_THRESHOLD,
-    BASELINE_KEYS_HIGH,
-    BASELINE_KEYS_LOW,
-    BASELINE_SCROLL_HIGH,
-    BASELINE_SHORTCUT_HIGH,
     MIXED_UNKNOWN,
 )
 from taskclf.core.metrics import compare_baselines, reject_rate
@@ -72,6 +67,7 @@ def _make_df(rows: list[dict]) -> pd.DataFrame:
 
 # ── Rule 0: BreakIdle — lockscreen ─────────────────────────────────────────
 
+
 class TestLockscreenRule:
     def test_lockscreen_always_break_idle(self) -> None:
         """Lockscreen app_category is unconditionally BreakIdle."""
@@ -101,6 +97,7 @@ class TestLockscreenRule:
 
 # ── Rule 1: BreakIdle ──────────────────────────────────────────────────────
 
+
 class TestBreakIdleRule:
     def test_null_active_seconds(self) -> None:
         row = _make_row(active_seconds_any=None)
@@ -127,6 +124,7 @@ class TestBreakIdleRule:
 
 
 # ── Rule 2: ReadResearch ───────────────────────────────────────────────────
+
 
 class TestReadResearchRule:
     def test_browser_high_scroll_low_keys(self) -> None:
@@ -163,6 +161,7 @@ class TestReadResearchRule:
 
 
 # ── Rule 3: Build ─────────────────────────────────────────────────────────
+
 
 class TestBuildRule:
     def test_editor_high_keys_high_shortcuts(self) -> None:
@@ -209,6 +208,7 @@ class TestBuildRule:
 
 # ── Rule 4: fallback ──────────────────────────────────────────────────────
 
+
 class TestFallback:
     def test_no_rule_matches_gives_mixed_unknown(self) -> None:
         row = _make_row()
@@ -220,6 +220,7 @@ class TestFallback:
 
 
 # ── Priority ordering ─────────────────────────────────────────────────────
+
 
 class TestPriority:
     def test_idle_browser_is_break_not_read(self) -> None:
@@ -245,31 +246,52 @@ class TestPriority:
 
 # ── Acceptance gate ────────────────────────────────────────────────────────
 
+
 class TestAcceptanceGate:
     def test_break_idle_never_classified_as_build(self) -> None:
         """Rows with near-zero activity must never produce Build."""
-        idle_rows = _make_df([
-            {"active_seconds_any": 0.0, "is_editor": True, "keys_per_min": 50.0, "shortcut_rate": 3.0},
-            {"active_seconds_any": None, "is_terminal": True, "keys_per_min": 60.0, "shortcut_rate": 5.0},
-            {"active_seconds_any": 2.0, "is_editor": True, "keys_per_min": 80.0, "shortcut_rate": 4.0},
-        ])
+        idle_rows = _make_df(
+            [
+                {
+                    "active_seconds_any": 0.0,
+                    "is_editor": True,
+                    "keys_per_min": 50.0,
+                    "shortcut_rate": 3.0,
+                },
+                {
+                    "active_seconds_any": None,
+                    "is_terminal": True,
+                    "keys_per_min": 60.0,
+                    "shortcut_rate": 5.0,
+                },
+                {
+                    "active_seconds_any": 2.0,
+                    "is_editor": True,
+                    "keys_per_min": 80.0,
+                    "shortcut_rate": 4.0,
+                },
+            ]
+        )
         labels = predict_baseline(idle_rows)
         for lbl in labels:
             assert lbl != CoreLabel.Build
             assert lbl != CoreLabel.Write
 
     def test_break_idle_never_classified_as_write(self) -> None:
-        idle_rows = _make_df([
-            {"active_seconds_any": 0.0},
-            {"active_seconds_any": None},
-            {"active_seconds_any": 1.0},
-        ])
+        idle_rows = _make_df(
+            [
+                {"active_seconds_any": 0.0},
+                {"active_seconds_any": None},
+                {"active_seconds_any": 1.0},
+            ]
+        )
         labels = predict_baseline(idle_rows)
         for lbl in labels:
             assert lbl != CoreLabel.Write
 
 
 # ── Batch predict_baseline ─────────────────────────────────────────────────
+
 
 class TestPredictBaseline:
     def test_returns_one_label_per_row(self) -> None:
@@ -283,12 +305,14 @@ class TestPredictBaseline:
         assert labels == []
 
     def test_mixed_rules(self) -> None:
-        df = _make_df([
-            {"active_seconds_any": 0.0},
-            {"is_browser": True, "scroll_events_per_min": 8.0, "keys_per_min": 3.0},
-            {"is_editor": True, "keys_per_min": 50.0, "shortcut_rate": 3.0},
-            {},
-        ])
+        df = _make_df(
+            [
+                {"active_seconds_any": 0.0},
+                {"is_browser": True, "scroll_events_per_min": 8.0, "keys_per_min": 3.0},
+                {"is_editor": True, "keys_per_min": 50.0, "shortcut_rate": 3.0},
+                {},
+            ]
+        )
         labels = predict_baseline(df)
         assert labels == [
             CoreLabel.BreakIdle,
@@ -300,19 +324,22 @@ class TestPredictBaseline:
 
 # ── Integration: run_baseline_inference ────────────────────────────────────
 
+
 class TestRunBaselineInference:
     def test_produces_smoothed_labels_and_segments(self) -> None:
         base_ts = dt.datetime(2025, 6, 15, 10, 0)
         rows = []
         for i in range(10):
-            rows.append({
-                "bucket_start_ts": base_ts + dt.timedelta(minutes=i),
-                "bucket_end_ts": base_ts + dt.timedelta(minutes=i + 1),
-                "active_seconds_any": 0.0 if i < 3 else 30.0,
-                "is_editor": True if 3 <= i < 7 else False,
-                "keys_per_min": 50.0 if 3 <= i < 7 else 5.0,
-                "shortcut_rate": 3.0 if 3 <= i < 7 else 0.1,
-            })
+            rows.append(
+                {
+                    "bucket_start_ts": base_ts + dt.timedelta(minutes=i),
+                    "bucket_end_ts": base_ts + dt.timedelta(minutes=i + 1),
+                    "active_seconds_any": 0.0 if i < 3 else 30.0,
+                    "is_editor": True if 3 <= i < 7 else False,
+                    "keys_per_min": 50.0 if 3 <= i < 7 else 5.0,
+                    "shortcut_rate": 3.0 if 3 <= i < 7 else 0.1,
+                }
+            )
         df = _make_df(rows)
 
         smoothed, segments = run_baseline_inference(df)
@@ -325,9 +352,11 @@ class TestRunBaselineInference:
     def test_all_idle_produces_single_segment(self) -> None:
         base_ts = dt.datetime(2025, 6, 15, 10, 0)
         rows = [
-            {"bucket_start_ts": base_ts + dt.timedelta(minutes=i),
-             "bucket_end_ts": base_ts + dt.timedelta(minutes=i + 1),
-             "active_seconds_any": 0.0}
+            {
+                "bucket_start_ts": base_ts + dt.timedelta(minutes=i),
+                "bucket_end_ts": base_ts + dt.timedelta(minutes=i + 1),
+                "active_seconds_any": 0.0,
+            }
             for i in range(5)
         ]
         df = _make_df(rows)
@@ -338,6 +367,7 @@ class TestRunBaselineInference:
 
 
 # ── Reject rate + comparison metrics ───────────────────────────────────────
+
 
 class TestMetrics:
     def test_reject_rate_empty(self) -> None:
@@ -412,7 +442,9 @@ class TestCustomThresholds:
         assert default_label == CoreLabel.BreakIdle
 
         custom_label = classify_single_row(
-            row, idle_active_threshold=2.0, idle_run_threshold=100.0,
+            row,
+            idle_active_threshold=2.0,
+            idle_run_threshold=100.0,
         )
         assert custom_label != CoreLabel.BreakIdle
 
@@ -420,13 +452,17 @@ class TestCustomThresholds:
         """TC-BASE-007: raising scroll_high above the row's scroll value
         prevents ReadResearch classification."""
         base_ts = dt.datetime(2025, 6, 15, 10, 0)
-        df = _make_df([{
-            "bucket_start_ts": base_ts,
-            "bucket_end_ts": base_ts + dt.timedelta(minutes=1),
-            "is_browser": True,
-            "scroll_events_per_min": 8.0,
-            "keys_per_min": 3.0,
-        }])
+        df = _make_df(
+            [
+                {
+                    "bucket_start_ts": base_ts,
+                    "bucket_end_ts": base_ts + dt.timedelta(minutes=1),
+                    "is_browser": True,
+                    "scroll_events_per_min": 8.0,
+                    "keys_per_min": 3.0,
+                }
+            ]
+        )
 
         default_labels, _ = run_baseline_inference(df)
         assert default_labels[0] == CoreLabel.ReadResearch
@@ -441,10 +477,12 @@ class TestUnsortedInput:
         base_ts = dt.datetime(2025, 6, 15, 10, 0)
         rows = []
         for i in [2, 0, 1]:
-            rows.append({
-                "bucket_start_ts": base_ts + dt.timedelta(minutes=i),
-                "bucket_end_ts": base_ts + dt.timedelta(minutes=i + 1),
-            })
+            rows.append(
+                {
+                    "bucket_start_ts": base_ts + dt.timedelta(minutes=i),
+                    "bucket_end_ts": base_ts + dt.timedelta(minutes=i + 1),
+                }
+            )
         df = _make_df(rows)
 
         _, segments = run_baseline_inference(df)

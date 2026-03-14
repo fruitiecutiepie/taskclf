@@ -122,8 +122,20 @@ _FILE_MANAGER: Final[dict[str, AppInfo]] = {
 
 _UTILITIES: Final[dict[str, AppInfo]] = {
     "preview": ("com.apple.Preview", False, False, False, "utilities"),
-    "system preferences": ("com.apple.systempreferences", False, False, False, "utilities"),
-    "system settings": ("com.apple.systempreferences", False, False, False, "utilities"),
+    "system preferences": (
+        "com.apple.systempreferences",
+        False,
+        False,
+        False,
+        "utilities",
+    ),
+    "system settings": (
+        "com.apple.systempreferences",
+        False,
+        False,
+        False,
+        "utilities",
+    ),
     "activity monitor": ("com.apple.ActivityMonitor", False, False, False, "utilities"),
     "1password": ("com.1password.1password", False, False, False, "utilities"),
     "bitwarden": ("com.bitwarden.desktop", False, False, False, "utilities"),
@@ -173,11 +185,25 @@ KNOWN_APPS: Final[dict[str, AppInfo]] = {
     **_LOCKSCREEN,
 }
 
-APP_CATEGORIES: Final[frozenset[str]] = frozenset({
-    "browser", "editor", "terminal", "email", "chat", "meeting",
-    "docs", "design", "devtools", "media", "file_manager",
-    "utilities", "project_mgmt", "lockscreen", "other",
-})
+APP_CATEGORIES: Final[frozenset[str]] = frozenset(
+    {
+        "browser",
+        "editor",
+        "terminal",
+        "email",
+        "chat",
+        "meeting",
+        "docs",
+        "design",
+        "devtools",
+        "media",
+        "file_manager",
+        "utilities",
+        "project_mgmt",
+        "lockscreen",
+        "other",
+    }
+)
 
 
 def normalize_app(app_name: str) -> AppInfo:

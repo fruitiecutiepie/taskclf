@@ -48,10 +48,18 @@ class TestConfusionMatrixShape:
         assert list(df.columns) == labels
 
     def test_all_eight_labels(self) -> None:
-        labels = sorted([
-            "Build", "Debug", "Review", "Write",
-            "ReadResearch", "Communicate", "Meet", "BreakIdle",
-        ])
+        labels = sorted(
+            [
+                "Build",
+                "Debug",
+                "Review",
+                "Write",
+                "ReadResearch",
+                "Communicate",
+                "Meet",
+                "BreakIdle",
+            ]
+        )
         y_true = ["Build", "BreakIdle"]
         y_pred = ["Build", "BreakIdle"]
 
@@ -191,10 +199,16 @@ class TestCalibrationCurveData:
     def test_returns_entry_per_class(self) -> None:
         labels = ["A", "B"]
         y_true = np.array([0, 0, 1, 1, 0, 1])
-        y_proba = np.array([
-            [0.9, 0.1], [0.8, 0.2], [0.3, 0.7],
-            [0.2, 0.8], [0.7, 0.3], [0.1, 0.9],
-        ])
+        y_proba = np.array(
+            [
+                [0.9, 0.1],
+                [0.8, 0.2],
+                [0.3, 0.7],
+                [0.2, 0.8],
+                [0.7, 0.3],
+                [0.1, 0.9],
+            ]
+        )
 
         result = calibration_curve_data(y_true, y_proba, labels, n_bins=3)
         assert "A" in result
@@ -242,7 +256,10 @@ class TestUserStratificationReport:
         labels = ["Build"] * 90 + ["Write"] * 10
 
         result = user_stratification_report(
-            user_ids, labels, ["Build", "Write"], dominance_threshold=0.5,
+            user_ids,
+            labels,
+            ["Build", "Write"],
+            dominance_threshold=0.5,
         )
         assert len(result["warnings"]) == 1
         assert "u1" in result["warnings"][0]
@@ -343,8 +360,14 @@ class TestCompareBaselines:
         preds = {"baseline": ["Build", "Write"]}
         result = compare_baselines(y_true, preds, ["Build", "Write"])
         entry = result["baseline"]
-        for key in ("macro_f1", "weighted_f1", "reject_rate", "per_class",
-                     "confusion_matrix", "label_names"):
+        for key in (
+            "macro_f1",
+            "weighted_f1",
+            "reject_rate",
+            "per_class",
+            "confusion_matrix",
+            "label_names",
+        ):
             assert key in entry, f"Missing key: {key}"
 
     def test_reject_label_appended_to_label_names(self) -> None:

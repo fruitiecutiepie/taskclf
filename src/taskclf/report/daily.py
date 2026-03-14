@@ -27,7 +27,9 @@ class ContextSwitchStats(BaseModel, frozen=True):
     mean: float = Field(ge=0, description="Mean app switches per bucket.")
     median: float = Field(ge=0, description="Median app switches per bucket.")
     max_value: int = Field(ge=0, description="Peak app switches in a single bucket.")
-    total_switches: int = Field(ge=0, description="Sum of app switches across all buckets.")
+    total_switches: int = Field(
+        ge=0, description="Sum of app switches across all buckets."
+    )
     buckets_counted: int = Field(ge=0, description="Number of buckets with valid data.")
 
 
@@ -65,7 +67,11 @@ class DailyReport(BaseModel, frozen=True):
 def _build_context_switch_stats(
     app_switch_counts: Sequence[float | int | None],
 ) -> ContextSwitchStats | None:
-    valid = [int(v) for v in app_switch_counts if v is not None and not (isinstance(v, float) and math.isnan(v))]
+    valid = [
+        int(v)
+        for v in app_switch_counts
+        if v is not None and not (isinstance(v, float) and math.isnan(v))
+    ]
     if not valid:
         return None
     return ContextSwitchStats(
@@ -140,6 +146,10 @@ def build_daily_report(
         mapped_breakdown=mapped_breakdown,
         segments_count=len(segments),
         context_switch_stats=ctx_stats,
-        flap_rate_raw=round(flap_rate(raw_labels), 4) if raw_labels is not None else None,
-        flap_rate_smoothed=round(flap_rate(smoothed_labels), 4) if smoothed_labels is not None else None,
+        flap_rate_raw=round(flap_rate(raw_labels), 4)
+        if raw_labels is not None
+        else None,
+        flap_rate_smoothed=round(flap_rate(smoothed_labels), 4)
+        if smoothed_labels is not None
+        else None,
     )

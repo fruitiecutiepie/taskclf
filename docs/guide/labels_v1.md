@@ -1,8 +1,8 @@
 # Task Ontology v1 (Core Labels)
 
-Version: 1.0  
-Status: Stable  
-Last Updated: 2026-02-23  
+Version: 1.0
+Status: Stable
+Last Updated: 2026-02-23
 
 This document defines the universal, user-agnostic core task labels used by the global classifier.
 

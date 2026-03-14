@@ -8,8 +8,6 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Sequence
 
-logger = logging.getLogger(__name__)
-
 import pandas as pd
 
 from taskclf.adapters.activitywatch.types import AWInputEvent
@@ -29,9 +27,14 @@ from taskclf.core.time import align_to_bucket
 from taskclf.core.types import Event, FeatureRow
 from taskclf.features.domain import classify_domain
 from taskclf.features.dynamics import DynamicsTracker
-from taskclf.features.sessions import detect_session_boundaries, session_start_for_bucket
+from taskclf.features.sessions import (
+    detect_session_boundaries,
+    session_start_for_bucket,
+)
 from taskclf.features.text import title_hash_bucket
 from taskclf.features.windows import app_switch_count_in_window
+
+logger = logging.getLogger(__name__)
 
 _DUMMY_APPS: list[tuple[str, bool, bool, bool, str]] = [
     # (app_id, is_browser, is_editor, is_terminal, app_category)
@@ -68,7 +71,9 @@ def generate_dummy_features(
     """
     rows: list[FeatureRow] = []
     day_of_week = date.weekday()
-    session_start = dt.datetime(date.year, date.month, date.day, 9, 0, tzinfo=dt.timezone.utc)
+    session_start = dt.datetime(
+        date.year, date.month, date.day, 9, 0, tzinfo=dt.timezone.utc
+    )
     sid = stable_hash(f"{user_id}:{session_start.isoformat()}")
 
     tracker = DynamicsTracker()
@@ -77,7 +82,9 @@ def generate_dummy_features(
     for i in range(n_rows):
         hour = 9 + (i * 8 // max(n_rows, 1))
         minute = (i * 7) % 60
-        ts = dt.datetime(date.year, date.month, date.day, hour, minute, tzinfo=dt.timezone.utc)
+        ts = dt.datetime(
+            date.year, date.month, date.day, hour, minute, tzinfo=dt.timezone.utc
+        )
         end_ts = ts + dt.timedelta(seconds=DEFAULT_BUCKET_SECONDS)
 
         app_id, is_browser, is_editor, is_terminal, app_category = _DUMMY_APPS[
@@ -122,7 +129,9 @@ def generate_dummy_features(
                 max_idle_run_seconds=float(5 + (i % 4) * 5),
                 event_density=round(1.5 + (i % 5) * 0.3, 2),
                 domain_category=classify_domain(None, is_browser=is_browser),
-                window_title_bucket=title_hash_bucket(title_hash, DEFAULT_TITLE_HASH_BUCKETS),
+                window_title_bucket=title_hash_bucket(
+                    title_hash, DEFAULT_TITLE_HASH_BUCKETS
+                ),
                 title_repeat_count_session=title_counts[title_hash],
                 keys_per_min_rolling_5=dynamics["keys_per_min_rolling_5"],
                 keys_per_min_rolling_15=dynamics["keys_per_min_rolling_15"],
@@ -187,8 +196,11 @@ def _aggregate_input_for_bucket(
 
     for ev in sorted_input:
         has_kb = ev.presses > 0
-        has_mouse = (ev.clicks > 0 or ev.delta_x + ev.delta_y > 0
-                     or ev.scroll_x + ev.scroll_y > 0)
+        has_mouse = (
+            ev.clicks > 0
+            or ev.delta_x + ev.delta_y > 0
+            or ev.scroll_x + ev.scroll_y > 0
+        )
         has_any = has_kb or has_mouse
 
         if has_kb:
@@ -296,21 +308,23 @@ def build_features_from_aw_events(
         session_starts = [
             align_to_bucket(ts, bucket_seconds)
             for ts in detect_session_boundaries(
-                all_events_sorted, idle_gap_seconds=idle_gap_seconds,
+                all_events_sorted,
+                idle_gap_seconds=idle_gap_seconds,
             )
         ]
 
     # Pre-compute session_id for each session start
     session_id_map: dict[dt.datetime, str] = {
-        ss: stable_hash(f"{user_id}:{ss.isoformat()}")
-        for ss in session_starts
+        ss: stable_hash(f"{user_id}:{ss.isoformat()}") for ss in session_starts
     }
 
     dynamics = DynamicsTracker(
         rolling_5=DEFAULT_ROLLING_WINDOW_5,
         rolling_15=DEFAULT_ROLLING_WINDOW_15,
     )
-    session_title_counts: dict[dt.datetime, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    session_title_counts: dict[dt.datetime, dict[str, int]] = defaultdict(
+        lambda: defaultdict(int)
+    )
 
     rows: list[FeatureRow] = []
     for bucket_ts in sorted_buckets:
@@ -327,15 +341,17 @@ def build_features_from_aw_events(
 
         sorted_evs = sorted(evs, key=lambda e: e.timestamp)
         change_count = sum(
-            1 for a, b in zip(sorted_evs, sorted_evs[1:])
-            if a.app_id != b.app_id
+            1 for a, b in zip(sorted_evs, sorted_evs[1:]) if a.app_id != b.app_id
         )
 
         switch_count = app_switch_count_in_window(
-            all_events_sorted, bucket_ts, bucket_seconds=bucket_seconds,
+            all_events_sorted,
+            bucket_ts,
+            bucket_seconds=bucket_seconds,
         )
         switch_count_15m = app_switch_count_in_window(
-            all_events_sorted, bucket_ts,
+            all_events_sorted,
+            bucket_ts,
             window_minutes=DEFAULT_APP_SWITCH_WINDOW_15M,
             bucket_seconds=bucket_seconds,
         )
@@ -345,7 +361,9 @@ def build_features_from_aw_events(
         sid = session_id_map[cur_session]
 
         input_agg = _aggregate_input_for_bucket(
-            bucket_ts, bucket_input_events.get(bucket_ts, []), bucket_seconds,
+            bucket_ts,
+            bucket_input_events.get(bucket_ts, []),
+            bucket_seconds,
         )
 
         # Title clustering (item 39)
@@ -399,7 +417,9 @@ def build_features_from_aw_events(
                 event_density=input_agg["event_density"],
                 domain_category=domain_cat,
                 window_title_bucket=w_title_bucket,
-                title_repeat_count_session=session_title_counts[cur_session][title_hash],
+                title_repeat_count_session=session_title_counts[cur_session][
+                    title_hash
+                ],
                 keys_per_min_rolling_5=dyn["keys_per_min_rolling_5"],
                 keys_per_min_rolling_15=dyn["keys_per_min_rolling_15"],
                 mouse_distance_rolling_5=dyn["mouse_distance_rolling_5"],
@@ -453,7 +473,9 @@ def _fetch_aw_features_for_date(
     input_events = None
     input_bucket_id = find_input_bucket_id(aw_host)
     if input_bucket_id:
-        input_events = fetch_aw_input_events(aw_host, input_bucket_id, start, end) or None
+        input_events = (
+            fetch_aw_input_events(aw_host, input_bucket_id, start, end) or None
+        )
 
     return build_features_from_aw_events(
         events,
@@ -521,7 +543,5 @@ def build_features_for_date(
         coerce_nullable_numeric(df)
         FeatureSchemaV1.validate_dataframe(df)
 
-    out_path = (
-        data_dir / f"features_v1/date={date.isoformat()}" / "features.parquet"
-    )
+    out_path = data_dir / f"features_v1/date={date.isoformat()}" / "features.parquet"
     return write_parquet(df, out_path)

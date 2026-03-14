@@ -113,43 +113,100 @@ class FeatureRow(BaseModel, frozen=True):
 
     # -- identity --
     user_id: str = Field(description="Random UUID identifying the user (not PII).")
-    device_id: str | None = Field(default=None, description="Optional device identifier.")
-    session_id: str = Field(description="Deterministic session identifier derived from user_id + session start.")
+    device_id: str | None = Field(
+        default=None, description="Optional device identifier."
+    )
+    session_id: str = Field(
+        description="Deterministic session identifier derived from user_id + session start."
+    )
 
     # -- meta --
     bucket_start_ts: datetime = Field(description="Start of the 60 s bucket (UTC).")
-    bucket_end_ts: datetime = Field(description="End of the 60 s bucket (UTC, exclusive).")
+    bucket_end_ts: datetime = Field(
+        description="End of the 60 s bucket (UTC, exclusive)."
+    )
     schema_version: str = Field(description="Schema version tag, e.g. 'v1'.")
     schema_hash: str = Field(description="Deterministic hash of the column registry.")
-    source_ids: list[str] = Field(min_length=1, description="Collector IDs that contributed to this row.")
+    source_ids: list[str] = Field(
+        min_length=1, description="Collector IDs that contributed to this row."
+    )
 
     # -- context --
-    app_id: str = Field(description="Reverse-domain app identifier, e.g. 'com.apple.Terminal'.")
-    app_category: str = Field(description="Semantic app category, e.g. 'editor', 'chat', 'meeting'.")
+    app_id: str = Field(
+        description="Reverse-domain app identifier, e.g. 'com.apple.Terminal'."
+    )
+    app_category: str = Field(
+        description="Semantic app category, e.g. 'editor', 'chat', 'meeting'."
+    )
     window_title_hash: str = Field(description="Hashed window title (never raw).")
     is_browser: bool = Field(description="True if the foreground app is a web browser.")
     is_editor: bool = Field(description="True if the foreground app is a code editor.")
-    is_terminal: bool = Field(description="True if the foreground app is a terminal emulator.")
-    app_switch_count_last_5m: int = Field(ge=0, description="Number of unique app switches in the last 5 minutes.")
-    app_foreground_time_ratio: float = Field(ge=0.0, le=1.0, description="Fraction of the bucket the dominant app was foreground.")
-    app_change_count: int = Field(ge=0, description="Number of app transitions within this bucket.")
+    is_terminal: bool = Field(
+        description="True if the foreground app is a terminal emulator."
+    )
+    app_switch_count_last_5m: int = Field(
+        ge=0, description="Number of unique app switches in the last 5 minutes."
+    )
+    app_foreground_time_ratio: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Fraction of the bucket the dominant app was foreground.",
+    )
+    app_change_count: int = Field(
+        ge=0, description="Number of app transitions within this bucket."
+    )
 
     # -- keyboard (nullable until collector is wired) --
-    keys_per_min: float | None = Field(default=None, description="Keystrokes per minute.")
-    backspace_ratio: float | None = Field(default=None, ge=0.0, le=1.0, description="Fraction of keystrokes that are backspace.")
-    shortcut_rate: float | None = Field(default=None, ge=0.0, description="Keyboard shortcuts per minute.")
+    keys_per_min: float | None = Field(
+        default=None, description="Keystrokes per minute."
+    )
+    backspace_ratio: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Fraction of keystrokes that are backspace.",
+    )
+    shortcut_rate: float | None = Field(
+        default=None, ge=0.0, description="Keyboard shortcuts per minute."
+    )
 
     # -- mouse (nullable until collector is wired) --
-    clicks_per_min: float | None = Field(default=None, ge=0.0, description="Mouse clicks per minute.")
-    scroll_events_per_min: float | None = Field(default=None, ge=0.0, description="Scroll events per minute.")
-    mouse_distance: float | None = Field(default=None, ge=0.0, description="Mouse distance in pixels.")
+    clicks_per_min: float | None = Field(
+        default=None, ge=0.0, description="Mouse clicks per minute."
+    )
+    scroll_events_per_min: float | None = Field(
+        default=None, ge=0.0, description="Scroll events per minute."
+    )
+    mouse_distance: float | None = Field(
+        default=None, ge=0.0, description="Mouse distance in pixels."
+    )
 
     # -- activity occupancy (nullable until input collector is wired) --
-    active_seconds_keyboard: float | None = Field(default=None, ge=0.0, description="Seconds with keyboard activity within this bucket.")
-    active_seconds_mouse: float | None = Field(default=None, ge=0.0, description="Seconds with mouse activity within this bucket.")
-    active_seconds_any: float | None = Field(default=None, ge=0.0, description="Seconds with any input activity within this bucket.")
-    max_idle_run_seconds: float | None = Field(default=None, ge=0.0, description="Longest consecutive idle run (seconds) within this bucket.")
-    event_density: float | None = Field(default=None, ge=0.0, description="Input events per active second within this bucket.")
+    active_seconds_keyboard: float | None = Field(
+        default=None,
+        ge=0.0,
+        description="Seconds with keyboard activity within this bucket.",
+    )
+    active_seconds_mouse: float | None = Field(
+        default=None,
+        ge=0.0,
+        description="Seconds with mouse activity within this bucket.",
+    )
+    active_seconds_any: float | None = Field(
+        default=None,
+        ge=0.0,
+        description="Seconds with any input activity within this bucket.",
+    )
+    max_idle_run_seconds: float | None = Field(
+        default=None,
+        ge=0.0,
+        description="Longest consecutive idle run (seconds) within this bucket.",
+    )
+    event_density: float | None = Field(
+        default=None,
+        ge=0.0,
+        description="Input events per active second within this bucket.",
+    )
 
     # -- browser domain (item 38) --
     domain_category: str = Field(
@@ -158,27 +215,54 @@ class FeatureRow(BaseModel, frozen=True):
     )
 
     # -- title clustering (item 39) --
-    window_title_bucket: int = Field(ge=0, le=255, description="Hash-trick bucket (0-255) of window_title_hash.")
-    title_repeat_count_session: int = Field(ge=0, description="Number of times this window_title_hash has appeared in the current session.")
+    window_title_bucket: int = Field(
+        ge=0, le=255, description="Hash-trick bucket (0-255) of window_title_hash."
+    )
+    title_repeat_count_session: int = Field(
+        ge=0,
+        description="Number of times this window_title_hash has appeared in the current session.",
+    )
 
     # -- temporal dynamics: rolling means (item 40) --
-    keys_per_min_rolling_5: float | None = Field(default=None, ge=0.0, description="5-bucket rolling mean of keys_per_min.")
-    keys_per_min_rolling_15: float | None = Field(default=None, ge=0.0, description="15-bucket rolling mean of keys_per_min.")
-    mouse_distance_rolling_5: float | None = Field(default=None, ge=0.0, description="5-bucket rolling mean of mouse_distance.")
-    mouse_distance_rolling_15: float | None = Field(default=None, ge=0.0, description="15-bucket rolling mean of mouse_distance.")
+    keys_per_min_rolling_5: float | None = Field(
+        default=None, ge=0.0, description="5-bucket rolling mean of keys_per_min."
+    )
+    keys_per_min_rolling_15: float | None = Field(
+        default=None, ge=0.0, description="15-bucket rolling mean of keys_per_min."
+    )
+    mouse_distance_rolling_5: float | None = Field(
+        default=None, ge=0.0, description="5-bucket rolling mean of mouse_distance."
+    )
+    mouse_distance_rolling_15: float | None = Field(
+        default=None, ge=0.0, description="15-bucket rolling mean of mouse_distance."
+    )
 
     # -- temporal dynamics: deltas (item 40) --
-    keys_per_min_delta: float | None = Field(default=None, description="Change in keys_per_min from previous bucket.")
-    clicks_per_min_delta: float | None = Field(default=None, description="Change in clicks_per_min from previous bucket.")
-    mouse_distance_delta: float | None = Field(default=None, description="Change in mouse_distance from previous bucket.")
+    keys_per_min_delta: float | None = Field(
+        default=None, description="Change in keys_per_min from previous bucket."
+    )
+    clicks_per_min_delta: float | None = Field(
+        default=None, description="Change in clicks_per_min from previous bucket."
+    )
+    mouse_distance_delta: float | None = Field(
+        default=None, description="Change in mouse_distance from previous bucket."
+    )
 
     # -- temporal dynamics: extended switch count (item 40) --
-    app_switch_count_last_15m: int = Field(ge=0, description="Unique app switches in the last 15 minutes.")
+    app_switch_count_last_15m: int = Field(
+        ge=0, description="Unique app switches in the last 15 minutes."
+    )
 
     # -- temporal --
-    hour_of_day: int = Field(ge=0, le=23, description="Hour component of bucket_start_ts (0-23).")
-    day_of_week: int = Field(ge=0, le=6, description="Day of week (0=Monday, 6=Sunday).")
-    session_length_so_far: float = Field(ge=0.0, description="Minutes since session start.")
+    hour_of_day: int = Field(
+        ge=0, le=23, description="Hour component of bucket_start_ts (0-23)."
+    )
+    day_of_week: int = Field(
+        ge=0, le=6, description="Day of week (0=Monday, 6=Sunday)."
+    )
+    session_length_so_far: float = Field(
+        ge=0.0, description="Minutes since session start."
+    )
 
     # -- opt-in raw title (excluded from serialization) --
     raw_window_title: str | None = Field(
@@ -235,7 +319,9 @@ class LabelSpan(BaseModel, frozen=True):
     end_ts: datetime = Field(description="Span end (UTC, exclusive).")
     label: str = Field(description="Task-type label from LABEL_SET_V1.")
     provenance: str = Field(description="Origin tag, e.g. 'manual' or 'weak:app_rule'.")
-    user_id: str | None = Field(default=None, description="User who created this label.")
+    user_id: str | None = Field(
+        default=None, description="User who created this label."
+    )
     confidence: float | None = Field(
         default=None, ge=0.0, le=1.0, description="Labeler confidence (0-1)."
     )
@@ -267,7 +353,6 @@ class LabelSpan(BaseModel, frozen=True):
             )
         if self.label not in LABEL_SET_V1:
             raise ValueError(
-                f"Unknown label {self.label!r}; "
-                f"must be one of {sorted(LABEL_SET_V1)}"
+                f"Unknown label {self.label!r}; must be one of {sorted(LABEL_SET_V1)}"
             )
         return self

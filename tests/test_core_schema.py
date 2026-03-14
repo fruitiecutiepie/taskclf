@@ -5,7 +5,6 @@ Covers: schema invariants S1, S2, S3.
 
 from __future__ import annotations
 
-import datetime as dt
 from typing import Any
 
 import pandas as pd
@@ -31,7 +30,9 @@ class TestSchemaHashStability:
         assert h1 == h2
 
     def test_schema_hash_matches_class_constant(self) -> None:
-        assert _build_schema_hash(FeatureSchemaV1.COLUMNS) == FeatureSchemaV1.SCHEMA_HASH
+        assert (
+            _build_schema_hash(FeatureSchemaV1.COLUMNS) == FeatureSchemaV1.SCHEMA_HASH
+        )
 
     def test_different_columns_yield_different_hash(self) -> None:
         altered = {**FeatureSchemaV1.COLUMNS, "extra_col": int}
@@ -80,17 +81,13 @@ class TestValidateDataFrame:
         with pytest.raises(ValueError, match="Missing columns"):
             FeatureSchemaV1.validate_dataframe(df)
 
-    def test_rejects_extra_column(
-        self, valid_feature_row_data: dict[str, Any]
-    ) -> None:
+    def test_rejects_extra_column(self, valid_feature_row_data: dict[str, Any]) -> None:
         df = _make_valid_df(valid_feature_row_data)
         df["bonus_column"] = 42
         with pytest.raises(ValueError, match="Unexpected columns"):
             FeatureSchemaV1.validate_dataframe(df)
 
-    def test_rejects_wrong_dtype(
-        self, valid_feature_row_data: dict[str, Any]
-    ) -> None:
+    def test_rejects_wrong_dtype(self, valid_feature_row_data: dict[str, Any]) -> None:
         df = _make_valid_df(valid_feature_row_data)
         df["hour_of_day"] = df["hour_of_day"].astype(str)
         with pytest.raises(ValueError, match="dtype mismatches"):

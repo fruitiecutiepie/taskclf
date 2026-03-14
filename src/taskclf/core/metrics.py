@@ -36,7 +36,9 @@ def compute_metrics(
         f1_score(y_true, y_pred, labels=labels_list, average="macro", zero_division=0)
     )
     weighted_f1: float = float(
-        f1_score(y_true, y_pred, labels=labels_list, average="weighted", zero_division=0)
+        f1_score(
+            y_true, y_pred, labels=labels_list, average="weighted", zero_division=0
+        )
     )
     cm: np.ndarray = confusion_matrix(y_true, y_pred, labels=labels_list)
     return {
@@ -129,7 +131,10 @@ def per_class_metrics(
         ``{"precision": float, "recall": float, "f1": float}``.
     """
     prec, rec, f1, _ = precision_recall_fscore_support(
-        y_true, y_pred, labels=list(label_names), zero_division=0,
+        y_true,
+        y_pred,
+        labels=list(label_names),
+        zero_division=0,
     )
     return {
         name: {
@@ -167,10 +172,14 @@ def compare_baselines(
 
     for name, y_pred in predictions.items():
         macro_f1 = float(
-            f1_score(y_true, y_pred, labels=all_labels, average="macro", zero_division=0)
+            f1_score(
+                y_true, y_pred, labels=all_labels, average="macro", zero_division=0
+            )
         )
         weighted_f1 = float(
-            f1_score(y_true, y_pred, labels=all_labels, average="weighted", zero_division=0)
+            f1_score(
+                y_true, y_pred, labels=all_labels, average="weighted", zero_division=0
+            )
         )
         results[name] = {
             "macro_f1": round(macro_f1, 4),
@@ -178,7 +187,9 @@ def compare_baselines(
             "reject_rate": round(reject_rate(list(y_pred), reject_label), 4),
             "per_class": per_class_metrics(y_true, y_pred, all_labels),
             "confusion_matrix": confusion_matrix(
-                y_true, y_pred, labels=all_labels,
+                y_true,
+                y_pred,
+                labels=all_labels,
             ).tolist(),
             "label_names": all_labels,
         }
@@ -218,7 +229,13 @@ def per_user_metrics(
     labels_list = list(label_names)
     for uid, (true_list, pred_list) in sorted(groups.items()):
         mf1 = float(
-            f1_score(true_list, pred_list, labels=labels_list, average="macro", zero_division=0)
+            f1_score(
+                true_list,
+                pred_list,
+                labels=labels_list,
+                average="macro",
+                zero_division=0,
+            )
         )
         results[uid] = {
             "macro_f1": round(mf1, 4),
@@ -228,7 +245,10 @@ def per_user_metrics(
                 for lbl, v in zip(
                     labels_list,
                     precision_recall_fscore_support(
-                        true_list, pred_list, labels=labels_list, zero_division=0,
+                        true_list,
+                        pred_list,
+                        labels=labels_list,
+                        zero_division=0,
                     )[2],
                 )
             },
@@ -270,7 +290,10 @@ def calibration_curve_data(
             result[name] = {"fraction_of_positives": [], "mean_predicted_value": []}
             continue
         frac_pos, mean_pred = sk_calibration_curve(
-            binary_true, proba_class, n_bins=n_bins, strategy="uniform",
+            binary_true,
+            proba_class,
+            n_bins=n_bins,
+            strategy="uniform",
         )
         result[name] = {
             "fraction_of_positives": [round(float(v), 6) for v in frac_pos],
@@ -318,7 +341,11 @@ def user_stratification_report(
         count = user_counts[uid]
         fraction = round(count / total, 4) if total > 0 else 0.0
         dist = {lbl: user_labels[uid].get(lbl, 0) for lbl in label_names}
-        per_user[uid] = {"count": count, "fraction": fraction, "label_distribution": dist}
+        per_user[uid] = {
+            "count": count,
+            "fraction": fraction,
+            "label_distribution": dist,
+        }
         if fraction > dominance_threshold:
             warnings.append(
                 f"User {uid!r} contributes {fraction:.0%} of rows "

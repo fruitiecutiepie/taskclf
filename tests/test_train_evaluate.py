@@ -31,16 +31,34 @@ def _build_labeled_df() -> pd.DataFrame:
     spans: list[LabelSpan] = []
     for d in dates:
         base = dt.datetime(d.year, d.month, d.day)
-        spans.extend([
-            LabelSpan(start_ts=base.replace(hour=9), end_ts=base.replace(hour=12),
-                       label="Build", provenance="test"),
-            LabelSpan(start_ts=base.replace(hour=12), end_ts=base.replace(hour=14),
-                       label="Write", provenance="test"),
-            LabelSpan(start_ts=base.replace(hour=14), end_ts=base.replace(hour=16),
-                       label="Communicate", provenance="test"),
-            LabelSpan(start_ts=base.replace(hour=16), end_ts=base.replace(hour=17),
-                       label="BreakIdle", provenance="test"),
-        ])
+        spans.extend(
+            [
+                LabelSpan(
+                    start_ts=base.replace(hour=9),
+                    end_ts=base.replace(hour=12),
+                    label="Build",
+                    provenance="test",
+                ),
+                LabelSpan(
+                    start_ts=base.replace(hour=12),
+                    end_ts=base.replace(hour=14),
+                    label="Write",
+                    provenance="test",
+                ),
+                LabelSpan(
+                    start_ts=base.replace(hour=14),
+                    end_ts=base.replace(hour=16),
+                    label="Communicate",
+                    provenance="test",
+                ),
+                LabelSpan(
+                    start_ts=base.replace(hour=16),
+                    end_ts=base.replace(hour=17),
+                    label="BreakIdle",
+                    provenance="test",
+                ),
+            ]
+        )
 
     return project_blocks_to_windows(features_df, spans)
 
@@ -88,7 +106,10 @@ def trained_artifacts(tmp_path_factory: pytest.TempPathFactory):
     test_df = labeled.iloc[splits["test"]].reset_index(drop=True)
 
     model, metrics, cm_df, params, cat_encoders = train_lgbm(
-        train_df, val_df, num_boost_round=5, class_weight="balanced",
+        train_df,
+        val_df,
+        num_boost_round=5,
+        class_weight="balanced",
     )
 
     return {
@@ -258,7 +279,10 @@ class TestTrainLgbmClassWeight:
         val_df = labeled.iloc[splits["val"]].reset_index(drop=True)
 
         _, _, _, params, _ = train_lgbm(
-            train_df, val_df, num_boost_round=3, class_weight="balanced",
+            train_df,
+            val_df,
+            num_boost_round=3,
+            class_weight="balanced",
         )
         assert params["class_weight_method"] == "balanced"
 
@@ -269,6 +293,9 @@ class TestTrainLgbmClassWeight:
         val_df = labeled.iloc[splits["val"]].reset_index(drop=True)
 
         _, _, _, params, _ = train_lgbm(
-            train_df, val_df, num_boost_round=3, class_weight="none",
+            train_df,
+            val_df,
+            num_boost_round=3,
+            class_weight="none",
         )
         assert params["class_weight_method"] == "none"

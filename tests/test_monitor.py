@@ -7,7 +7,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from taskclf.core.defaults import MIXED_UNKNOWN
 from taskclf.infer.monitor import (
@@ -24,27 +23,33 @@ from taskclf.infer.monitor import (
 # ---------------------------------------------------------------------------
 
 
-def _make_features(rng: np.random.Generator, n: int, shift: float = 0.0) -> pd.DataFrame:
-    return pd.DataFrame({
-        "bucket_start_ts": pd.date_range("2026-02-20T08:00", periods=n, freq="1min"),
-        "user_id": ["user-1"] * n,
-        "keys_per_min": rng.normal(30 + shift, 5, n),
-        "clicks_per_min": rng.normal(10 + shift, 2, n),
-        "scroll_events_per_min": rng.normal(5, 1, n),
-        "backspace_ratio": rng.uniform(0, 0.3, n),
-        "shortcut_rate": rng.uniform(0, 2, n),
-        "mouse_distance": rng.normal(500, 100, n),
-        "app_switch_count_last_5m": rng.integers(0, 20, n),
-        "app_foreground_time_ratio": rng.uniform(0.5, 1.0, n),
-        "app_change_count": rng.integers(0, 10, n),
-        "hour_of_day": rng.integers(8, 18, n),
-        "session_length_so_far": rng.uniform(0, 120, n),
-        "active_seconds_keyboard": rng.uniform(0, 60, n),
-        "active_seconds_mouse": rng.uniform(0, 60, n),
-        "active_seconds_any": rng.uniform(0, 60, n),
-        "max_idle_run_seconds": rng.uniform(0, 60, n),
-        "event_density": rng.uniform(0, 10, n),
-    })
+def _make_features(
+    rng: np.random.Generator, n: int, shift: float = 0.0
+) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "bucket_start_ts": pd.date_range(
+                "2026-02-20T08:00", periods=n, freq="1min"
+            ),
+            "user_id": ["user-1"] * n,
+            "keys_per_min": rng.normal(30 + shift, 5, n),
+            "clicks_per_min": rng.normal(10 + shift, 2, n),
+            "scroll_events_per_min": rng.normal(5, 1, n),
+            "backspace_ratio": rng.uniform(0, 0.3, n),
+            "shortcut_rate": rng.uniform(0, 2, n),
+            "mouse_distance": rng.normal(500, 100, n),
+            "app_switch_count_last_5m": rng.integers(0, 20, n),
+            "app_foreground_time_ratio": rng.uniform(0.5, 1.0, n),
+            "app_change_count": rng.integers(0, 10, n),
+            "hour_of_day": rng.integers(8, 18, n),
+            "session_length_so_far": rng.uniform(0, 120, n),
+            "active_seconds_keyboard": rng.uniform(0, 60, n),
+            "active_seconds_mouse": rng.uniform(0, 60, n),
+            "active_seconds_any": rng.uniform(0, 60, n),
+            "max_idle_run_seconds": rng.uniform(0, 60, n),
+            "event_density": rng.uniform(0, 10, n),
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -90,8 +95,7 @@ class TestRunDriftCheck:
         assert report.reject_rate_drift.is_flagged
 
         rr_alerts = [
-            a for a in report.alerts
-            if a.trigger == DriftTrigger.reject_rate_increase
+            a for a in report.alerts if a.trigger == DriftTrigger.reject_rate_increase
         ]
         assert len(rr_alerts) == 1
 
@@ -107,7 +111,8 @@ class TestRunDriftCheck:
         uniform = np.ones((100, 8)) / 8
 
         report = run_drift_check(
-            ref_df, cur_df,
+            ref_df,
+            cur_df,
             ref_labels=["Build"] * 100,
             cur_labels=["Build"] * 100,
             ref_probs=confident,
@@ -158,10 +163,12 @@ class TestRunDriftCheck:
 class TestAutoEnqueueDriftLabels:
     def test_no_alerts_no_enqueue(self, tmp_path: Path) -> None:
         report = DriftReport(summary="No drift detected.")
-        df = pd.DataFrame({
-            "bucket_start_ts": pd.date_range("2026-02-20", periods=10, freq="1min"),
-            "user_id": ["u1"] * 10,
-        })
+        df = pd.DataFrame(
+            {
+                "bucket_start_ts": pd.date_range("2026-02-20", periods=10, freq="1min"),
+                "user_id": ["u1"] * 10,
+            }
+        )
         queue_path = tmp_path / "queue.json"
         count = auto_enqueue_drift_labels(report, df, queue_path)
         assert count == 0
@@ -180,7 +187,9 @@ class TestAutoEnqueueDriftLabels:
         confidences = rng.uniform(0.3, 0.9, size=200)
         queue_path = tmp_path / "queue.json"
         count = auto_enqueue_drift_labels(
-            report, cur_df, queue_path,
+            report,
+            cur_df,
+            queue_path,
             cur_confidences=confidences,
             limit=10,
         )
@@ -194,7 +203,8 @@ class TestAutoEnqueueDriftLabels:
         cur_df = _make_features(rng, 200)
 
         report = run_drift_check(
-            ref_df, cur_df,
+            ref_df,
+            cur_df,
             ref_labels=["Build"] * 180 + [MIXED_UNKNOWN] * 20,
             cur_labels=["Build"] * 100 + [MIXED_UNKNOWN] * 100,
         )
@@ -223,7 +233,8 @@ class TestWriteDriftReport:
         cur_df = _make_features(rng, 100, shift=15.0)
 
         report = run_drift_check(
-            ref_df, cur_df,
+            ref_df,
+            cur_df,
             ref_labels=["Build"] * 100,
             cur_labels=["Build"] * 100,
         )

@@ -452,8 +452,16 @@ def generate_label_summary(
     col = features_df["bucket_start_ts"]
     col_is_utc = hasattr(col.dtype, "tz") and col.dtype.tz is not None
     if col_is_utc:
-        _start = pd.Timestamp(start_ts, tz="UTC") if start_ts.tzinfo is None else pd.Timestamp(start_ts).tz_convert("UTC")
-        _end = pd.Timestamp(end_ts, tz="UTC") if end_ts.tzinfo is None else pd.Timestamp(end_ts).tz_convert("UTC")
+        _start = (
+            pd.Timestamp(start_ts, tz="UTC")
+            if start_ts.tzinfo is None
+            else pd.Timestamp(start_ts).tz_convert("UTC")
+        )
+        _end = (
+            pd.Timestamp(end_ts, tz="UTC")
+            if end_ts.tzinfo is None
+            else pd.Timestamp(end_ts).tz_convert("UTC")
+        )
     else:
         _start = pd.Timestamp(start_ts)
         _end = pd.Timestamp(end_ts)
@@ -473,10 +481,7 @@ def generate_label_summary(
     top_apps: list[dict] = []
     if "app_id" in window.columns:
         counts = window["app_id"].value_counts().head(5)
-        top_apps = [
-            {"app_id": app, "buckets": int(cnt)}
-            for app, cnt in counts.items()
-        ]
+        top_apps = [{"app_id": app, "buckets": int(cnt)} for app, cnt in counts.items()]
 
     def _safe_mean(col: str) -> float | None:
         if col in window.columns:
@@ -499,7 +504,9 @@ def generate_label_summary(
     }
 
 
-def generate_dummy_labels(date: dt.date, n_rows: int = DEFAULT_DUMMY_ROWS) -> list[LabelSpan]:
+def generate_dummy_labels(
+    date: dt.date, n_rows: int = DEFAULT_DUMMY_ROWS
+) -> list[LabelSpan]:
     """Create synthetic label spans aligned to the dummy feature timestamps.
 
     Each span covers exactly one minute bucket, mirroring the timestamps

@@ -12,6 +12,7 @@ single value (or ``None`` when insufficient history is available).
 from __future__ import annotations
 
 from collections import deque
+from collections.abc import Sequence
 
 
 def rolling_mean(
@@ -100,10 +101,16 @@ class DynamicsTracker:
             "keys_per_min_rolling_5": rolling_mean(self._keys_buf, self._rolling_5),
             "keys_per_min_rolling_15": rolling_mean(self._keys_buf, self._rolling_15),
             "mouse_distance_rolling_5": rolling_mean(self._mouse_buf, self._rolling_5),
-            "mouse_distance_rolling_15": rolling_mean(self._mouse_buf, self._rolling_15),
+            "mouse_distance_rolling_15": rolling_mean(
+                self._mouse_buf, self._rolling_15
+            ),
             "keys_per_min_delta": delta_from_previous(keys_per_min, self._prev_keys),
-            "clicks_per_min_delta": delta_from_previous(clicks_per_min, self._prev_clicks),
-            "mouse_distance_delta": delta_from_previous(mouse_distance, self._prev_mouse),
+            "clicks_per_min_delta": delta_from_previous(
+                clicks_per_min, self._prev_clicks
+            ),
+            "mouse_distance_delta": delta_from_previous(
+                mouse_distance, self._prev_mouse
+            ),
         }
 
         self._prev_keys = keys_per_min
@@ -114,9 +121,9 @@ class DynamicsTracker:
 
     @staticmethod
     def compute_batch(
-        keys_series: list[float | None],
-        clicks_series: list[float | None],
-        mouse_series: list[float | None],
+        keys_series: Sequence[float | None],
+        clicks_series: Sequence[float | None],
+        mouse_series: Sequence[float | None],
         *,
         rolling_5: int = 5,
         rolling_15: int = 15,

@@ -16,7 +16,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
 from typer.testing import CliRunner
 
 from taskclf.cli.main import app
@@ -77,19 +76,32 @@ def _write_bundle(
 
 class TestDefaultTable:
     def test_table_renders_without_error(self) -> None:
-        result = runner.invoke(app, ["train", "list", "--models-dir", str(FIXTURES_DIR)])
+        result = runner.invoke(
+            app, ["train", "list", "--models-dir", str(FIXTURES_DIR)]
+        )
         assert result.exit_code == 0
         assert "Model Bundles" in result.output
 
     def test_all_bundles_rendered(self) -> None:
-        result = runner.invoke(app, ["train", "list", "--models-dir", str(FIXTURES_DIR), "--json"])
+        result = runner.invoke(
+            app, ["train", "list", "--models-dir", str(FIXTURES_DIR), "--json"]
+        )
         assert result.exit_code == 0
         data = json.loads(result.output)
         ids = {r["model_id"] for r in data}
-        assert ids == {"best_bundle", "good_bundle", "second_good_bundle", "bad_schema_bundle", "corrupt_json_bundle", "missing_metrics_bundle"}
+        assert ids == {
+            "best_bundle",
+            "good_bundle",
+            "second_good_bundle",
+            "bad_schema_bundle",
+            "corrupt_json_bundle",
+            "missing_metrics_bundle",
+        }
 
     def test_metrics_present(self) -> None:
-        result = runner.invoke(app, ["train", "list", "--models-dir", str(FIXTURES_DIR), "--json"])
+        result = runner.invoke(
+            app, ["train", "list", "--models-dir", str(FIXTURES_DIR), "--json"]
+        )
         assert result.exit_code == 0
         data = json.loads(result.output)
         by_id = {r["model_id"]: r for r in data}
@@ -97,7 +109,9 @@ class TestDefaultTable:
         assert by_id["best_bundle"]["weighted_f1"] == 0.91
 
     def test_invalid_bundle_shows_notes(self) -> None:
-        result = runner.invoke(app, ["train", "list", "--models-dir", str(FIXTURES_DIR), "--json"])
+        result = runner.invoke(
+            app, ["train", "list", "--models-dir", str(FIXTURES_DIR), "--json"]
+        )
         assert result.exit_code == 0
         data = json.loads(result.output)
         by_id = {r["model_id"]: r for r in data}
@@ -112,7 +126,17 @@ class TestDefaultTable:
 
 class TestEligibleFilter:
     def test_eligible_excludes_invalid(self) -> None:
-        result = runner.invoke(app, ["train", "list", "--models-dir", str(FIXTURES_DIR), "--eligible", "--json"])
+        result = runner.invoke(
+            app,
+            [
+                "train",
+                "list",
+                "--models-dir",
+                str(FIXTURES_DIR),
+                "--eligible",
+                "--json",
+            ],
+        )
         assert result.exit_code == 0
         data = json.loads(result.output)
         ids = {r["model_id"] for r in data}
@@ -123,14 +147,26 @@ class TestEligibleFilter:
         assert "missing_metrics_bundle" not in ids
 
     def test_eligible_excludes_incompatible_schema(self) -> None:
-        result = runner.invoke(app, ["train", "list", "--models-dir", str(FIXTURES_DIR), "--eligible", "--json"])
+        result = runner.invoke(
+            app,
+            [
+                "train",
+                "list",
+                "--models-dir",
+                str(FIXTURES_DIR),
+                "--eligible",
+                "--json",
+            ],
+        )
         assert result.exit_code == 0
         data = json.loads(result.output)
         ids = {r["model_id"] for r in data}
         assert "bad_schema_bundle" not in ids
 
     def test_eligible_table_renders(self) -> None:
-        result = runner.invoke(app, ["train", "list", "--models-dir", str(FIXTURES_DIR), "--eligible"])
+        result = runner.invoke(
+            app, ["train", "list", "--models-dir", str(FIXTURES_DIR), "--eligible"]
+        )
         assert result.exit_code == 0
         assert "Model Bundles" in result.output
 
@@ -142,7 +178,17 @@ class TestEligibleFilter:
 
 class TestSort:
     def test_sort_macro_f1_default(self) -> None:
-        result = runner.invoke(app, ["train", "list", "--models-dir", str(FIXTURES_DIR), "--eligible", "--json"])
+        result = runner.invoke(
+            app,
+            [
+                "train",
+                "list",
+                "--models-dir",
+                str(FIXTURES_DIR),
+                "--eligible",
+                "--json",
+            ],
+        )
         assert result.exit_code == 0
         data = json.loads(result.output)
         f1s = [r["macro_f1"] for r in data]
@@ -151,7 +197,16 @@ class TestSort:
     def test_sort_weighted_f1(self) -> None:
         result = runner.invoke(
             app,
-            ["train", "list", "--models-dir", str(FIXTURES_DIR), "--eligible", "--sort", "weighted_f1", "--json"],
+            [
+                "train",
+                "list",
+                "--models-dir",
+                str(FIXTURES_DIR),
+                "--eligible",
+                "--sort",
+                "weighted_f1",
+                "--json",
+            ],
         )
         assert result.exit_code == 0
         data = json.loads(result.output)
@@ -161,7 +216,16 @@ class TestSort:
     def test_sort_created_at(self) -> None:
         result = runner.invoke(
             app,
-            ["train", "list", "--models-dir", str(FIXTURES_DIR), "--eligible", "--sort", "created_at", "--json"],
+            [
+                "train",
+                "list",
+                "--models-dir",
+                str(FIXTURES_DIR),
+                "--eligible",
+                "--sort",
+                "created_at",
+                "--json",
+            ],
         )
         assert result.exit_code == 0
         data = json.loads(result.output)
@@ -176,22 +240,39 @@ class TestSort:
 
 class TestJsonOutput:
     def test_json_is_valid(self) -> None:
-        result = runner.invoke(app, ["train", "list", "--models-dir", str(FIXTURES_DIR), "--json"])
+        result = runner.invoke(
+            app, ["train", "list", "--models-dir", str(FIXTURES_DIR), "--json"]
+        )
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert isinstance(data, list)
         assert len(data) == 6
 
     def test_json_keys(self) -> None:
-        result = runner.invoke(app, ["train", "list", "--models-dir", str(FIXTURES_DIR), "--json"])
+        result = runner.invoke(
+            app, ["train", "list", "--models-dir", str(FIXTURES_DIR), "--json"]
+        )
         assert result.exit_code == 0
         data = json.loads(result.output)
-        expected_keys = {"model_id", "created_at", "schema_hash", "macro_f1", "weighted_f1", "bi_prec", "min_prec", "eligible", "active", "notes"}
+        expected_keys = {
+            "model_id",
+            "created_at",
+            "schema_hash",
+            "macro_f1",
+            "weighted_f1",
+            "bi_prec",
+            "min_prec",
+            "eligible",
+            "active",
+            "notes",
+        }
         for row in data:
             assert set(row.keys()) == expected_keys
 
     def test_json_eligible_flag_values(self) -> None:
-        result = runner.invoke(app, ["train", "list", "--models-dir", str(FIXTURES_DIR), "--json"])
+        result = runner.invoke(
+            app, ["train", "list", "--models-dir", str(FIXTURES_DIR), "--json"]
+        )
         assert result.exit_code == 0
         data = json.loads(result.output)
         by_id = {r["model_id"]: r for r in data}
@@ -200,7 +281,17 @@ class TestJsonOutput:
         assert by_id["corrupt_json_bundle"]["eligible"] is False
 
     def test_json_precision_values(self) -> None:
-        result = runner.invoke(app, ["train", "list", "--models-dir", str(FIXTURES_DIR), "--json", "--eligible"])
+        result = runner.invoke(
+            app,
+            [
+                "train",
+                "list",
+                "--models-dir",
+                str(FIXTURES_DIR),
+                "--json",
+                "--eligible",
+            ],
+        )
         assert result.exit_code == 0
         data = json.loads(result.output)
         for row in data:
@@ -210,7 +301,9 @@ class TestJsonOutput:
             assert 0.0 <= row["min_prec"] <= 1.0
 
     def test_json_null_metrics_for_invalid(self) -> None:
-        result = runner.invoke(app, ["train", "list", "--models-dir", str(FIXTURES_DIR), "--json"])
+        result = runner.invoke(
+            app, ["train", "list", "--models-dir", str(FIXTURES_DIR), "--json"]
+        )
         assert result.exit_code == 0
         data = json.loads(result.output)
         by_id = {r["model_id"]: r for r in data}
@@ -233,7 +326,16 @@ class TestSchemaHashFilter:
 
         result = runner.invoke(
             app,
-            ["train", "list", "--models-dir", str(tmp_path), "--schema-hash", custom_hash, "--eligible", "--json"],
+            [
+                "train",
+                "list",
+                "--models-dir",
+                str(tmp_path),
+                "--schema-hash",
+                custom_hash,
+                "--eligible",
+                "--json",
+            ],
         )
         assert result.exit_code == 0
         data = json.loads(result.output)
@@ -259,7 +361,9 @@ class TestActiveMarking:
         }
         (tmp_path / "active.json").write_text(json.dumps(pointer))
 
-        result = runner.invoke(app, ["train", "list", "--models-dir", str(tmp_path), "--json"])
+        result = runner.invoke(
+            app, ["train", "list", "--models-dir", str(tmp_path), "--json"]
+        )
         assert result.exit_code == 0
         data = json.loads(result.output)
         by_id = {r["model_id"]: r for r in data}
@@ -299,5 +403,8 @@ class TestEmptyDirectory:
 
 class TestInvalidSort:
     def test_bad_sort_value(self) -> None:
-        result = runner.invoke(app, ["train", "list", "--models-dir", str(FIXTURES_DIR), "--sort", "nonsense"])
+        result = runner.invoke(
+            app,
+            ["train", "list", "--models-dir", str(FIXTURES_DIR), "--sort", "nonsense"],
+        )
         assert result.exit_code == 1

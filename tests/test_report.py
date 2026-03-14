@@ -188,7 +188,18 @@ class TestBuildDailyReportContextSwitch:
         assert ctx.mean == pytest.approx(5.5)
 
     def test_context_switch_with_nones(self) -> None:
-        counts: list[float | int | None] = [2, None, 4, None, 6, None, 8, None, 10, None]
+        counts: list[float | int | None] = [
+            2,
+            None,
+            4,
+            None,
+            6,
+            None,
+            8,
+            None,
+            10,
+            None,
+        ]
         report = _basic_report(app_switch_counts=counts)
         ctx = report.context_switch_stats
         assert ctx is not None
@@ -221,7 +232,12 @@ class TestExportJson:
         out = tmp_path / "report.json"
         export_report_json(report, out)
         raw = out.read_text()
-        for forbidden in ("raw_keystrokes", "window_title_raw", "clipboard_content", "clipboard"):
+        for forbidden in (
+            "raw_keystrokes",
+            "window_title_raw",
+            "clipboard_content",
+            "clipboard",
+        ):
             assert forbidden not in raw
 
     def test_excludes_none_fields(self, tmp_path: Path) -> None:
@@ -333,27 +349,38 @@ class TestCheckNoSensitiveFields:
             _check_no_sensitive_fields({"meta": {"clipboard_content": "paste"}})
 
     def test_all_four_sensitive_keys_rejected(self) -> None:
-        for key in ("raw_keystrokes", "window_title_raw", "clipboard_content", "clipboard"):
+        for key in (
+            "raw_keystrokes",
+            "window_title_raw",
+            "clipboard_content",
+            "clipboard",
+        ):
             with pytest.raises(ValueError, match=key):
                 _check_no_sensitive_fields({key: "value"})
 
     def test_clean_dict_passes(self) -> None:
-        _check_no_sensitive_fields({
-            "total_minutes": 10.0,
-            "core_breakdown": {"Build": 5.0, "Write": 5.0},
-        })
+        _check_no_sensitive_fields(
+            {
+                "total_minutes": 10.0,
+                "core_breakdown": {"Build": 5.0, "Write": 5.0},
+            }
+        )
 
     def test_sensitive_key_inside_list(self) -> None:
         """Regression: sensitive keys nested in lists must be detected."""
         with pytest.raises(ValueError, match="raw_keystrokes"):
-            _check_no_sensitive_fields({
-                "items": [{"raw_keystrokes": "secret"}],
-            })
+            _check_no_sensitive_fields(
+                {
+                    "items": [{"raw_keystrokes": "secret"}],
+                }
+            )
 
     def test_clean_list_passes(self) -> None:
-        _check_no_sensitive_fields({
-            "items": [{"app_id": "com.apple.Terminal", "count": 5}],
-        })
+        _check_no_sensitive_fields(
+            {
+                "items": [{"app_id": "com.apple.Terminal", "count": 5}],
+            }
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -364,7 +391,9 @@ class TestCheckNoSensitiveFields:
 class TestExportSensitiveGuard:
     """TC-RPT-GUARD-001..003: export functions raise ValueError on sensitive keys."""
 
-    def test_json_rejects_sensitive(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_json_rejects_sensitive(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         report = _basic_report()
         out = tmp_path / "report.json"
 
@@ -380,7 +409,9 @@ class TestExportSensitiveGuard:
         with pytest.raises(ValueError, match="raw_keystrokes"):
             export_report_json(report, out)
 
-    def test_csv_rejects_sensitive(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_csv_rejects_sensitive(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         report = _basic_report()
         out = tmp_path / "report.csv"
 
@@ -396,7 +427,9 @@ class TestExportSensitiveGuard:
         with pytest.raises(ValueError, match="clipboard_content"):
             export_report_csv(report, out)
 
-    def test_parquet_rejects_sensitive(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_parquet_rejects_sensitive(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         report = _basic_report()
         out = tmp_path / "report.parquet"
 
@@ -578,7 +611,7 @@ class TestBreakdownToRows:
         """TC-RPT-ROWS-001: core rows are sorted by label name."""
         report = _basic_report()
         rows = _breakdown_to_rows(report)
-        core_labels = [r["label"] for r in rows if r["label_type"] == "core"]
+        core_labels = [str(r["label"]) for r in rows if r["label_type"] == "core"]
         assert core_labels == sorted(core_labels)
 
     def test_minutes_match_core_breakdown(self) -> None:
@@ -586,7 +619,7 @@ class TestBreakdownToRows:
         report = _basic_report()
         rows = _breakdown_to_rows(report)
         for row in rows:
-            label = row["label"]
+            label = str(row["label"])
             assert row["minutes"] == round(report.core_breakdown[label], 2)
 
     def test_date_propagated(self) -> None:

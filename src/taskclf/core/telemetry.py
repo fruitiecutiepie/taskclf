@@ -5,7 +5,6 @@ Stores only aggregate statistics -- never raw content.
 
 from __future__ import annotations
 
-import json
 import os
 import tempfile
 from datetime import datetime, timezone
@@ -110,7 +109,9 @@ def compute_telemetry(
     window_start: datetime | None = None
     window_end: datetime | None = None
     if "bucket_start_ts" in features_df.columns and n > 0:
-        window_start = pd.Timestamp(features_df["bucket_start_ts"].min()).to_pydatetime()
+        window_start = pd.Timestamp(
+            features_df["bucket_start_ts"].min()
+        ).to_pydatetime()
         window_end = pd.Timestamp(features_df["bucket_start_ts"].max()).to_pydatetime()
 
     conf_stats: ConfidenceStats | None = None
@@ -128,7 +129,7 @@ def compute_telemetry(
     rr = 0.0
     class_dist: dict[str, float] = {}
     if labels is not None and len(labels) > 0:
-        rr = sum(1 for l in labels if l == reject_label) / len(labels)
+        rr = sum(1 for lbl in labels if lbl == reject_label) / len(labels)
         from collections import Counter
 
         counts = Counter(labels)
@@ -214,8 +215,8 @@ class TelemetryStore:
         path = self._path_for(user_id)
         if not path.exists():
             return []
-        lines = [l for l in path.read_text().splitlines() if l.strip()]
-        return [TelemetrySnapshot.model_validate_json(l) for l in lines[-n:]]
+        lines = [line for line in path.read_text().splitlines() if line.strip()]
+        return [TelemetrySnapshot.model_validate_json(line) for line in lines[-n:]]
 
     def read_range(
         self,
@@ -235,7 +236,4 @@ class TelemetryStore:
             Matching snapshots ordered by timestamp.
         """
         all_snaps = self.read_recent(n=10_000, user_id=user_id)
-        return [
-            s for s in all_snaps
-            if start <= s.timestamp <= end
-        ]
+        return [s for s in all_snaps if start <= s.timestamp <= end]

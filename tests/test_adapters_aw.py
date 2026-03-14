@@ -223,12 +223,20 @@ def _make_export(events: list[dict], bucket_type: str = "currentwindow") -> dict
 
 class TestParseAWExport:
     def test_parse_basic_export(self, tmp_path: Path) -> None:
-        export = _make_export([
-            {"timestamp": "2026-02-23T10:00:00Z", "duration": 30.0,
-             "data": {"app": "Firefox", "title": "Page 1"}},
-            {"timestamp": "2026-02-23T10:01:00Z", "duration": 45.0,
-             "data": {"app": "Code", "title": "main.py"}},
-        ])
+        export = _make_export(
+            [
+                {
+                    "timestamp": "2026-02-23T10:00:00Z",
+                    "duration": 30.0,
+                    "data": {"app": "Firefox", "title": "Page 1"},
+                },
+                {
+                    "timestamp": "2026-02-23T10:01:00Z",
+                    "duration": 45.0,
+                    "data": {"app": "Code", "title": "main.py"},
+                },
+            ]
+        )
         f = tmp_path / "export.json"
         f.write_text(json.dumps(export))
 
@@ -248,8 +256,11 @@ class TestParseAWExport:
                     "hostname": "testhost",
                     "created": "2026-01-01T00:00:00.000000",
                     "events": [
-                        {"timestamp": "2026-02-23T10:00:00Z", "duration": 300.0,
-                         "data": {"status": "not-afk"}},
+                        {
+                            "timestamp": "2026-02-23T10:00:00Z",
+                            "duration": 300.0,
+                            "data": {"status": "not-afk"},
+                        },
                     ],
                 }
             }
@@ -262,10 +273,15 @@ class TestParseAWExport:
 
     def test_no_raw_titles_in_output(self, tmp_path: Path) -> None:
         raw_title = "Super Secret Project - Confidential"
-        export = _make_export([
-            {"timestamp": "2026-02-23T10:00:00Z", "duration": 30.0,
-             "data": {"app": "Firefox", "title": raw_title}},
-        ])
+        export = _make_export(
+            [
+                {
+                    "timestamp": "2026-02-23T10:00:00Z",
+                    "duration": 30.0,
+                    "data": {"app": "Firefox", "title": raw_title},
+                },
+            ]
+        )
         f = tmp_path / "export.json"
         f.write_text(json.dumps(export))
 
@@ -276,12 +292,20 @@ class TestParseAWExport:
             assert "Confidential" not in ev.window_title_hash
 
     def test_sorted_by_timestamp(self, tmp_path: Path) -> None:
-        export = _make_export([
-            {"timestamp": "2026-02-23T11:00:00Z", "duration": 10.0,
-             "data": {"app": "Firefox", "title": "b"}},
-            {"timestamp": "2026-02-23T09:00:00Z", "duration": 10.0,
-             "data": {"app": "Code", "title": "a"}},
-        ])
+        export = _make_export(
+            [
+                {
+                    "timestamp": "2026-02-23T11:00:00Z",
+                    "duration": 10.0,
+                    "data": {"app": "Firefox", "title": "b"},
+                },
+                {
+                    "timestamp": "2026-02-23T09:00:00Z",
+                    "duration": 10.0,
+                    "data": {"app": "Code", "title": "a"},
+                },
+            ]
+        )
         f = tmp_path / "export.json"
         f.write_text(json.dumps(export))
 
@@ -310,8 +334,11 @@ class TestParseAWExport:
                     "hostname": "host1",
                     "created": "2026-01-01T00:00:00.000000",
                     "events": [
-                        {"timestamp": "2026-02-23T10:00:00Z", "duration": 30.0,
-                         "data": {"app": "Firefox", "title": "Page"}},
+                        {
+                            "timestamp": "2026-02-23T10:00:00Z",
+                            "duration": 30.0,
+                            "data": {"app": "Firefox", "title": "Page"},
+                        },
                     ],
                 },
                 "aw-watcher-window_host2": {
@@ -321,8 +348,11 @@ class TestParseAWExport:
                     "hostname": "host2",
                     "created": "2026-01-01T00:00:00.000000",
                     "events": [
-                        {"timestamp": "2026-02-23T11:00:00Z", "duration": 20.0,
-                         "data": {"app": "Code", "title": "file.py"}},
+                        {
+                            "timestamp": "2026-02-23T11:00:00Z",
+                            "duration": 20.0,
+                            "data": {"app": "Code", "title": "file.py"},
+                        },
                     ],
                 },
             }
@@ -342,14 +372,25 @@ class TestParseAWExport:
 class TestIngestIntegration:
     def test_ingest_produces_normalized_events(self, tmp_path: Path) -> None:
         """TC-INT-001: ingest fixture AW export produces normalized events with expected fields."""
-        export = _make_export([
-            {"timestamp": "2026-02-23T10:00:00Z", "duration": 30.0,
-             "data": {"app": "Firefox", "title": "GitHub - repo"}},
-            {"timestamp": "2026-02-23T10:01:00Z", "duration": 45.0,
-             "data": {"app": "Code", "title": "main.py"}},
-            {"timestamp": "2026-02-23T10:02:00Z", "duration": 20.0,
-             "data": {"app": "Terminal", "title": "bash"}},
-        ])
+        export = _make_export(
+            [
+                {
+                    "timestamp": "2026-02-23T10:00:00Z",
+                    "duration": 30.0,
+                    "data": {"app": "Firefox", "title": "GitHub - repo"},
+                },
+                {
+                    "timestamp": "2026-02-23T10:01:00Z",
+                    "duration": 45.0,
+                    "data": {"app": "Code", "title": "main.py"},
+                },
+                {
+                    "timestamp": "2026-02-23T10:02:00Z",
+                    "duration": 20.0,
+                    "data": {"app": "Terminal", "title": "bash"},
+                },
+            ]
+        )
         f = tmp_path / "export.json"
         f.write_text(json.dumps(export))
 
@@ -380,12 +421,20 @@ class TestIngestIntegration:
 
     def test_unknown_app_ids_normalized(self, tmp_path: Path) -> None:
         """TC-INT-002: unknown app ids are normalized to app_id='unknown' with provenance retained."""
-        export = _make_export([
-            {"timestamp": "2026-02-23T10:00:00Z", "duration": 10.0,
-             "data": {"app": "SomeObscureApp", "title": "window"}},
-            {"timestamp": "2026-02-23T10:01:00Z", "duration": 5.0,
-             "data": {"app": "My Custom Tool", "title": "view"}},
-        ])
+        export = _make_export(
+            [
+                {
+                    "timestamp": "2026-02-23T10:00:00Z",
+                    "duration": 10.0,
+                    "data": {"app": "SomeObscureApp", "title": "window"},
+                },
+                {
+                    "timestamp": "2026-02-23T10:01:00Z",
+                    "duration": 5.0,
+                    "data": {"app": "My Custom Tool", "title": "view"},
+                },
+            ]
+        )
         f = tmp_path / "export.json"
         f.write_text(json.dumps(export))
 
@@ -407,18 +456,33 @@ class TestIngestIntegration:
         raw_title_a = "Super Secret Project - Confidential Report"
         raw_title_b = "Another Completely Different Title"
 
-        export = _make_export([
-            {"timestamp": "2026-02-23T10:00:00Z", "duration": 10.0,
-             "data": {"app": "Firefox", "title": raw_title_a}},
-            {"timestamp": "2026-02-23T10:01:00Z", "duration": 10.0,
-             "data": {"app": "Firefox", "title": raw_title_b}},
-        ])
+        export = _make_export(
+            [
+                {
+                    "timestamp": "2026-02-23T10:00:00Z",
+                    "duration": 10.0,
+                    "data": {"app": "Firefox", "title": raw_title_a},
+                },
+                {
+                    "timestamp": "2026-02-23T10:01:00Z",
+                    "duration": 10.0,
+                    "data": {"app": "Firefox", "title": raw_title_b},
+                },
+            ]
+        )
         f = tmp_path / "export.json"
         f.write_text(json.dumps(export))
 
         events = parse_aw_export(f, title_salt=SALT)
 
-        for word in ("Super", "Secret", "Confidential", "Report", "Another", "Different"):
+        for word in (
+            "Super",
+            "Secret",
+            "Confidential",
+            "Report",
+            "Another",
+            "Different",
+        ):
             assert word not in events[0].window_title_hash
             assert word not in events[1].window_title_hash
 
@@ -491,18 +555,24 @@ class TestFindWindowBucketId:
         result = find_window_bucket_id("http://localhost:5600")
         assert result == "aw-watcher-window_myhost"
 
-    @patch(_MOCK_API, return_value={
-        "aw-watcher-afk_myhost": {"type": "afkstatus"},
-    })
+    @patch(
+        _MOCK_API,
+        return_value={
+            "aw-watcher-afk_myhost": {"type": "afkstatus"},
+        },
+    )
     def test_no_match_raises_valueerror(self, mock_get) -> None:
         with pytest.raises(ValueError, match="No bucket with type='currentwindow'"):
             find_window_bucket_id("http://localhost:5600")
 
-    @patch(_MOCK_API, return_value={
-        "afk": {"type": "afkstatus"},
-        "input": {"type": "os.hid.input"},
-        "window": {"type": "currentwindow"},
-    })
+    @patch(
+        _MOCK_API,
+        return_value={
+            "afk": {"type": "afkstatus"},
+            "input": {"type": "os.hid.input"},
+            "window": {"type": "currentwindow"},
+        },
+    )
     def test_multiple_buckets_picks_correct_one(self, mock_get) -> None:
         assert find_window_bucket_id("http://localhost:5600") == "window"
 
@@ -525,17 +595,23 @@ class TestFindInputBucketId:
         result = find_input_bucket_id("http://localhost:5600")
         assert result == "aw-watcher-input_myhost"
 
-    @patch(_MOCK_API, return_value={
-        "aw-watcher-window_myhost": {"type": "currentwindow"},
-    })
+    @patch(
+        _MOCK_API,
+        return_value={
+            "aw-watcher-window_myhost": {"type": "currentwindow"},
+        },
+    )
     def test_no_match_returns_none(self, mock_get) -> None:
         assert find_input_bucket_id("http://localhost:5600") is None
 
-    @patch(_MOCK_API, return_value={
-        "afk": {"type": "afkstatus"},
-        "window": {"type": "currentwindow"},
-        "input": {"type": "os.hid.input"},
-    })
+    @patch(
+        _MOCK_API,
+        return_value={
+            "afk": {"type": "afkstatus"},
+            "window": {"type": "currentwindow"},
+            "input": {"type": "os.hid.input"},
+        },
+    )
     def test_multiple_buckets_picks_correct_one(self, mock_get) -> None:
         assert find_input_bucket_id("http://localhost:5600") == "input"
 
@@ -548,12 +624,21 @@ class TestFindInputBucketId:
 class TestFetchAwEvents:
     """TC-AW-REST-011..014: fetch_aw_events fetches and normalizes window events."""
 
-    @patch(_MOCK_API, return_value=[
-        {"timestamp": "2026-02-23T10:01:00Z", "duration": 20.0,
-         "data": {"app": "Code", "title": "main.py"}},
-        {"timestamp": "2026-02-23T10:00:00Z", "duration": 30.0,
-         "data": {"app": "Firefox", "title": "GitHub"}},
-    ])
+    @patch(
+        _MOCK_API,
+        return_value=[
+            {
+                "timestamp": "2026-02-23T10:01:00Z",
+                "duration": 20.0,
+                "data": {"app": "Code", "title": "main.py"},
+            },
+            {
+                "timestamp": "2026-02-23T10:00:00Z",
+                "duration": 30.0,
+                "data": {"app": "Firefox", "title": "GitHub"},
+            },
+        ],
+    )
     def test_returns_sorted_aw_events(self, mock_get) -> None:
         events = fetch_aw_events(
             "http://localhost:5600",
@@ -618,14 +703,35 @@ class TestFetchAwEvents:
 class TestFetchAwInputEvents:
     """TC-AW-REST-015..017: fetch_aw_input_events fetches and normalizes input events."""
 
-    @patch(_MOCK_API, return_value=[
-        {"timestamp": "2026-02-23T10:01:00Z", "duration": 60.0,
-         "data": {"presses": 5, "clicks": 2, "deltaX": 10, "deltaY": 20,
-                  "scrollX": 0, "scrollY": 100}},
-        {"timestamp": "2026-02-23T10:00:00Z", "duration": 60.0,
-         "data": {"presses": 10, "clicks": 3, "deltaX": 50, "deltaY": 30,
-                  "scrollX": 0, "scrollY": 0}},
-    ])
+    @patch(
+        _MOCK_API,
+        return_value=[
+            {
+                "timestamp": "2026-02-23T10:01:00Z",
+                "duration": 60.0,
+                "data": {
+                    "presses": 5,
+                    "clicks": 2,
+                    "deltaX": 10,
+                    "deltaY": 20,
+                    "scrollX": 0,
+                    "scrollY": 100,
+                },
+            },
+            {
+                "timestamp": "2026-02-23T10:00:00Z",
+                "duration": 60.0,
+                "data": {
+                    "presses": 10,
+                    "clicks": 3,
+                    "deltaX": 50,
+                    "deltaY": 30,
+                    "scrollX": 0,
+                    "scrollY": 0,
+                },
+            },
+        ],
+    )
     def test_returns_sorted_input_events(self, mock_get) -> None:
         events = fetch_aw_input_events(
             "http://localhost:5600",

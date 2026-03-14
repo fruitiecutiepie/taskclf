@@ -33,12 +33,8 @@ class WindowPrediction(BaseModel, frozen=True):
     def _check_probs(self) -> WindowPrediction:
         total = sum(self.core_probs)
         if abs(total - 1.0) > 1e-4:
-            raise ValueError(
-                f"core_probs must sum to 1.0, got {total:.6f}"
-            )
+            raise ValueError(f"core_probs must sum to 1.0, got {total:.6f}")
         mapped_total = sum(self.mapped_probs.values())
         if abs(mapped_total - 1.0) > 1e-4:
-            raise ValueError(
-                f"mapped_probs must sum to 1.0, got {mapped_total:.6f}"
-            )
+            raise ValueError(f"mapped_probs must sum to 1.0, got {mapped_total:.6f}")
         return self

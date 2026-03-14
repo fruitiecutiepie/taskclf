@@ -36,7 +36,12 @@ from taskclf.core.types import LABEL_SET_V1, FeatureRow
 from taskclf.infer.batch import write_segments_json
 from taskclf.infer.calibration import Calibrator, CalibratorStore, IdentityCalibrator
 from taskclf.infer.prediction import WindowPrediction
-from taskclf.infer.smooth import Segment, merge_short_segments, rolling_majority, segmentize
+from taskclf.infer.smooth import (
+    Segment,
+    merge_short_segments,
+    rolling_majority,
+    segmentize,
+)
 from taskclf.infer.taxonomy import TaxonomyConfig, TaxonomyResolver
 from taskclf.train.lgbm import CATEGORICAL_COLUMNS, FEATURE_COLUMNS
 
@@ -132,8 +137,7 @@ class OnlinePredictor:
         core_label_name: str = self._le.inverse_transform([pred_idx])[0]
 
         is_rejected = (
-            self._reject_threshold is not None
-            and confidence < self._reject_threshold
+            self._reject_threshold is not None and confidence < self._reject_threshold
         )
 
         smoothing_label = MIXED_UNKNOWN if is_rejected else core_label_name
@@ -149,7 +153,9 @@ class OnlinePredictor:
 
         if self._resolver is not None:
             tax_result = self._resolver.resolve(
-                pred_idx, proba_vec, is_rejected=is_rejected,
+                pred_idx,
+                proba_vec,
+                is_rejected=is_rejected,
             )
             mapped_label_name = tax_result.mapped_label
             mapped_probs = tax_result.mapped_probs
@@ -210,16 +216,20 @@ def _append_prediction_csv(path: Path, prediction: WindowPrediction) -> None:
         writer = csv.writer(f)
         if write_header:
             writer.writerow(_PREDICTION_CSV_COLUMNS)
-        writer.writerow([
-            prediction.bucket_start_ts.isoformat(),
-            prediction.core_label_name,
-            f"{prediction.confidence:.4f}",
-            prediction.is_rejected,
-            prediction.mapped_label_name,
-            json.dumps([round(p, 4) for p in prediction.core_probs]),
-            json.dumps({k: round(v, 4) for k, v in prediction.mapped_probs.items()}),
-            prediction.model_version,
-        ])
+        writer.writerow(
+            [
+                prediction.bucket_start_ts.isoformat(),
+                prediction.core_label_name,
+                f"{prediction.confidence:.4f}",
+                prediction.is_rejected,
+                prediction.mapped_label_name,
+                json.dumps([round(p, 4) for p in prediction.core_probs]),
+                json.dumps(
+                    {k: round(v, 4) for k, v in prediction.mapped_probs.items()}
+                ),
+                prediction.model_version,
+            ]
+        )
 
 
 def run_online_loop(
@@ -295,7 +305,9 @@ def run_online_loop(
     taxonomy: TaxonomyConfig | None = None
     if taxonomy_path is not None:
         taxonomy = load_taxonomy(taxonomy_path)
-        logger.info("Loaded taxonomy from %s (user=%s)", taxonomy_path, taxonomy.user_id)
+        logger.info(
+            "Loaded taxonomy from %s (user=%s)", taxonomy_path, taxonomy.user_id
+        )
 
     calibrator: Calibrator | None = None
     if calibrator_path is not None:
@@ -307,7 +319,8 @@ def run_online_loop(
         cal_store = load_calibrator_store(calibrator_store_path)
         logger.info(
             "Loaded calibrator store from %s (%d per-user calibrators)",
-            calibrator_store_path, len(cal_store.user_calibrators),
+            calibrator_store_path,
+            len(cal_store.user_calibrators),
         )
 
     model, metadata, cat_encoders = load_model_bundle(Path(model_dir))
@@ -320,7 +333,9 @@ def run_online_loop(
     if input_bucket_id:
         logger.info("Using AW input bucket: %s", input_bucket_id)
     else:
-        logger.info("No aw-watcher-input bucket found; keyboard/mouse features will be None")
+        logger.info(
+            "No aw-watcher-input bucket found; keyboard/mouse features will be None"
+        )
 
     predictor = OnlinePredictor(
         model,
@@ -345,7 +360,8 @@ def run_online_loop(
         label_queue = ActiveLabelingQueue(label_queue_path)
         logger.info(
             "Label queue active: %s (threshold=%.2f)",
-            label_queue_path, label_confidence_threshold,
+            label_queue_path,
+            label_confidence_threshold,
         )
 
     pred_path = out_dir / "predictions.csv"
@@ -356,7 +372,9 @@ def run_online_loop(
     idle_gap = timedelta(seconds=idle_gap_seconds)
     total_enqueued = 0
 
-    print(f"Online inference started (polling every {poll_seconds}s, bucket={bucket_id})")
+    print(
+        f"Online inference started (polling every {poll_seconds}s, bucket={bucket_id})"
+    )
     if input_bucket_id:
         print(f"Input watcher active: {input_bucket_id}")
     if reloader is not None and models_dir is not None:
@@ -387,7 +405,11 @@ def run_online_loop(
 
             try:
                 events = fetch_aw_events(
-                    aw_host, bucket_id, window_start, now, title_salt=title_salt,
+                    aw_host,
+                    bucket_id,
+                    window_start,
+                    now,
+                    title_salt=title_salt,
                 )
             except Exception:
                 logger.warning("Failed to fetch AW events, will retry", exc_info=True)
@@ -402,9 +424,15 @@ def run_online_loop(
             input_events = None
             if input_bucket_id:
                 try:
-                    input_events = fetch_aw_input_events(
-                        aw_host, input_bucket_id, window_start, now,
-                    ) or None
+                    input_events = (
+                        fetch_aw_input_events(
+                            aw_host,
+                            input_bucket_id,
+                            window_start,
+                            now,
+                        )
+                        or None
+                    )
                 except Exception:
                     logger.warning("Failed to fetch input events", exc_info=True)
 
@@ -432,7 +460,9 @@ def run_online_loop(
                 prediction = predictor.predict_bucket(row)
                 ts_str = row.bucket_start_ts.strftime("%H:%M")
                 conf_str = f"{prediction.confidence:.2f}"
-                print(f"[{ts_str}] {prediction.mapped_label_name} (confidence: {conf_str})")
+                print(
+                    f"[{ts_str}] {prediction.mapped_label_name} (confidence: {conf_str})"
+                )
                 _append_prediction_csv(pred_path, prediction)
 
                 if (
@@ -441,15 +471,21 @@ def run_online_loop(
                 ):
                     import pandas as pd
 
-                    enqueue_df = pd.DataFrame([{
-                        "user_id": prediction.user_id or "default-user",
-                        "bucket_start_ts": prediction.bucket_start_ts,
-                        "bucket_end_ts": prediction.bucket_start_ts + timedelta(seconds=bucket_seconds),
-                        "confidence": prediction.confidence,
-                        "predicted_label": prediction.core_label_name,
-                    }])
+                    enqueue_df = pd.DataFrame(
+                        [
+                            {
+                                "user_id": prediction.user_id or "default-user",
+                                "bucket_start_ts": prediction.bucket_start_ts,
+                                "bucket_end_ts": prediction.bucket_start_ts
+                                + timedelta(seconds=bucket_seconds),
+                                "confidence": prediction.confidence,
+                                "predicted_label": prediction.core_label_name,
+                            }
+                        ]
+                    )
                     n = label_queue.enqueue_low_confidence(
-                        enqueue_df, threshold=label_confidence_threshold,
+                        enqueue_df,
+                        threshold=label_confidence_threshold,
                     )
                     if n > 0:
                         total_enqueued += n
@@ -478,7 +514,9 @@ def run_online_loop(
                 raw_labels=predictor._all_raw or None,
                 smoothed_labels=predictor._all_smoothed or None,
             )
-            report_path = export_report_json(report, out_dir / f"report_{report.date}.json")
+            report_path = export_report_json(
+                report, out_dir / f"report_{report.date}.json"
+            )
             print(f"Daily report written to {report_path}")
             if report.flap_rate_raw is not None:
                 print(
@@ -493,9 +531,7 @@ def run_online_loop(
 
             import pandas as pd
 
-            ts_records = [
-                {"bucket_start_ts": ts} for ts in predictor._all_bucket_ts
-            ]
+            ts_records = [{"bucket_start_ts": ts} for ts in predictor._all_bucket_ts]
             ts_df = pd.DataFrame(ts_records) if ts_records else pd.DataFrame()
 
             if not ts_df.empty:

@@ -9,7 +9,6 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-import pytest
 
 from taskclf.ui.events import EventBus
 
@@ -67,10 +66,11 @@ class TestEventBusBackpressure:
 
         inside, after = _run(_test())
         assert inside == 1  # subscriber retained despite overflow
-        assert after == 0   # cleaned up on context exit
+        assert after == 0  # cleaned up on context exit
 
     def test_newest_event_always_in_queue(self) -> None:
         """After overflow, the most recent event is always present."""
+
         async def _test() -> dict[str, Any]:
             bus = EventBus()
             async with bus.subscribe() as q:
@@ -86,6 +86,7 @@ class TestEventBusBackpressure:
 
     def test_queue_stays_full_after_overflow(self) -> None:
         """Queue contains exactly 256 events after 300 publishes."""
+
         async def _test() -> int:
             bus = EventBus()
             async with bus.subscribe() as q:
@@ -98,6 +99,7 @@ class TestEventBusBackpressure:
 
     def test_subscriber_still_receives_after_overflow(self) -> None:
         """A subscriber that overflowed still gets subsequent events."""
+
         async def _test() -> dict[str, Any]:
             bus = EventBus()
             async with bus.subscribe() as q:

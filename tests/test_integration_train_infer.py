@@ -36,16 +36,34 @@ def _build_labeled_df() -> pd.DataFrame:
     spans: list[LabelSpan] = []
     for d in dates:
         base = dt.datetime(d.year, d.month, d.day)
-        spans.extend([
-            LabelSpan(start_ts=base.replace(hour=9), end_ts=base.replace(hour=12),
-                       label="Build", provenance="test"),
-            LabelSpan(start_ts=base.replace(hour=12), end_ts=base.replace(hour=14),
-                       label="Write", provenance="test"),
-            LabelSpan(start_ts=base.replace(hour=14), end_ts=base.replace(hour=16),
-                       label="Communicate", provenance="test"),
-            LabelSpan(start_ts=base.replace(hour=16), end_ts=base.replace(hour=17),
-                       label="BreakIdle", provenance="test"),
-        ])
+        spans.extend(
+            [
+                LabelSpan(
+                    start_ts=base.replace(hour=9),
+                    end_ts=base.replace(hour=12),
+                    label="Build",
+                    provenance="test",
+                ),
+                LabelSpan(
+                    start_ts=base.replace(hour=12),
+                    end_ts=base.replace(hour=14),
+                    label="Write",
+                    provenance="test",
+                ),
+                LabelSpan(
+                    start_ts=base.replace(hour=14),
+                    end_ts=base.replace(hour=16),
+                    label="Communicate",
+                    provenance="test",
+                ),
+                LabelSpan(
+                    start_ts=base.replace(hour=16),
+                    end_ts=base.replace(hour=17),
+                    label="BreakIdle",
+                    provenance="test",
+                ),
+            ]
+        )
 
     return project_blocks_to_windows(features_df, spans)
 
@@ -59,7 +77,9 @@ def pipeline_artifacts(tmp_path_factory: pytest.TempPathFactory):
     val_df = labeled.iloc[splits["val"]].reset_index(drop=True)
 
     model, metrics, cm_df, params, cat_encoders = train_lgbm(
-        train_df, val_df, num_boost_round=5,
+        train_df,
+        val_df,
+        num_boost_round=5,
     )
 
     base_dir = tmp_path_factory.mktemp("integration_models")
@@ -71,7 +91,9 @@ def pipeline_artifacts(tmp_path_factory: pytest.TempPathFactory):
         dataset_hash="integration_test_hash",
         data_provenance="synthetic",
     )
-    run_dir = save_model_bundle(model, metadata, metrics, cm_df, base_dir, cat_encoders=cat_encoders)
+    run_dir = save_model_bundle(
+        model, metadata, metrics, cm_df, base_dir, cat_encoders=cat_encoders
+    )
 
     le = LabelEncoder()
     le.fit(sorted(LABEL_SET_V1))
@@ -92,7 +114,12 @@ class TestTrainProducesBundle:
 
     def test_run_dir_contains_required_files(self, pipeline_artifacts) -> None:
         run_dir = pipeline_artifacts["run_dir"]
-        for name in ("model.txt", "metadata.json", "metrics.json", "confusion_matrix.csv"):
+        for name in (
+            "model.txt",
+            "metadata.json",
+            "metrics.json",
+            "confusion_matrix.csv",
+        ):
             assert (run_dir / name).exists(), f"Missing required file: {name}"
 
     def test_metadata_schema_matches_current(self, pipeline_artifacts) -> None:
@@ -115,7 +142,9 @@ class TestTrainProducesBundle:
         assert "label_names" in raw
 
     def test_confusion_matrix_csv_is_square(self, pipeline_artifacts) -> None:
-        df = pd.read_csv(pipeline_artifacts["run_dir"] / "confusion_matrix.csv", index_col=0)
+        df = pd.read_csv(
+            pipeline_artifacts["run_dir"] / "confusion_matrix.csv", index_col=0
+        )
         assert df.shape[0] == df.shape[1]
 
 
@@ -131,7 +160,7 @@ class TestInferOnSameSchema:
 
         feat_df, _ = encode_categoricals(val_df[FEATURE_COLUMNS].copy(), cat_encoders)
         x = feat_df.fillna(0).to_numpy(dtype=np.float64)
-        proba = model.predict(x)
+        proba = np.asarray(model.predict(x))
         pred_indices = proba.argmax(axis=1)
         pred_labels = le.inverse_transform(pred_indices)
 
@@ -147,7 +176,7 @@ class TestInferOnSameSchema:
 
         feat_df, _ = encode_categoricals(val_df[FEATURE_COLUMNS].copy(), cat_encoders)
         x = feat_df.fillna(0).to_numpy(dtype=np.float64)
-        proba = model.predict(x)
+        proba = np.asarray(model.predict(x))
         assert proba.shape[0] == len(val_df)
 
     def test_probabilities_sum_to_one(self, pipeline_artifacts) -> None:
@@ -158,7 +187,7 @@ class TestInferOnSameSchema:
 
         feat_df, _ = encode_categoricals(val_df[FEATURE_COLUMNS].copy(), cat_encoders)
         x = feat_df.fillna(0).to_numpy(dtype=np.float64)
-        proba = model.predict(x)
+        proba = np.asarray(model.predict(x))
         row_sums = proba.sum(axis=1)
         np.testing.assert_allclose(row_sums, 1.0, atol=1e-6)
 

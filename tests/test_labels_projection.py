@@ -23,12 +23,14 @@ def _make_features(
 ) -> pd.DataFrame:
     rows = []
     for s in starts:
-        rows.append({
-            "user_id": user_id,
-            "bucket_start_ts": s,
-            "bucket_end_ts": s + dt.timedelta(seconds=bucket_seconds),
-            "session_id": "sess-1",
-        })
+        rows.append(
+            {
+                "user_id": user_id,
+                "bucket_start_ts": s,
+                "bucket_end_ts": s + dt.timedelta(seconds=bucket_seconds),
+                "session_id": "sess-1",
+            }
+        )
     return pd.DataFrame(rows)
 
 
@@ -195,9 +197,7 @@ class TestRoundTrip:
 
     def test_mixed_scenario(self) -> None:
         t0 = dt.datetime(2025, 6, 15, 10, 0)
-        features = _make_features(
-            [t0 + dt.timedelta(minutes=i) for i in range(5)]
-        )
+        features = _make_features([t0 + dt.timedelta(minutes=i) for i in range(5)])
         spans = [
             LabelSpan(
                 start_ts=t0,
@@ -225,11 +225,13 @@ class TestAutoDerivedBucketEndTs:
     def test_projection_works_without_bucket_end_ts(self) -> None:
         t0 = dt.datetime(2025, 6, 15, 10, 0)
         starts = [t0, t0 + dt.timedelta(minutes=1)]
-        df = pd.DataFrame({
-            "user_id": ["u1", "u1"],
-            "bucket_start_ts": starts,
-            "session_id": ["sess-1", "sess-1"],
-        })
+        df = pd.DataFrame(
+            {
+                "user_id": ["u1", "u1"],
+                "bucket_start_ts": starts,
+                "session_id": ["sess-1", "sess-1"],
+            }
+        )
         assert "bucket_end_ts" not in df.columns
 
         span = LabelSpan(

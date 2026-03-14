@@ -80,9 +80,7 @@ class ActiveLabelingQueue:
             indent=2,
             default=str,
         )
-        fd, tmp = tempfile.mkstemp(
-            dir=str(self._path.parent), suffix=".tmp"
-        )
+        fd, tmp = tempfile.mkstemp(dir=str(self._path.parent), suffix=".tmp")
         try:
             os.write(fd, payload.encode())
             os.close(fd)
@@ -123,7 +121,9 @@ class ActiveLabelingQueue:
         for _, row in predictions_df.iterrows():
             if row["confidence"] >= threshold:
                 continue
-            key = self._bucket_key(row["user_id"], pd.Timestamp(row["bucket_start_ts"]).to_pydatetime())
+            key = self._bucket_key(
+                row["user_id"], pd.Timestamp(row["bucket_start_ts"]).to_pydatetime()
+            )
             if key in existing:
                 continue
             req = LabelRequest(
@@ -206,14 +206,13 @@ class ActiveLabelingQueue:
         if user_id is not None:
             pending = [r for r in pending if r.user_id == user_id]
 
-        pending.sort(key=lambda r: (r.confidence if r.confidence is not None else 0.0))
+        pending.sort(key=lambda r: r.confidence if r.confidence is not None else 0.0)
 
         today = datetime.now(tz=timezone.utc).date()
         served_today = sum(
             1
             for r in self._items
-            if r.status in ("labeled", "skipped")
-            and r.created_at.date() == today
+            if r.status in ("labeled", "skipped") and r.created_at.date() == today
         )
         daily_remaining = max(0, self._max_asks - served_today)
 

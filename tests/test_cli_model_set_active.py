@@ -74,11 +74,17 @@ class TestSetActiveValid:
         models_dir = tmp_path / "models"
         _write_bundle(models_dir / "run_001", _VALID_METADATA, _VALID_METRICS)
 
-        result = runner.invoke(app, [
-            "model", "set-active",
-            "--model-id", "run_001",
-            "--models-dir", str(models_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "model",
+                "set-active",
+                "--model-id",
+                "run_001",
+                "--models-dir",
+                str(models_dir),
+            ],
+        )
 
         assert result.exit_code == 0
         assert "run_001" in result.output
@@ -91,11 +97,17 @@ class TestSetActiveValid:
         models_dir = tmp_path / "models"
         _write_bundle(models_dir / "run_001", _VALID_METADATA, _VALID_METRICS)
 
-        runner.invoke(app, [
-            "model", "set-active",
-            "--model-id", "run_001",
-            "--models-dir", str(models_dir),
-        ])
+        runner.invoke(
+            app,
+            [
+                "model",
+                "set-active",
+                "--model-id",
+                "run_001",
+                "--models-dir",
+                str(models_dir),
+            ],
+        )
 
         history = models_dir / "active_history.jsonl"
         assert history.is_file()
@@ -115,11 +127,17 @@ class TestSetActiveMissing:
         models_dir = tmp_path / "models"
         models_dir.mkdir()
 
-        result = runner.invoke(app, [
-            "model", "set-active",
-            "--model-id", "nonexistent",
-            "--models-dir", str(models_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "model",
+                "set-active",
+                "--model-id",
+                "nonexistent",
+                "--models-dir",
+                str(models_dir),
+            ],
+        )
 
         assert result.exit_code != 0
         assert "not found" in result.output.lower()
@@ -137,11 +155,17 @@ class TestSetActiveInvalid:
         bundle_dir.mkdir(parents=True)
         (bundle_dir / "metadata.json").write_text("not valid json {{{")
 
-        result = runner.invoke(app, [
-            "model", "set-active",
-            "--model-id", "broken",
-            "--models-dir", str(models_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "model",
+                "set-active",
+                "--model-id",
+                "broken",
+                "--models-dir",
+                str(models_dir),
+            ],
+        )
 
         assert result.exit_code != 0
         assert "invalid" in result.output.lower()
@@ -158,11 +182,17 @@ class TestSetActiveIncompatible:
         bad_meta = {**_VALID_METADATA, "schema_hash": "wrong_hash"}
         _write_bundle(models_dir / "old_model", bad_meta, _VALID_METRICS)
 
-        result = runner.invoke(app, [
-            "model", "set-active",
-            "--model-id", "old_model",
-            "--models-dir", str(models_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "model",
+                "set-active",
+                "--model-id",
+                "old_model",
+                "--models-dir",
+                str(models_dir),
+            ],
+        )
 
         assert result.exit_code != 0
         assert "incompatible" in result.output.lower()

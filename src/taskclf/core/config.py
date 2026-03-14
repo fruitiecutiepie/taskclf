@@ -93,7 +93,9 @@ class UserConfig:
             self._dir.mkdir(parents=True, exist_ok=True)
             self._path.write_text(_to_commented_toml(data), "utf-8")
             json_path.rename(json_path.with_suffix(".json.bak"))
-            logger.info("Migrated %s → %s + %s", json_path, self._path, self._user_id_path)
+            logger.info(
+                "Migrated %s → %s + %s", json_path, self._path, self._user_id_path
+            )
         except Exception:
             logger.warning("Failed to migrate %s", json_path, exc_info=True)
 
@@ -101,7 +103,7 @@ class UserConfig:
         if self._path.exists():
             try:
                 return dict(tomllib.loads(self._path.read_text("utf-8")))
-            except (tomllib.TOMLDecodeError, OSError):
+            except tomllib.TOMLDecodeError, OSError:
                 logger.warning("Corrupt config at %s — using defaults", self._path)
         return {}
 

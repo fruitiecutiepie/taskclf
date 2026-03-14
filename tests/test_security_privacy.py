@@ -10,22 +10,23 @@ import datetime as dt
 import inspect
 import re
 
-import pytest
 
 import taskclf.core.hashing as hashing_mod
 from taskclf.core.hashing import _HASH_TRUNCATION, salted_hash, stable_hash
 from taskclf.core.store import read_parquet, write_parquet
 from taskclf.features.build import generate_dummy_features
 
-_FORBIDDEN_COLUMNS = frozenset({
-    "raw_keystrokes",
-    "raw_keys",
-    "window_title_raw",
-    "clipboard_content",
-    "typed_text",
-    "im_content",
-    "full_url",
-})
+_FORBIDDEN_COLUMNS = frozenset(
+    {
+        "raw_keystrokes",
+        "raw_keys",
+        "window_title_raw",
+        "clipboard_content",
+        "typed_text",
+        "im_content",
+        "full_url",
+    }
+)
 
 
 class TestForbiddenColumnsInArtifacts:
@@ -34,6 +35,7 @@ class TestForbiddenColumnsInArtifacts:
     def test_feature_parquet_has_no_raw_prefixed_columns(self, tmp_path) -> None:
         rows = generate_dummy_features(dt.date(2025, 6, 15), n_rows=10)
         import pandas as pd
+
         df = pd.DataFrame([r.model_dump() for r in rows])
 
         path = write_parquet(df, tmp_path / "features.parquet")
@@ -45,6 +47,7 @@ class TestForbiddenColumnsInArtifacts:
     def test_feature_parquet_excludes_explicit_forbidden_names(self, tmp_path) -> None:
         rows = generate_dummy_features(dt.date(2025, 6, 15), n_rows=10)
         import pandas as pd
+
         df = pd.DataFrame([r.model_dump() for r in rows])
 
         path = write_parquet(df, tmp_path / "features.parquet")
@@ -56,6 +59,7 @@ class TestForbiddenColumnsInArtifacts:
     def test_window_title_column_is_hashed_not_raw(self, tmp_path) -> None:
         rows = generate_dummy_features(dt.date(2025, 6, 15), n_rows=10)
         import pandas as pd
+
         df = pd.DataFrame([r.model_dump() for r in rows])
 
         assert "window_title_hash" in df.columns
@@ -73,7 +77,8 @@ class TestHashOneWay:
 
     def test_no_reverse_or_decode_function_exposed(self) -> None:
         public_names = [
-            name for name in dir(hashing_mod)
+            name
+            for name in dir(hashing_mod)
             if not name.startswith("_") and callable(getattr(hashing_mod, name))
         ]
         suspect = {"decode", "reverse", "unhash", "decrypt", "invert"}
@@ -152,8 +157,13 @@ class TestLogSanitization:
         filt = install_sanitizing_filter(logger)
         try:
             record = logger.makeRecord(
-                "taskclf.test", logging.INFO, "", 0,
-                'Event window_title="Top Secret" processed', (), None,
+                "taskclf.test",
+                logging.INFO,
+                "",
+                0,
+                'Event window_title="Top Secret" processed',
+                (),
+                None,
             )
             filt.filter(record)
             assert "Top Secret" not in record.getMessage()

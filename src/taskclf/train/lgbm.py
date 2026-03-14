@@ -95,9 +95,13 @@ def encode_categoricals(
         for col in CATEGORICAL_COLUMNS:
             le = cat_encoders[col]
             known = set(le.classes_)
-            df[col] = df[col].astype(str).apply(
-                lambda v, _k=known, _le=le: (
-                    int(_le.transform([v])[0]) if v in _k else -1
+            df[col] = (
+                df[col]
+                .astype(str)
+                .apply(
+                    lambda v, _k=known, _le=le: (
+                        int(_le.transform([v])[0]) if v in _k else -1
+                    )
                 )
             )
     return df, cat_encoders
@@ -205,9 +209,12 @@ def train_lgbm(
     sample_weights = compute_sample_weights(y_train, method=class_weight)
 
     train_ds = lgb.Dataset(
-        x_train, label=y_train, weight=sample_weights,
+        x_train,
+        label=y_train,
+        weight=sample_weights,
         feature_name=FEATURE_COLUMNS,
-        categorical_feature=cat_indices, free_raw_data=False,
+        categorical_feature=cat_indices,
+        free_raw_data=False,
     )
     val_ds = lgb.Dataset(x_val, label=y_val, reference=train_ds, free_raw_data=False)
 

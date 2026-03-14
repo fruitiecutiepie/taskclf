@@ -28,7 +28,9 @@ class Segment:
     bucket_count: int
 
 
-def rolling_majority(labels: Sequence[str], window: int = DEFAULT_SMOOTH_WINDOW) -> list[str]:
+def rolling_majority(
+    labels: Sequence[str], window: int = DEFAULT_SMOOTH_WINDOW
+) -> list[str]:
     """Smooth *labels* with a centred sliding-window majority vote.
 
     For each position the most common label within the window wins.
@@ -98,22 +100,26 @@ def segmentize(
         if labels[i] == run_label:
             run_count += 1
         else:
-            segments.append(Segment(
-                start_ts=run_start,
-                end_ts=bucket_starts[i - 1] + step,
-                label=run_label,
-                bucket_count=run_count,
-            ))
+            segments.append(
+                Segment(
+                    start_ts=run_start,
+                    end_ts=bucket_starts[i - 1] + step,
+                    label=run_label,
+                    bucket_count=run_count,
+                )
+            )
             run_start = bucket_starts[i]
             run_label = labels[i]
             run_count = 1
 
-    segments.append(Segment(
-        start_ts=run_start,
-        end_ts=bucket_starts[-1] + step,
-        label=run_label,
-        bucket_count=run_count,
-    ))
+    segments.append(
+        Segment(
+            start_ts=run_start,
+            end_ts=bucket_starts[-1] + step,
+            label=run_label,
+            bucket_count=run_count,
+        )
+    )
 
     return segments
 
@@ -203,12 +209,14 @@ def merge_short_segments(
                 continue
 
             if nxt is not None and nxt.label == seg.label:
-                merged.append(Segment(
-                    start_ts=seg.start_ts,
-                    end_ts=nxt.end_ts,
-                    label=seg.label,
-                    bucket_count=seg.bucket_count + nxt.bucket_count,
-                ))
+                merged.append(
+                    Segment(
+                        start_ts=seg.start_ts,
+                        end_ts=nxt.end_ts,
+                        label=seg.label,
+                        bucket_count=seg.bucket_count + nxt.bucket_count,
+                    )
+                )
                 changed = True
                 i += 2
                 continue
@@ -238,12 +246,14 @@ def merge_short_segments(
                     bucket_count=prev.bucket_count + seg.bucket_count,
                 )
             else:
-                merged.append(Segment(
-                    start_ts=seg.start_ts,
-                    end_ts=nxt.end_ts,
-                    label=nxt.label,
-                    bucket_count=seg.bucket_count + nxt.bucket_count,
-                ))
+                merged.append(
+                    Segment(
+                        start_ts=seg.start_ts,
+                        end_ts=nxt.end_ts,
+                        label=nxt.label,
+                        bucket_count=seg.bucket_count + nxt.bucket_count,
+                    )
+                )
                 i += 1
             changed = True
             i += 1

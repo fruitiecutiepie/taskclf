@@ -10,8 +10,6 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any, Literal
 
-logger = logging.getLogger(__name__)
-
 import lightgbm as lgb
 import pandas as pd
 from pydantic import BaseModel, Field
@@ -19,6 +17,8 @@ from pydantic import BaseModel, Field
 from taskclf.core.defaults import DEFAULT_GIT_TIMEOUT_SECONDS
 from taskclf.core.schema import FeatureSchemaV1
 from taskclf.core.types import LABEL_SET_V1
+
+logger = logging.getLogger(__name__)
 
 
 class ModelMetadata(BaseModel, frozen=True):
@@ -107,21 +107,15 @@ def save_model_bundle(
 
     model.save_model(str(run_dir / "model.txt"))
 
-    (run_dir / "metadata.json").write_text(
-        json.dumps(metadata.model_dump(), indent=2)
-    )
+    (run_dir / "metadata.json").write_text(json.dumps(metadata.model_dump(), indent=2))
 
-    (run_dir / "metrics.json").write_text(
-        json.dumps(metrics, indent=2)
-    )
+    (run_dir / "metrics.json").write_text(json.dumps(metrics, indent=2))
 
     confusion_df.to_csv(run_dir / "confusion_matrix.csv")
 
     if cat_encoders:
         vocab = {col: list(le.classes_) for col, le in cat_encoders.items()}
-        (run_dir / "categorical_encoders.json").write_text(
-            json.dumps(vocab, indent=2)
-        )
+        (run_dir / "categorical_encoders.json").write_text(json.dumps(vocab, indent=2))
 
     return run_dir
 

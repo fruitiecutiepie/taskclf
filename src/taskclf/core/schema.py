@@ -136,10 +136,10 @@ class FeatureSchemaV1:
 
 # Maps Python types to sets of acceptable pandas dtype *kind* codes.
 _PD_KIND_MAP: Final[dict[type, set[str]]] = {
-    int: {"i", "u"},       # signed / unsigned integer
+    int: {"i", "u"},  # signed / unsigned integer
     float: {"f", "i", "u"},  # float (ints acceptable — promotion is safe)
-    bool: {"b", "i", "u"},   # bool (numpy stores as int sometimes)
-    str: {"O", "U"},       # object / unicode
+    bool: {"b", "i", "u"},  # bool (numpy stores as int sometimes)
+    str: {"O", "U"},  # object / unicode
 }
 
 
@@ -176,6 +176,4 @@ def _check_dataframe_dtypes(df: pd.DataFrame) -> None:
                 f"got '{kind}' (dtype={df[col].dtype})"
             )
     if errors:
-        raise ValueError(
-            "DataFrame dtype mismatches:\n" + "\n".join(errors)
-        )
+        raise ValueError("DataFrame dtype mismatches:\n" + "\n".join(errors))

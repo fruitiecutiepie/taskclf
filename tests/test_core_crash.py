@@ -11,7 +11,6 @@ import re
 import sys
 from pathlib import Path
 
-import pytest
 
 from taskclf.core.crash import ISSUE_URL, write_crash_report
 
@@ -86,7 +85,9 @@ class TestWriteCrashReport:
     def test_includes_log_tail_when_log_exists(self, tmp_path: Path) -> None:
         """TC-CRASH-006: when a log file exists, its tail is appended."""
         log_file = tmp_path / "taskclf.log"
-        log_lines = [f"2026-03-01 10:00:{i:02d} INFO test — line {i}" for i in range(30)]
+        log_lines = [
+            f"2026-03-01 10:00:{i:02d} INFO test — line {i}" for i in range(30)
+        ]
         log_file.write_text("\n".join(log_lines) + "\n", "utf-8")
 
         exc = _make_exception()

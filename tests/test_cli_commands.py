@@ -45,12 +45,18 @@ runner = CliRunner()
 def _build_features(tmp_path: Path, date: str = "2025-06-15") -> Path:
     """Use the CLI to generate a synthetic features parquet and return data_dir."""
     data_dir = tmp_path / "data"
-    result = runner.invoke(app, [
-        "features", "build",
-        "--date", date,
-        "--data-dir", str(data_dir),
-        "--synthetic",
-    ])
+    result = runner.invoke(
+        app,
+        [
+            "features",
+            "build",
+            "--date",
+            date,
+            "--data-dir",
+            str(data_dir),
+            "--synthetic",
+        ],
+    )
     assert result.exit_code == 0, result.output
     return data_dir
 
@@ -63,11 +69,17 @@ def _import_labels(data_dir: Path, tmp_path: Path) -> None:
         "2025-06-15 09:00:00,2025-06-15 10:00:00,Build,manual\n"
         "2025-06-15 10:00:00,2025-06-15 11:00:00,Write,manual\n"
     )
-    result = runner.invoke(app, [
-        "labels", "import",
-        "--file", str(csv_path),
-        "--data-dir", str(data_dir),
-    ])
+    result = runner.invoke(
+        app,
+        [
+            "labels",
+            "import",
+            "--file",
+            str(csv_path),
+            "--data-dir",
+            str(data_dir),
+        ],
+    )
     assert result.exit_code == 0, result.output
 
 
@@ -77,16 +89,18 @@ def _populate_queue(data_dir: Path, *, n: int = 3, user_id: str = "u1") -> None:
 
     queue_path = data_dir / "labels_v1" / "queue.json"
     queue = ActiveLabelingQueue(queue_path)
-    df = pd.DataFrame([
-        {
-            "user_id": user_id,
-            "bucket_start_ts": dt.datetime(2025, 6, 15, 10, i),
-            "bucket_end_ts": dt.datetime(2025, 6, 15, 10, i + 1),
-            "confidence": 0.2,
-            "predicted_label": "Build",
-        }
-        for i in range(n)
-    ])
+    df = pd.DataFrame(
+        [
+            {
+                "user_id": user_id,
+                "bucket_start_ts": dt.datetime(2025, 6, 15, 10, i),
+                "bucket_end_ts": dt.datetime(2025, 6, 15, 10, i + 1),
+                "confidence": 0.2,
+                "predicted_label": "Build",
+            }
+            for i in range(n)
+        ]
+    )
     queue.enqueue_low_confidence(df, threshold=0.5)
 
 
@@ -101,13 +115,21 @@ class TestLabelsAddBlock:
     def test_basic_block_creation(self, tmp_path: Path) -> None:
         """TC-CLI-AB-001: exit 0 and span persisted in labels.parquet."""
         data_dir = tmp_path / "data"
-        result = runner.invoke(app, [
-            "labels", "add-block",
-            "--start", "2025-06-15T09:00:00",
-            "--end", "2025-06-15T10:00:00",
-            "--label", "Build",
-            "--data-dir", str(data_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "labels",
+                "add-block",
+                "--start",
+                "2025-06-15T09:00:00",
+                "--end",
+                "2025-06-15T10:00:00",
+                "--label",
+                "Build",
+                "--data-dir",
+                str(data_dir),
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert "Added label block" in result.output
 
@@ -119,11 +141,16 @@ class TestLabelsAddBlock:
         """TC-CLI-AB-002: exit 1 when block overlaps an existing span."""
         data_dir = tmp_path / "data"
         base_args = [
-            "labels", "add-block",
-            "--start", "2025-06-15T09:00:00",
-            "--end", "2025-06-15T10:00:00",
-            "--label", "Build",
-            "--data-dir", str(data_dir),
+            "labels",
+            "add-block",
+            "--start",
+            "2025-06-15T09:00:00",
+            "--end",
+            "2025-06-15T10:00:00",
+            "--label",
+            "Build",
+            "--data-dir",
+            str(data_dir),
         ]
         runner.invoke(app, base_args)
         result = runner.invoke(app, base_args)
@@ -132,26 +159,43 @@ class TestLabelsAddBlock:
     def test_invalid_label(self, tmp_path: Path) -> None:
         """TC-CLI-AB-003: exit != 0 for a label not in LABEL_SET_V1."""
         data_dir = tmp_path / "data"
-        result = runner.invoke(app, [
-            "labels", "add-block",
-            "--start", "2025-06-15T09:00:00",
-            "--end", "2025-06-15T10:00:00",
-            "--label", "InvalidLabel",
-            "--data-dir", str(data_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "labels",
+                "add-block",
+                "--start",
+                "2025-06-15T09:00:00",
+                "--end",
+                "2025-06-15T10:00:00",
+                "--label",
+                "InvalidLabel",
+                "--data-dir",
+                str(data_dir),
+            ],
+        )
         assert result.exit_code != 0
 
     def test_confidence_persisted(self, tmp_path: Path) -> None:
         """TC-CLI-AB-004: --confidence value round-trips through parquet."""
         data_dir = tmp_path / "data"
-        result = runner.invoke(app, [
-            "labels", "add-block",
-            "--start", "2025-06-15T09:00:00",
-            "--end", "2025-06-15T10:00:00",
-            "--label", "Write",
-            "--confidence", "0.85",
-            "--data-dir", str(data_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "labels",
+                "add-block",
+                "--start",
+                "2025-06-15T09:00:00",
+                "--end",
+                "2025-06-15T10:00:00",
+                "--label",
+                "Write",
+                "--confidence",
+                "0.85",
+                "--data-dir",
+                str(data_dir),
+            ],
+        )
         assert result.exit_code == 0, result.output
 
         spans = read_label_spans(data_dir / "labels_v1" / "labels.parquet")
@@ -161,13 +205,21 @@ class TestLabelsAddBlock:
     def test_feature_summary_displayed(self, tmp_path: Path) -> None:
         """TC-CLI-AB-005: when features exist, Block Summary table renders."""
         data_dir = _build_features(tmp_path, date="2025-06-15")
-        result = runner.invoke(app, [
-            "labels", "add-block",
-            "--start", "2025-06-15T09:00:00",
-            "--end", "2025-06-15T10:00:00",
-            "--label", "Build",
-            "--data-dir", str(data_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "labels",
+                "add-block",
+                "--start",
+                "2025-06-15T09:00:00",
+                "--end",
+                "2025-06-15T10:00:00",
+                "--label",
+                "Build",
+                "--data-dir",
+                str(data_dir),
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert "Block Summary" in result.output
 
@@ -201,11 +253,17 @@ class TestLabelsLabelNow:
         """TC-CLI-LN-001: exit 0 and span persisted in labels.parquet."""
         data_dir = tmp_path / "data"
         with _patch_now():
-            result = runner.invoke(app, [
-                "labels", "label-now",
-                "--label", "Build",
-                "--data-dir", str(data_dir),
-            ])
+            result = runner.invoke(
+                app,
+                [
+                    "labels",
+                    "label-now",
+                    "--label",
+                    "Build",
+                    "--data-dir",
+                    str(data_dir),
+                ],
+            )
         assert result.exit_code == 0, result.output
         assert "Labeled" in result.output
         assert "Build" in result.output
@@ -218,12 +276,19 @@ class TestLabelsLabelNow:
         """TC-CLI-LN-002: end_ts - start_ts == timedelta(minutes=N)."""
         data_dir = tmp_path / "data"
         with _patch_now():
-            result = runner.invoke(app, [
-                "labels", "label-now",
-                "--label", "Write",
-                "--minutes", "25",
-                "--data-dir", str(data_dir),
-            ])
+            result = runner.invoke(
+                app,
+                [
+                    "labels",
+                    "label-now",
+                    "--label",
+                    "Write",
+                    "--minutes",
+                    "25",
+                    "--data-dir",
+                    str(data_dir),
+                ],
+            )
         assert result.exit_code == 0, result.output
 
         spans = read_label_spans(data_dir / "labels_v1" / "labels.parquet")
@@ -235,12 +300,19 @@ class TestLabelsLabelNow:
         """TC-CLI-LN-003: exit 0 with 'not reachable' when AW is down."""
         data_dir = tmp_path / "data"
         with _patch_now():
-            result = runner.invoke(app, [
-                "labels", "label-now",
-                "--label", "Build",
-                "--aw-host", "http://192.0.2.1:1",
-                "--data-dir", str(data_dir),
-            ])
+            result = runner.invoke(
+                app,
+                [
+                    "labels",
+                    "label-now",
+                    "--label",
+                    "Build",
+                    "--aw-host",
+                    "http://192.0.2.1:1",
+                    "--data-dir",
+                    str(data_dir),
+                ],
+            )
         assert result.exit_code == 0, result.output
         assert "not reachable" in result.output.lower()
 
@@ -248,27 +320,45 @@ class TestLabelsLabelNow:
         """TC-CLI-LN-004: exit 1 on second identical invocation (overlap)."""
         data_dir = tmp_path / "data"
         with _patch_now():
-            runner.invoke(app, [
-                "labels", "label-now",
-                "--label", "Build",
-                "--data-dir", str(data_dir),
-            ])
-            result = runner.invoke(app, [
-                "labels", "label-now",
-                "--label", "Write",
-                "--data-dir", str(data_dir),
-            ])
+            runner.invoke(
+                app,
+                [
+                    "labels",
+                    "label-now",
+                    "--label",
+                    "Build",
+                    "--data-dir",
+                    str(data_dir),
+                ],
+            )
+            result = runner.invoke(
+                app,
+                [
+                    "labels",
+                    "label-now",
+                    "--label",
+                    "Write",
+                    "--data-dir",
+                    str(data_dir),
+                ],
+            )
         assert result.exit_code == 1
 
     def test_confidence_defaults_to_one(self, tmp_path: Path) -> None:
         """TC-CLI-LN-005: omitting --confidence stores 1.0."""
         data_dir = tmp_path / "data"
         with _patch_now():
-            result = runner.invoke(app, [
-                "labels", "label-now",
-                "--label", "Debug",
-                "--data-dir", str(data_dir),
-            ])
+            result = runner.invoke(
+                app,
+                [
+                    "labels",
+                    "label-now",
+                    "--label",
+                    "Debug",
+                    "--data-dir",
+                    str(data_dir),
+                ],
+            )
         assert result.exit_code == 0, result.output
         assert "confidence=1.0" in result.output
 
@@ -288,10 +378,15 @@ class TestLabelsShowQueue:
         """TC-CLI-SQ-001: exit 0 with 'No labeling queue' when file absent."""
         data_dir = tmp_path / "data"
         data_dir.mkdir()
-        result = runner.invoke(app, [
-            "labels", "show-queue",
-            "--data-dir", str(data_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "labels",
+                "show-queue",
+                "--data-dir",
+                str(data_dir),
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert "No labeling queue" in result.output
 
@@ -299,10 +394,15 @@ class TestLabelsShowQueue:
         """TC-CLI-SQ-002: populated queue renders a table."""
         data_dir = tmp_path / "data"
         _populate_queue(data_dir, n=3)
-        result = runner.invoke(app, [
-            "labels", "show-queue",
-            "--data-dir", str(data_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "labels",
+                "show-queue",
+                "--data-dir",
+                str(data_dir),
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert "Pending Labeling Requests" in result.output
 
@@ -312,11 +412,17 @@ class TestLabelsShowQueue:
         _populate_queue(data_dir, n=2, user_id="alice")
         _populate_queue(data_dir, n=1, user_id="bob")
 
-        result = runner.invoke(app, [
-            "labels", "show-queue",
-            "--user-id", "alice",
-            "--data-dir", str(data_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "labels",
+                "show-queue",
+                "--user-id",
+                "alice",
+                "--data-dir",
+                str(data_dir),
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert "alice" in result.output
         assert "bob" not in result.output
@@ -325,11 +431,17 @@ class TestLabelsShowQueue:
         """TC-CLI-SQ-004: --limit caps visible items."""
         data_dir = tmp_path / "data"
         _populate_queue(data_dir, n=5)
-        result = runner.invoke(app, [
-            "labels", "show-queue",
-            "--limit", "2",
-            "--data-dir", str(data_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "labels",
+                "show-queue",
+                "--limit",
+                "2",
+                "--data-dir",
+                str(data_dir),
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert "Pending Labeling Requests (2)" in result.output
 
@@ -348,13 +460,21 @@ class TestLabelsProject:
         _import_labels(data_dir, tmp_path)
 
         out_dir = tmp_path / "out"
-        result = runner.invoke(app, [
-            "labels", "project",
-            "--from", "2025-06-15",
-            "--to", "2025-06-15",
-            "--data-dir", str(data_dir),
-            "--out-dir", str(out_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "labels",
+                "project",
+                "--from",
+                "2025-06-15",
+                "--to",
+                "2025-06-15",
+                "--data-dir",
+                str(data_dir),
+                "--out-dir",
+                str(out_dir),
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert (out_dir / "labels_v1" / "projected_labels.parquet").exists()
 
@@ -362,12 +482,19 @@ class TestLabelsProject:
         """TC-CLI-LP-002: exit 1 when labels.parquet is missing."""
         data_dir = tmp_path / "empty"
         data_dir.mkdir()
-        result = runner.invoke(app, [
-            "labels", "project",
-            "--from", "2025-06-15",
-            "--to", "2025-06-15",
-            "--data-dir", str(data_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "labels",
+                "project",
+                "--from",
+                "2025-06-15",
+                "--to",
+                "2025-06-15",
+                "--data-dir",
+                str(data_dir),
+            ],
+        )
         assert result.exit_code == 1
 
     def test_no_features_in_range(self, tmp_path: Path) -> None:
@@ -375,12 +502,19 @@ class TestLabelsProject:
         data_dir = tmp_path / "data"
         _import_labels(data_dir, tmp_path)
 
-        result = runner.invoke(app, [
-            "labels", "project",
-            "--from", "2099-01-01",
-            "--to", "2099-01-01",
-            "--data-dir", str(data_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "labels",
+                "project",
+                "--from",
+                "2099-01-01",
+                "--to",
+                "2099-01-01",
+                "--data-dir",
+                str(data_dir),
+            ],
+        )
         assert result.exit_code == 1
 
     def test_projected_row_count_in_output(self, tmp_path: Path) -> None:
@@ -389,13 +523,21 @@ class TestLabelsProject:
         _import_labels(data_dir, tmp_path)
 
         out_dir = tmp_path / "out"
-        result = runner.invoke(app, [
-            "labels", "project",
-            "--from", "2025-06-15",
-            "--to", "2025-06-15",
-            "--data-dir", str(data_dir),
-            "--out-dir", str(out_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "labels",
+                "project",
+                "--from",
+                "2025-06-15",
+                "--to",
+                "2025-06-15",
+                "--data-dir",
+                str(data_dir),
+                "--out-dir",
+                str(out_dir),
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert "Projected" in result.output
         assert "labeled windows" in result.output
@@ -415,11 +557,17 @@ class TestLabelsExport:
         _import_labels(data_dir, tmp_path)
 
         csv_out = tmp_path / "exported.csv"
-        result = runner.invoke(app, [
-            "labels", "export",
-            "--out", str(csv_out),
-            "--data-dir", str(data_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "labels",
+                "export",
+                "--out",
+                str(csv_out),
+                "--data-dir",
+                str(data_dir),
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert csv_out.exists()
         df = pd.read_csv(csv_out)
@@ -432,23 +580,36 @@ class TestLabelsExport:
         data_dir = tmp_path / "empty"
         data_dir.mkdir()
         csv_out = tmp_path / "exported.csv"
-        result = runner.invoke(app, [
-            "labels", "export",
-            "--out", str(csv_out),
-            "--data-dir", str(data_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "labels",
+                "export",
+                "--out",
+                str(csv_out),
+                "--data-dir",
+                str(data_dir),
+            ],
+        )
         assert result.exit_code == 1
 
-    def test_default_output_path(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_default_output_path(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """TC-CLI-LE-003: without --out the file is written to labels.csv in cwd."""
         data_dir = tmp_path / "data"
         _import_labels(data_dir, tmp_path)
 
         monkeypatch.chdir(tmp_path)
-        result = runner.invoke(app, [
-            "labels", "export",
-            "--data-dir", str(data_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "labels",
+                "export",
+                "--data-dir",
+                str(data_dir),
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert (tmp_path / "labels.csv").exists()
 
@@ -464,13 +625,20 @@ class TestTrainBuildDataset:
     def test_synthetic_dataset_created(self, tmp_path: Path) -> None:
         """TC-CLI-BD-001: exit 0 and X/y/splits artifacts created."""
         out_dir = tmp_path / "data"
-        result = runner.invoke(app, [
-            "train", "build-dataset",
-            "--from", "2025-06-15",
-            "--to", "2025-06-15",
-            "--synthetic",
-            "--out-dir", str(out_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "train",
+                "build-dataset",
+                "--from",
+                "2025-06-15",
+                "--to",
+                "2025-06-15",
+                "--synthetic",
+                "--out-dir",
+                str(out_dir),
+            ],
+        )
         assert result.exit_code == 0, result.output
 
         ds_dir = out_dir / "training_dataset"
@@ -481,20 +649,27 @@ class TestTrainBuildDataset:
     def test_custom_ratios(self, tmp_path: Path) -> None:
         """TC-CLI-BD-002: custom train/val ratios reflected in splits."""
         out_dir = tmp_path / "data"
-        result = runner.invoke(app, [
-            "train", "build-dataset",
-            "--from", "2025-06-14",
-            "--to", "2025-06-15",
-            "--synthetic",
-            "--out-dir", str(out_dir),
-            "--train-ratio", "0.80",
-            "--val-ratio", "0.10",
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "train",
+                "build-dataset",
+                "--from",
+                "2025-06-14",
+                "--to",
+                "2025-06-15",
+                "--synthetic",
+                "--out-dir",
+                str(out_dir),
+                "--train-ratio",
+                "0.80",
+                "--val-ratio",
+                "0.10",
+            ],
+        )
         assert result.exit_code == 0, result.output
 
-        splits = json.loads(
-            (out_dir / "training_dataset" / "splits.json").read_text()
-        )
+        splits = json.loads((out_dir / "training_dataset" / "splits.json").read_text())
         assert "train" in splits
         assert "val" in splits
 
@@ -502,12 +677,19 @@ class TestTrainBuildDataset:
         """TC-CLI-BD-003: exit 1 when non-synthetic and no features on disk."""
         data_dir = tmp_path / "empty"
         data_dir.mkdir()
-        result = runner.invoke(app, [
-            "train", "build-dataset",
-            "--from", "2099-01-01",
-            "--to", "2099-01-01",
-            "--data-dir", str(data_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "train",
+                "build-dataset",
+                "--from",
+                "2099-01-01",
+                "--to",
+                "2099-01-01",
+                "--data-dir",
+                str(data_dir),
+            ],
+        )
         assert result.exit_code == 1
 
 
@@ -522,13 +704,20 @@ class TestInferBaseline:
     def test_synthetic_baseline(self, tmp_path: Path) -> None:
         """TC-CLI-BL-001: exit 0, predictions CSV + segments JSON created."""
         out_dir = tmp_path / "artifacts"
-        result = runner.invoke(app, [
-            "infer", "baseline",
-            "--from", "2025-06-15",
-            "--to", "2025-06-15",
-            "--synthetic",
-            "--out-dir", str(out_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "infer",
+                "baseline",
+                "--from",
+                "2025-06-15",
+                "--to",
+                "2025-06-15",
+                "--synthetic",
+                "--out-dir",
+                str(out_dir),
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert (out_dir / "baseline_predictions.csv").exists()
         assert (out_dir / "baseline_segments.json").exists()
@@ -536,13 +725,20 @@ class TestInferBaseline:
     def test_reject_rate_in_output(self, tmp_path: Path) -> None:
         """TC-CLI-BL-002: output contains 'reject rate'."""
         out_dir = tmp_path / "artifacts"
-        result = runner.invoke(app, [
-            "infer", "baseline",
-            "--from", "2025-06-15",
-            "--to", "2025-06-15",
-            "--synthetic",
-            "--out-dir", str(out_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "infer",
+                "baseline",
+                "--from",
+                "2025-06-15",
+                "--to",
+                "2025-06-15",
+                "--synthetic",
+                "--out-dir",
+                str(out_dir),
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert "reject rate" in result.output.lower()
 
@@ -551,13 +747,21 @@ class TestInferBaseline:
         data_dir = tmp_path / "empty"
         data_dir.mkdir()
         out_dir = tmp_path / "artifacts"
-        result = runner.invoke(app, [
-            "infer", "baseline",
-            "--from", "2099-01-01",
-            "--to", "2099-01-01",
-            "--data-dir", str(data_dir),
-            "--out-dir", str(out_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "infer",
+                "baseline",
+                "--from",
+                "2099-01-01",
+                "--to",
+                "2099-01-01",
+                "--data-dir",
+                str(data_dir),
+                "--out-dir",
+                str(out_dir),
+            ],
+        )
         assert result.exit_code == 1
 
 
@@ -573,15 +777,23 @@ class TestMonitorShow:
         """TC-CLI-MS-001: exit 0, 'No telemetry snapshots found'."""
         store_dir = tmp_path / "telemetry"
         store_dir.mkdir()
-        result = runner.invoke(app, [
-            "monitor", "show",
-            "--store-dir", str(store_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "monitor",
+                "show",
+                "--store-dir",
+                str(store_dir),
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert "No telemetry snapshots found" in result.output
 
     def _append_snapshots(
-        self, store_dir: Path, n: int = 3, user_id: str | None = None,
+        self,
+        store_dir: Path,
+        n: int = 3,
+        user_id: str | None = None,
     ) -> None:
         from taskclf.core.telemetry import TelemetrySnapshot, TelemetryStore
 
@@ -600,10 +812,15 @@ class TestMonitorShow:
         """TC-CLI-MS-002: table rendered with snapshot data."""
         store_dir = tmp_path / "telemetry"
         self._append_snapshots(store_dir, n=3)
-        result = runner.invoke(app, [
-            "monitor", "show",
-            "--store-dir", str(store_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "monitor",
+                "show",
+                "--store-dir",
+                str(store_dir),
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert "Recent Telemetry" in result.output
         assert "100" in result.output
@@ -614,11 +831,17 @@ class TestMonitorShow:
         self._append_snapshots(store_dir, n=2, user_id="alice")
         self._append_snapshots(store_dir, n=1, user_id="bob")
 
-        result = runner.invoke(app, [
-            "monitor", "show",
-            "--store-dir", str(store_dir),
-            "--user-id", "alice",
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "monitor",
+                "show",
+                "--store-dir",
+                str(store_dir),
+                "--user-id",
+                "alice",
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert "alice" in result.output
         assert "bob" not in result.output
@@ -627,11 +850,17 @@ class TestMonitorShow:
         """TC-CLI-MS-004: --last caps number of snapshots shown."""
         store_dir = tmp_path / "telemetry"
         self._append_snapshots(store_dir, n=5)
-        result = runner.invoke(app, [
-            "monitor", "show",
-            "--store-dir", str(store_dir),
-            "--last", "2",
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "monitor",
+                "show",
+                "--store-dir",
+                str(store_dir),
+                "--last",
+                "2",
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert "2 snapshots" in result.output
 
@@ -642,14 +871,22 @@ class TestMonitorShow:
 def _train_model(tmp_path: Path) -> Path:
     """Train a small synthetic LightGBM model and return the run directory."""
     models_dir = tmp_path / "models"
-    result = runner.invoke(app, [
-        "train", "lgbm",
-        "--from", "2025-06-14",
-        "--to", "2025-06-15",
-        "--synthetic",
-        "--models-dir", str(models_dir),
-        "--num-boost-round", "5",
-    ])
+    result = runner.invoke(
+        app,
+        [
+            "train",
+            "lgbm",
+            "--from",
+            "2025-06-14",
+            "--to",
+            "2025-06-15",
+            "--synthetic",
+            "--models-dir",
+            str(models_dir),
+            "--num-boost-round",
+            "5",
+        ],
+    )
     assert result.exit_code == 0, result.output
     return next(models_dir.iterdir())
 
@@ -666,14 +903,22 @@ class TestTrainEvaluate:
         """TC-CLI-EV-001: exit 0 and metrics table rendered."""
         model_dir = _train_model(tmp_path)
         out_dir = tmp_path / "artifacts"
-        result = runner.invoke(app, [
-            "train", "evaluate",
-            "--model-dir", str(model_dir),
-            "--from", "2025-06-15",
-            "--to", "2025-06-15",
-            "--synthetic",
-            "--out-dir", str(out_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "train",
+                "evaluate",
+                "--model-dir",
+                str(model_dir),
+                "--from",
+                "2025-06-15",
+                "--to",
+                "2025-06-15",
+                "--synthetic",
+                "--out-dir",
+                str(out_dir),
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert "Overall Metrics" in result.output
 
@@ -681,14 +926,22 @@ class TestTrainEvaluate:
         """TC-CLI-EV-002: output contains PASS/FAIL markers."""
         model_dir = _train_model(tmp_path)
         out_dir = tmp_path / "artifacts"
-        result = runner.invoke(app, [
-            "train", "evaluate",
-            "--model-dir", str(model_dir),
-            "--from", "2025-06-15",
-            "--to", "2025-06-15",
-            "--synthetic",
-            "--out-dir", str(out_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "train",
+                "evaluate",
+                "--model-dir",
+                str(model_dir),
+                "--from",
+                "2025-06-15",
+                "--to",
+                "2025-06-15",
+                "--synthetic",
+                "--out-dir",
+                str(out_dir),
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert "Acceptance Checks" in result.output
         assert "PASS" in result.output or "FAIL" in result.output
@@ -697,14 +950,22 @@ class TestTrainEvaluate:
         """TC-CLI-EV-003: evaluation.json created in --out-dir."""
         model_dir = _train_model(tmp_path)
         out_dir = tmp_path / "artifacts"
-        result = runner.invoke(app, [
-            "train", "evaluate",
-            "--model-dir", str(model_dir),
-            "--from", "2025-06-15",
-            "--to", "2025-06-15",
-            "--synthetic",
-            "--out-dir", str(out_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "train",
+                "evaluate",
+                "--model-dir",
+                str(model_dir),
+                "--from",
+                "2025-06-15",
+                "--to",
+                "2025-06-15",
+                "--synthetic",
+                "--out-dir",
+                str(out_dir),
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert (out_dir / "evaluation.json").exists()
 
@@ -714,25 +975,42 @@ class TestTrainEvaluate:
         out_default = tmp_path / "art_default"
         out_high = tmp_path / "art_high"
 
-        result_default = runner.invoke(app, [
-            "train", "evaluate",
-            "--model-dir", str(model_dir),
-            "--from", "2025-06-15",
-            "--to", "2025-06-15",
-            "--synthetic",
-            "--out-dir", str(out_default),
-        ])
+        result_default = runner.invoke(
+            app,
+            [
+                "train",
+                "evaluate",
+                "--model-dir",
+                str(model_dir),
+                "--from",
+                "2025-06-15",
+                "--to",
+                "2025-06-15",
+                "--synthetic",
+                "--out-dir",
+                str(out_default),
+            ],
+        )
         assert result_default.exit_code == 0, result_default.output
 
-        result_high = runner.invoke(app, [
-            "train", "evaluate",
-            "--model-dir", str(model_dir),
-            "--from", "2025-06-15",
-            "--to", "2025-06-15",
-            "--synthetic",
-            "--reject-threshold", "0.99",
-            "--out-dir", str(out_high),
-        ])
+        result_high = runner.invoke(
+            app,
+            [
+                "train",
+                "evaluate",
+                "--model-dir",
+                str(model_dir),
+                "--from",
+                "2025-06-15",
+                "--to",
+                "2025-06-15",
+                "--synthetic",
+                "--reject-threshold",
+                "0.99",
+                "--out-dir",
+                str(out_high),
+            ],
+        )
         assert result_high.exit_code == 0, result_high.output
 
         default_json = json.loads((out_default / "evaluation.json").read_text())
@@ -752,14 +1030,22 @@ class TestTrainTuneReject:
         """TC-CLI-TR-001: exit 0 and sweep table rendered."""
         model_dir = _train_model(tmp_path)
         out_dir = tmp_path / "artifacts"
-        result = runner.invoke(app, [
-            "train", "tune-reject",
-            "--model-dir", str(model_dir),
-            "--from", "2025-06-15",
-            "--to", "2025-06-15",
-            "--synthetic",
-            "--out-dir", str(out_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "train",
+                "tune-reject",
+                "--model-dir",
+                str(model_dir),
+                "--from",
+                "2025-06-15",
+                "--to",
+                "2025-06-15",
+                "--synthetic",
+                "--out-dir",
+                str(out_dir),
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert "Reject Threshold Sweep" in result.output
 
@@ -767,14 +1053,22 @@ class TestTrainTuneReject:
         """TC-CLI-TR-002: reject_tuning.json created in --out-dir."""
         model_dir = _train_model(tmp_path)
         out_dir = tmp_path / "artifacts"
-        result = runner.invoke(app, [
-            "train", "tune-reject",
-            "--model-dir", str(model_dir),
-            "--from", "2025-06-15",
-            "--to", "2025-06-15",
-            "--synthetic",
-            "--out-dir", str(out_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "train",
+                "tune-reject",
+                "--model-dir",
+                str(model_dir),
+                "--from",
+                "2025-06-15",
+                "--to",
+                "2025-06-15",
+                "--synthetic",
+                "--out-dir",
+                str(out_dir),
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert (out_dir / "reject_tuning.json").exists()
 
@@ -782,14 +1076,22 @@ class TestTrainTuneReject:
         """TC-CLI-TR-003: 'Recommended reject threshold' message present."""
         model_dir = _train_model(tmp_path)
         out_dir = tmp_path / "artifacts"
-        result = runner.invoke(app, [
-            "train", "tune-reject",
-            "--model-dir", str(model_dir),
-            "--from", "2025-06-15",
-            "--to", "2025-06-15",
-            "--synthetic",
-            "--out-dir", str(out_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "train",
+                "tune-reject",
+                "--model-dir",
+                str(model_dir),
+                "--from",
+                "2025-06-15",
+                "--to",
+                "2025-06-15",
+                "--synthetic",
+                "--out-dir",
+                str(out_dir),
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert "Recommended reject threshold" in result.output
 
@@ -806,14 +1108,22 @@ class TestTrainCalibrate:
         """TC-CLI-CA-001: exit 0 and calibrator store directory created."""
         model_dir = _train_model(tmp_path)
         out = tmp_path / "cal_store"
-        result = runner.invoke(app, [
-            "train", "calibrate",
-            "--model-dir", str(model_dir),
-            "--from", "2025-06-15",
-            "--to", "2025-06-15",
-            "--synthetic",
-            "--out", str(out),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "train",
+                "calibrate",
+                "--model-dir",
+                str(model_dir),
+                "--from",
+                "2025-06-15",
+                "--to",
+                "2025-06-15",
+                "--synthetic",
+                "--out",
+                str(out),
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert (out / "store.json").exists()
 
@@ -821,14 +1131,22 @@ class TestTrainCalibrate:
         """TC-CLI-CA-002: output contains eligibility info."""
         model_dir = _train_model(tmp_path)
         out = tmp_path / "cal_store"
-        result = runner.invoke(app, [
-            "train", "calibrate",
-            "--model-dir", str(model_dir),
-            "--from", "2025-06-15",
-            "--to", "2025-06-15",
-            "--synthetic",
-            "--out", str(out),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "train",
+                "calibrate",
+                "--model-dir",
+                str(model_dir),
+                "--from",
+                "2025-06-15",
+                "--to",
+                "2025-06-15",
+                "--synthetic",
+                "--out",
+                str(out),
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert "Eligibility" in result.output
 
@@ -836,15 +1154,24 @@ class TestTrainCalibrate:
         """TC-CLI-CA-003: --method isotonic completes without error."""
         model_dir = _train_model(tmp_path)
         out = tmp_path / "cal_store"
-        result = runner.invoke(app, [
-            "train", "calibrate",
-            "--model-dir", str(model_dir),
-            "--from", "2025-06-15",
-            "--to", "2025-06-15",
-            "--synthetic",
-            "--method", "isotonic",
-            "--out", str(out),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "train",
+                "calibrate",
+                "--model-dir",
+                str(model_dir),
+                "--from",
+                "2025-06-15",
+                "--to",
+                "2025-06-15",
+                "--synthetic",
+                "--method",
+                "isotonic",
+                "--out",
+                str(out),
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert (out / "store.json").exists()
 
@@ -861,10 +1188,15 @@ class TestTrainCheckRetrain:
         """TC-CLI-CR-001: no models directory -> DUE in output."""
         models_dir = tmp_path / "empty_models"
         models_dir.mkdir()
-        result = runner.invoke(app, [
-            "train", "check-retrain",
-            "--models-dir", str(models_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "train",
+                "check-retrain",
+                "--models-dir",
+                str(models_dir),
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert "DUE" in result.output
 
@@ -872,10 +1204,15 @@ class TestTrainCheckRetrain:
         """TC-CLI-CR-002: freshly trained model -> OK in output."""
         model_dir = _train_model(tmp_path)
         models_dir = model_dir.parent
-        result = runner.invoke(app, [
-            "train", "check-retrain",
-            "--models-dir", str(models_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "train",
+                "check-retrain",
+                "--models-dir",
+                str(models_dir),
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert "OK" in result.output
 
@@ -885,11 +1222,17 @@ class TestTrainCheckRetrain:
         models_dir.mkdir()
         cal_store = tmp_path / "cal_store"
         cal_store.mkdir(parents=True)
-        result = runner.invoke(app, [
-            "train", "check-retrain",
-            "--models-dir", str(models_dir),
-            "--calibrator-store", str(cal_store),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "train",
+                "check-retrain",
+                "--models-dir",
+                str(models_dir),
+                "--calibrator-store",
+                str(cal_store),
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert "Calibrator" in result.output
 
@@ -906,14 +1249,22 @@ class TestInferCompare:
         """TC-CLI-IC-001: exit 0 and comparison table rendered."""
         model_dir = _train_model(tmp_path)
         out_dir = tmp_path / "artifacts"
-        result = runner.invoke(app, [
-            "infer", "compare",
-            "--model-dir", str(model_dir),
-            "--from", "2025-06-15",
-            "--to", "2025-06-15",
-            "--synthetic",
-            "--out-dir", str(out_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "infer",
+                "compare",
+                "--model-dir",
+                str(model_dir),
+                "--from",
+                "2025-06-15",
+                "--to",
+                "2025-06-15",
+                "--synthetic",
+                "--out-dir",
+                str(out_dir),
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert "Baseline vs Model" in result.output
 
@@ -921,14 +1272,22 @@ class TestInferCompare:
         """TC-CLI-IC-002: baseline_vs_model.json written to --out-dir."""
         model_dir = _train_model(tmp_path)
         out_dir = tmp_path / "artifacts"
-        result = runner.invoke(app, [
-            "infer", "compare",
-            "--model-dir", str(model_dir),
-            "--from", "2025-06-15",
-            "--to", "2025-06-15",
-            "--synthetic",
-            "--out-dir", str(out_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "infer",
+                "compare",
+                "--model-dir",
+                str(model_dir),
+                "--from",
+                "2025-06-15",
+                "--to",
+                "2025-06-15",
+                "--synthetic",
+                "--out-dir",
+                str(out_dir),
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert (out_dir / "baseline_vs_model.json").exists()
 
@@ -936,14 +1295,22 @@ class TestInferCompare:
         """TC-CLI-IC-003: per-class F1 table present in output."""
         model_dir = _train_model(tmp_path)
         out_dir = tmp_path / "artifacts"
-        result = runner.invoke(app, [
-            "infer", "compare",
-            "--model-dir", str(model_dir),
-            "--from", "2025-06-15",
-            "--to", "2025-06-15",
-            "--synthetic",
-            "--out-dir", str(out_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "infer",
+                "compare",
+                "--model-dir",
+                str(model_dir),
+                "--from",
+                "2025-06-15",
+                "--to",
+                "2025-06-15",
+                "--synthetic",
+                "--out-dir",
+                str(out_dir),
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert "Per-Class F1" in result.output
 
@@ -960,15 +1327,23 @@ class TestTrainRetrain:
         """TC-CLI-RT-001: --synthetic --force exits 0 with result table."""
         models_dir = tmp_path / "models"
         out_dir = tmp_path / "artifacts"
-        result = runner.invoke(app, [
-            "train", "retrain",
-            "--from", "2025-06-14",
-            "--to", "2025-06-15",
-            "--synthetic",
-            "--force",
-            "--models-dir", str(models_dir),
-            "--out-dir", str(out_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "train",
+                "retrain",
+                "--from",
+                "2025-06-14",
+                "--to",
+                "2025-06-15",
+                "--synthetic",
+                "--force",
+                "--models-dir",
+                str(models_dir),
+                "--out-dir",
+                str(out_dir),
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert "Retrain Result" in result.output
 
@@ -976,16 +1351,24 @@ class TestTrainRetrain:
         """TC-CLI-RT-002: --dry-run prevents promotion."""
         models_dir = tmp_path / "models"
         out_dir = tmp_path / "artifacts"
-        result = runner.invoke(app, [
-            "train", "retrain",
-            "--from", "2025-06-14",
-            "--to", "2025-06-15",
-            "--synthetic",
-            "--force",
-            "--dry-run",
-            "--models-dir", str(models_dir),
-            "--out-dir", str(out_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "train",
+                "retrain",
+                "--from",
+                "2025-06-14",
+                "--to",
+                "2025-06-15",
+                "--synthetic",
+                "--force",
+                "--dry-run",
+                "--models-dir",
+                str(models_dir),
+                "--out-dir",
+                str(out_dir),
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert "not promoted" in result.output.lower() or "dry" in result.output.lower()
 
@@ -993,15 +1376,23 @@ class TestTrainRetrain:
         """TC-CLI-RT-003: output contains PASS or FAIL gate rows."""
         model_dir = _train_model(tmp_path)
         models_dir = model_dir.parent
-        result = runner.invoke(app, [
-            "train", "retrain",
-            "--from", "2025-06-14",
-            "--to", "2025-06-15",
-            "--synthetic",
-            "--force",
-            "--models-dir", str(models_dir),
-            "--out-dir", str(tmp_path / "out"),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "train",
+                "retrain",
+                "--from",
+                "2025-06-14",
+                "--to",
+                "2025-06-15",
+                "--synthetic",
+                "--force",
+                "--models-dir",
+                str(models_dir),
+                "--out-dir",
+                str(tmp_path / "out"),
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert "PASS" in result.output or "FAIL" in result.output
 
@@ -1009,15 +1400,23 @@ class TestTrainRetrain:
         """TC-CLI-RT-004: 'Dataset hash' row present in summary table."""
         models_dir = tmp_path / "models"
         out_dir = tmp_path / "artifacts"
-        result = runner.invoke(app, [
-            "train", "retrain",
-            "--from", "2025-06-14",
-            "--to", "2025-06-15",
-            "--synthetic",
-            "--force",
-            "--models-dir", str(models_dir),
-            "--out-dir", str(out_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "train",
+                "retrain",
+                "--from",
+                "2025-06-14",
+                "--to",
+                "2025-06-15",
+                "--synthetic",
+                "--force",
+                "--models-dir",
+                str(models_dir),
+                "--out-dir",
+                str(out_dir),
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert "Dataset hash" in result.output
 
@@ -1067,11 +1466,13 @@ def _make_drift_fixtures(
     ref_df.to_parquet(ref_feat_path)
     cur_df.to_parquet(cur_feat_path)
 
-    pred_df = pd.DataFrame({
-        "predicted_label": labels,
-        "confidence": confidences,
-        "core_probs": [json.dumps(row.tolist()) for row in probs],
-    })
+    pred_df = pd.DataFrame(
+        {
+            "predicted_label": labels,
+            "confidence": confidences,
+            "core_probs": [json.dumps(row.tolist()) for row in probs],
+        }
+    )
     pred_df.to_csv(ref_pred_path, index=False)
     pred_df.to_csv(cur_pred_path, index=False)
 
@@ -1085,33 +1486,52 @@ class TestMonitorDriftCheck:
         """TC-CLI-DC-001: identical ref/cur produces 'No drift detected'."""
         ref_feat, _, ref_pred, _ = _make_drift_fixtures(tmp_path)
         out_dir = tmp_path / "out"
-        result = runner.invoke(app, [
-            "monitor", "drift-check",
-            "--ref-features", str(ref_feat),
-            "--cur-features", str(ref_feat),
-            "--ref-predictions", str(ref_pred),
-            "--cur-predictions", str(ref_pred),
-            "--no-auto-label",
-            "--out-dir", str(out_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "monitor",
+                "drift-check",
+                "--ref-features",
+                str(ref_feat),
+                "--cur-features",
+                str(ref_feat),
+                "--ref-predictions",
+                str(ref_pred),
+                "--cur-predictions",
+                str(ref_pred),
+                "--no-auto-label",
+                "--out-dir",
+                str(out_dir),
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert "No drift detected" in result.output
 
     def test_drift_detected(self, tmp_path: Path) -> None:
         """TC-CLI-DC-002: shifted feature triggers alert + drift_report.json."""
         ref_feat, cur_feat, ref_pred, cur_pred = _make_drift_fixtures(
-            tmp_path, shift_col="keys_per_min",
+            tmp_path,
+            shift_col="keys_per_min",
         )
         out_dir = tmp_path / "out"
-        result = runner.invoke(app, [
-            "monitor", "drift-check",
-            "--ref-features", str(ref_feat),
-            "--cur-features", str(cur_feat),
-            "--ref-predictions", str(ref_pred),
-            "--cur-predictions", str(cur_pred),
-            "--no-auto-label",
-            "--out-dir", str(out_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "monitor",
+                "drift-check",
+                "--ref-features",
+                str(ref_feat),
+                "--cur-features",
+                str(cur_feat),
+                "--ref-predictions",
+                str(ref_pred),
+                "--cur-predictions",
+                str(cur_pred),
+                "--no-auto-label",
+                "--out-dir",
+                str(out_dir),
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert "Drift Alerts" in result.output
         assert (out_dir / "drift_report.json").exists()
@@ -1119,20 +1539,31 @@ class TestMonitorDriftCheck:
     def test_auto_label(self, tmp_path: Path) -> None:
         """TC-CLI-DC-003: --auto-label with drift prints 'Auto-enqueued'."""
         ref_feat, cur_feat, ref_pred, cur_pred = _make_drift_fixtures(
-            tmp_path, shift_col="keys_per_min",
+            tmp_path,
+            shift_col="keys_per_min",
         )
         out_dir = tmp_path / "out"
         queue_path = tmp_path / "queue.json"
-        result = runner.invoke(app, [
-            "monitor", "drift-check",
-            "--ref-features", str(ref_feat),
-            "--cur-features", str(cur_feat),
-            "--ref-predictions", str(ref_pred),
-            "--cur-predictions", str(cur_pred),
-            "--auto-label",
-            "--queue-path", str(queue_path),
-            "--out-dir", str(out_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "monitor",
+                "drift-check",
+                "--ref-features",
+                str(ref_feat),
+                "--cur-features",
+                str(cur_feat),
+                "--ref-predictions",
+                str(ref_pred),
+                "--cur-predictions",
+                str(cur_pred),
+                "--auto-label",
+                "--queue-path",
+                str(queue_path),
+                "--out-dir",
+                str(out_dir),
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert "Auto-enqueued" in result.output
 
@@ -1159,11 +1590,13 @@ def _make_telemetry_fixtures(tmp_path: Path, n: int = 100) -> tuple[Path, Path]:
     labels = ["Build", "Write", "Debug", "Review"] * (n // 4)
     confidences = rng.uniform(0.5, 1.0, size=n)
     probs = rng.dirichlet(np.ones(8), size=n)
-    pred_df = pd.DataFrame({
-        "predicted_label": labels,
-        "confidence": confidences,
-        "core_probs": [json.dumps(row.tolist()) for row in probs],
-    })
+    pred_df = pd.DataFrame(
+        {
+            "predicted_label": labels,
+            "confidence": confidences,
+            "core_probs": [json.dumps(row.tolist()) for row in probs],
+        }
+    )
 
     feat_path = tmp_path / "features.parquet"
     pred_path = tmp_path / "predictions.csv"
@@ -1179,12 +1612,19 @@ class TestMonitorTelemetry:
         """TC-CLI-TEL-001: exit 0 and snapshot file created in --store-dir."""
         feat_path, pred_path = _make_telemetry_fixtures(tmp_path)
         store_dir = tmp_path / "telemetry"
-        result = runner.invoke(app, [
-            "monitor", "telemetry",
-            "--features", str(feat_path),
-            "--predictions", str(pred_path),
-            "--store-dir", str(store_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "monitor",
+                "telemetry",
+                "--features",
+                str(feat_path),
+                "--predictions",
+                str(pred_path),
+                "--store-dir",
+                str(store_dir),
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert "Telemetry snapshot appended" in result.output
         assert store_dir.exists()
@@ -1195,12 +1635,19 @@ class TestMonitorTelemetry:
         """TC-CLI-TEL-002: output contains 'Windows', 'Reject rate', 'Confidence'."""
         feat_path, pred_path = _make_telemetry_fixtures(tmp_path)
         store_dir = tmp_path / "telemetry"
-        result = runner.invoke(app, [
-            "monitor", "telemetry",
-            "--features", str(feat_path),
-            "--predictions", str(pred_path),
-            "--store-dir", str(store_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "monitor",
+                "telemetry",
+                "--features",
+                str(feat_path),
+                "--predictions",
+                str(pred_path),
+                "--store-dir",
+                str(store_dir),
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert "Windows" in result.output
         assert "Reject rate" in result.output
@@ -1223,10 +1670,15 @@ class TestInferOnline:
             "taskclf.infer.resolve.resolve_model_dir",
             side_effect=ModelResolutionError("No eligible model found in models/"),
         ):
-            result = runner.invoke(app, [
-                "infer", "online",
-                "--models-dir", str(tmp_path / "models"),
-            ])
+            result = runner.invoke(
+                app,
+                [
+                    "infer",
+                    "online",
+                    "--models-dir",
+                    str(tmp_path / "models"),
+                ],
+            )
         assert result.exit_code == 1
         assert "No eligible model found" in result.output
 
@@ -1236,18 +1688,27 @@ class TestInferOnline:
         model_dir = tmp_path / "fake_model"
         model_dir.mkdir()
 
-        with patch(
-            "taskclf.infer.resolve.resolve_model_dir",
-            return_value=model_dir,
-        ), patch(
-            "taskclf.infer.online.run_online_loop",
-        ) as mock_loop:
-            result = runner.invoke(app, [
-                "infer", "online",
-                "--model-dir", str(model_dir),
-                "--data-dir", str(data_dir),
-                "--label-queue",
-            ])
+        with (
+            patch(
+                "taskclf.infer.resolve.resolve_model_dir",
+                return_value=model_dir,
+            ),
+            patch(
+                "taskclf.infer.online.run_online_loop",
+            ) as mock_loop,
+        ):
+            result = runner.invoke(
+                app,
+                [
+                    "infer",
+                    "online",
+                    "--model-dir",
+                    str(model_dir),
+                    "--data-dir",
+                    str(data_dir),
+                    "--label-queue",
+                ],
+            )
         assert result.exit_code == 0, result.output
         mock_loop.assert_called_once()
         call_kwargs = mock_loop.call_args[1]

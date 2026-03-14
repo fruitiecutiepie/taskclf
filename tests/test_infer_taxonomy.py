@@ -13,14 +13,11 @@ Covers:
 
 from __future__ import annotations
 
-import datetime as dt
-import json
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
-import yaml
 from pydantic import ValidationError
 from typer.testing import CliRunner
 
@@ -83,7 +80,7 @@ def _uniform_probs() -> np.ndarray:
 def _peaked_probs(label: str, peak: float = 0.8) -> np.ndarray:
     """Probability vector peaked at a specific core label."""
     sorted_labels = sorted(CoreLabel)
-    idx = sorted_labels.index(label)
+    idx = sorted_labels.index(CoreLabel(label))
     probs = np.full(8, (1.0 - peak) / 7, dtype=np.float64)
     probs[idx] = peak
     return probs
@@ -102,9 +99,7 @@ class TestConfigValidation:
 
     def test_invalid_core_label_rejects(self) -> None:
         with pytest.raises(ValidationError, match="Unknown core label"):
-            TaxonomyBucket(
-                name="Bad", core_labels=["NotARealLabel"], color="#000000"
-            )
+            TaxonomyBucket(name="Bad", core_labels=["NotARealLabel"], color="#000000")
 
     def test_duplicate_bucket_names_reject(self) -> None:
         with pytest.raises(ValidationError, match="Duplicate bucket names"):
@@ -181,7 +176,7 @@ class TestResolverSingleRow:
 
         probs = _peaked_probs("Build", 0.8)
         sorted_labels = sorted(CoreLabel)
-        label_id = sorted_labels.index("Build")
+        label_id = sorted_labels.index(CoreLabel("Build"))
 
         result = resolver.resolve(label_id, probs)
         assert isinstance(result, TaxonomyResult)
@@ -199,7 +194,7 @@ class TestResolverSingleRow:
 
         probs = _peaked_probs("Build", 0.8)
         sorted_labels = sorted(CoreLabel)
-        label_id = sorted_labels.index("Build")
+        label_id = sorted_labels.index(CoreLabel("Build"))
 
         result = resolver.resolve(label_id, probs)
         assert result.mapped_label == "Deep Work"
@@ -228,7 +223,7 @@ class TestResolverSingleRow:
         resolver = TaxonomyResolver(_example_config())
         probs = _peaked_probs("Communicate", 0.6)
         sorted_labels = sorted(CoreLabel)
-        label_id = sorted_labels.index("Communicate")
+        label_id = sorted_labels.index(CoreLabel("Communicate"))
 
         result = resolver.resolve(label_id, probs)
         total = sum(result.mapped_probs.values())
@@ -266,7 +261,7 @@ class TestResolverSingleRow:
 
         probs = _peaked_probs("Meet", 0.9)
         sorted_labels = sorted(CoreLabel)
-        label_id = sorted_labels.index("Meet")
+        label_id = sorted_labels.index(CoreLabel("Meet"))
 
         result = resolver.resolve(label_id, probs)
         assert result.mapped_label == FALLBACK_BUCKET_NAME
@@ -307,16 +302,20 @@ class TestResolverBatch:
         resolver = TaxonomyResolver(_example_config())
         sorted_labels = sorted(CoreLabel)
 
-        probs_matrix = np.array([
-            _peaked_probs("Build", 0.8),
-            _peaked_probs("Meet", 0.9),
-            _peaked_probs("BreakIdle", 0.7),
-        ])
-        label_ids = np.array([
-            sorted_labels.index("Build"),
-            sorted_labels.index("Meet"),
-            sorted_labels.index("BreakIdle"),
-        ])
+        probs_matrix = np.array(
+            [
+                _peaked_probs("Build", 0.8),
+                _peaked_probs("Meet", 0.9),
+                _peaked_probs("BreakIdle", 0.7),
+            ]
+        )
+        label_ids = np.array(
+            [
+                sorted_labels.index(CoreLabel("Build")),
+                sorted_labels.index(CoreLabel("Meet")),
+                sorted_labels.index(CoreLabel("BreakIdle")),
+            ]
+        )
 
         results = resolver.resolve_batch(label_ids, probs_matrix)
         assert len(results) == 3
@@ -341,7 +340,9 @@ class TestResolverBatch:
         label_ids = probs_matrix.argmax(axis=1)
         is_rejected = np.array([True, False])
 
-        results = resolver.resolve_batch(label_ids, probs_matrix, is_rejected=is_rejected)
+        results = resolver.resolve_batch(
+            label_ids, probs_matrix, is_rejected=is_rejected
+        )
         assert results[0].mapped_label == MIXED_UNKNOWN
         assert results[0].mapped_probs == {}
         assert results[1].mapped_label == "Deep Work"
@@ -371,7 +372,9 @@ class TestYamlRoundTrip:
 
     def test_load_invalid_yaml_raises(self, tmp_path: Path) -> None:
         bad_yaml = tmp_path / "bad.yaml"
-        bad_yaml.write_text("buckets:\n  - name: X\n    core_labels: [NotALabel]\n    color: '#000000'\n")
+        bad_yaml.write_text(
+            "buckets:\n  - name: X\n    core_labels: [NotALabel]\n    color: '#000000'\n"
+        )
         with pytest.raises(ValidationError):
             load_taxonomy(bad_yaml)
 
@@ -423,21 +426,30 @@ class TestCliTaxonomyValidate:
     def test_valid_config_exit_zero(self, tmp_path: Path) -> None:
         config = _example_config()
         yaml_path = save_taxonomy(config, tmp_path / "tax.yaml")
-        result = runner.invoke(app, ["taxonomy", "validate", "--config", str(yaml_path)])
+        result = runner.invoke(
+            app, ["taxonomy", "validate", "--config", str(yaml_path)]
+        )
         assert result.exit_code == 0, result.output
         assert "Taxonomy valid" in result.output
 
     def test_invalid_config_exit_one(self, tmp_path: Path) -> None:
         bad = tmp_path / "bad.yaml"
-        bad.write_text("buckets:\n  - name: X\n    core_labels: [FakeLabel]\n    color: '#000000'\n")
+        bad.write_text(
+            "buckets:\n  - name: X\n    core_labels: [FakeLabel]\n    color: '#000000'\n"
+        )
         result = runner.invoke(app, ["taxonomy", "validate", "--config", str(bad)])
         assert result.exit_code == 1
 
     def test_missing_file_exit_one(self, tmp_path: Path) -> None:
-        result = runner.invoke(app, [
-            "taxonomy", "validate",
-            "--config", str(tmp_path / "nope.yaml"),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "taxonomy",
+                "validate",
+                "--config",
+                str(tmp_path / "nope.yaml"),
+            ],
+        )
         assert result.exit_code == 1
 
 
@@ -477,32 +489,51 @@ class TestBatchInferenceIntegration:
     @pytest.fixture(scope="class")
     def trained_model_dir(self, tmp_path_factory: pytest.TempPathFactory) -> Path:
         models_dir = tmp_path_factory.mktemp("models")
-        result = runner.invoke(app, [
-            "train", "lgbm",
-            "--from", "2025-06-14",
-            "--to", "2025-06-15",
-            "--synthetic",
-            "--models-dir", str(models_dir),
-            "--num-boost-round", "5",
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "train",
+                "lgbm",
+                "--from",
+                "2025-06-14",
+                "--to",
+                "2025-06-15",
+                "--synthetic",
+                "--models-dir",
+                str(models_dir),
+                "--num-boost-round",
+                "5",
+            ],
+        )
         assert result.exit_code == 0, result.output
         return next(models_dir.iterdir())
 
     def test_batch_with_taxonomy_produces_mapped_column(
-        self, tmp_path: Path, trained_model_dir: Path,
+        self,
+        tmp_path: Path,
+        trained_model_dir: Path,
     ) -> None:
         tax_path = save_taxonomy(_example_config(), tmp_path / "tax.yaml")
         out_dir = tmp_path / "artifacts"
 
-        result = runner.invoke(app, [
-            "infer", "batch",
-            "--model-dir", str(trained_model_dir),
-            "--from", "2025-06-15",
-            "--to", "2025-06-15",
-            "--synthetic",
-            "--out-dir", str(out_dir),
-            "--taxonomy", str(tax_path),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "infer",
+                "batch",
+                "--model-dir",
+                str(trained_model_dir),
+                "--from",
+                "2025-06-15",
+                "--to",
+                "2025-06-15",
+                "--synthetic",
+                "--out-dir",
+                str(out_dir),
+                "--taxonomy",
+                str(tax_path),
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert "mapped_label" in result.output
 
@@ -515,17 +546,27 @@ class TestBatchInferenceIntegration:
         assert not invalid, f"Unexpected mapped labels: {invalid}"
 
     def test_batch_without_taxonomy_has_no_mapped_column(
-        self, tmp_path: Path, trained_model_dir: Path,
+        self,
+        tmp_path: Path,
+        trained_model_dir: Path,
     ) -> None:
         out_dir = tmp_path / "artifacts"
-        result = runner.invoke(app, [
-            "infer", "batch",
-            "--model-dir", str(trained_model_dir),
-            "--from", "2025-06-15",
-            "--to", "2025-06-15",
-            "--synthetic",
-            "--out-dir", str(out_dir),
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "infer",
+                "batch",
+                "--model-dir",
+                str(trained_model_dir),
+                "--from",
+                "2025-06-15",
+                "--to",
+                "2025-06-15",
+                "--synthetic",
+                "--out-dir",
+                str(out_dir),
+            ],
+        )
         assert result.exit_code == 0, result.output
         df = pd.read_csv(out_dir / "predictions.csv")
         assert "mapped_label" not in df.columns

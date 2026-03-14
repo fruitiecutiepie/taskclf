@@ -10,7 +10,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from taskclf.core.defaults import MIXED_UNKNOWN
 from taskclf.core.telemetry import NUMERICAL_FEATURES
@@ -85,7 +84,9 @@ class TestDriftModels:
         now = datetime.now(tz=timezone.utc)
         report_no_crit = DriftReport(
             alerts=[
-                DriftAlert(trigger=DriftTrigger.class_shift, severity="warning", timestamp=now),
+                DriftAlert(
+                    trigger=DriftTrigger.class_shift, severity="warning", timestamp=now
+                ),
             ],
             any_critical=False,
         )
@@ -93,7 +94,11 @@ class TestDriftModels:
 
         report_crit = DriftReport(
             alerts=[
-                DriftAlert(trigger=DriftTrigger.reject_rate_increase, severity="critical", timestamp=now),
+                DriftAlert(
+                    trigger=DriftTrigger.reject_rate_increase,
+                    severity="critical",
+                    timestamp=now,
+                ),
             ],
             any_critical=True,
         )
@@ -123,7 +128,12 @@ class TestRunDriftCheck:
         rng = np.random.default_rng(42)
         ref = _make_features_df(500, rng=rng)
         # Moderate shift keeps distributions overlapping for PSI quantile binning
-        cur = _make_features_df(500, rng=np.random.default_rng(99), shift_col="keys_per_min", shift_amount=3.0)
+        cur = _make_features_df(
+            500,
+            rng=np.random.default_rng(99),
+            shift_col="keys_per_min",
+            shift_amount=3.0,
+        )
         labels = ["Build"] * 500
 
         report = run_drift_check(ref, cur, labels, labels)
@@ -143,7 +153,9 @@ class TestRunDriftCheck:
 
         report = run_drift_check(ref, cur, ref_labels, cur_labels)
 
-        rr_alerts = [a for a in report.alerts if a.trigger == DriftTrigger.reject_rate_increase]
+        rr_alerts = [
+            a for a in report.alerts if a.trigger == DriftTrigger.reject_rate_increase
+        ]
         assert len(rr_alerts) == 1
         assert rr_alerts[0].severity == "critical"
 
@@ -161,11 +173,17 @@ class TestRunDriftCheck:
         cur_probs = np.ones((100, 8)) / 8
 
         report = run_drift_check(
-            ref, cur, labels, labels,
-            ref_probs=ref_probs, cur_probs=cur_probs,
+            ref,
+            cur,
+            labels,
+            labels,
+            ref_probs=ref_probs,
+            cur_probs=cur_probs,
         )
 
-        ent_alerts = [a for a in report.alerts if a.trigger == DriftTrigger.entropy_spike]
+        ent_alerts = [
+            a for a in report.alerts if a.trigger == DriftTrigger.entropy_spike
+        ]
         assert len(ent_alerts) == 1
         assert report.entropy_drift is not None
         assert report.entropy_drift.is_flagged
@@ -267,8 +285,11 @@ class TestAutoEnqueueDriftLabels:
         confidences = np.random.default_rng(42).uniform(0.1, 0.9, size=50)
 
         result = auto_enqueue_drift_labels(
-            report, df, tmp_path / "queue.json",
-            cur_confidences=confidences, limit=5,
+            report,
+            df,
+            tmp_path / "queue.json",
+            cur_confidences=confidences,
+            limit=5,
         )
         assert result <= 5
 
@@ -277,15 +298,20 @@ class TestAutoEnqueueDriftLabels:
         now = datetime.now(tz=timezone.utc)
         report = DriftReport(
             alerts=[
-                DriftAlert(trigger=DriftTrigger.feature_psi, severity="warning", timestamp=now),
+                DriftAlert(
+                    trigger=DriftTrigger.feature_psi, severity="warning", timestamp=now
+                ),
             ],
         )
         df = _make_features_df(20)
         confidences = np.linspace(0.1, 0.99, 20)
 
         result = auto_enqueue_drift_labels(
-            report, df, tmp_path / "queue.json",
-            cur_confidences=confidences, limit=3,
+            report,
+            df,
+            tmp_path / "queue.json",
+            cur_confidences=confidences,
+            limit=3,
         )
         assert result == 3
 

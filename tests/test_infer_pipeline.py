@@ -21,7 +21,7 @@ import pytest
 from typer.testing import CliRunner
 
 from taskclf.cli.main import app
-from taskclf.core.defaults import MIXED_UNKNOWN, MIN_BLOCK_DURATION_SECONDS
+from taskclf.core.defaults import MIXED_UNKNOWN
 from taskclf.core.model_io import load_model_bundle
 from taskclf.core.types import LABEL_SET_V1
 from taskclf.features.build import generate_dummy_features
@@ -34,7 +34,7 @@ from taskclf.infer.calibration import (
 )
 from taskclf.infer.online import OnlinePredictor, _append_prediction_csv
 from taskclf.infer.prediction import WindowPrediction
-from taskclf.infer.smooth import Segment, merge_short_segments, segmentize
+from taskclf.infer.smooth import Segment, merge_short_segments
 
 runner = CliRunner()
 
@@ -49,14 +49,22 @@ _SORTED_LABELS = sorted(LABEL_SET_V1)
 @pytest.fixture(scope="module")
 def trained_model_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
     models_dir = tmp_path_factory.mktemp("models")
-    result = runner.invoke(app, [
-        "train", "lgbm",
-        "--from", "2025-06-14",
-        "--to", "2025-06-15",
-        "--synthetic",
-        "--models-dir", str(models_dir),
-        "--num-boost-round", "5",
-    ])
+    result = runner.invoke(
+        app,
+        [
+            "train",
+            "lgbm",
+            "--from",
+            "2025-06-14",
+            "--to",
+            "2025-06-15",
+            "--synthetic",
+            "--models-dir",
+            str(models_dir),
+            "--num-boost-round",
+            "5",
+        ],
+    )
     assert result.exit_code == 0, result.output
     return next(models_dir.iterdir())
 
@@ -65,7 +73,8 @@ def trained_model_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
 def predictor(trained_model_dir: Path) -> OnlinePredictor:
     model, metadata, cat_encoders = load_model_bundle(trained_model_dir)
     return OnlinePredictor(
-        model, metadata,
+        model,
+        metadata,
         cat_encoders=cat_encoders,
         smooth_window=3,
         reject_threshold=0.55,
@@ -266,8 +275,7 @@ class TestTemperatureCalibrator:
 
     def test_preserves_sum_2d(self) -> None:
         cal = TemperatureCalibrator(temperature=2.0)
-        probs = np.array([[0.5, 0.2, 0.1, 0.05, 0.05, 0.05, 0.025, 0.025],
-                          [0.125] * 8])
+        probs = np.array([[0.5, 0.2, 0.1, 0.05, 0.05, 0.05, 0.025, 0.025], [0.125] * 8])
         result = cal.calibrate(probs)
         np.testing.assert_allclose(result.sum(axis=1), [1.0, 1.0], atol=1e-6)
 
@@ -343,7 +351,8 @@ class TestOnlinePredictorWindowPrediction:
     def test_rejected_prediction(self, trained_model_dir: Path) -> None:
         model, metadata, cat_encoders = load_model_bundle(trained_model_dir)
         pred = OnlinePredictor(
-            model, metadata,
+            model,
+            metadata,
             cat_encoders=cat_encoders,
             smooth_window=1,
             reject_threshold=0.9999,
@@ -357,14 +366,16 @@ class TestOnlinePredictorWindowPrediction:
         model, metadata, cat_encoders = load_model_bundle(trained_model_dir)
 
         pred_identity = OnlinePredictor(
-            model, metadata,
+            model,
+            metadata,
             cat_encoders=cat_encoders,
             smooth_window=1,
             reject_threshold=None,
             calibrator=IdentityCalibrator(),
         )
         pred_temp = OnlinePredictor(
-            model, metadata,
+            model,
+            metadata,
             cat_encoders=cat_encoders,
             smooth_window=1,
             reject_threshold=None,
@@ -386,7 +397,9 @@ class TestOnlinePredictorWindowPrediction:
 
 
 class TestPredictionCsvOutput:
-    def test_append_prediction_csv_columns(self, tmp_path: Path, predictor: OnlinePredictor) -> None:
+    def test_append_prediction_csv_columns(
+        self, tmp_path: Path, predictor: OnlinePredictor
+    ) -> None:
         rows = generate_dummy_features(dt.date(2025, 6, 15), n_rows=2)
         csv_path = tmp_path / "preds.csv"
 
@@ -397,6 +410,7 @@ class TestPredictionCsvOutput:
         with open(csv_path) as f:
             reader = csv.DictReader(f)
             field_names = reader.fieldnames
+            assert field_names is not None
             assert "bucket_start_ts" in field_names
             assert "core_label" in field_names
             assert "confidence" in field_names
@@ -414,7 +428,9 @@ class TestPredictionCsvOutput:
                 assert len(probs) == 8
                 assert abs(sum(probs) - 1.0) < 0.01
 
-    def test_batch_csv_includes_core_probs(self, tmp_path: Path, trained_model_dir: Path) -> None:
+    def test_batch_csv_includes_core_probs(
+        self, tmp_path: Path, trained_model_dir: Path
+    ) -> None:
         import pandas as pd
 
         from taskclf.infer.batch import run_batch_inference, write_predictions_csv
@@ -424,13 +440,16 @@ class TestPredictionCsvOutput:
         features_df = pd.DataFrame([r.model_dump() for r in rows])
 
         result = run_batch_inference(
-            model, features_df,
+            model,
+            features_df,
             cat_encoders=cat_encoders,
             reject_threshold=0.55,
         )
 
         csv_path = write_predictions_csv(
-            features_df, result.smoothed_labels, tmp_path / "preds.csv",
+            features_df,
+            result.smoothed_labels,
+            tmp_path / "preds.csv",
             confidences=result.confidences,
             is_rejected=result.is_rejected,
             core_probs=result.core_probs,
@@ -454,7 +473,9 @@ class TestMergeShortSegments:
         segs = []
         for label, count in specs:
             end = ts + dt.timedelta(seconds=60 * count)
-            segs.append(Segment(start_ts=ts, end_ts=end, label=label, bucket_count=count))
+            segs.append(
+                Segment(start_ts=ts, end_ts=end, label=label, bucket_count=count)
+            )
             ts = end
         return segs
 
@@ -485,18 +506,29 @@ class TestMergeShortSegments:
         assert merge_short_segments([]) == []
 
     def test_total_buckets_preserved(self) -> None:
-        segs = self._make_segments([
-            ("Build", 5), ("Debug", 1), ("Write", 2), ("Build", 4), ("Meet", 1),
-        ])
+        segs = self._make_segments(
+            [
+                ("Build", 5),
+                ("Debug", 1),
+                ("Write", 2),
+                ("Build", 4),
+                ("Meet", 1),
+            ]
+        )
         original_total = sum(s.bucket_count for s in segs)
         result = merge_short_segments(segs, min_duration_seconds=180, bucket_seconds=60)
         merged_total = sum(s.bucket_count for s in result)
         assert merged_total == original_total
 
     def test_segments_remain_non_overlapping(self) -> None:
-        segs = self._make_segments([
-            ("Build", 5), ("Debug", 2), ("Write", 1), ("Build", 5),
-        ])
+        segs = self._make_segments(
+            [
+                ("Build", 5),
+                ("Debug", 2),
+                ("Write", 1),
+                ("Build", 5),
+            ]
+        )
         result = merge_short_segments(segs, min_duration_seconds=180, bucket_seconds=60)
         for i in range(len(result) - 1):
             assert result[i].end_ts <= result[i + 1].start_ts
@@ -511,7 +543,8 @@ class TestMergeShortSegments:
         features_df = pd.DataFrame([r.model_dump() for r in rows])
 
         result = run_batch_inference(
-            model, features_df,
+            model,
+            features_df,
             cat_encoders=cat_encoders,
         )
         total = sum(s.bucket_count for s in result.segments)
@@ -534,7 +567,8 @@ class TestBatchInferenceCalibrator:
         features_df = pd.DataFrame([r.model_dump() for r in rows])
 
         result = run_batch_inference(
-            model, features_df,
+            model,
+            features_df,
             cat_encoders=cat_encoders,
             calibrator=IdentityCalibrator(),
         )
@@ -551,12 +585,14 @@ class TestBatchInferenceCalibrator:
         features_df = pd.DataFrame([r.model_dump() for r in rows])
 
         result_id = run_batch_inference(
-            model, features_df,
+            model,
+            features_df,
             cat_encoders=cat_encoders,
             calibrator=IdentityCalibrator(),
         )
         result_temp = run_batch_inference(
-            model, features_df,
+            model,
+            features_df,
             cat_encoders=cat_encoders,
             calibrator=TemperatureCalibrator(temperature=5.0),
         )
@@ -574,7 +610,8 @@ class TestBatchInferenceCalibrator:
         features_df = pd.DataFrame([r.model_dump() for r in rows])
 
         result = run_batch_inference(
-            model, features_df,
+            model,
+            features_df,
             cat_encoders=cat_encoders,
         )
         assert hasattr(result, "core_probs")

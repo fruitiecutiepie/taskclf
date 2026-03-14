@@ -34,7 +34,6 @@ if TYPE_CHECKING:
 from taskclf.core.config import UserConfig
 from taskclf.core.defaults import (
     DEFAULT_AW_HOST,
-    DEFAULT_BUCKET_SECONDS,
     DEFAULT_DATA_DIR,
     DEFAULT_POLL_SECONDS,
     DEFAULT_TITLE_SALT,
@@ -59,11 +58,10 @@ def _send_desktop_notification(title: str, message: str, timeout: int = 10) -> N
     """
     if platform.system() == "Darwin":
         safe_title = title.replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ")
-        safe_message = message.replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ")
-        script = (
-            f'display notification "{safe_message}" '
-            f'with title "{safe_title}"'
+        safe_message = (
+            message.replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ")
         )
+        script = f'display notification "{safe_message}" with title "{safe_title}"'
 
         def _fire() -> None:
             try:
@@ -120,7 +118,8 @@ class ActivityMonitor:
         title_salt: str = DEFAULT_TITLE_SALT,
         poll_seconds: int = DEFAULT_POLL_SECONDS,
         transition_minutes: int = DEFAULT_TRANSITION_MINUTES,
-        on_transition: Callable[[str, str, dt.datetime, dt.datetime], Any] | None = None,
+        on_transition: Callable[[str, str, dt.datetime, dt.datetime], Any]
+        | None = None,
         on_poll: Callable[[str], Any] | None = None,
         on_initial_app: Callable[[str, dt.datetime], Any] | None = None,
         event_bus: EventBus | None = None,
@@ -182,7 +181,10 @@ class ActivityMonitor:
         start = now - dt.timedelta(seconds=self._poll_seconds)
         try:
             events = fetch_aw_events(
-                self._aw_host, self._bucket_id, start, now,
+                self._aw_host,
+                self._bucket_id,
+                start,
+                now,
                 title_salt=self._title_salt,
             )
         except Exception:
@@ -202,7 +204,10 @@ class ActivityMonitor:
         return counts.most_common(1)[0][0]
 
     def check_transition(
-        self, dominant_app: str, *, _now: dt.datetime | None = None,
+        self,
+        dominant_app: str,
+        *,
+        _now: dt.datetime | None = None,
     ) -> None:
         """Update internal state and fire transition callback if warranted.
 
@@ -254,7 +259,10 @@ class ActivityMonitor:
             self._candidate_first_seen = None
 
     def _publish_status(
-        self, dominant_app: str, *, state: str = "collecting",
+        self,
+        dominant_app: str,
+        *,
+        state: str = "collecting",
     ) -> None:
         now = dt.datetime.now(dt.timezone.utc)
         self._last_poll_ts = now
@@ -262,30 +270,32 @@ class ActivityMonitor:
 
         if self._event_bus is not None:
             uptime_s = (
-                int((now - self._started_at).total_seconds())
-                if self._started_at else 0
+                int((now - self._started_at).total_seconds()) if self._started_at else 0
             )
-            self._event_bus.publish_threadsafe({
-                "type": "status",
-                "state": state,
-                "current_app": dominant_app,
-                "current_app_since": (
-                    self._current_app_since.isoformat()
-                    if self._current_app_since else None
-                ),
-                "candidate_app": self._candidate_app,
-                "candidate_duration_s": self._candidate_duration,
-                "transition_threshold_s": self._transition_threshold,
-                "poll_seconds": self._poll_seconds,
-                "poll_count": self._poll_count,
-                "last_poll_ts": now.isoformat(),
-                "uptime_s": uptime_s,
-                "aw_connected": self._bucket_id is not None,
-                "aw_bucket_id": self._bucket_id,
-                "aw_host": self._aw_host,
-                "last_event_count": self._last_event_count,
-                "last_app_counts": self._last_app_counts,
-            })
+            self._event_bus.publish_threadsafe(
+                {
+                    "type": "status",
+                    "state": state,
+                    "current_app": dominant_app,
+                    "current_app_since": (
+                        self._current_app_since.isoformat()
+                        if self._current_app_since
+                        else None
+                    ),
+                    "candidate_app": self._candidate_app,
+                    "candidate_duration_s": self._candidate_duration,
+                    "transition_threshold_s": self._transition_threshold,
+                    "poll_seconds": self._poll_seconds,
+                    "poll_count": self._poll_count,
+                    "last_poll_ts": now.isoformat(),
+                    "uptime_s": uptime_s,
+                    "aw_connected": self._bucket_id is not None,
+                    "aw_bucket_id": self._bucket_id,
+                    "aw_host": self._aw_host,
+                    "last_event_count": self._last_event_count,
+                    "last_app_counts": self._last_app_counts,
+                }
+            )
 
     def run(self) -> None:
         """Blocking poll loop. Call from a daemon thread."""
@@ -343,22 +353,32 @@ class _LabelSuggester:
 
         model, metadata, cat_encoders = load_model_bundle(model_dir)
         self._predictor = OnlinePredictor(
-            model, metadata, cat_encoders=cat_encoders,
+            model,
+            metadata,
+            cat_encoders=cat_encoders,
         )
         self._aw_host: str = DEFAULT_AW_HOST
         self._title_salt: str = DEFAULT_TITLE_SALT
 
     def suggest(
-        self, start: dt.datetime, end: dt.datetime,
+        self,
+        start: dt.datetime,
+        end: dt.datetime,
     ) -> tuple[str, float] | None:
         """Predict a label for the given time window. Returns (label, confidence) or None."""
-        from taskclf.adapters.activitywatch.client import fetch_aw_events, find_window_bucket_id
+        from taskclf.adapters.activitywatch.client import (
+            fetch_aw_events,
+            find_window_bucket_id,
+        )
         from taskclf.features.build import build_features_from_aw_events
 
         try:
             bucket_id = find_window_bucket_id(self._aw_host)
             events = fetch_aw_events(
-                self._aw_host, bucket_id, start, end,
+                self._aw_host,
+                bucket_id,
+                start,
+                end,
                 title_salt=self._title_salt,
             )
             if not events:
@@ -440,30 +460,44 @@ class TrayLabeler:
 
         saved = self._config.as_dict()
         notifications_enabled = self._resolve(
-            saved, "notifications_enabled", notifications_enabled, True,
+            saved,
+            "notifications_enabled",
+            notifications_enabled,
+            True,
         )
         privacy_notifications = self._resolve(
-            saved, "privacy_notifications", privacy_notifications, True,
+            saved,
+            "privacy_notifications",
+            privacy_notifications,
+            True,
         )
         poll_seconds = self._resolve(
-            saved, "poll_seconds", poll_seconds, DEFAULT_POLL_SECONDS,
+            saved,
+            "poll_seconds",
+            poll_seconds,
+            DEFAULT_POLL_SECONDS,
         )
         transition_minutes = self._resolve(
-            saved, "transition_minutes", transition_minutes, DEFAULT_TRANSITION_MINUTES,
+            saved,
+            "transition_minutes",
+            transition_minutes,
+            DEFAULT_TRANSITION_MINUTES,
         )
         aw_host = self._resolve(saved, "aw_host", aw_host, DEFAULT_AW_HOST)
         title_salt = self._resolve(saved, "title_salt", title_salt, DEFAULT_TITLE_SALT)
         ui_port = self._resolve(saved, "ui_port", ui_port, 8741)
 
-        self._config.update({
-            "notifications_enabled": notifications_enabled,
-            "privacy_notifications": privacy_notifications,
-            "poll_seconds": poll_seconds,
-            "transition_minutes": transition_minutes,
-            "aw_host": aw_host,
-            "title_salt": title_salt,
-            "ui_port": ui_port,
-        })
+        self._config.update(
+            {
+                "notifications_enabled": notifications_enabled,
+                "privacy_notifications": privacy_notifications,
+                "poll_seconds": poll_seconds,
+                "transition_minutes": transition_minutes,
+                "aw_host": aw_host,
+                "title_salt": title_salt,
+                "ui_port": ui_port,
+            }
+        )
 
         self._notifications_enabled = notifications_enabled
         self._privacy_notifications = privacy_notifications
@@ -493,7 +527,9 @@ class TrayLabeler:
                 self._suggester = _LabelSuggester(model_dir)
                 self._suggester._aw_host = aw_host
                 self._suggester._title_salt = title_salt
-                self._model_schema_hash = self._suggester._predictor._metadata.schema_hash
+                self._model_schema_hash = (
+                    self._suggester._predictor._metadata.schema_hash
+                )
                 logger.info("Model loaded from %s", model_dir)
             except Exception:
                 logger.warning("Could not load model from %s", model_dir, exc_info=True)
@@ -520,11 +556,13 @@ class TrayLabeler:
     def _handle_initial_app(self, app: str, ts: dt.datetime) -> None:
         """Publish an initial_app event so the UI can prompt for the pre-start period."""
         if self._event_bus is not None:
-            self._event_bus.publish_threadsafe({
-                "type": "initial_app",
-                "app": app,
-                "ts": ts.isoformat(),
-            })
+            self._event_bus.publish_threadsafe(
+                {
+                    "type": "initial_app",
+                    "app": app,
+                    "ts": ts.isoformat(),
+                }
+            )
 
     def _on_label_saved(self) -> None:
         """Increment the saved-label counter (called by the embedded server)."""
@@ -544,7 +582,9 @@ class TrayLabeler:
             self._model_schema_hash = new_suggester._predictor._metadata.schema_hash
             logger.info("Auto-loaded newly trained model from %s", model_path)
         except Exception:
-            logger.warning("Could not auto-load trained model from %s", model_path, exc_info=True)
+            logger.warning(
+                "Could not auto-load trained model from %s", model_path, exc_info=True
+            )
 
     def _toggle_pause(self) -> bool:
         """Toggle pause state on the monitor. Returns new paused state."""
@@ -557,21 +597,23 @@ class TrayLabeler:
     def _handle_poll(self, dominant_app: str) -> None:
         self._current_app = dominant_app
         if self._event_bus is not None:
-            self._event_bus.publish_threadsafe({
-                "type": "tray_state",
-                "model_loaded": self._suggester is not None,
-                "model_dir": str(self._model_dir) if self._model_dir else None,
-                "model_schema_hash": self._model_schema_hash,
-                "suggested_label": self._suggested_label,
-                "suggested_confidence": self._suggested_confidence,
-                "transition_count": self._transition_count,
-                "last_transition": self._last_transition,
-                "labels_saved_count": self._labels_saved_count,
-                "data_dir": str(self._data_dir),
-                "ui_port": self._ui_port,
-                "dev_mode": self._dev,
-                "paused": self._monitor.is_paused,
-            })
+            self._event_bus.publish_threadsafe(
+                {
+                    "type": "tray_state",
+                    "model_loaded": self._suggester is not None,
+                    "model_dir": str(self._model_dir) if self._model_dir else None,
+                    "model_schema_hash": self._model_schema_hash,
+                    "suggested_label": self._suggested_label,
+                    "suggested_confidence": self._suggested_confidence,
+                    "transition_count": self._transition_count,
+                    "last_transition": self._last_transition,
+                    "labels_saved_count": self._labels_saved_count,
+                    "data_dir": str(self._data_dir),
+                    "ui_port": self._ui_port,
+                    "dev_mode": self._dev,
+                    "paused": self._monitor.is_paused,
+                }
+            )
 
     def _handle_transition(
         self,
@@ -603,34 +645,45 @@ class TrayLabeler:
             self._send_notification(prev_app, new_app, block_start, block_end)
 
         if self._event_bus is not None:
-            self._event_bus.publish_threadsafe({
-                "type": "prompt_label",
-                "prev_app": prev_app,
-                "new_app": new_app,
-                "block_start": block_start.isoformat(),
-                "block_end": block_end.isoformat(),
-                "duration_min": max(1, int((block_end - block_start).total_seconds() / 60)),
-                "suggested_label": self._suggested_label,
-                "suggested_confidence": self._suggested_confidence,
-            })
-            if self._suggested_label is not None and self._suggested_confidence is not None:
-                self._event_bus.publish_threadsafe({
-                    "type": "suggest_label",
-                    "reason": "app_switch",
-                    "old_label": prev_app,
-                    "suggested": self._suggested_label,
-                    "confidence": self._suggested_confidence,
+            self._event_bus.publish_threadsafe(
+                {
+                    "type": "prompt_label",
+                    "prev_app": prev_app,
+                    "new_app": new_app,
                     "block_start": block_start.isoformat(),
                     "block_end": block_end.isoformat(),
-                })
+                    "duration_min": max(
+                        1, int((block_end - block_start).total_seconds() / 60)
+                    ),
+                    "suggested_label": self._suggested_label,
+                    "suggested_confidence": self._suggested_confidence,
+                }
+            )
+            if (
+                self._suggested_label is not None
+                and self._suggested_confidence is not None
+            ):
+                self._event_bus.publish_threadsafe(
+                    {
+                        "type": "suggest_label",
+                        "reason": "app_switch",
+                        "old_label": prev_app,
+                        "suggested": self._suggested_label,
+                        "confidence": self._suggested_confidence,
+                        "block_start": block_start.isoformat(),
+                        "block_end": block_end.isoformat(),
+                    }
+                )
             else:
-                self._event_bus.publish_threadsafe({
-                    "type": "no_model_transition",
-                    "current_app": new_app,
-                    "ts": block_end.isoformat(),
-                    "block_start": block_start.isoformat(),
-                    "block_end": block_end.isoformat(),
-                })
+                self._event_bus.publish_threadsafe(
+                    {
+                        "type": "no_model_transition",
+                        "current_app": new_app,
+                        "ts": block_end.isoformat(),
+                        "block_start": block_start.isoformat(),
+                        "block_end": block_end.isoformat(),
+                    }
+                )
 
     def _send_notification(
         self,
@@ -665,7 +718,9 @@ class TrayLabeler:
 
         return (
             pystray.MenuItem(
-                "Open Dashboard", self._open_dashboard, default=True,
+                "Open Dashboard",
+                self._open_dashboard,
+                default=True,
             ),
             pystray.MenuItem(
                 lambda _: "Resume" if self._monitor.is_paused else "Pause",
@@ -723,7 +778,8 @@ class TrayLabeler:
         try:
             export_labels_to_csv(self._labels_path, csv_path)
             self._notify_with_reveal(
-                f"Labels exported to {csv_path.name}", csv_path,
+                f"Labels exported to {csv_path.name}",
+                csv_path,
             )
             logger.info("Labels exported to %s", csv_path)
         except ValueError as exc:
@@ -790,7 +846,12 @@ class TrayLabeler:
                 write_label_spans(merged, self._labels_path)
 
             self._notify(f"Imported {len(imported)} labels from {csv_path.name}")
-            logger.info("Imported %d labels from %s (strategy=%s)", len(imported), csv_path, strategy)
+            logger.info(
+                "Imported %d labels from %s (strategy=%s)",
+                len(imported),
+                csv_path,
+                strategy,
+            )
         except ValueError as exc:
             self._notify(f"Import failed: {exc}")
             logger.warning("Label import failed: %s", exc)
@@ -803,11 +864,14 @@ class TrayLabeler:
         try:
             result = subprocess.run(
                 [
-                    "osascript", "-e",
+                    "osascript",
+                    "-e",
                     'POSIX path of (choose file of type {"csv"}'
                     ' with prompt "Import Labels")',
                 ],
-                capture_output=True, text=True, timeout=120,
+                capture_output=True,
+                text=True,
+                timeout=120,
             )
             if result.returncode != 0 or not result.stdout.strip():
                 return None, None
@@ -815,15 +879,18 @@ class TrayLabeler:
 
             btn = subprocess.run(
                 [
-                    "osascript", "-e",
-                    'button returned of (display dialog'
+                    "osascript",
+                    "-e",
+                    "button returned of (display dialog"
                     ' "Merge with existing labels?\\n\\n'
-                    'Merge = keep existing, add new\\n'
+                    "Merge = keep existing, add new\\n"
                     'Overwrite = replace all labels"'
                     ' buttons {"Cancel","Overwrite","Merge"}'
                     ' default button "Merge")',
                 ],
-                capture_output=True, text=True, timeout=120,
+                capture_output=True,
+                text=True,
+                timeout=120,
             )
             if btn.returncode != 0 or not btn.stdout.strip():
                 return None, None
@@ -850,9 +917,10 @@ class TrayLabeler:
 
         today = dt.datetime.now(dt.timezone.utc).date()
         today_spans = [
-            s for s in spans
+            s
+            for s in spans
             if s.start_ts.date() == today
-            or (hasattr(s.start_ts, 'astimezone') and s.start_ts.date() == today)
+            or (hasattr(s.start_ts, "astimezone") and s.start_ts.date() == today)
         ]
 
         if not today_spans:
@@ -869,9 +937,14 @@ class TrayLabeler:
         mins = int(total_min % 60)
         time_str = f"{hours}h {mins}m" if hours else f"{mins}m"
 
-        parts = [f"{label} {int(m)}m" for label, m in sorted(
-            breakdown.items(), key=lambda x: x[1], reverse=True,
-        )]
+        parts = [
+            f"{label} {int(m)}m"
+            for label, m in sorted(
+                breakdown.items(),
+                key=lambda x: x[1],
+                reverse=True,
+            )
+        ]
         summary = f"Today: {len(today_spans)} labels, {time_str} — {', '.join(parts)}"
         self._notify(summary)
 
@@ -941,7 +1014,8 @@ class TrayLabeler:
 
             latest = find_latest_model(self._models_dir)
             due = check_retrain_due(
-                self._models_dir, config.global_retrain_cadence_days,
+                self._models_dir,
+                config.global_retrain_cadence_days,
             )
 
             if latest is not None:
@@ -954,9 +1028,7 @@ class TrayLabeler:
                         f"last: {latest.name} created {created})"
                     )
                 else:
-                    self._notify(
-                        f"Model is current ({latest.name}, created {created})"
-                    )
+                    self._notify(f"Model is current ({latest.name}, created {created})")
             else:
                 self._notify("Retrain recommended: no models found")
         except Exception as exc:
@@ -971,11 +1043,7 @@ class TrayLabeler:
 
         items: list[pystray.MenuItem] = []
 
-        bundles = (
-            list_bundles(self._models_dir)
-            if self._models_dir is not None
-            else []
-        )
+        bundles = list_bundles(self._models_dir) if self._models_dir is not None else []
         valid_bundles = [b for b in bundles if b.valid]
 
         if valid_bundles:
@@ -985,6 +1053,7 @@ class TrayLabeler:
                 def make_switch_cb(p: Path) -> Callable[..., None]:
                     def cb(*_a: Any) -> None:
                         self._switch_model(p)
+
                     return cb
 
                 def make_checked(p: Path) -> Callable[..., bool]:
@@ -993,43 +1062,59 @@ class TrayLabeler:
                         and self._model_dir.resolve() == p.resolve()
                     )
 
-                items.append(pystray.MenuItem(
-                    bundle.model_id,
-                    make_switch_cb(model_path),
-                    checked=make_checked(model_path),
-                ))
+                items.append(
+                    pystray.MenuItem(
+                        bundle.model_id,
+                        make_switch_cb(model_path),
+                        checked=make_checked(model_path),
+                    )
+                )
 
-            items.append(pystray.MenuItem(
-                "(No Model)",
-                self._unload_model,
-                checked=lambda _item: self._model_dir is None,
-            ))
+            items.append(
+                pystray.MenuItem(
+                    "(No Model)",
+                    self._unload_model,
+                    checked=lambda _item: self._model_dir is None,
+                )
+            )
             items.append(pystray.Menu.SEPARATOR)
-            items.append(pystray.MenuItem(
-                "Reload Model",
-                self._reload_model,
-                enabled=lambda _: self._model_dir is not None,
-            ))
-            items.append(pystray.MenuItem(
-                "Check Retrain",
-                self._check_retrain,
-                enabled=lambda _: self._models_dir is not None,
-            ))
+            items.append(
+                pystray.MenuItem(
+                    "Reload Model",
+                    self._reload_model,
+                    enabled=lambda _: self._model_dir is not None,
+                )
+            )
+            items.append(
+                pystray.MenuItem(
+                    "Check Retrain",
+                    self._check_retrain,
+                    enabled=lambda _: self._models_dir is not None,
+                )
+            )
         else:
-            items.append(pystray.MenuItem(
-                "(no models found)", None, enabled=False,
-            ))
+            items.append(
+                pystray.MenuItem(
+                    "(no models found)",
+                    None,
+                    enabled=False,
+                )
+            )
             items.append(pystray.Menu.SEPARATOR)
-            items.append(pystray.MenuItem(
-                "Reload Model",
-                self._reload_model,
-                enabled=lambda _: self._model_dir is not None,
-            ))
-            items.append(pystray.MenuItem(
-                "Check Retrain",
-                self._check_retrain,
-                enabled=lambda _: self._models_dir is not None,
-            ))
+            items.append(
+                pystray.MenuItem(
+                    "Reload Model",
+                    self._reload_model,
+                    enabled=lambda _: self._model_dir is not None,
+                )
+            )
+            items.append(
+                pystray.MenuItem(
+                    "Check Retrain",
+                    self._check_retrain,
+                    enabled=lambda _: self._models_dir is not None,
+                )
+            )
 
         return pystray.Menu(*items)
 
@@ -1052,7 +1137,9 @@ class TrayLabeler:
             logger.info("Switched to model %s", model_path)
         except Exception as exc:
             self._notify(f"Switch failed: {exc}")
-            logger.warning("Model switch to %s failed: %s", model_path, exc, exc_info=True)
+            logger.warning(
+                "Model switch to %s failed: %s", model_path, exc, exc_info=True
+            )
 
     def _unload_model(self, *_args: Any) -> None:
         """Unload the current model entirely."""
@@ -1066,7 +1153,9 @@ class TrayLabeler:
 
     def _show_status(self, *_args: Any) -> None:
         """Show a notification with connection and session status."""
-        aw_status = "connected" if self._monitor._bucket_id is not None else "disconnected"
+        aw_status = (
+            "connected" if self._monitor._bucket_id is not None else "disconnected"
+        )
         paused = " (paused)" if self._monitor.is_paused else ""
         model_name = self._model_dir.name if self._model_dir else "none"
 
@@ -1083,8 +1172,15 @@ class TrayLabeler:
         if self._browser:
             import webbrowser
 
-            ui_port = _VITE_DEV_PORT if (self._dev and self._vite_proc is not None
-                                        and self._vite_proc.poll() is None) else self._ui_port
+            ui_port = (
+                _VITE_DEV_PORT
+                if (
+                    self._dev
+                    and self._vite_proc is not None
+                    and self._vite_proc.poll() is None
+                )
+                else self._ui_port
+            )
             webbrowser.open(f"http://127.0.0.1:{ui_port}")
             return
 
@@ -1093,7 +1189,7 @@ class TrayLabeler:
             try:
                 self._ui_proc.stdin.write(b"toggle\n")
                 self._ui_proc.stdin.flush()
-            except (BrokenPipeError, OSError):
+            except BrokenPipeError, OSError:
                 logger.debug("Could not send toggle to UI process", exc_info=True)
             return
 
@@ -1118,7 +1214,9 @@ class TrayLabeler:
         """
         folder = path.parent if path.is_file() else path
         if platform.system() == "Darwin":
-            safe_msg = message.replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ")
+            safe_msg = (
+                message.replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ")
+            )
             safe_folder = str(folder).replace("\\", "\\\\").replace('"', '\\"')
             script = (
                 f'set theResult to display dialog "{safe_msg}" '
@@ -1131,7 +1229,9 @@ class TrayLabeler:
             try:
                 subprocess.run(
                     ["osascript", "-e", script],
-                    capture_output=True, timeout=15, check=False,
+                    capture_output=True,
+                    timeout=15,
+                    check=False,
                 )
                 return
             except Exception:
@@ -1170,9 +1270,7 @@ class TrayLabeler:
         from taskclf.core.paths import taskclf_home
 
         home = taskclf_home()
-        models_dir = (
-            str(self._models_dir) if self._models_dir else str(home / "models")
-        )
+        models_dir = str(self._models_dir) if self._models_dir else str(home / "models")
 
         try:
             info = collect_diagnostics(
@@ -1247,7 +1345,9 @@ class TrayLabeler:
         )
 
         uvicorn_config = uvicorn.Config(
-            fastapi_app, host="127.0.0.1", port=self._ui_port,
+            fastapi_app,
+            host="127.0.0.1",
+            port=self._ui_port,
             log_level="warning",
         )
         server = uvicorn.Server(uvicorn_config)
@@ -1264,7 +1364,9 @@ class TrayLabeler:
 
             frontend_dir = Path(_ui_srv.__file__).resolve().parent / "frontend"
             if not frontend_dir.is_dir():
-                print("Warning: frontend source not found (--dev requires a repo checkout)")
+                print(
+                    "Warning: frontend source not found (--dev requires a repo checkout)"
+                )
                 return ui_port
 
             if not (frontend_dir / "node_modules").is_dir():
@@ -1287,6 +1389,7 @@ class TrayLabeler:
             for _attempt in range(30):
                 try:
                     import urllib.request
+
                     urllib.request.urlopen(f"http://127.0.0.1:{ui_port}", timeout=1)
                     break
                 except Exception:
@@ -1315,15 +1418,22 @@ class TrayLabeler:
 
         try:
             cmd = [
-                sys.executable, "-m", "taskclf.ui.window",
-                "--port", str(self._ui_port),
+                sys.executable,
+                "-m",
+                "taskclf.ui.window",
+                "--port",
+                str(self._ui_port),
             ]
             self._ui_proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
             mode = " (dev)" if self._dev else ""
-            print(f"UI window launched{mode} (pid={self._ui_proc.pid}, port={self._ui_port})")
+            print(
+                f"UI window launched{mode} (pid={self._ui_proc.pid}, port={self._ui_port})"
+            )
         except Exception:
             logger.warning("Could not start UI window subprocess", exc_info=True)
-            print(f"Warning: UI window failed to start. Dashboard at http://127.0.0.1:{self._ui_port}")
+            print(
+                f"Warning: UI window failed to start. Dashboard at http://127.0.0.1:{self._ui_port}"
+            )
 
     def _start_ui_embedded(self) -> None:
         """Run FastAPI in-process and open the dashboard in the default browser."""
@@ -1341,21 +1451,25 @@ class TrayLabeler:
             try:
                 self._ui_proc.wait(timeout=5)
             except Exception:
-                logger.debug("UI process did not exit gracefully, killing", exc_info=True)
+                logger.debug(
+                    "UI process did not exit gracefully, killing", exc_info=True
+                )
                 self._ui_proc.kill()
         if self._vite_proc is not None and self._vite_proc.poll() is None:
             self._vite_proc.terminate()
             try:
                 self._vite_proc.wait(timeout=5)
             except Exception:
-                logger.debug("Vite process did not exit gracefully, killing", exc_info=True)
+                logger.debug(
+                    "Vite process did not exit gracefully, killing", exc_info=True
+                )
                 self._vite_proc.kill()
 
     def run(self) -> None:
         """Start the tray icon and background monitor. Blocks until quit."""
         try:
             self._run_inner()
-        except (SystemExit, KeyboardInterrupt):
+        except SystemExit, KeyboardInterrupt:
             raise
         except Exception as exc:
             from taskclf.core.crash import write_crash_report
@@ -1376,6 +1490,7 @@ class TrayLabeler:
         import atexit
 
         from taskclf.core.logging import setup_file_logging
+
         setup_file_logging()
 
         if self._browser:
@@ -1385,7 +1500,8 @@ class TrayLabeler:
         atexit.register(self._cleanup_ui)
 
         monitor_thread = threading.Thread(
-            target=self._monitor.run, daemon=True,
+            target=self._monitor.run,
+            daemon=True,
         )
         monitor_thread.start()
 
@@ -1416,7 +1532,9 @@ class TrayLabeler:
         )
 
         print(f"taskclf tray started ({mode})")
-        print("Click the tray icon to open the dashboard. Press Ctrl+C or Quit to exit.")
+        print(
+            "Click the tray icon to open the dashboard. Press Ctrl+C or Quit to exit."
+        )
 
         try:
             self._icon.run()

@@ -112,19 +112,25 @@ class TestFeatureDriftReport:
     def make_dfs(self) -> tuple[pd.DataFrame, pd.DataFrame]:
         rng = np.random.default_rng(42)
         n = 200
-        ref = pd.DataFrame({
-            "keys_per_min": rng.normal(30, 5, n),
-            "clicks_per_min": rng.normal(10, 2, n),
-            "scroll_events_per_min": rng.normal(5, 1, n),
-        })
-        cur = pd.DataFrame({
-            "keys_per_min": rng.normal(30, 5, n),
-            "clicks_per_min": rng.normal(25, 2, n),  # shifted
-            "scroll_events_per_min": rng.normal(5, 1, n),
-        })
+        ref = pd.DataFrame(
+            {
+                "keys_per_min": rng.normal(30, 5, n),
+                "clicks_per_min": rng.normal(10, 2, n),
+                "scroll_events_per_min": rng.normal(5, 1, n),
+            }
+        )
+        cur = pd.DataFrame(
+            {
+                "keys_per_min": rng.normal(30, 5, n),
+                "clicks_per_min": rng.normal(25, 2, n),  # shifted
+                "scroll_events_per_min": rng.normal(5, 1, n),
+            }
+        )
         return ref, cur
 
-    def test_flags_drifted_features(self, make_dfs: tuple[pd.DataFrame, pd.DataFrame]) -> None:
+    def test_flags_drifted_features(
+        self, make_dfs: tuple[pd.DataFrame, pd.DataFrame]
+    ) -> None:
         ref, cur = make_dfs
         features = ["keys_per_min", "clicks_per_min", "scroll_events_per_min"]
         report = feature_drift_report(ref, cur, features)

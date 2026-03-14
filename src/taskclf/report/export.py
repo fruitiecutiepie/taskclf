@@ -10,12 +10,14 @@ import pandas as pd
 
 from taskclf.report.daily import DailyReport
 
-_SENSITIVE_KEYS = frozenset({
-    "raw_keystrokes",
-    "window_title_raw",
-    "clipboard_content",
-    "clipboard",
-})
+_SENSITIVE_KEYS = frozenset(
+    {
+        "raw_keystrokes",
+        "window_title_raw",
+        "clipboard_content",
+        "clipboard",
+    }
+)
 
 
 def _check_no_sensitive_fields(data: dict) -> None:
@@ -61,20 +63,24 @@ def _breakdown_to_rows(
     """Flatten core and mapped breakdowns into tabular rows."""
     rows: list[dict[str, object]] = []
     for label, minutes in sorted(report.core_breakdown.items()):
-        rows.append({
-            "date": report.date,
-            "label_type": "core",
-            "label": label,
-            "minutes": round(minutes, 2),
-        })
-    if report.mapped_breakdown is not None:
-        for label, minutes in sorted(report.mapped_breakdown.items()):
-            rows.append({
+        rows.append(
+            {
                 "date": report.date,
-                "label_type": "mapped",
+                "label_type": "core",
                 "label": label,
                 "minutes": round(minutes, 2),
-            })
+            }
+        )
+    if report.mapped_breakdown is not None:
+        for label, minutes in sorted(report.mapped_breakdown.items()):
+            rows.append(
+                {
+                    "date": report.date,
+                    "label_type": "mapped",
+                    "label": label,
+                    "minutes": round(minutes, 2),
+                }
+            )
     return rows
 
 
@@ -99,7 +105,9 @@ def export_report_csv(report: DailyReport, path: Path) -> Path:
     rows = _breakdown_to_rows(report)
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=["date", "label_type", "label", "minutes"])
+        writer = csv.DictWriter(
+            f, fieldnames=["date", "label_type", "label", "minutes"]
+        )
         writer.writeheader()
         writer.writerows(rows)
     return path

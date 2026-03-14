@@ -92,7 +92,9 @@ class WindowAPI:
                 try:
                     self._window.move(self._default_x, self._default_y)
                 except Exception:
-                    logger.debug("Could not reposition window to default", exc_info=True)
+                    logger.debug(
+                        "Could not reposition window to default", exc_info=True
+                    )
             self.show_window()
 
     # -- Label grid window -----------------------------------------------------
@@ -208,7 +210,9 @@ class WindowAPI:
     # -- Shared helpers --------------------------------------------------------
 
     def _schedule_hide(
-        self, timer_attr: str, callback: Callable[[], None],
+        self,
+        timer_attr: str,
+        callback: Callable[[], None],
     ) -> None:
         self._cancel_timer(timer_attr)
         timer = threading.Timer(_CHILD_HIDE_DELAY_S, callback)
@@ -390,7 +394,9 @@ def run_window(
                 os.dup2(saved_stderr_fd, 2)
                 os.close(saved_stderr_fd)
             except OSError:
-                logger.debug("Could not restore stderr after pywebview init", exc_info=True)
+                logger.debug(
+                    "Could not restore stderr after pywebview init", exc_info=True
+                )
             saved_stderr_fd = None
         if on_ready is not None:
             on_ready(win)
@@ -402,6 +408,8 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Launch pywebview window for taskclf")
-    parser.add_argument("--port", type=int, default=8741, help="Port of the FastAPI server")
+    parser.add_argument(
+        "--port", type=int, default=8741, help="Port of the FastAPI server"
+    )
     args = parser.parse_args()
     run_window(port=args.port)

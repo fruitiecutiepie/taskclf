@@ -22,8 +22,17 @@ from taskclf.cli.main import app
 from taskclf.core.model_io import load_model_bundle
 from taskclf.core.types import LABEL_SET_V1
 from taskclf.features.build import generate_dummy_features
-from taskclf.infer.batch import predict_proba, read_segments_json, run_batch_inference, write_segments_json
-from taskclf.infer.calibration import CalibratorStore, IdentityCalibrator, TemperatureCalibrator
+from taskclf.infer.batch import (
+    predict_proba,
+    read_segments_json,
+    run_batch_inference,
+    write_segments_json,
+)
+from taskclf.infer.calibration import (
+    CalibratorStore,
+    IdentityCalibrator,
+    TemperatureCalibrator,
+)
 from taskclf.infer.smooth import Segment
 from taskclf.infer.taxonomy import TaxonomyBucket, TaxonomyConfig
 
@@ -35,9 +44,17 @@ _N_CLASSES = len(LABEL_SET_V1)  # 8
 def _example_taxonomy() -> TaxonomyConfig:
     return TaxonomyConfig(
         buckets=[
-            TaxonomyBucket(name="Deep Work", core_labels=["Build", "Debug", "Write"], color="#2E86DE"),
-            TaxonomyBucket(name="Research", core_labels=["ReadResearch", "Review"], color="#9B59B6"),
-            TaxonomyBucket(name="Communication", core_labels=["Communicate"], color="#27AE60"),
+            TaxonomyBucket(
+                name="Deep Work",
+                core_labels=["Build", "Debug", "Write"],
+                color="#2E86DE",
+            ),
+            TaxonomyBucket(
+                name="Research", core_labels=["ReadResearch", "Review"], color="#9B59B6"
+            ),
+            TaxonomyBucket(
+                name="Communication", core_labels=["Communicate"], color="#27AE60"
+            ),
             TaxonomyBucket(name="Meetings", core_labels=["Meet"], color="#E67E22"),
             TaxonomyBucket(name="Break", core_labels=["BreakIdle"], color="#7F8C8D"),
         ],
@@ -48,14 +65,22 @@ def _example_taxonomy() -> TaxonomyConfig:
 def _trained_artifacts(tmp_path_factory: pytest.TempPathFactory):
     """Train a small model once for the whole module."""
     models_dir = tmp_path_factory.mktemp("models")
-    result = runner.invoke(app, [
-        "train", "lgbm",
-        "--from", "2025-06-14",
-        "--to", "2025-06-15",
-        "--synthetic",
-        "--models-dir", str(models_dir),
-        "--num-boost-round", "5",
-    ])
+    result = runner.invoke(
+        app,
+        [
+            "train",
+            "lgbm",
+            "--from",
+            "2025-06-14",
+            "--to",
+            "2025-06-15",
+            "--synthetic",
+            "--models-dir",
+            str(models_dir),
+            "--num-boost-round",
+            "5",
+        ],
+    )
     assert result.exit_code == 0, result.output
     model_dir = next(models_dir.iterdir())
     model, metadata, cat_encoders = load_model_bundle(model_dir)
@@ -128,7 +153,9 @@ class TestSegmentJsonRoundTrip:
 
 class TestPredictProba:
     def test_shape_matches_n_rows_n_classes(
-        self, _trained_artifacts, _features_df: pd.DataFrame,
+        self,
+        _trained_artifacts,
+        _features_df: pd.DataFrame,
     ) -> None:
         """TC-BATCH-001: output shape is (N, 8)."""
         model, _, cat_encoders = _trained_artifacts
@@ -136,7 +163,9 @@ class TestPredictProba:
         assert proba.shape == (len(_features_df), _N_CLASSES)
 
     def test_rows_sum_to_one(
-        self, _trained_artifacts, _features_df: pd.DataFrame,
+        self,
+        _trained_artifacts,
+        _features_df: pd.DataFrame,
     ) -> None:
         """TC-BATCH-002: each row sums to ~1.0."""
         model, _, cat_encoders = _trained_artifacts
@@ -144,7 +173,9 @@ class TestPredictProba:
         assert np.allclose(proba.sum(axis=1), 1.0, atol=1e-6)
 
     def test_cat_encoders_none_fallback(
-        self, _trained_artifacts, _features_df: pd.DataFrame,
+        self,
+        _trained_artifacts,
+        _features_df: pd.DataFrame,
     ) -> None:
         """TC-BATCH-003: cat_encoders=None falls back to integer encoding."""
         model, _, _ = _trained_artifacts
@@ -160,25 +191,35 @@ class TestPredictProba:
 
 class TestRunBatchInferenceTaxonomy:
     def test_taxonomy_populates_mapped_labels(
-        self, _trained_artifacts, _features_df: pd.DataFrame,
+        self,
+        _trained_artifacts,
+        _features_df: pd.DataFrame,
     ) -> None:
         """TC-BATCH-004: mapped_labels is not None, length matches input."""
         model, _, cat_encoders = _trained_artifacts
         taxonomy = _example_taxonomy()
         result = run_batch_inference(
-            model, _features_df, cat_encoders=cat_encoders, taxonomy=taxonomy,
+            model,
+            _features_df,
+            cat_encoders=cat_encoders,
+            taxonomy=taxonomy,
         )
         assert result.mapped_labels is not None
         assert len(result.mapped_labels) == len(_features_df)
 
     def test_taxonomy_populates_mapped_probs(
-        self, _trained_artifacts, _features_df: pd.DataFrame,
+        self,
+        _trained_artifacts,
+        _features_df: pd.DataFrame,
     ) -> None:
         """TC-BATCH-005: mapped_probs is not None, each dict sums to ~1.0."""
         model, _, cat_encoders = _trained_artifacts
         taxonomy = _example_taxonomy()
         result = run_batch_inference(
-            model, _features_df, cat_encoders=cat_encoders, taxonomy=taxonomy,
+            model,
+            _features_df,
+            cat_encoders=cat_encoders,
+            taxonomy=taxonomy,
         )
         assert result.mapped_probs is not None
         assert len(result.mapped_probs) == len(_features_df)
@@ -186,12 +227,16 @@ class TestRunBatchInferenceTaxonomy:
             assert abs(sum(mp.values()) - 1.0) < 1e-4
 
     def test_without_taxonomy_mapped_fields_are_none(
-        self, _trained_artifacts, _features_df: pd.DataFrame,
+        self,
+        _trained_artifacts,
+        _features_df: pd.DataFrame,
     ) -> None:
         """TC-BATCH-006: without taxonomy, mapped_labels and mapped_probs are None."""
         model, _, cat_encoders = _trained_artifacts
         result = run_batch_inference(
-            model, _features_df, cat_encoders=cat_encoders,
+            model,
+            _features_df,
+            cat_encoders=cat_encoders,
         )
         assert result.mapped_labels is None
         assert result.mapped_probs is None
@@ -204,29 +249,41 @@ class TestRunBatchInferenceTaxonomy:
 
 class TestRunBatchInferenceCalibratorStore:
     def test_per_user_calibration_applied(
-        self, _trained_artifacts, _features_df: pd.DataFrame,
+        self,
+        _trained_artifacts,
+        _features_df: pd.DataFrame,
     ) -> None:
         """TC-BATCH-007: per-user calibration changes probabilities vs identity."""
         model, _, cat_encoders = _trained_artifacts
         df = _features_df.copy()
 
         identity_result = run_batch_inference(
-            model, df, cat_encoders=cat_encoders, calibrator=IdentityCalibrator(),
+            model,
+            df,
+            cat_encoders=cat_encoders,
+            calibrator=IdentityCalibrator(),
         )
 
         store = CalibratorStore(
             global_calibrator=TemperatureCalibrator(temperature=5.0),
         )
         store_result = run_batch_inference(
-            model, df, cat_encoders=cat_encoders, calibrator_store=store,
+            model,
+            df,
+            cat_encoders=cat_encoders,
+            calibrator_store=store,
         )
 
         assert not np.allclose(
-            identity_result.core_probs, store_result.core_probs, atol=1e-6,
+            identity_result.core_probs,
+            store_result.core_probs,
+            atol=1e-6,
         )
 
     def test_user_id_column_dispatches_per_user(
-        self, _trained_artifacts, _features_df: pd.DataFrame,
+        self,
+        _trained_artifacts,
+        _features_df: pd.DataFrame,
     ) -> None:
         """TC-BATCH-008: user_id column used for per-user calibrator dispatch."""
         model, _, cat_encoders = _trained_artifacts
@@ -241,7 +298,10 @@ class TestRunBatchInferenceCalibratorStore:
             user_calibrators={first_user: TemperatureCalibrator(temperature=5.0)},
         )
         result = run_batch_inference(
-            model, df, cat_encoders=cat_encoders, calibrator_store=store,
+            model,
+            df,
+            cat_encoders=cat_encoders,
+            calibrator_store=store,
         )
 
         assert result.core_probs.shape == (len(df), _N_CLASSES)

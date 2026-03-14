@@ -5,11 +5,8 @@ from __future__ import annotations
 import datetime as dt
 
 import pandas as pd
-import pytest
 
 from taskclf.core.validation import (
-    Severity,
-    ValidationReport,
     validate_feature_dataframe,
 )
 
@@ -72,7 +69,11 @@ class TestNonNullable:
         row = _base_row()
         row["user_id"] = None
         report = validate_feature_dataframe(_make_df([row]))
-        errors = [f for f in report.errors if f.check == "non_nullable" and f.column == "user_id"]
+        errors = [
+            f
+            for f in report.errors
+            if f.check == "non_nullable" and f.column == "user_id"
+        ]
         assert len(errors) == 1
 
     def test_passes_valid(self) -> None:
@@ -87,7 +88,11 @@ class TestMissingRate:
         for r in rows[:8]:
             r["keys_per_min"] = None
         report = validate_feature_dataframe(_make_df(rows), max_missing_rate=0.5)
-        miss_errors = [f for f in report.errors if f.check == "missing_rate" and f.column == "keys_per_min"]
+        miss_errors = [
+            f
+            for f in report.errors
+            if f.check == "missing_rate" and f.column == "keys_per_min"
+        ]
         assert len(miss_errors) == 1
 
     def test_within_threshold(self) -> None:
@@ -95,7 +100,11 @@ class TestMissingRate:
         for r in rows[:3]:
             r["keys_per_min"] = None
         report = validate_feature_dataframe(_make_df(rows), max_missing_rate=0.5)
-        miss_errors = [f for f in report.errors if f.check == "missing_rate" and f.column == "keys_per_min"]
+        miss_errors = [
+            f
+            for f in report.errors
+            if f.check == "missing_rate" and f.column == "keys_per_min"
+        ]
         assert len(miss_errors) == 0
 
 
@@ -104,21 +113,33 @@ class TestRangeChecks:
         row = _base_row()
         row["hour_of_day"] = 25
         report = validate_feature_dataframe(_make_df([row]))
-        range_errors = [f for f in report.errors if f.check == "range_max" and f.column == "hour_of_day"]
+        range_errors = [
+            f
+            for f in report.errors
+            if f.check == "range_max" and f.column == "hour_of_day"
+        ]
         assert len(range_errors) == 1
 
     def test_negative_keys_per_min(self) -> None:
         row = _base_row()
         row["keys_per_min"] = -5.0
         report = validate_feature_dataframe(_make_df([row]))
-        range_errors = [f for f in report.errors if f.check == "range_min" and f.column == "keys_per_min"]
+        range_errors = [
+            f
+            for f in report.errors
+            if f.check == "range_min" and f.column == "keys_per_min"
+        ]
         assert len(range_errors) == 1
 
     def test_foreground_ratio_above_one(self) -> None:
         row = _base_row()
         row["app_foreground_time_ratio"] = 1.5
         report = validate_feature_dataframe(_make_df([row]))
-        range_errors = [f for f in report.errors if f.check == "range_max" and f.column == "app_foreground_time_ratio"]
+        range_errors = [
+            f
+            for f in report.errors
+            if f.check == "range_max" and f.column == "app_foreground_time_ratio"
+        ]
         assert len(range_errors) == 1
 
     def test_valid_ranges_pass(self) -> None:
@@ -152,10 +173,7 @@ class TestMonotonicTimestamps:
         assert len(errors) == 1
 
     def test_monotonic_passes(self) -> None:
-        rows = [
-            _base_row(ts=dt.datetime(2025, 6, 15, 10, i))
-            for i in range(5)
-        ]
+        rows = [_base_row(ts=dt.datetime(2025, 6, 15, 10, i)) for i in range(5)]
         report = validate_feature_dataframe(_make_df(rows))
         errors = [f for f in report.errors if f.check == "monotonic_timestamps"]
         assert len(errors) == 0
@@ -167,7 +185,11 @@ class TestDistributionWarnings:
         for r in rows:
             r["keys_per_min"] = 42.0
         report = validate_feature_dataframe(_make_df(rows))
-        warns = [f for f in report.warnings if f.check == "constant_column" and f.column == "keys_per_min"]
+        warns = [
+            f
+            for f in report.warnings
+            if f.check == "constant_column" and f.column == "keys_per_min"
+        ]
         assert len(warns) == 1
 
     def test_dominant_value_warns(self) -> None:
@@ -179,7 +201,11 @@ class TestDistributionWarnings:
         for i, r in enumerate(rows[95:], start=1):
             r["keys_per_min"] = float(i)
         report = validate_feature_dataframe(_make_df(rows))
-        warns = [f for f in report.warnings if f.check == "dominant_value" and f.column == "keys_per_min"]
+        warns = [
+            f
+            for f in report.warnings
+            if f.check == "dominant_value" and f.column == "keys_per_min"
+        ]
         assert len(warns) == 1
 
     def test_no_dominant_value_at_80_percent(self) -> None:
@@ -191,7 +217,11 @@ class TestDistributionWarnings:
         for i, r in enumerate(rows[80:], start=1):
             r["keys_per_min"] = float(i)
         report = validate_feature_dataframe(_make_df(rows))
-        warns = [f for f in report.warnings if f.check == "dominant_value" and f.column == "keys_per_min"]
+        warns = [
+            f
+            for f in report.warnings
+            if f.check == "dominant_value" and f.column == "keys_per_min"
+        ]
         assert len(warns) == 0
 
 

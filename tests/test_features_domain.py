@@ -42,10 +42,20 @@ class TestClassifyDomain:
         assert classify_domain("GOOGLE.COM") == "search"
 
     def test_all_categories_are_valid(self) -> None:
-        for domain in ["github.com", "google.com", "youtube.com",
-                        "twitter.com", "bbc.com", "gmail.com",
-                        "notion.so", "slack.com", "figma.com",
-                        "randomsite.xyz", None, ""]:
+        for domain in [
+            "github.com",
+            "google.com",
+            "youtube.com",
+            "twitter.com",
+            "bbc.com",
+            "gmail.com",
+            "notion.so",
+            "slack.com",
+            "figma.com",
+            "randomsite.xyz",
+            None,
+            "",
+        ]:
             result = classify_domain(domain)
             assert result in DOMAIN_CATEGORIES
 

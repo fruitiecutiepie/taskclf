@@ -18,7 +18,7 @@ from __future__ import annotations
 import logging
 import re
 from pathlib import Path
-from typing import Final, Literal, Sequence
+from typing import Final, Literal
 
 import numpy as np
 import yaml
@@ -87,9 +87,7 @@ class TaxonomyAdvanced(BaseModel, frozen=True):
     """Advanced mapping tuning knobs."""
 
     probability_aggregation: Literal["sum", "max"] = "sum"
-    min_confidence_for_mapping: float = Field(
-        default=0.55, ge=0.0, le=1.0
-    )
+    min_confidence_for_mapping: float = Field(default=0.55, ge=0.0, le=1.0)
     reweight_core_labels: dict[str, float] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -101,9 +99,7 @@ class TaxonomyAdvanced(BaseModel, frozen=True):
                     f"must be one of {_CORE_LABEL_NAMES}"
                 )
             if weight <= 0:
-                raise ValueError(
-                    f"Reweight for {label!r} must be > 0, got {weight}"
-                )
+                raise ValueError(f"Reweight for {label!r} must be > 0, got {weight}")
         return self
 
 

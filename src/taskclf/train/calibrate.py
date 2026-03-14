@@ -35,7 +35,6 @@ from taskclf.infer.batch import predict_proba
 from taskclf.infer.calibration import (
     Calibrator,
     CalibratorStore,
-    IdentityCalibrator,
     IsotonicCalibrator,
     TemperatureCalibrator,
 )
@@ -90,7 +89,9 @@ def check_personalization_eligible(
 
     n_days = user_df["bucket_start_ts"].dt.date.nunique()
     n_labels = user_df["label"].nunique()
-    eligible = n_windows >= min_windows and n_days >= min_days and n_labels >= min_labels
+    eligible = (
+        n_windows >= min_windows and n_days >= min_days and n_labels >= min_labels
+    )
 
     return PersonalizationEligibility(
         user_id=user_id,
@@ -234,7 +235,8 @@ def fit_calibrator_store(
 
     for uid in user_ids:
         elig = check_personalization_eligible(
-            labeled_df, uid,
+            labeled_df,
+            uid,
             min_windows=min_windows,
             min_days=min_days,
             min_labels=min_labels,
@@ -244,7 +246,10 @@ def fit_calibrator_store(
         if not elig.is_eligible:
             logger.info(
                 "User %s ineligible (windows=%d, days=%d, labels=%d)",
-                uid, elig.labeled_windows, elig.labeled_days, elig.distinct_labels,
+                uid,
+                elig.labeled_windows,
+                elig.labeled_days,
+                elig.distinct_labels,
             )
             continue
 
