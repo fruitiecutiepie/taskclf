@@ -19,12 +19,6 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y xvfb
-
-      - name: Install dependencies
-        run: pip install uv && uv sync --group dev
-
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -33,36 +27,39 @@ jobs:
         with:
           version: latest
 
-      - name: Install frontend dependencies
-        working-directory: src/taskclf/ui/frontend
-        run: pnpm install --frozen-lockfile
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: Install dependencies
+        run: pip install uv && make install
 
       - name: Lint Python
-        run: uv run ruff check .
+        run: make py-lint
 
       - name: Lint frontend
-        working-directory: src/taskclf/ui/frontend
-        run: pnpm run lint
+        run: make ui-lint
 
-      - name: Run frontend tests
-        working-directory: src/taskclf/ui/frontend
-        run: pnpm run test
+      - name: Test Python
+        run: xvfb-run make py-test
 
-      - name: Typecheck frontend
-        working-directory: src/taskclf/ui/frontend
-        run: pnpm run typecheck
-
-      - name: Run tests
-        run: xvfb-run uv run pytest
+      - name: Test frontend
+        run: make ui-test
 
       - name: Typecheck Python
-        run: uv run mypy src
+        run: make py-typecheck
+
+      - name: Typecheck frontend
+        run: make ui-typecheck
 
   build:
     needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
 
       - uses: actions/setup-node@v4
         with:
@@ -73,14 +70,10 @@ jobs:
           version: latest
 
       - name: Build frontend
-        working-directory: src/taskclf/ui/frontend
-        run: pnpm install --frozen-lockfile && pnpm run build
+        run: make ui-build
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.14"
-
-      - run: pip install uv && uv build
+      - name: Build package
+        run: pip install uv && uv build
 
       - uses: actions/upload-artifact@v4
         with:
