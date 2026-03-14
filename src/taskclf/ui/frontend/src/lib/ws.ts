@@ -63,6 +63,41 @@ export interface TrayState {
   paused: boolean;
 }
 
+const StatusEventDefault: StatusEvent = {
+  type: "status",
+  state: "idle",
+  current_app: "unknown",
+  current_app_since: null,
+  candidate_app: null,
+  candidate_duration_s: 0,
+  transition_threshold_s: 0,
+  poll_seconds: 0,
+  poll_count: 0,
+  last_poll_ts: new Date(0).toISOString(),
+  uptime_s: 0,
+  aw_connected: false,
+  aw_bucket_id: null,
+  aw_host: "http://localhost:5600",
+  last_event_count: 0,
+  last_app_counts: {},
+} as const;
+
+const TrayStateDefault: TrayState = {
+  type: "tray_state",
+  model_loaded: false,
+  model_dir: null,
+  model_schema_hash: null,
+  suggested_label: null,
+  suggested_confidence: null,
+  transition_count: 0,
+  last_transition: null,
+  labels_saved_count: 0,
+  data_dir: "~/.taskclf",
+  ui_port: 0,
+  dev_mode: false,
+  paused: false,
+} as const;
+
 export interface ShowLabelGridEvent {
   type: "show_label_grid";
 }
@@ -160,9 +195,10 @@ export interface WSStats {
 }
 
 export function useWebSocket() {
-  const [latestStatus, setLatestStatus] = createSignal<StatusEvent | null>(null);
+  const [latestStatus, setLatestStatus] = createSignal<StatusEvent>(StatusEventDefault);
   const [latestPrediction, setLatestPrediction] = createSignal<Prediction | null>(null);
-  const [latestTrayState, setLatestTrayState] = createSignal<TrayState | null>(null);
+  const [latestTrayState, setLatestTrayState] =
+    createSignal<TrayState>(TrayStateDefault);
   const [activeSuggestion, setActiveSuggestion] = createSignal<LabelSuggestion | null>(
     null,
   );

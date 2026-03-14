@@ -11,9 +11,9 @@ import { ConnectionDot } from "./ConnectionDot";
 
 export const PredictionBadge: Component<{
   status: Accessor<ConnectionStatus>;
-  latestStatus: Accessor<StatusEvent | null>;
+  latestStatus: Accessor<StatusEvent>;
   latestPrediction: Accessor<Prediction | null>;
-  latestTrayState: Accessor<TrayState | null>;
+  latestTrayState: Accessor<TrayState>;
   activeSuggestion: Accessor<LabelSuggestion | null>;
   labelPinned?: Accessor<boolean>;
   panelPinned?: Accessor<boolean>;
@@ -29,10 +29,7 @@ export const PredictionBadge: Component<{
     return pred ? pred.mapped_label || pred.label : null;
   };
 
-  const noModel = () => {
-    const tray = props.latestTrayState();
-    return tray !== null && !tray.model_loaded;
-  };
+  const noModel = () => !props.latestTrayState().model_loaded;
 
   const badgeText = () =>
     predictionLabel() ?? (noModel() ? "No Model" : "Unknown Label");
