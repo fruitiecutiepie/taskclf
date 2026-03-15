@@ -113,6 +113,12 @@ bump-major:
 	$(call bump_version,major)
 
 retag:
+	@if [ -n "$$(git log origin/HEAD..HEAD --oneline)" ]; then \
+		echo "WARNING: Local commits not pushed to remote."; \
+		printf "Push now and continue? [y/N] "; \
+		read ans; \
+		case "$$ans" in [yY]*) git push ;; *) echo "Aborted."; exit 1 ;; esac; \
+	fi
 	git tag -d v$(CURRENT_VERSION)
 	git push origin :refs/tags/v$(CURRENT_VERSION)
 	git tag -a v$(CURRENT_VERSION) -m "v$(CURRENT_VERSION)"
