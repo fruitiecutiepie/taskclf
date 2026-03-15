@@ -25,8 +25,12 @@ if (!isBrowserMode()) {
 }
 
 const App: Component = () => {
-  if (isLabelView) return <LabelRecorderWindow />;
-  if (isPanelView) return <StatusPanelWindow />;
+  if (isLabelView) {
+    return <LabelRecorderWindow />;
+  }
+  if (isPanelView) {
+    return <StatusPanelWindow />;
+  }
 
   const inBrowser = isBrowserMode();
   const [labelPinned, setLabelPinned] = createSignal(false);
@@ -67,7 +71,9 @@ const App: Component = () => {
 
   createEffect(() => {
     const prompt = ws.latestPrompt();
-    if (!prompt) return;
+    if (!prompt) {
+      return;
+    }
     showTransitionNotification(prompt, () => {
       if (inBrowser) {
         setLabelPinned(true);

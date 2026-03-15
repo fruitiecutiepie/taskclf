@@ -17,7 +17,7 @@ export const LabelTable: Component = () => {
       </h2>
 
       <Show
-        when={labels() && labels()?.length > 0}
+        when={labels() && (labels()?.length ?? 0) > 0}
         fallback={
           <div
             style={{

@@ -21,8 +21,15 @@
       "suspicious": {
         "noExplicitAny": "warn"
       },
+      "complexity": {
+        "useOptionalChain": "error"
+      },
+      "nursery": {
+        "noJsxPropsBind": "off"
+      },
       "style": {
-        "noNonNullAssertion": "warn"
+        "noNonNullAssertion": "warn",
+        "useBlockStatements": "error"
       }
     }
   }

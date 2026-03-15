@@ -14,8 +14,12 @@ export const ConnectionDot: Component<{
   const pinned = () => props.panelPinned?.() ?? false;
 
   const dotShadow = () => {
-    if (hovered()) return `0 0 0 3px ${color()}44, 0 0 6px ${color()}88`;
-    if (pinned()) return `0 0 0 2px ${color()}88`;
+    if (hovered()) {
+      return `0 0 0 3px ${color()}44, 0 0 6px ${color()}88`;
+    }
+    if (pinned()) {
+      return `0 0 0 2px ${color()}88`;
+    }
     return "none";
   };
 

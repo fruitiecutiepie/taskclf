@@ -40,7 +40,9 @@ export const LabelHistoryRow: Component<{
   const editedRange = (): TimeRange | null => {
     const s = timeInputToDate(props.dateStr, startTime());
     const e = timeInputToDate(props.dateStr, endTime());
-    if (e.getTime() <= s.getTime()) return null;
+    if (e.getTime() <= s.getTime()) {
+      return null;
+    }
     return { start: s.toISOString(), end: e.toISOString() };
   };
 
@@ -89,10 +91,14 @@ export const LabelHistoryRow: Component<{
           "text-align": "left",
         }}
         onMouseEnter={(e) => {
-          if (!props.expanded) e.currentTarget.style.background = "#1a1a24";
+          if (!props.expanded) {
+            e.currentTarget.style.background = "#1a1a24";
+          }
         }}
         onMouseLeave={(e) => {
-          if (!props.expanded) e.currentTarget.style.background = "transparent";
+          if (!props.expanded) {
+            e.currentTarget.style.background = "transparent";
+          }
         }}
       >
         <span style={{ display: "flex", "align-items": "center", gap: "6px" }}>
@@ -192,9 +198,7 @@ export const LabelHistoryRow: Component<{
 
           <ActivitySummary timeRange={() => editedRange()} />
 
-          <Show when={props.flash}>
-            <LabelFlash flash={props.flash as string} />
-          </Show>
+          {props.flash && <LabelFlash flash={props.flash} />}
 
           <div
             style={{

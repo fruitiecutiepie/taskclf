@@ -13,7 +13,9 @@ export const StatusActivityWatch: Component<{
 
   const appCounts = createMemo(() => {
     const v = s();
-    if (!v.last_app_counts) return [];
+    if (!v.last_app_counts) {
+      return [];
+    }
     return Object.entries(v.last_app_counts).sort(([, a], [, b]) => b - a);
   });
 

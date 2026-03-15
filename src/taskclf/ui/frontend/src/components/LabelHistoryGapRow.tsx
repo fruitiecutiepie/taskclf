@@ -56,7 +56,9 @@ export const LabelHistoryGapRow: Component<{
   const selectedRange = (): TimeRange | null => {
     const s = parseDate(startIso()).getTime();
     const e = parseDate(endIso()).getTime();
-    if (e <= s) return null;
+    if (e <= s) {
+      return null;
+    }
     return { start: startIso(), end: endIso() };
   };
 
@@ -96,10 +98,14 @@ export const LabelHistoryGapRow: Component<{
           "text-align": "left",
         }}
         onMouseEnter={(e) => {
-          if (!props.expanded) e.currentTarget.style.background = "#16161e";
+          if (!props.expanded) {
+            e.currentTarget.style.background = "#16161e";
+          }
         }}
         onMouseLeave={(e) => {
-          if (!props.expanded) e.currentTarget.style.background = "transparent";
+          if (!props.expanded) {
+            e.currentTarget.style.background = "transparent";
+          }
         }}
       >
         <span style={{ display: "flex", "align-items": "center", gap: "6px" }}>
@@ -172,9 +178,7 @@ export const LabelHistoryGapRow: Component<{
 
           <ActivitySummary timeRange={() => selectedRange()} />
 
-          <Show when={props.flash}>
-            <LabelFlash flash={props.flash as string} />
-          </Show>
+          {props.flash && <LabelFlash flash={props.flash} />}
 
           <div
             style={{
@@ -191,7 +195,9 @@ export const LabelHistoryGapRow: Component<{
                   onClick={(e) => {
                     e.stopPropagation();
                     const r = selectedRange();
-                    if (r) props.onCreate(r.start, r.end, lbl);
+                    if (r) {
+                      props.onCreate(r.start, r.end, lbl);
+                    }
                   }}
                   style={{
                     padding: "4px 2px",

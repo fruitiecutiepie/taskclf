@@ -61,7 +61,9 @@ export function buildDayTimeline(
   for (const entry of sorted) {
     const s = Math.max(parseDate(entry.start_ts).getTime(), dayStart);
     const e = Math.min(parseDate(entry.end_ts).getTime(), dayEnd);
-    if (e <= s) continue;
+    if (e <= s) {
+      continue;
+    }
 
     if (s > cursor) {
       segments.push({

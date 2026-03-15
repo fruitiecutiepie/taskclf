@@ -16,10 +16,14 @@ export const StatusPanelWindow: Component = () => {
       {/* biome-ignore lint/a11y/noStaticElementInteractions: hover-only panel show/hide, not a user interaction */}
       <div
         onMouseEnter={() => {
-          if (!inBrowser) host.invoke({ cmd: "cancelPanelHide" });
+          if (!inBrowser) {
+            host.invoke({ cmd: "cancelPanelHide" });
+          }
         }}
         onMouseLeave={() => {
-          if (!inBrowser) host.invoke({ cmd: "hideStatePanel" });
+          if (!inBrowser) {
+            host.invoke({ cmd: "hideStatePanel" });
+          }
         }}
         style={{
           ...(inBrowser

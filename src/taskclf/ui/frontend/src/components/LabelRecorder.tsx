@@ -62,7 +62,9 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
     on(
       lastLabel,
       () => {
-        if (overwritePending()) setOverwritePending(null);
+        if (overwritePending()) {
+          setOverwritePending(null);
+        }
       },
       { defer: true },
     ),
@@ -73,7 +75,9 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
       () => [selectedMinutes(), fillFromLast()] as const,
       () => {
         const pending = overwritePending();
-        if (!pending) return;
+        if (!pending) {
+          return;
+        }
 
         const updated = labelOverwritePendingUpdGet(
           pending,
@@ -106,8 +110,9 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
     let start: Date;
     let forceExtendFwd = false;
 
-    if (fillFromLast() && lastLabel()?.end_ts) {
-      start = parseISODate(lastLabel()?.end_ts);
+    const lastEndTs = lastLabel()?.end_ts;
+    if (fillFromLast() && lastEndTs) {
+      start = parseISODate(lastEndTs);
     } else if (mins === 0) {
       start = now;
       forceExtendFwd = true;
@@ -168,7 +173,9 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
 
   async function confirmOverwrite() {
     const pending = overwritePending();
-    if (!pending) return;
+    if (!pending) {
+      return;
+    }
     setOverwritePending(null);
     try {
       await createLabel({
@@ -190,7 +197,9 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
 
   async function confirmKeepAll() {
     const pending = overwritePending();
-    if (!pending) return;
+    if (!pending) {
+      return;
+    }
     setOverwritePending(null);
     try {
       await createLabel({

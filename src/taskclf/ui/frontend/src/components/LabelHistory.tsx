@@ -40,7 +40,9 @@ export const LabelHistory: Component<{
   const [labels, { refetch }] = createResource(
     () => (props.visible() ? selectedDate() : null),
     async (dateStr) => {
-      if (!dateStr) return [];
+      if (!dateStr) {
+        return [];
+      }
       return fetchLabelsByDate(dateStr);
     },
   );
@@ -54,7 +56,9 @@ export const LabelHistory: Component<{
     on(
       () => props.latestPrediction?.(),
       () => {
-        if (props.visible()) refetch();
+        if (props.visible()) {
+          refetch();
+        }
       },
       { defer: true },
     ),
@@ -213,7 +217,9 @@ export const LabelHistory: Component<{
             max={todayDateStr()}
             onInput={(e) => {
               const v = e.currentTarget.value;
-              if (v) setSelectedDate(v);
+              if (v) {
+                setSelectedDate(v);
+              }
             }}
             style={{
               position: "absolute",
@@ -229,7 +235,9 @@ export const LabelHistory: Component<{
         <button
           type="button"
           onClick={() => {
-            if (!isFutureDate()) setSelectedDate(shiftDate(selectedDate(), 1));
+            if (!isFutureDate()) {
+              setSelectedDate(shiftDate(selectedDate(), 1));
+            }
           }}
           disabled={isFutureDate()}
           style={{
@@ -243,10 +251,14 @@ export const LabelHistory: Component<{
             transition: "color 0.1s",
           }}
           onMouseEnter={(e) => {
-            if (!isFutureDate()) e.currentTarget.style.color = "#e0e0e0";
+            if (!isFutureDate()) {
+              e.currentTarget.style.color = "#e0e0e0";
+            }
           }}
           onMouseLeave={(e) => {
-            if (!isFutureDate()) e.currentTarget.style.color = "#999";
+            if (!isFutureDate()) {
+              e.currentTarget.style.color = "#999";
+            }
           }}
         >
           ▶
@@ -272,7 +284,9 @@ export const LabelHistory: Component<{
           segments={dayData().segments}
           onSegmentClick={(_seg, index) => {
             const item = dayData().items[index];
-            if (!item) return;
+            if (!item) {
+              return;
+            }
             const key = itemKey(item);
             setExpandedKey(expandedKey() === key ? null : key);
             setFlash(null);

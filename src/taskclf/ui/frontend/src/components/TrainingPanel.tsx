@@ -76,21 +76,33 @@ export const TrainingPanel: Component<{
   );
 
   const canTrain = createMemo(() => {
-    if (synthetic()) return true;
+    if (synthetic()) {
+      return true;
+    }
     const dc = dataCheck();
-    if (!dc) return false;
+    if (!dc) {
+      return false;
+    }
     return dc.trainable_rows > 0;
   });
 
   const trainDisabledReason = createMemo(() => {
-    if (synthetic()) return null;
+    if (synthetic()) {
+      return null;
+    }
     const dc = dataCheck();
-    if (!dc) return "Prepare data before training";
-    if (dc.dates_with_features.length === 0)
+    if (!dc) {
+      return "Prepare data before training";
+    }
+    if (dc.dates_with_features.length === 0) {
       return "No feature data — is ActivityWatch running?";
-    if (dc.label_span_count === 0) return "No label spans in selected range";
-    if (dc.trainable_rows === 0)
+    }
+    if (dc.label_span_count === 0) {
+      return "No label spans in selected range";
+    }
+    if (dc.trainable_rows === 0) {
       return "Labels don't overlap any feature windows — adjust labels or date range";
+    }
     return null;
   });
 
@@ -98,8 +110,9 @@ export const TrainingPanel: Component<{
     return ml
       .filter((m) => m.valid)
       .sort((a, b) => {
-        if (a.created_at && b.created_at)
+        if (a.created_at && b.created_at) {
           return b.created_at.localeCompare(a.created_at);
+        }
         return 0;
       });
   }
@@ -114,7 +127,9 @@ export const TrainingPanel: Component<{
   }
 
   async function handleCheckData() {
-    if (checking()) return;
+    if (checking()) {
+      return;
+    }
     setChecking(true);
     setCheckError(null);
     try {
@@ -135,7 +150,9 @@ export const TrainingPanel: Component<{
   refreshModels();
 
   async function handleTrain() {
-    if (submitting()) return;
+    if (submitting()) {
+      return;
+    }
     if (!confirmPending()) {
       setConfirmPending(true);
       return;
@@ -253,7 +270,7 @@ export const TrainingPanel: Component<{
         </button>
         <Show when={dataCheck()}>
           <div style={{ "margin-top": "4px" }}>
-            <Show when={dataCheck()?.dates_built.length > 0}>
+            <Show when={(dataCheck()?.dates_built.length ?? 0) > 0}>
               <StatusRow
                 label="built"
                 value={`${dataCheck()?.dates_built.length} day(s) from AW`}
@@ -263,7 +280,7 @@ export const TrainingPanel: Component<{
             </Show>
             <StatusRow
               label="features_days"
-              value={`${dataCheck()?.dates_with_features.length} / ${dataCheck()?.dates_with_features.length + dataCheck()?.dates_missing_features.length}`}
+              value={`${dataCheck()?.dates_with_features.length ?? 0} / ${(dataCheck()?.dates_with_features.length ?? 0) + (dataCheck()?.dates_missing_features.length ?? 0)}`}
               tooltip="Days with activity data out of total days in range"
             />
             <StatusRow
@@ -274,11 +291,11 @@ export const TrainingPanel: Component<{
             <StatusRow
               label="trainable_rows"
               value={
-                dataCheck()?.trainable_rows > 0
+                (dataCheck()?.trainable_rows ?? 0) > 0
                   ? `${dataCheck()?.trainable_rows} (${dataCheck()?.trainable_labels.join(", ")})`
                   : "0"
               }
-              color={dataCheck()?.trainable_rows > 0 ? "#22c55e" : "#ef4444"}
+              color={(dataCheck()?.trainable_rows ?? 0) > 0 ? "#22c55e" : "#ef4444"}
               tooltip="Feature rows with a matching label — only these enter training"
             />
           </div>
@@ -590,7 +607,7 @@ export const TrainingPanel: Component<{
                 <Show when={m.macro_f1 != null}>
                   <StatusRow
                     label="macro_f1"
-                    value={m.macro_f1?.toFixed(3)}
+                    value={m.macro_f1?.toFixed(3) ?? ""}
                     color="#22c55e"
                     tooltip="Model's macro-averaged F1 score on the validation set"
                   />
@@ -598,7 +615,7 @@ export const TrainingPanel: Component<{
                 <Show when={m.created_at}>
                   <StatusRow
                     label="created"
-                    value={m.created_at?.slice(0, 19).replace("T", " ")}
+                    value={m.created_at?.slice(0, 19).replace("T", " ") ?? ""}
                     dim
                     tooltip="When this model was trained"
                   />

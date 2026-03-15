@@ -17,7 +17,9 @@ export const StatusActivityMonitor: Component<{
 
   const transitionPct = createMemo(() => {
     const v = s();
-    if (!v.candidate_app || !v.transition_threshold_s) return null;
+    if (!v.candidate_app || !v.transition_threshold_s) {
+      return null;
+    }
     return Math.min(
       100,
       Math.round((v.candidate_duration_s / v.transition_threshold_s) * 100),

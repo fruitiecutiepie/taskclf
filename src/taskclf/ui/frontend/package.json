@@ -11,6 +11,7 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "lint": "biome check src/",
+    "lint:fix": "biome check --fix src/",
     "format": "biome format --write src/"
   },
   "dependencies": {

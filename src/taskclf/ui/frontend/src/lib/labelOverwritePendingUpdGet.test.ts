@@ -108,9 +108,11 @@ describe("labelOverwritePendingUpdGet", () => {
       baseSel({ selectedMinutes: 10 }),
       now,
     );
-    expect(result).not.toBeNull();
-    expect(new Date(result?.start).getUTCMinutes()).toBe(20); // 11:20
-    expect(new Date(result?.end).getUTCMinutes()).toBe(30); // 11:30
+    if (result === null) {
+      throw new Error("expected non-null result");
+    }
+    expect(new Date(result.start).getUTCMinutes()).toBe(20); // 11:20
+    expect(new Date(result.end).getUTCMinutes()).toBe(30); // 11:30
   });
 
   // ------------------------------------------------------------------
@@ -126,8 +128,10 @@ describe("labelOverwritePendingUpdGet", () => {
       baseSel({ fillFromLast: true, lastLabelEndTs: iso(10, 45) }),
       now,
     );
-    expect(result).not.toBeNull();
-    expect(new Date(result?.start).getUTCMinutes()).toBe(45); // 10:45
+    if (result === null) {
+      throw new Error("expected non-null result");
+    }
+    expect(new Date(result.start).getUTCMinutes()).toBe(45); // 10:45
   });
 
   it("returns null when fillFromLast range does not overlap any conflict", () => {

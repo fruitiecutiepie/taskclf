@@ -34,6 +34,9 @@ py-build: ui-build
 ui-lint:
 	$(PNPM) run lint
 
+ui-lint-fix:
+	$(PNPM) run lint:fix
+
 ui-test:
 	$(PNPM) run test
 

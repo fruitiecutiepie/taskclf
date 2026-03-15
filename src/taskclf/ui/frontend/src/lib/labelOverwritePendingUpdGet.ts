@@ -36,7 +36,9 @@ export function labelOverwritePendingUpdGet(
     return cs < endMs && startMs < ce;
   });
 
-  if (remaining.length === 0) return null;
+  if (remaining.length === 0) {
+    return null;
+  }
 
   return {
     ...pending,

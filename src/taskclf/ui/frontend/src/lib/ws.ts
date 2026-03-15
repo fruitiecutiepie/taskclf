@@ -405,7 +405,9 @@ export function useWebSocket() {
   }
 
   function scheduleReconnect() {
-    if (reconnectTimer) return;
+    if (reconnectTimer) {
+      return;
+    }
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null;
       retryDelay = Math.min(retryDelay * 2, 30000);
@@ -422,7 +424,9 @@ export function useWebSocket() {
   onMount(() => connect());
 
   onCleanup(() => {
-    if (reconnectTimer) clearTimeout(reconnectTimer);
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+    }
     clearSuggestionTimer();
     ws?.close();
   });

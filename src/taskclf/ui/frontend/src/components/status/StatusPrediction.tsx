@@ -12,7 +12,9 @@ export const StatusPrediction: Component<{
 
   const summary = createMemo(() => {
     const p = pred();
-    if (!p) return "none";
+    if (!p) {
+      return "none";
+    }
     return `${p.mapped_label} ${Math.round(p.confidence * 100)}%`;
   });
 

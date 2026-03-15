@@ -62,7 +62,9 @@ class AdaptiveHost implements Host {
 
   async invoke(command: HostCommand): Promise<void> {
     const api = getPyWebViewApi();
-    if (!api) return;
+    if (!api) {
+      return;
+    }
     try {
       switch (command.cmd) {
         case "showLabelGrid":

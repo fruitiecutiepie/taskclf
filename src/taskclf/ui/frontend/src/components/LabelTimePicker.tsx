@@ -90,11 +90,15 @@ export const LabelTimePicker: Component<LabelTimePickerProps> = (props) => {
       </For>
       {(() => {
         const ll = props.lastLabel();
-        if (!ll?.end_ts) return null;
+        if (!ll?.end_ts) {
+          return null;
+        }
         const ago = Math.round(
           (Date.now() - parseISODate(ll.end_ts).getTime()) / 60_000,
         );
-        if (ago < 1) return null;
+        if (ago < 1) {
+          return null;
+        }
         const label =
           ago >= 60
             ? `gap ${Math.floor(ago / 60)}h${ago % 60 ? `${ago % 60}m` : ""}`
@@ -156,7 +160,9 @@ export const LabelTimePicker: Component<LabelTimePickerProps> = (props) => {
               }
             }}
             onFocus={() => {
-              if (customValue()) applyCustom(customValue(), customUnit());
+              if (customValue()) {
+                applyCustom(customValue(), customUnit());
+              }
             }}
             style={{
               width: "28px",
@@ -233,7 +239,9 @@ export const LabelTimePicker: Component<LabelTimePickerProps> = (props) => {
                 type="button"
                 onClick={() => {
                   setCustomUnit(u);
-                  if (customValue()) applyCustom(customValue(), u);
+                  if (customValue()) {
+                    applyCustom(customValue(), u);
+                  }
                 }}
                 style={{
                   padding: "2px 5px",

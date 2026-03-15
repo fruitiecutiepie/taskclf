@@ -10,7 +10,9 @@ export const PredictionSuggestion: Component<{
 
   async function accept() {
     const sg = s();
-    if (!sg) return;
+    if (!sg) {
+      return;
+    }
     setError(null);
     try {
       await createLabel({
@@ -50,7 +52,7 @@ export const PredictionSuggestion: Component<{
           </span>
           <strong>{s()?.suggested}</strong>{" "}
           <span style={{ color: "var(--text-muted)" }}>
-            ({Math.round(s()?.confidence * 100)}%)
+            ({Math.round((s()?.confidence ?? 0) * 100)}%)
           </span>
         </div>
         <div style={{ display: "flex", gap: "8px", "flex-shrink": "0" }}>

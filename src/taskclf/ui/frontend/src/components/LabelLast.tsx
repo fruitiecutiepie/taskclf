@@ -6,6 +6,23 @@ interface LabelLastProps {
   lastLabel: Accessor<{ label: string; end_ts: string } | null | undefined>;
 }
 
+const LabelLastContent: Component<{
+  ll: Accessor<{ label: string; end_ts: string }>;
+}> = (props) => (
+  <>
+    Last:{" "}
+    <span
+      style={{
+        color: LABEL_COLORS[props.ll().label] ?? "var(--text)",
+        "font-weight": "600",
+      }}
+    >
+      {props.ll().label}
+    </span>{" "}
+    {timeAgo(props.ll().end_ts)}
+  </>
+);
+
 export const LabelLast: Component<LabelLastProps> = (props) => (
   <div
     style={{
@@ -22,16 +39,7 @@ export const LabelLast: Component<LabelLastProps> = (props) => (
       when={props.lastLabel()}
       fallback={<span style={{ color: "var(--text-muted)" }}>No labels yet</span>}
     >
-      Last:{" "}
-      <span
-        style={{
-          color: LABEL_COLORS[props.lastLabel()?.label] ?? "var(--text)",
-          "font-weight": "600",
-        }}
-      >
-        {props.lastLabel()?.label}
-      </span>{" "}
-      {timeAgo(props.lastLabel()?.end_ts)}
+      {(ll) => <LabelLastContent ll={ll} />}
     </Show>
   </div>
 );

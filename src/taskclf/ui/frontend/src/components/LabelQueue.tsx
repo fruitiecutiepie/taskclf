@@ -22,7 +22,7 @@ export const LabelQueue: Component = () => {
       </h2>
 
       <Show
-        when={queue() && queue()?.length > 0}
+        when={queue() && (queue()?.length ?? 0) > 0}
         fallback={
           <div
             style={{

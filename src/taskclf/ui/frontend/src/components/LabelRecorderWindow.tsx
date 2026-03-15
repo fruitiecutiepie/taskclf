@@ -19,10 +19,14 @@ export const LabelRecorderWindow: Component = () => {
     // biome-ignore lint/a11y/noStaticElementInteractions: hover-only container for native window show/hide
     <div
       onMouseEnter={() => {
-        if (!inBrowser) host.invoke({ cmd: "cancelLabelHide" });
+        if (!inBrowser) {
+          host.invoke({ cmd: "cancelLabelHide" });
+        }
       }}
       onMouseLeave={() => {
-        if (!inBrowser) host.invoke({ cmd: "hideLabelGrid" });
+        if (!inBrowser) {
+          host.invoke({ cmd: "hideLabelGrid" });
+        }
       }}
       style={{
         ...(inBrowser

@@ -12,7 +12,9 @@ export const StatusSuggestion: Component<{
 
   const summary = createMemo(() => {
     const s = sug();
-    if (!s) return "";
+    if (!s) {
+      return "";
+    }
     return `${s.suggested} ${Math.round(s.confidence * 100)}%`;
   });
 
