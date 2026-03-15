@@ -3,7 +3,8 @@
        ui-lint ui-test ui-typecheck ui-build ui-dev \
        lint test typecheck ci \
        docs-serve docs-build \
-       version bump-patch bump-minor bump-major
+       version bump-patch bump-minor bump-major \
+       retag
 
 PNPM := pnpm --dir src/taskclf/ui/frontend
 
@@ -110,3 +111,9 @@ bump-minor:
 
 bump-major:
 	$(call bump_version,major)
+
+retag:
+	git tag -d v$(CURRENT_VERSION)
+	git push origin :refs/tags/v$(CURRENT_VERSION)
+	git tag -a v$(CURRENT_VERSION) -m "v$(CURRENT_VERSION)"
+	git push origin v$(CURRENT_VERSION)
