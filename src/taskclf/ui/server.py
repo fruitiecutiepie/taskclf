@@ -847,7 +847,7 @@ def create_app(
     async def window_toggle() -> dict[str, Any]:
         if window_api is None:
             return {"status": "no_window", "visible": False}
-        window_api.toggle_window()
+        window_api.window_toggle()
         return {"status": "ok", "visible": window_api.visible}
 
     @app.get("/api/window/state")
@@ -857,10 +857,10 @@ def create_app(
         return {"available": True, "visible": window_api.visible}
 
     @app.post("/api/window/show-label-grid")
-    async def window_show_label_grid() -> dict[str, str]:
+    async def window_label_grid_show() -> dict[str, str]:
         if window_api is not None:
-            window_api.show_label_grid()
-        await bus.publish({"type": "show_label_grid"})
+            window_api.label_grid_show()
+        await bus.publish({"type": "label_grid_show"})
         return {"status": "ok"}
 
     # -- REST: notification actions -------------------------------------------

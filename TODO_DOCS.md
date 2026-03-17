@@ -131,7 +131,7 @@ rules, and cross-refs to `labels.store`, `labels.projection`, and
 
 Created `docs/api/ui/window.md` with overview, window sizes table
 (3 windows), `WindowAPI` public methods table (8 methods), window
-positioning rules, `run_window` function section with parameter table,
+positioning rules, `window_run` function section with parameter table,
 macOS stderr redirect note, and integration cross-refs to CLI `ui`
 command, `ui.tray`, and `EventBus`. Added to `mkdocs.yml` nav.
 

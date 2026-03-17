@@ -75,7 +75,7 @@ The UI is a SolidJS single-page application served by a FastAPI backend:
   - `suggestion_cleared` -- published after every successful label save (via `POST /api/labels` or `POST /api/notification/accept`): `reason` (e.g. `"label_saved"`). Clients clear the active suggestion on receipt. The frontend also applies a 10-minute TTL: if no new `suggest_label` event replaces it, the suggestion auto-dismisses.
   - `suggest_label` -- on app transition with model suggestion: `suggested`, `confidence`, `reason`, `old_label`, `block_start`, `block_end`.
   - `prompt_label` -- on task transition with labeling prompt: `prev_app`, `new_app`, `block_start`, `block_end`, `duration_min`, `suggested_label`, `suggested_confidence`.
-  - `show_label_grid` -- triggered by `POST /api/window/show-label-grid`: `type` (`"show_label_grid"`, no other fields).
+  - `label_grid_show` -- triggered by `POST /api/window/show-label-grid`: `type` (`"label_grid_show"`, no other fields).
   - `train_progress` -- during training: `job_id`, `step`, `progress_pct`, `message`.
   - `train_complete` -- on training success: `job_id`, `metrics` (`macro_f1`, `weighted_f1`), `model_dir`.
   - `train_failed` -- on training failure: `job_id`, `error`.

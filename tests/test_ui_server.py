@@ -905,7 +905,7 @@ class TestShowLabelGrid:
         assert resp.json() == {"status": "ok"}
 
     def test_with_window_api(self, data_dir: Path) -> None:
-        """TC-UI-WS-002: With window_api -> show_label_grid() called."""
+        """TC-UI-WS-002: With window_api -> label_grid_show() called."""
         from unittest.mock import MagicMock
 
         mock_api = MagicMock()
@@ -916,7 +916,7 @@ class TestShowLabelGrid:
         resp = tc.post("/api/window/show-label-grid")
         assert resp.status_code == 200
         assert resp.json() == {"status": "ok"}
-        mock_api.show_label_grid.assert_called_once()
+        mock_api.label_grid_show.assert_called_once()
 
 
 # ---------------------------------------------------------------------------

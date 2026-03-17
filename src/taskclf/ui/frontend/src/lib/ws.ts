@@ -98,7 +98,7 @@ const TrayStateDefault: TrayState = {
 } as const;
 
 export interface ShowLabelGridEvent {
-  type: "show_label_grid";
+  type: "label_grid_show";
 }
 
 export interface PromptLabelEvent {
@@ -346,7 +346,7 @@ export function useWebSocket() {
             clearSuggestionTimer();
             bumpStats(now);
             break;
-          case "show_label_grid":
+          case "label_grid_show":
             setStore("labelGridRequested", (n) => n + 1);
             bumpStats(now);
             break;

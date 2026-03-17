@@ -60,10 +60,10 @@ Internally, `WindowAPI` delegates to two `WindowChild` instances
 | `bind(window)` | Bind the main compact window and subscribe to its `moved` event |
 | `bind_label(label)` | Bind the label grid window |
 | `bind_panel(panel)` | Bind the state panel window |
-| `toggle_window()` | Toggle the compact pill's visibility |
-| `show_label_grid()` | Show the label grid below the pill (right-aligned) |
-| `hide_label_grid()` | Schedule a delayed hide of the label grid (300 ms) |
-| `toggle_state_panel()` | Toggle the panel's visibility; positions below the label grid when both are visible |
+| `window_toggle()` | Toggle the compact pill's visibility |
+| `label_grid_show()` | Show the label grid below the pill (right-aligned) |
+| `label_grid_hide()` | Schedule a delayed hide of the label grid (300 ms) |
+| `state_panel_toggle()` | Toggle the panel's visibility; positions below the label grid when both are visible |
 | `visible` | Property returning whether the compact pill is currently visible |
 
 ### Window positioning

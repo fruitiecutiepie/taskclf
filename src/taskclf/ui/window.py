@@ -143,31 +143,31 @@ class WindowAPI:
     def bind_panel(self, panel: Any) -> None:
         self._panel.window = panel
 
-    def hide_window(self) -> None:
+    def window_hide(self) -> None:
         if self._window is not None:
             self._window.hide()
         self._visible = False
 
-    def show_window(self) -> None:
+    def window_show(self) -> None:
         if self._window is not None:
             self._window.show()
         self._visible = True
 
-    def toggle_window(self) -> None:
+    def window_toggle(self) -> None:
         if self._visible:
-            self.hide_window()
+            self.window_hide()
         else:
-            self.show_window()
+            self.window_show()
 
-    def toggle_dashboard(self) -> None:
+    def dashboard_toggle(self) -> None:
         """Toggle all windows. Re-show positions the pill at its default location."""
-        logger.debug("toggle_dashboard called — visible=%s", self._visible)
+        logger.debug("dashboard_toggle called — visible=%s", self._visible)
         if self._visible:
             if self._label.visible:
                 self._label.visibility_off()
             if self._panel.visible:
                 self._panel.visibility_off()
-            self.hide_window()
+            self.window_hide()
         else:
             if (
                 self._window is not None
@@ -180,41 +180,41 @@ class WindowAPI:
                     logger.debug(
                         "Could not reposition window to default", exc_info=True
                     )
-            self.show_window()
+            self.window_show()
 
     # -- Label grid window -----------------------------------------------------
 
-    def show_label_grid(self) -> None:
+    def label_grid_show(self) -> None:
         """Show label grid on hover (non-pinned)."""
         self._label.visibility_on(self._window)
 
-    def hide_label_grid(self) -> None:
+    def label_grid_hide(self) -> None:
         """Schedule label grid hide unless pinned."""
         self._label.visibility_off_deferred()
 
-    def cancel_label_hide(self) -> None:
+    def label_grid_cancel_hide(self) -> None:
         """Cancel any pending label hide (e.g. mouse entered label window)."""
         self._label.timer_cancel()
 
-    def toggle_label_grid(self) -> None:
+    def label_grid_toggle(self) -> None:
         """Toggle pinned state of the label grid."""
         self._label.pin_toggle(self._window)
 
     # -- State panel window ----------------------------------------------------
 
-    def show_state_panel(self) -> None:
+    def state_panel_show(self) -> None:
         """Show panel on hover (non-pinned)."""
         self._panel.visibility_on(self._window)
 
-    def hide_state_panel(self) -> None:
+    def state_panel_hide(self) -> None:
         """Schedule panel hide unless pinned."""
         self._panel.visibility_off_deferred()
 
-    def cancel_panel_hide(self) -> None:
+    def state_panel_cancel_hide(self) -> None:
         """Cancel any pending panel hide (e.g. mouse entered panel window)."""
         self._panel.timer_cancel()
 
-    def toggle_state_panel(self) -> None:
+    def state_panel_toggle(self) -> None:
         """Toggle pinned state of the panel."""
         self._panel.pin_toggle(self._window)
 

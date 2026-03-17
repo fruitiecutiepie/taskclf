@@ -30,16 +30,16 @@ declare global {
   interface Window {
     pywebview?: {
       api?: {
-        show_label_grid(): Promise<void>;
-        hide_label_grid(): Promise<void>;
-        toggle_label_grid(): Promise<void>;
-        cancel_label_hide(): Promise<void>;
-        hide_window(): Promise<void>;
-        toggle_dashboard(): Promise<void>;
-        toggle_state_panel(): Promise<void>;
-        show_state_panel(): Promise<void>;
-        hide_state_panel(): Promise<void>;
-        cancel_panel_hide(): Promise<void>;
+        label_grid_show(): Promise<void>;
+        label_grid_hide(): Promise<void>;
+        label_grid_toggle(): Promise<void>;
+        label_grid_cancel_hide(): Promise<void>;
+        window_hide(): Promise<void>;
+        dashboard_toggle(): Promise<void>;
+        state_panel_toggle(): Promise<void>;
+        state_panel_show(): Promise<void>;
+        state_panel_hide(): Promise<void>;
+        state_panel_cancel_hide(): Promise<void>;
       };
     };
   }
@@ -68,34 +68,34 @@ class AdaptiveHost implements Host {
     try {
       switch (command.cmd) {
         case "showLabelGrid":
-          await api.show_label_grid();
+          await api.label_grid_show();
           break;
         case "hideLabelGrid":
-          await api.hide_label_grid();
+          await api.label_grid_hide();
           break;
         case "toggleLabelGrid":
-          await api.toggle_label_grid();
+          await api.label_grid_toggle();
           break;
         case "cancelLabelHide":
-          await api.cancel_label_hide();
+          await api.label_grid_cancel_hide();
           break;
         case "hideWindow":
-          await api.hide_window();
+          await api.window_hide();
           break;
         case "toggleDashboard":
-          await api.toggle_dashboard();
+          await api.dashboard_toggle();
           break;
         case "toggleStatePanel":
-          await api.toggle_state_panel();
+          await api.state_panel_toggle();
           break;
         case "showStatePanel":
-          await api.show_state_panel();
+          await api.state_panel_show();
           break;
         case "hideStatePanel":
-          await api.hide_state_panel();
+          await api.state_panel_hide();
           break;
         case "cancelPanelHide":
-          await api.cancel_panel_hide();
+          await api.state_panel_cancel_hide();
           break;
       }
     } catch {

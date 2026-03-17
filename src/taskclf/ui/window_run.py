@@ -114,7 +114,7 @@ def window_run(
                 cmd = line.strip()
                 logger.debug("stdin command received: %r", cmd)
                 if cmd == "toggle":
-                    api.toggle_dashboard()
+                    api.dashboard_toggle()
         except Exception:
             logger.debug("stdin reader error", exc_info=True)
 
