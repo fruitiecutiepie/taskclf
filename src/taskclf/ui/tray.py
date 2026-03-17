@@ -718,7 +718,7 @@ class TrayLabeler:
 
         return (
             pystray.MenuItem(
-                "Open Dashboard",
+                "Toggle Dashboard",
                 self._open_dashboard,
                 default=True,
             ),
