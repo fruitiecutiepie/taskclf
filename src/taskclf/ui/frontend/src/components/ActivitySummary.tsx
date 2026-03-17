@@ -1,5 +1,5 @@
 import { type Accessor, type Component, createResource, For, Show } from "solid-js";
-import { fetchAWLive, fetchFeatureSummary } from "../lib/api";
+import { aw_live_list, feature_summary_get } from "../lib/api";
 import type { TimeRange } from "../lib/date";
 import { timeRangeForMinutes } from "../lib/date";
 import { fmtRate, shortAppName } from "../lib/format";
@@ -47,7 +47,7 @@ export const ActivitySummary: Component<{
       return [];
     }
     try {
-      return await fetchAWLive(r.start, r.end);
+      return await aw_live_list(r.start, r.end);
     } catch {
       return [];
     }
@@ -58,7 +58,7 @@ export const ActivitySummary: Component<{
       return null;
     }
     try {
-      return await fetchFeatureSummary(r.start, r.end);
+      return await feature_summary_get(r.start, r.end);
     } catch {
       return null;
     }

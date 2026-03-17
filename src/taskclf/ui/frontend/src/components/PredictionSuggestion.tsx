@@ -1,5 +1,5 @@
 import { type Accessor, type Component, createSignal, Show } from "solid-js";
-import { createLabel } from "../lib/api";
+import { label_create } from "../lib/api";
 import type { LabelSuggestion } from "../lib/ws";
 
 export const PredictionSuggestion: Component<{
@@ -8,14 +8,14 @@ export const PredictionSuggestion: Component<{
   const s = () => props.suggestion();
   const [error, setError] = createSignal<string | null>(null);
 
-  async function accept() {
+  async function suggestion_accept() {
     const sg = s();
     if (!sg) {
       return;
     }
     setError(null);
     try {
-      await createLabel({
+      await label_create({
         start_ts: sg.block_start,
         end_ts: sg.block_end,
         label: sg.suggested,
@@ -58,7 +58,7 @@ export const PredictionSuggestion: Component<{
         <div style={{ display: "flex", gap: "8px", "flex-shrink": "0" }}>
           <button
             type="button"
-            onClick={accept}
+            onClick={suggestion_accept}
             style={{
               padding: "6px 16px",
               background: "var(--success)",

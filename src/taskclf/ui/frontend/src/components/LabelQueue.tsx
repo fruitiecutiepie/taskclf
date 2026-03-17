@@ -1,11 +1,11 @@
 import { type Component, createResource, For, Show } from "solid-js";
-import { fetchQueue, markQueueDone } from "../lib/api";
+import { queue_done_mark, queue_list } from "../lib/api";
 
 export const LabelQueue: Component = () => {
-  const [queue, { refetch }] = createResource(async () => fetchQueue(20));
+  const [queue, { refetch }] = createResource(async () => queue_list(20));
 
-  async function skip(requestId: string) {
-    await markQueueDone(requestId, "skipped");
+  async function queue_skip(requestId: string) {
+    await queue_done_mark(requestId, "skipped");
     refetch();
   }
 
@@ -77,7 +77,7 @@ export const LabelQueue: Component = () => {
                 </div>
                 <button
                   type="button"
-                  onClick={() => skip(item.request_id)}
+                  onClick={() => queue_skip(item.request_id)}
                   style={{
                     padding: "6px 14px",
                     background: "var(--border)",

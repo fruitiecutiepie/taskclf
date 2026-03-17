@@ -10,11 +10,11 @@ import {
   Show,
 } from "solid-js";
 import {
-  createLabel,
-  deleteLabel,
-  fetchCoreLabels,
-  fetchLabelsByDate,
-  updateLabel,
+  core_labels_list,
+  label_create,
+  label_delete,
+  label_update,
+  labels_list_by_date,
 } from "../lib/api";
 import { fmtDateLabel, shiftDate, todayDateStr } from "../lib/date";
 import {
@@ -43,10 +43,10 @@ export const LabelHistory: Component<{
       if (!dateStr) {
         return [];
       }
-      return fetchLabelsByDate(dateStr);
+      return labels_list_by_date(dateStr);
     },
   );
-  const [coreLabels] = createResource(fetchCoreLabels);
+  const [coreLabels] = createResource(core_labels_list);
 
   const [expandedKey, setExpandedKey] = createSignal<string | null>(null);
   const [busy, setBusy] = createSignal(false);
@@ -80,7 +80,7 @@ export const LabelHistory: Component<{
     setFlash(null);
   }
 
-  async function handleUpdate(
+  async function label_update_submit(
     item: LabelItem,
     newLabel: string,
     newStart: string,
@@ -89,7 +89,7 @@ export const LabelHistory: Component<{
     setBusy(true);
     setFlash(null);
     try {
-      await updateLabel({
+      await label_update({
         start_ts: item.start_ts,
         end_ts: item.end_ts,
         label: newLabel,
@@ -109,11 +109,11 @@ export const LabelHistory: Component<{
     }
   }
 
-  async function handleDelete(item: LabelItem) {
+  async function label_delete_submit(item: LabelItem) {
     setBusy(true);
     setFlash(null);
     try {
-      await deleteLabel({
+      await label_delete({
         start_ts: item.start_ts,
         end_ts: item.end_ts,
       });
@@ -126,11 +126,11 @@ export const LabelHistory: Component<{
     }
   }
 
-  async function handleGapCreate(startTs: string, endTs: string, label: string) {
+  async function gap_create_submit(startTs: string, endTs: string, label: string) {
     setBusy(true);
     setFlash(null);
     try {
-      await createLabel({
+      await label_create({
         start_ts: startTs,
         end_ts: endTs,
         label,
@@ -302,7 +302,7 @@ export const LabelHistory: Component<{
                   dateStr={selectedDate()}
                   expanded={expandedKey() === itemKey(item)}
                   onToggle={() => toggleRow(item)}
-                  onCreate={handleGapCreate}
+                  onCreate={gap_create_submit}
                   coreLabels={coreLabels() ?? []}
                   busy={busy()}
                   flash={expandedKey() === itemKey(item) ? flash() : null}
@@ -315,9 +315,9 @@ export const LabelHistory: Component<{
                 expanded={expandedKey() === itemKey(item)}
                 onToggle={() => toggleRow(item)}
                 onUpdate={(newLabel, newStart, newEnd) =>
-                  handleUpdate(item as LabelItem, newLabel, newStart, newEnd)
+                  label_update_submit(item as LabelItem, newLabel, newStart, newEnd)
                 }
-                onDelete={() => handleDelete(item as LabelItem)}
+                onDelete={() => label_delete_submit(item as LabelItem)}
                 coreLabels={coreLabels() ?? []}
                 busy={busy()}
                 flash={expandedKey() === itemKey(item) ? flash() : null}

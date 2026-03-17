@@ -1,5 +1,5 @@
 import { type Component, createResource, createSignal, Show } from "solid-js";
-import { createLabel, fetchCoreLabels } from "../lib/api";
+import { core_labels_list, label_create } from "../lib/api";
 
 const inputStyle = {
   padding: "8px 12px",
@@ -23,7 +23,7 @@ const btnStyle = {
 };
 
 export const LabelForm: Component = () => {
-  const [labels] = createResource(fetchCoreLabels);
+  const [labels] = createResource(core_labels_list);
   const [startTs, setStartTs] = createSignal("");
   const [endTs, setEndTs] = createSignal("");
   const [label, setLabel] = createSignal("");
@@ -33,11 +33,11 @@ export const LabelForm: Component = () => {
     msg: string;
   } | null>(null);
 
-  async function submit(e: Event) {
+  async function label_submit(e: Event) {
     e.preventDefault();
     setStatus(null);
     try {
-      const result = await createLabel({
+      const result = await label_create({
         start_ts: startTs(),
         end_ts: endTs(),
         label: label(),
@@ -68,7 +68,7 @@ export const LabelForm: Component = () => {
       </h2>
 
       <form
-        onSubmit={submit}
+        onSubmit={label_submit}
         style={{
           display: "flex",
           "flex-direction": "column",

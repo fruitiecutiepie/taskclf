@@ -8,7 +8,7 @@ import {
   on,
   Show,
 } from "solid-js";
-import { createLabel, fetchCoreLabels, fetchLabels } from "../lib/api";
+import { core_labels_list, label_create, labels_list } from "../lib/api";
 import { parseISODate } from "../lib/date";
 import { LABEL_COLORS } from "../lib/labelColors";
 import { labelOverwritePendingUpdGet } from "../lib/labelOverwritePendingUpdGet";
@@ -23,7 +23,7 @@ import { LabelTimePicker } from "./LabelTimePicker";
 
 const EXTEND_FWD_KEY = "taskclf:extendForward";
 const _LEGACY_KEY = "taskclf:extendPrevious";
-function loadExtendForward(): boolean {
+function extend_forward_pref_read(): boolean {
   try {
     const v = localStorage.getItem(EXTEND_FWD_KEY) ?? localStorage.getItem(_LEGACY_KEY);
     return v !== "false";
@@ -39,11 +39,11 @@ interface LabelRecorderProps {
 }
 
 export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
-  const [labels] = createResource(fetchCoreLabels);
+  const [labels] = createResource(core_labels_list);
   const [labelVersion, setLabelVersion] = createSignal(0);
   const [lastLabel] = createResource(labelVersion, async () => {
     try {
-      const rows = await fetchLabels(1);
+      const rows = await labels_list(1);
       return rows.length ? rows[0] : null;
     } catch {
       return null;
@@ -54,7 +54,7 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
     null,
   );
   const [selectedMinutes, setSelectedMinutes] = createSignal(0);
-  const [extendFwd, setExtendFwd] = createSignal(loadExtendForward());
+  const [extendFwd, setExtendFwd] = createSignal(extend_forward_pref_read());
   const [fillFromLast, setFillFromLast] = createSignal(false);
   const [confPercent, setConfPercent] = createSignal(100);
 
@@ -96,7 +96,7 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
     ),
   );
 
-  function toggleExtendFwd() {
+  function extend_fwd_toggle() {
     const next = !extendFwd();
     setExtendFwd(next);
     try {
@@ -121,7 +121,7 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
     }
     const effectiveExtend = forceExtendFwd || extendFwd();
     try {
-      await createLabel({
+      await label_create({
         start_ts: start.toISOString(),
         end_ts: now.toISOString(),
         label,
@@ -171,14 +171,14 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
     }
   }
 
-  async function confirmOverwrite() {
+  async function overwrite_confirm() {
     const pending = overwritePending();
     if (!pending) {
       return;
     }
     setOverwritePending(null);
     try {
-      await createLabel({
+      await label_create({
         start_ts: pending.start,
         end_ts: pending.end,
         label: pending.label,
@@ -195,14 +195,14 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
     }
   }
 
-  async function confirmKeepAll() {
+  async function keep_all_confirm() {
     const pending = overwritePending();
     if (!pending) {
       return;
     }
     setOverwritePending(null);
     try {
-      await createLabel({
+      await label_create({
         start_ts: pending.start,
         end_ts: pending.end,
         label: pending.label,
@@ -240,7 +240,7 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
       <ActivitySummary minutes={selectedMinutes} prediction={props.prediction} />
 
       <Show when={selectedMinutes() !== 0 || fillFromLast()}>
-        <LabelExtendToggle checked={extendFwd} onToggle={toggleExtendFwd} />
+        <LabelExtendToggle checked={extendFwd} onToggle={extend_fwd_toggle} />
       </Show>
 
       <LabelConfidence value={confPercent} onChange={setConfPercent} />
@@ -249,8 +249,8 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
         {(pending) => (
           <LabelOverwrite
             pending={pending()}
-            onConfirm={confirmOverwrite}
-            onKeepAll={confirmKeepAll}
+            onConfirm={overwrite_confirm}
+            onKeepAll={keep_all_confirm}
             onCancel={() => setOverwritePending(null)}
           />
         )}

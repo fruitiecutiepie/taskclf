@@ -412,7 +412,7 @@ def create_app(
     # -- REST: labels ---------------------------------------------------------
 
     @app.get("/api/labels")
-    async def list_labels(
+    async def api_op_labels_get(
         limit: int = Query(50, ge=1, le=500),
         date: str | None = Query(
             None, description="ISO-8601 date to filter labels by (e.g. 2025-03-07)"
@@ -463,7 +463,7 @@ def create_app(
         ]
 
     @app.post("/api/labels", status_code=201)
-    async def create_label(body: LabelCreateRequest) -> LabelResponse:
+    async def api_op_labels_post(body: LabelCreateRequest) -> LabelResponse:
         uid = body.user_id if body.user_id is not None else user_config.user_id
         try:
             span = LabelSpan(
@@ -524,7 +524,7 @@ def create_app(
         )
 
     @app.put("/api/labels")
-    async def update_label(body: LabelUpdateRequest) -> LabelResponse:
+    async def api_op_labels_put(body: LabelUpdateRequest) -> LabelResponse:
         try:
             start = _to_naive_utc(dt.datetime.fromisoformat(body.start_ts))
             end = _to_naive_utc(dt.datetime.fromisoformat(body.end_ts))
@@ -562,7 +562,7 @@ def create_app(
         )
 
     @app.delete("/api/labels")
-    async def delete_label(body: LabelDeleteRequest) -> dict[str, str]:
+    async def api_op_labels_delete(body: LabelDeleteRequest) -> dict[str, str]:
         try:
             start = _to_naive_utc(dt.datetime.fromisoformat(body.start_ts))
             end = _to_naive_utc(dt.datetime.fromisoformat(body.end_ts))
@@ -575,7 +575,7 @@ def create_app(
         return {"status": "deleted"}
 
     @app.get("/api/labels/export")
-    async def export_labels() -> StreamingResponse:
+    async def api_op_labels_export_get() -> StreamingResponse:
         """Download all label spans as a CSV file."""
         import io
         import tempfile
@@ -631,7 +631,7 @@ def create_app(
         )
 
     @app.post("/api/labels/import")
-    async def import_labels(
+    async def api_op_labels_import_post(
         file: UploadFile,
         strategy: str = Form("merge"),
     ) -> LabelImportResponse:
@@ -689,7 +689,7 @@ def create_app(
     # -- REST: queue ----------------------------------------------------------
 
     @app.get("/api/queue")
-    async def list_queue(
+    async def api_op_queue_get(
         limit: int = Query(20, ge=1, le=100),
     ) -> list[QueueItemResponse]:
         if not queue_path.exists():
@@ -711,7 +711,9 @@ def create_app(
         ]
 
     @app.post("/api/queue/{request_id}/done")
-    async def mark_queue_done(request_id: str, body: MarkDoneRequest) -> dict[str, str]:
+    async def api_op_queue_done_post(
+        request_id: str, body: MarkDoneRequest
+    ) -> dict[str, str]:
         if not queue_path.exists():
             return {"status": "not_found"}
         queue = ActiveLabelingQueue(queue_path)
@@ -822,14 +824,16 @@ def create_app(
         return [cl.value for cl in CoreLabel]
 
     @app.get("/api/config/user")
-    async def get_user_config() -> UserConfigResponse:
+    async def api_op_config_user_get() -> UserConfigResponse:
         return UserConfigResponse(
             user_id=user_config.user_id,
             username=user_config.username,
         )
 
     @app.put("/api/config/user")
-    async def update_user_config(body: UserConfigUpdateRequest) -> UserConfigResponse:
+    async def api_op_config_user_put(
+        body: UserConfigUpdateRequest,
+    ) -> UserConfigResponse:
         patch = {k: v for k, v in body.model_dump().items() if v is not None}
         if patch:
             try:

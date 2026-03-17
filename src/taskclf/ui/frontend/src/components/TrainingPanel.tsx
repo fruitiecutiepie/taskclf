@@ -9,12 +9,12 @@ import {
   Show,
 } from "solid-js";
 import {
-  cancelTraining,
   type DataCheck,
-  listModels,
   type ModelBundle,
-  startTraining,
-  trainDataCheck,
+  models_list,
+  training_cancel,
+  training_data_check,
+  training_start,
 } from "../lib/api";
 import type { TrainState } from "../lib/ws";
 import { StatusProgress } from "./ui/StatusProgress";
@@ -69,7 +69,7 @@ export const TrainingPanel: Component<{
       () => ts().status,
       (status, prevStatus) => {
         if (prevStatus === "running" && status === "complete") {
-          refreshModels();
+          models_refresh();
         }
       },
     ),
@@ -106,7 +106,7 @@ export const TrainingPanel: Component<{
     return null;
   });
 
-  function sortModels(ml: ModelBundle[]) {
+  function models_sorted(ml: ModelBundle[]) {
     return ml
       .filter((m) => m.valid)
       .sort((a, b) => {
@@ -117,16 +117,16 @@ export const TrainingPanel: Component<{
       });
   }
 
-  async function refreshModels() {
+  async function models_refresh() {
     try {
-      const ml = await listModels();
-      setModels(sortModels(ml));
+      const ml = await models_list();
+      setModels(models_sorted(ml));
     } catch {
       /* non-critical */
     }
   }
 
-  async function handleCheckData() {
+  async function data_check_submit() {
     if (checking()) {
       return;
     }
@@ -134,12 +134,12 @@ export const TrainingPanel: Component<{
     setCheckError(null);
     try {
       const [dc, ml] = await Promise.all([
-        trainDataCheck(dateFrom(), dateTo()),
-        listModels(),
+        training_data_check(dateFrom(), dateTo()),
+        models_list(),
       ]);
       setDataCheck(dc);
       setCheckedRange({ from: dateFrom(), to: dateTo() });
-      setModels(sortModels(ml));
+      setModels(models_sorted(ml));
     } catch (e: unknown) {
       setCheckError(e instanceof Error ? e.message : "Failed to check data");
     } finally {
@@ -147,9 +147,9 @@ export const TrainingPanel: Component<{
     }
   }
 
-  refreshModels();
+  models_refresh();
 
-  async function handleTrain() {
+  async function training_submit() {
     if (submitting()) {
       return;
     }
@@ -161,7 +161,7 @@ export const TrainingPanel: Component<{
     setSubmitting(true);
     setTrainError(null);
     try {
-      await startTraining({
+      await training_start({
         date_from: dateFrom(),
         date_to: dateTo(),
         num_boost_round: boostRounds(),
@@ -175,9 +175,9 @@ export const TrainingPanel: Component<{
     }
   }
 
-  async function handleCancel() {
+  async function training_cancel_submit() {
     try {
-      await cancelTraining();
+      await training_cancel();
     } catch (e: unknown) {
       setTrainError(e instanceof Error ? e.message : "Failed to cancel");
     }
@@ -262,7 +262,7 @@ export const TrainingPanel: Component<{
         </div>
         <button
           type="button"
-          onClick={handleCheckData}
+          onClick={data_check_submit}
           disabled={checking()}
           style={btnStyle("ghost", checking())}
         >
@@ -421,7 +421,11 @@ export const TrainingPanel: Component<{
             <Show
               when={!isRunning()}
               fallback={
-                <button type="button" onClick={handleCancel} style={btnStyle("danger")}>
+                <button
+                  type="button"
+                  onClick={training_cancel_submit}
+                  style={btnStyle("danger")}
+                >
                   Cancel Training
                 </button>
               }
@@ -431,7 +435,7 @@ export const TrainingPanel: Component<{
                 fallback={
                   <button
                     type="button"
-                    onClick={handleTrain}
+                    onClick={training_submit}
                     disabled={submitting() || !canTrain()}
                     style={btnStyle("primary", submitting() || !canTrain())}
                   >
@@ -439,7 +443,11 @@ export const TrainingPanel: Component<{
                   </button>
                 }
               >
-                <button type="button" onClick={handleTrain} style={btnStyle("primary")}>
+                <button
+                  type="button"
+                  onClick={training_submit}
+                  style={btnStyle("primary")}
+                >
                   Confirm
                 </button>
                 <button
@@ -626,7 +634,7 @@ export const TrainingPanel: Component<{
         </Show>
         <button
           type="button"
-          onClick={refreshModels}
+          onClick={models_refresh}
           style={{ ...btnStyle("ghost"), "margin-top": "4px" }}
         >
           Refresh
