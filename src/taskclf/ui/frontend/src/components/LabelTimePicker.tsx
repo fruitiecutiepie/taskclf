@@ -1,5 +1,5 @@
 import { type Accessor, type Component, createSignal, For } from "solid-js";
-import { parseISODate } from "../lib/date";
+import { iso_date_parse } from "../lib/date";
 
 const MINUTE_OPTIONS = [0, 1, 5, 15, 30, 60] as const;
 export type TimeUnit = "s" | "m" | "h" | "d";
@@ -18,14 +18,14 @@ export const LabelTimePicker: Component<LabelTimePickerProps> = (props) => {
   const [customValue, setCustomValue] = createSignal("");
   const [customUnit, setCustomUnit] = createSignal<TimeUnit>("m");
 
-  function selectPreset(m: number) {
+  function preset_select(m: number) {
     props.setSelectedMinutes(m);
     setCustomActive(false);
     setCustomValue("");
     props.setFillFromLast(false);
   }
 
-  function applyCustom(raw: string, unit: TimeUnit) {
+  function custom_apply(raw: string, unit: TimeUnit) {
     const n = parseFloat(raw);
     if (!Number.isNaN(n) && n >= 0) {
       props.setSelectedMinutes(n * UNIT_TO_MINUTES[unit]);
@@ -34,12 +34,12 @@ export const LabelTimePicker: Component<LabelTimePickerProps> = (props) => {
     }
   }
 
-  function stepCustom(delta: number) {
+  function custom_step(delta: number) {
     const cur = parseFloat(customValue()) || 0;
     const next = Math.max(0, cur + delta);
     const v = String(next);
     setCustomValue(v);
-    applyCustom(v, customUnit());
+    custom_apply(v, customUnit());
   }
 
   return (
@@ -69,7 +69,7 @@ export const LabelTimePicker: Component<LabelTimePickerProps> = (props) => {
           return (
             <button
               type="button"
-              onClick={() => selectPreset(m)}
+              onClick={() => preset_select(m)}
               style={{
                 padding: "2px 7px",
                 "border-radius": "10px",
@@ -94,7 +94,7 @@ export const LabelTimePicker: Component<LabelTimePickerProps> = (props) => {
           return null;
         }
         const ago = Math.round(
-          (Date.now() - parseISODate(ll.end_ts).getTime()) / 60_000,
+          (Date.now() - iso_date_parse(ll.end_ts).getTime()) / 60_000,
         );
         if (ago < 1) {
           return null;
@@ -154,14 +154,14 @@ export const LabelTimePicker: Component<LabelTimePickerProps> = (props) => {
               const v = e.currentTarget.value;
               if (v === "" || /^\d*\.?\d*$/.test(v)) {
                 setCustomValue(v);
-                applyCustom(v, customUnit());
+                custom_apply(v, customUnit());
               } else {
                 e.currentTarget.value = customValue();
               }
             }}
             onFocus={() => {
               if (customValue()) {
-                applyCustom(customValue(), customUnit());
+                custom_apply(customValue(), customUnit());
               }
             }}
             style={{
@@ -184,7 +184,7 @@ export const LabelTimePicker: Component<LabelTimePickerProps> = (props) => {
           >
             <button
               type="button"
-              onClick={() => stepCustom(1)}
+              onClick={() => custom_step(1)}
               style={{
                 display: "flex",
                 "align-items": "center",
@@ -205,7 +205,7 @@ export const LabelTimePicker: Component<LabelTimePickerProps> = (props) => {
             </button>
             <button
               type="button"
-              onClick={() => stepCustom(-1)}
+              onClick={() => custom_step(-1)}
               style={{
                 display: "flex",
                 "align-items": "center",
@@ -240,7 +240,7 @@ export const LabelTimePicker: Component<LabelTimePickerProps> = (props) => {
                 onClick={() => {
                   setCustomUnit(u);
                   if (customValue()) {
-                    applyCustom(customValue(), u);
+                    custom_apply(customValue(), u);
                   }
                 }}
                 style={{

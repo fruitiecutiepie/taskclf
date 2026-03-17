@@ -11,7 +11,7 @@ export const LabelRecorderWindow: Component = () => {
   const ws = ws_store_new();
   const inBrowser = isBrowserMode();
 
-  function collapse() {
+  function window_collapse() {
     host.invoke({ cmd: "toggleLabelGrid" });
   }
 
@@ -73,7 +73,7 @@ export const LabelRecorderWindow: Component = () => {
             />
           </div>
         </Show>
-        <LabelRecorder onCollapse={collapse} prediction={ws.latestPrediction} />
+        <LabelRecorder onCollapse={window_collapse} prediction={ws.latestPrediction} />
       </div>
     </div>
   );

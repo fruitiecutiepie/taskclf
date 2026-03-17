@@ -9,9 +9,9 @@ import {
   Show,
 } from "solid-js";
 import { core_labels_list, label_create, labels_list } from "../lib/api";
-import { parseISODate } from "../lib/date";
+import { iso_date_parse } from "../lib/date";
 import { LABEL_COLORS } from "../lib/labelColors";
-import { labelOverwritePendingUpdGet } from "../lib/labelOverwritePendingUpdGet";
+import { label_overwrite_pending_upd_get } from "../lib/labelOverwritePendingUpdGet";
 import type { Prediction } from "../lib/ws";
 import { ActivitySummary } from "./ActivitySummary";
 import { LabelConfidence } from "./LabelConfidence";
@@ -79,7 +79,7 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
           return;
         }
 
-        const updated = labelOverwritePendingUpdGet(
+        const updated = label_overwrite_pending_upd_get(
           pending,
           {
             selectedMinutes: selectedMinutes(),
@@ -104,7 +104,7 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
     } catch {}
   }
 
-  async function labelNow(label: string) {
+  async function label_now(label: string) {
     const mins = selectedMinutes();
     const now = new Date();
     let start: Date;
@@ -112,7 +112,7 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
 
     const lastEndTs = lastLabel()?.end_ts;
     if (fillFromLast() && lastEndTs) {
-      start = parseISODate(lastEndTs);
+      start = iso_date_parse(lastEndTs);
     } else if (mins === 0) {
       start = now;
       forceExtendFwd = true;
@@ -285,7 +285,7 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
           {(lbl) => (
             <button
               type="button"
-              onClick={() => labelNow(lbl)}
+              onClick={() => label_now(lbl)}
               style={{
                 padding: "8px 4px",
                 "border-radius": "var(--radius)",

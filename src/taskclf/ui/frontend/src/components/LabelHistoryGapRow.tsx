@@ -1,11 +1,11 @@
 import { type Component, createEffect, createSignal, For, Show } from "solid-js";
 import type { TimeRange } from "../lib/date";
 import {
-  fmtDuration,
-  fmtTimeSec,
-  parseDate,
-  timeInputToDate,
-  toTimeInputValueSec,
+  date_parse,
+  duration_fmt,
+  time_input_date,
+  time_input_value_sec,
+  time_sec_fmt,
 } from "../lib/date";
 import { LABEL_COLORS } from "../lib/labelColors";
 import type { GapItem } from "../lib/labelTimeline";
@@ -22,40 +22,40 @@ export const LabelHistoryGapRow: Component<{
   busy: boolean;
   flash: string | null;
 }> = (props) => {
-  const gapStartD = () => parseDate(props.gap.start_ts);
-  const gapEndD = () => parseDate(props.gap.end_ts);
-  const dur = () => fmtDuration(gapEndD().getTime() - gapStartD().getTime());
+  const gapStartD = () => date_parse(props.gap.start_ts);
+  const gapEndD = () => date_parse(props.gap.end_ts);
+  const dur = () => duration_fmt(gapEndD().getTime() - gapStartD().getTime());
 
   const [startIso, setStartIso] = createSignal(props.gap.start_ts);
   const [endIso, setEndIso] = createSignal(props.gap.end_ts);
 
   const [startTimeDisplay, setStartTimeDisplay] = createSignal(
-    toTimeInputValueSec(gapStartD()),
+    time_input_value_sec(gapStartD()),
   );
   const [endTimeDisplay, setEndTimeDisplay] = createSignal(
-    toTimeInputValueSec(gapEndD()),
+    time_input_value_sec(gapEndD()),
   );
 
   createEffect(() => {
     setStartIso(props.gap.start_ts);
     setEndIso(props.gap.end_ts);
-    setStartTimeDisplay(toTimeInputValueSec(gapStartD()));
-    setEndTimeDisplay(toTimeInputValueSec(gapEndD()));
+    setStartTimeDisplay(time_input_value_sec(gapStartD()));
+    setEndTimeDisplay(time_input_value_sec(gapEndD()));
   });
 
   function gap_start_time_set(val: string) {
     setStartTimeDisplay(val);
-    setStartIso(timeInputToDate(props.dateStr, val).toISOString());
+    setStartIso(time_input_date(props.dateStr, val).toISOString());
   }
 
   function gap_end_time_set(val: string) {
     setEndTimeDisplay(val);
-    setEndIso(timeInputToDate(props.dateStr, val).toISOString());
+    setEndIso(time_input_date(props.dateStr, val).toISOString());
   }
 
   const selectedRange = (): TimeRange | null => {
-    const s = parseDate(startIso()).getTime();
-    const e = parseDate(endIso()).getTime();
+    const s = date_parse(startIso()).getTime();
+    const e = date_parse(endIso()).getTime();
     if (e <= s) {
       return null;
     }
@@ -132,7 +132,7 @@ export const LabelHistoryGapRow: Component<{
         <span
           style={{ color: "#666", "font-size": "0.65rem", "white-space": "nowrap" }}
         >
-          {fmtTimeSec(gapStartD())} – {fmtTimeSec(gapEndD())}{" "}
+          {time_sec_fmt(gapStartD())} – {time_sec_fmt(gapEndD())}{" "}
           <span style={{ color: "#555" }}>({dur()})</span>
         </span>
       </button>

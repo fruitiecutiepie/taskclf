@@ -1,5 +1,5 @@
 import { type Component, createSignal, For, Show } from "solid-js";
-import { fmtDuration, fmtTime } from "../lib/date";
+import { duration_fmt, time_fmt } from "../lib/date";
 import { LABEL_COLORS } from "../lib/labelColors";
 import type { TimelineSegment } from "../lib/labelTimeline";
 
@@ -45,9 +45,9 @@ export const LabelHistoryTimeline: Component<{
                   e.currentTarget.getBoundingClientRect().left
                   - rect.left
                   + e.currentTarget.offsetWidth / 2;
-                const dur = fmtDuration(seg.endMs - seg.startMs);
-                const start = fmtTime(new Date(seg.startMs));
-                const end = fmtTime(new Date(seg.endMs));
+                const dur = duration_fmt(seg.endMs - seg.startMs);
+                const start = time_fmt(new Date(seg.startMs));
+                const end = time_fmt(new Date(seg.endMs));
                 const prefix = seg.label ?? "Unlabeled";
                 setTooltip({ text: `${prefix}  ${start}\u2013${end}  (${dur})`, x });
                 if (!seg.label) {

@@ -1,5 +1,5 @@
 import { type Accessor, type Component, createMemo, Show } from "solid-js";
-import { formatTime } from "../../lib/format";
+import { time_format } from "../../lib/format";
 import { LABEL_COLORS } from "../../lib/labelColors";
 import type { LabelSuggestion } from "../../lib/ws";
 import { StatusRow } from "../ui/StatusRow";
@@ -56,7 +56,7 @@ export const StatusSuggestion: Component<{
           />
           <StatusRow
             label="block"
-            value={`${formatTime(s().block_start)} → ${formatTime(s().block_end)}`}
+            value={`${time_format(s().block_start)} → ${time_format(s().block_end)}`}
             dim
             tooltip="Time range this suggestion applies to"
           />

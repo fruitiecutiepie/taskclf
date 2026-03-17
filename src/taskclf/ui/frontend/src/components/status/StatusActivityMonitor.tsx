@@ -1,5 +1,5 @@
 import { type Accessor, type Component, createMemo, Show } from "solid-js";
-import { formatDuration, formatTime } from "../../lib/format";
+import { duration_format, time_format } from "../../lib/format";
 import type { StatusEvent } from "../../lib/ws";
 import { StatusProgress } from "../ui/StatusProgress";
 import { StatusRow } from "../ui/StatusRow";
@@ -40,7 +40,7 @@ export const StatusActivityMonitor: Component<{
       />
       <StatusRow
         label="since"
-        value={formatTime(s().current_app_since)}
+        value={time_format(s().current_app_since)}
         dim
         tooltip="When the current app became the foreground app"
       />
@@ -53,13 +53,13 @@ export const StatusActivityMonitor: Component<{
       />
       <StatusRow
         label="last_poll"
-        value={formatTime(s().last_poll_ts)}
+        value={time_format(s().last_poll_ts)}
         dim
         tooltip="Timestamp of the most recent poll"
       />
       <StatusRow
         label="uptime"
-        value={formatDuration(s().uptime_s)}
+        value={duration_format(s().uptime_s)}
         dim
         tooltip="How long the activity monitor has been running"
       />
@@ -74,7 +74,7 @@ export const StatusActivityMonitor: Component<{
             />
             <StatusRow
               label="candidate_progress"
-              value={`${formatDuration(s().candidate_duration_s)} / ${formatDuration(s().transition_threshold_s)} (${transitionPct()}%)`}
+              value={`${duration_format(s().candidate_duration_s)} / ${duration_format(s().transition_threshold_s)} (${transitionPct()}%)`}
               color="#eab308"
               tooltip="Time spent on the candidate app vs. the threshold required for a transition"
             />

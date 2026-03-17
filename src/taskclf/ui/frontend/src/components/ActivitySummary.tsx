@@ -1,8 +1,8 @@
 import { type Accessor, type Component, createResource, For, Show } from "solid-js";
 import { aw_live_list, feature_summary_get } from "../lib/api";
 import type { TimeRange } from "../lib/date";
-import { timeRangeForMinutes } from "../lib/date";
-import { fmtRate, shortAppName } from "../lib/format";
+import { time_range_minutes } from "../lib/date";
+import { app_name_short, rate_fmt } from "../lib/format";
 import { LABEL_COLORS } from "../lib/labelColors";
 import type { Prediction } from "../lib/ws";
 
@@ -39,8 +39,7 @@ export const ActivitySummary: Component<{
   showEmpty?: boolean;
 }> = (props) => {
   const range = () =>
-    props.timeRange?.()
-    ?? (props.minutes ? timeRangeForMinutes(props.minutes()) : null);
+    props.timeRange?.() ?? (props.minutes ? time_range_minutes(props.minutes()) : null);
 
   const [awApps] = createResource(range, async (r) => {
     if (!r) {
@@ -162,7 +161,7 @@ export const ActivitySummary: Component<{
                           }}
                         >
                           <span style={{ "font-weight": "600", color: "var(--text)" }}>
-                            {shortAppName(entry.app_id)}
+                            {app_name_short(entry.app_id)}
                           </span>
                           {entry.buckets}m
                         </span>
@@ -185,7 +184,7 @@ export const ActivitySummary: Component<{
                         }}
                       >
                         <span style={{ "font-weight": "600", color: "var(--text)" }}>
-                          {shortAppName(entry.app)}
+                          {app_name_short(entry.app)}
                         </span>
                         {entry.events}
                       </span>
@@ -206,13 +205,13 @@ export const ActivitySummary: Component<{
                   "flex-wrap": "wrap",
                 }}
               >
-                <Show when={fmtRate(features()?.mean_keys_per_min ?? null)}>
+                <Show when={rate_fmt(features()?.mean_keys_per_min ?? null)}>
                   {(v) => <span>keys {v()}/m</span>}
                 </Show>
-                <Show when={fmtRate(features()?.mean_clicks_per_min ?? null)}>
+                <Show when={rate_fmt(features()?.mean_clicks_per_min ?? null)}>
                   {(v) => <span>clicks {v()}/m</span>}
                 </Show>
-                <Show when={fmtRate(features()?.mean_scroll_per_min ?? null)}>
+                <Show when={rate_fmt(features()?.mean_scroll_per_min ?? null)}>
                   {(v) => <span>scroll {v()}/m</span>}
                 </Show>
                 <Show when={hasCoverage()}>

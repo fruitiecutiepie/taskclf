@@ -1,5 +1,5 @@
 import type { OverwritePending } from "../components/LabelOverwrite";
-import { parseISODate } from "./date";
+import { iso_date_parse } from "./date";
 
 export type TimeSelection = {
   selectedMinutes: number;
@@ -14,14 +14,14 @@ export type TimeSelection = {
  *
  * `now` is the current wall-clock time — callers should pass `new Date()`.
  */
-export function labelOverwritePendingUpdGet(
+export function label_overwrite_pending_upd_get(
   pending: OverwritePending,
   sel: TimeSelection,
   now: Date,
 ): OverwritePending | null {
   let start: Date;
   if (sel.fillFromLast && sel.lastLabelEndTs) {
-    start = parseISODate(sel.lastLabelEndTs);
+    start = iso_date_parse(sel.lastLabelEndTs);
   } else if (sel.selectedMinutes === 0) {
     start = now;
   } else {
@@ -31,8 +31,8 @@ export function labelOverwritePendingUpdGet(
   const startMs = start.getTime();
   const endMs = now.getTime();
   const remaining = pending.conflicts.filter((c) => {
-    const cs = parseISODate(c.start_ts).getTime();
-    const ce = parseISODate(c.end_ts).getTime();
+    const cs = iso_date_parse(c.start_ts).getTime();
+    const ce = iso_date_parse(c.end_ts).getTime();
     return cs < endMs && startMs < ce;
   });
 

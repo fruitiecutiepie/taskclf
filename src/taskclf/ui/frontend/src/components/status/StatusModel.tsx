@@ -1,5 +1,5 @@
 import { type Accessor, type Component, createMemo, Show } from "solid-js";
-import { truncPath } from "../../lib/format";
+import { path_trunc } from "../../lib/format";
 import { LABEL_COLORS } from "../../lib/labelColors";
 import type { TrayState } from "../../lib/ws";
 import { StatusRow } from "../ui/StatusRow";
@@ -25,7 +25,7 @@ export const StatusModel: Component<{
         {(dir) => (
           <StatusRow
             label="model_dir"
-            value={truncPath(dir())}
+            value={path_trunc(dir())}
             dim
             mono
             tooltip="Directory path of the loaded model bundle"

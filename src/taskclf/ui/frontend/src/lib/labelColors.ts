@@ -13,7 +13,7 @@ export const LABEL_COLORS: Record<string, string> = {
   unknown: "#6b7280",
 };
 
-export function dotColor(status: ConnectionStatus): string {
+export function dot_color(status: ConnectionStatus): string {
   switch (status) {
     case "connected":
       return "#22c55e";

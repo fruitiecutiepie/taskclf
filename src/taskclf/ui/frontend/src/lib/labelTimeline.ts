@@ -1,4 +1,4 @@
-import { parseDate } from "./date";
+import { date_parse } from "./date";
 
 export type LabelEntry = {
   label: string;
@@ -28,7 +28,7 @@ export type LabelItem = {
 
 export type TimelineItem = GapItem | LabelItem;
 
-export function buildDayTimeline(
+export function day_timeline_build(
   entries: LabelEntry[],
   dayDateStr: string,
 ): { segments: TimelineSegment[]; items: TimelineItem[]; spanMs: number } {
@@ -52,15 +52,15 @@ export function buildDayTimeline(
   }
 
   const sorted = [...entries].sort(
-    (a, b) => parseDate(a.start_ts).getTime() - parseDate(b.start_ts).getTime(),
+    (a, b) => date_parse(a.start_ts).getTime() - date_parse(b.start_ts).getTime(),
   );
   const segments: TimelineSegment[] = [];
   const items: TimelineItem[] = [];
   let cursor = dayStart;
 
   for (const entry of sorted) {
-    const s = Math.max(parseDate(entry.start_ts).getTime(), dayStart);
-    const e = Math.min(parseDate(entry.end_ts).getTime(), dayEnd);
+    const s = Math.max(date_parse(entry.start_ts).getTime(), dayStart);
+    const e = Math.min(date_parse(entry.end_ts).getTime(), dayEnd);
     if (e <= s) {
       continue;
     }
@@ -116,7 +116,7 @@ export function buildDayTimeline(
   return { segments, items, spanMs };
 }
 
-export function itemKey(item: TimelineItem): string {
+export function item_key(item: TimelineItem): string {
   const label = item.kind === "label" ? (item as LabelItem).label : "";
   return `${item.kind}|${item.start_ts}|${item.end_ts}|${label}`;
 }

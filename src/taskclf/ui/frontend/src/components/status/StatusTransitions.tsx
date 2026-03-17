@@ -1,5 +1,5 @@
 import { type Accessor, type Component, createMemo, Show } from "solid-js";
-import { formatTime } from "../../lib/format";
+import { time_format } from "../../lib/format";
 import type { TrayState } from "../../lib/ws";
 import { StatusRow } from "../ui/StatusRow";
 import { StatusSection } from "../ui/StatusSection";
@@ -38,13 +38,13 @@ export const StatusTransitions: Component<{
             />
             <StatusRow
               label="block"
-              value={`${formatTime(tr().block_start)} → ${formatTime(tr().block_end)}`}
+              value={`${time_format(tr().block_start)} → ${time_format(tr().block_end)}`}
               dim
               tooltip="Time range of the activity block that ended with this transition"
             />
             <StatusRow
               label="fired_at"
-              value={formatTime(tr().fired_at)}
+              value={time_format(tr().fired_at)}
               dim
               tooltip="When this transition was triggered"
             />

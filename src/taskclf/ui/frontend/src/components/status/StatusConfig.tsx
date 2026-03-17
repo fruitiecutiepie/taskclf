@@ -1,5 +1,5 @@
 import { type Accessor, type Component, createMemo } from "solid-js";
-import { truncPath } from "../../lib/format";
+import { path_trunc } from "../../lib/format";
 import type { TrayState } from "../../lib/ws";
 import { StatusRow } from "../ui/StatusRow";
 import { StatusSection } from "../ui/StatusSection";
@@ -15,7 +15,7 @@ export const StatusConfig: Component<{
     <StatusSection title="Config" summary={summary()}>
       <StatusRow
         label="data_dir"
-        value={truncPath(t().data_dir)}
+        value={path_trunc(t().data_dir)}
         dim
         mono
         tooltip="Root directory for all taskclf data"

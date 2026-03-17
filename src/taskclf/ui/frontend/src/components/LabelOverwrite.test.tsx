@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@solidjs/testing-library";
 import { describe, expect, it, vi } from "vitest";
 import { LabelOverwrite, type OverwritePending } from "./LabelOverwrite";
 
-function makePending(overrides: Partial<OverwritePending> = {}): OverwritePending {
+function pending_make(overrides: Partial<OverwritePending> = {}): OverwritePending {
   return {
     label: "Write",
     start: "2026-03-14T10:00:00+00:00",
@@ -27,7 +27,7 @@ describe("LabelOverwrite", () => {
   // Sorting
   // ------------------------------------------------------------------
   it("renders conflicts sorted by start_ts", () => {
-    const pending = makePending({
+    const pending = pending_make({
       conflicts: [
         {
           start_ts: "2026-03-14T11:00:00+00:00",
@@ -69,7 +69,7 @@ describe("LabelOverwrite", () => {
   // Single conflict: shows detail inline, no expand toggle
   // ------------------------------------------------------------------
   it("shows span detail inline for a single conflict", () => {
-    const pending = makePending();
+    const pending = pending_make();
 
     render(() => (
       <LabelOverwrite
@@ -89,7 +89,7 @@ describe("LabelOverwrite", () => {
   // Multiple conflicts: compact summary with expand toggle
   // ------------------------------------------------------------------
   it("shows compact summary with expand toggle for multiple conflicts", () => {
-    const pending = makePending({
+    const pending = pending_make({
       conflicts: [
         {
           start_ts: "2026-03-14T09:00:00+00:00",
@@ -118,7 +118,7 @@ describe("LabelOverwrite", () => {
   });
 
   it("toggles detail visibility on click", () => {
-    const pending = makePending({
+    const pending = pending_make({
       conflicts: [
         {
           start_ts: "2026-03-14T09:00:00+00:00",
@@ -154,7 +154,7 @@ describe("LabelOverwrite", () => {
   // Deduplicates label names in summary
   // ------------------------------------------------------------------
   it("deduplicates label names in the summary line", () => {
-    const pending = makePending({
+    const pending = pending_make({
       conflicts: [
         {
           start_ts: "2026-03-14T09:00:00+00:00",
@@ -195,7 +195,7 @@ describe("LabelOverwrite", () => {
   // Shows new label name in affected range
   // ------------------------------------------------------------------
   it("shows the new label name in the affected range line", () => {
-    const pending = makePending({ label: "Communicate" });
+    const pending = pending_make({ label: "Communicate" });
 
     render(() => (
       <LabelOverwrite
@@ -216,7 +216,7 @@ describe("LabelOverwrite", () => {
   it("renders Overwrite All, Keep All, and Cancel buttons", () => {
     render(() => (
       <LabelOverwrite
-        pending={makePending()}
+        pending={pending_make()}
         onConfirm={noop}
         onKeepAll={noop}
         onCancel={noop}
@@ -235,7 +235,7 @@ describe("LabelOverwrite", () => {
     const onConfirm = vi.fn();
     render(() => (
       <LabelOverwrite
-        pending={makePending()}
+        pending={pending_make()}
         onConfirm={onConfirm}
         onKeepAll={noop}
         onCancel={noop}
@@ -249,7 +249,7 @@ describe("LabelOverwrite", () => {
     const onKeepAll = vi.fn();
     render(() => (
       <LabelOverwrite
-        pending={makePending()}
+        pending={pending_make()}
         onConfirm={noop}
         onKeepAll={onKeepAll}
         onCancel={noop}
@@ -263,7 +263,7 @@ describe("LabelOverwrite", () => {
     const onCancel = vi.fn();
     render(() => (
       <LabelOverwrite
-        pending={makePending()}
+        pending={pending_make()}
         onConfirm={noop}
         onKeepAll={noop}
         onCancel={onCancel}

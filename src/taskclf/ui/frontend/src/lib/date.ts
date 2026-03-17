@@ -1,18 +1,18 @@
-export function parseDate(iso: string): Date {
+export function date_parse(iso: string): Date {
   return new Date(iso);
 }
 
-export function parseISODate(iso: string): Date {
+export function iso_date_parse(iso: string): Date {
   return new Date(iso);
 }
 
-export function todayDateStr(): string {
+export function date_today_str(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-export function fmtDateLabel(dateStr: string): string {
-  const today = todayDateStr();
+export function date_label_fmt(dateStr: string): string {
+  const today = date_today_str();
   if (dateStr === today) {
     return "Today";
   }
@@ -26,17 +26,17 @@ export function fmtDateLabel(dateStr: string): string {
   return d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
 }
 
-export function shiftDate(dateStr: string, delta: number): string {
+export function date_shift(dateStr: string, delta: number): string {
   const d = new Date(`${dateStr}T12:00:00`);
   d.setDate(d.getDate() + delta);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-export function fmtTime(d: Date): string {
+export function time_fmt(d: Date): string {
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-export function fmtTimeSec(d: Date): string {
+export function time_sec_fmt(d: Date): string {
   return d.toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
@@ -44,7 +44,7 @@ export function fmtTimeSec(d: Date): string {
   });
 }
 
-export function fmtDuration(ms: number): string {
+export function duration_fmt(ms: number): string {
   const totalMin = Math.round(ms / 60_000);
   if (totalMin < 1) {
     return "<1m";
@@ -60,15 +60,15 @@ export function fmtDuration(ms: number): string {
   return `${h}h ${m}m`;
 }
 
-export function toTimeInputValue(d: Date): string {
+export function time_input_value(d: Date): string {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
-export function toTimeInputValueSec(d: Date): string {
+export function time_input_value_sec(d: Date): string {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
 }
 
-export function timeInputToDate(dateStr: string, timeVal: string): Date {
+export function time_input_date(dateStr: string, timeVal: string): Date {
   const parts = timeVal.split(":");
   const hh = parts[0] ?? "00";
   const mm = parts[1] ?? "00";
@@ -76,8 +76,8 @@ export function timeInputToDate(dateStr: string, timeVal: string): Date {
   return new Date(`${dateStr}T${hh}:${mm}:${ss}`);
 }
 
-export function timeAgo(iso: string): string {
-  const d = parseISODate(iso);
+export function time_ago(iso: string): string {
+  const d = iso_date_parse(iso);
   const mins = Math.round((Date.now() - d.getTime()) / 60_000);
   if (mins < 1) {
     return "just now";
@@ -98,7 +98,7 @@ export type TimeRange = {
   end: string;
 };
 
-export function timeRangeForMinutes(mins: number): TimeRange | null {
+export function time_range_minutes(mins: number): TimeRange | null {
   if (mins < 1) {
     return null;
   }

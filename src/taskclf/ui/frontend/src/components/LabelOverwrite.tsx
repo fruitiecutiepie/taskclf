@@ -1,5 +1,5 @@
 import { type Component, createMemo, createSignal, For, Show } from "solid-js";
-import { parseISODate } from "../lib/date";
+import { iso_date_parse } from "../lib/date";
 import { LABEL_COLORS } from "../lib/labelColors";
 
 export type OverwritePending = {
@@ -43,8 +43,8 @@ export const LabelOverwrite: Component<LabelOverwriteProps> = (props) => {
   });
 
   const affectedRange = createMemo(() => {
-    const newStart = parseISODate(props.pending.start);
-    const newEnd = parseISODate(props.pending.end);
+    const newStart = iso_date_parse(props.pending.start);
+    const newEnd = iso_date_parse(props.pending.end);
     return `${fmt(newStart)}\u2013${fmt(newEnd)}`;
   });
 
@@ -121,8 +121,8 @@ export const LabelOverwrite: Component<LabelOverwriteProps> = (props) => {
           <For each={sorted()}>
             {(c) => {
               const color = LABEL_COLORS[c.label] ?? "var(--text)";
-              const cs = parseISODate(c.start_ts);
-              const ce = parseISODate(c.end_ts);
+              const cs = iso_date_parse(c.start_ts);
+              const ce = iso_date_parse(c.end_ts);
               return (
                 <div>
                   <span style={{ color, "font-weight": "600" }}>{c.label}</span>{" "}

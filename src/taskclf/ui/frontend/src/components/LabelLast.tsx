@@ -1,5 +1,5 @@
 import { type Accessor, type Component, Show } from "solid-js";
-import { timeAgo } from "../lib/date";
+import { time_ago } from "../lib/date";
 import { LABEL_COLORS } from "../lib/labelColors";
 
 type LabelLastProps = {
@@ -19,7 +19,7 @@ const LabelLastContent: Component<{
     >
       {props.ll().label}
     </span>{" "}
-    {timeAgo(props.ll().end_ts)}
+    {time_ago(props.ll().end_ts)}
   </>
 );
 

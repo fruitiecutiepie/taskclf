@@ -16,11 +16,11 @@ import {
   label_update,
   labels_list_by_date,
 } from "../lib/api";
-import { fmtDateLabel, shiftDate, todayDateStr } from "../lib/date";
+import { date_label_fmt, date_shift, date_today_str } from "../lib/date";
 import {
-  buildDayTimeline,
+  day_timeline_build,
   type GapItem,
-  itemKey,
+  item_key,
   type LabelEntry,
   type LabelItem,
   type TimelineItem,
@@ -34,7 +34,7 @@ export const LabelHistory: Component<{
   visible: Accessor<boolean>;
   latestPrediction?: Accessor<Prediction | null>;
 }> = (props) => {
-  const [selectedDate, setSelectedDate] = createSignal(todayDateStr());
+  const [selectedDate, setSelectedDate] = createSignal(date_today_str());
   let dateInputRef: HTMLInputElement | undefined;
 
   const [labels, { refetch }] = createResource(
@@ -71,11 +71,11 @@ export const LabelHistory: Component<{
       start_ts: r.start_ts,
       end_ts: r.end_ts,
     }));
-    return buildDayTimeline(entries, selectedDate());
+    return day_timeline_build(entries, selectedDate());
   });
 
-  function toggleRow(item: TimelineItem) {
-    const key = itemKey(item);
+  function row_toggle(item: TimelineItem) {
+    const key = item_key(item);
     setExpandedKey(expandedKey() === key ? null : key);
     setFlash(null);
   }
@@ -126,13 +126,13 @@ export const LabelHistory: Component<{
     }
   }
 
-  async function gap_create_submit(startTs: string, endTs: string, label: string) {
+  async function gap_create_submit(start_ts: string, end_ts: string, label: string) {
     setBusy(true);
     setFlash(null);
     try {
       await label_create({
-        start_ts: startTs,
-        end_ts: endTs,
+        start_ts,
+        end_ts,
         label,
       });
       setFlash(label);
@@ -148,7 +148,7 @@ export const LabelHistory: Component<{
     }
   }
 
-  const isFutureDate = () => selectedDate() >= shiftDate(todayDateStr(), 1);
+  const isFutureDate = () => selectedDate() >= date_shift(date_today_str(), 1);
 
   return (
     <div
@@ -171,7 +171,7 @@ export const LabelHistory: Component<{
       >
         <button
           type="button"
-          onClick={() => setSelectedDate(shiftDate(selectedDate(), -1))}
+          onClick={() => setSelectedDate(date_shift(selectedDate(), -1))}
           style={{
             background: "none",
             border: "none",
@@ -208,13 +208,13 @@ export const LabelHistory: Component<{
               font: "inherit",
             }}
           >
-            {fmtDateLabel(selectedDate())}
+            {date_label_fmt(selectedDate())}
           </button>
           <input
             ref={dateInputRef}
             type="date"
             value={selectedDate()}
-            max={todayDateStr()}
+            max={date_today_str()}
             onInput={(e) => {
               const v = e.currentTarget.value;
               if (v) {
@@ -236,7 +236,7 @@ export const LabelHistory: Component<{
           type="button"
           onClick={() => {
             if (!isFutureDate()) {
-              setSelectedDate(shiftDate(selectedDate(), 1));
+              setSelectedDate(date_shift(selectedDate(), 1));
             }
           }}
           disabled={isFutureDate()}
@@ -287,7 +287,7 @@ export const LabelHistory: Component<{
             if (!item) {
               return;
             }
-            const key = itemKey(item);
+            const key = item_key(item);
             setExpandedKey(expandedKey() === key ? null : key);
             setFlash(null);
           }}
@@ -300,27 +300,27 @@ export const LabelHistory: Component<{
                 <LabelHistoryGapRow
                   gap={item as GapItem}
                   dateStr={selectedDate()}
-                  expanded={expandedKey() === itemKey(item)}
-                  onToggle={() => toggleRow(item)}
+                  expanded={expandedKey() === item_key(item)}
+                  onToggle={() => row_toggle(item)}
                   onCreate={gap_create_submit}
                   coreLabels={coreLabels() ?? []}
                   busy={busy()}
-                  flash={expandedKey() === itemKey(item) ? flash() : null}
+                  flash={expandedKey() === item_key(item) ? flash() : null}
                 />
               }
             >
               <LabelHistoryRow
                 lbl={item as LabelItem}
                 dateStr={selectedDate()}
-                expanded={expandedKey() === itemKey(item)}
-                onToggle={() => toggleRow(item)}
+                expanded={expandedKey() === item_key(item)}
+                onToggle={() => row_toggle(item)}
                 onUpdate={(newLabel, newStart, newEnd) =>
                   label_update_submit(item as LabelItem, newLabel, newStart, newEnd)
                 }
                 onDelete={() => label_delete_submit(item as LabelItem)}
                 coreLabels={coreLabels() ?? []}
                 busy={busy()}
-                flash={expandedKey() === itemKey(item) ? flash() : null}
+                flash={expandedKey() === item_key(item) ? flash() : null}
               />
             </Show>
           )}

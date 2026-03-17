@@ -1,5 +1,5 @@
 import { type Accessor, type Component, createSignal } from "solid-js";
-import { dotColor } from "../lib/labelColors";
+import { dot_color } from "../lib/labelColors";
 import type { ConnectionStatus } from "../lib/ws";
 
 export const ConnectionDot: Component<{
@@ -10,7 +10,7 @@ export const ConnectionDot: Component<{
   onHidePanel?: () => void;
 }> = (props) => {
   const [hovered, setHovered] = createSignal(false);
-  const color = () => dotColor(props.status());
+  const color = () => dot_color(props.status());
   const pinned = () => props.panelPinned?.() ?? false;
 
   const dotShadow = () => {

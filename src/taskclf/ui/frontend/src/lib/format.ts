@@ -1,4 +1,4 @@
-export function formatDuration(seconds: number): string {
+export function duration_format(seconds: number): string {
   if (seconds < 60) {
     return `${seconds}s`;
   }
@@ -12,7 +12,7 @@ export function formatDuration(seconds: number): string {
   return rm > 0 ? `${h}h ${rm}m` : `${h}h`;
 }
 
-export function formatTime(iso: string | null | undefined): string {
+export function time_format(iso: string | null | undefined): string {
   if (!iso) {
     return "—";
   }
@@ -28,7 +28,7 @@ export function formatTime(iso: string | null | undefined): string {
   }
 }
 
-export function truncPath(p: string | null | undefined, maxLen = 30): string {
+export function path_trunc(p: string | null | undefined, maxLen = 30): string {
   if (!p) {
     return "—";
   }
@@ -38,12 +38,12 @@ export function truncPath(p: string | null | undefined, maxLen = 30): string {
   return `…${p.slice(-(maxLen - 1))}`;
 }
 
-export function shortAppName(app: string): string {
+export function app_name_short(app: string): string {
   const parts = app.split(".");
   return parts[parts.length - 1];
 }
 
-export function fmtRate(v: number | null): string | null {
+export function rate_fmt(v: number | null): string | null {
   if (v == null) {
     return null;
   }

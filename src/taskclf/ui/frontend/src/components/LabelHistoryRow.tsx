@@ -1,11 +1,11 @@
 import { type Component, createEffect, createSignal, For, Show } from "solid-js";
 import type { TimeRange } from "../lib/date";
 import {
-  fmtDuration,
-  fmtTime,
-  parseDate,
-  timeInputToDate,
-  toTimeInputValue,
+  date_parse,
+  duration_fmt,
+  time_fmt,
+  time_input_date,
+  time_input_value,
 } from "../lib/date";
 import { LABEL_COLORS } from "../lib/labelColors";
 import type { LabelItem } from "../lib/labelTimeline";
@@ -23,23 +23,23 @@ export const LabelHistoryRow: Component<{
   busy: boolean;
   flash: string | null;
 }> = (props) => {
-  const startD = () => parseDate(props.lbl.start_ts);
-  const endD = () => parseDate(props.lbl.end_ts);
-  const dur = () => fmtDuration(endD().getTime() - startD().getTime());
+  const startD = () => date_parse(props.lbl.start_ts);
+  const endD = () => date_parse(props.lbl.end_ts);
+  const dur = () => duration_fmt(endD().getTime() - startD().getTime());
   const [confirmDelete, setConfirmDelete] = createSignal(false);
   const [pendingLabel, setPendingLabel] = createSignal<string | null>(null);
 
-  const [startTime, setStartTime] = createSignal(toTimeInputValue(startD()));
-  const [endTime, setEndTime] = createSignal(toTimeInputValue(endD()));
+  const [startTime, setStartTime] = createSignal(time_input_value(startD()));
+  const [endTime, setEndTime] = createSignal(time_input_value(endD()));
 
   createEffect(() => {
-    setStartTime(toTimeInputValue(startD()));
-    setEndTime(toTimeInputValue(endD()));
+    setStartTime(time_input_value(startD()));
+    setEndTime(time_input_value(endD()));
   });
 
   const editedRange = (): TimeRange | null => {
-    const s = timeInputToDate(props.dateStr, startTime());
-    const e = timeInputToDate(props.dateStr, endTime());
+    const s = time_input_date(props.dateStr, startTime());
+    const e = time_input_date(props.dateStr, endTime());
     if (e.getTime() <= s.getTime()) {
       return null;
     }
@@ -49,8 +49,8 @@ export const LabelHistoryRow: Component<{
   const rangeValid = () => editedRange() !== null;
 
   const timeChanged = () =>
-    startTime() !== toTimeInputValue(startD())
-    || endTime() !== toTimeInputValue(endD());
+    startTime() !== time_input_value(startD())
+    || endTime() !== time_input_value(endD());
 
   const labelChanged = () =>
     pendingLabel() !== null && pendingLabel() !== props.lbl.label;
@@ -124,7 +124,7 @@ export const LabelHistoryRow: Component<{
         <span
           style={{ color: "#a0a0a0", "font-size": "0.65rem", "white-space": "nowrap" }}
         >
-          {fmtTime(startD())} – {fmtTime(endD())}{" "}
+          {time_fmt(startD())} – {time_fmt(endD())}{" "}
           <span style={{ color: "#808080" }}>({dur()})</span>
         </span>
       </button>
@@ -169,8 +169,8 @@ export const LabelHistoryRow: Component<{
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  setStartTime(toTimeInputValue(startD()));
-                  setEndTime(toTimeInputValue(endD()));
+                  setStartTime(time_input_value(startD()));
+                  setEndTime(time_input_value(endD()));
                 }}
                 title="Reset time"
                 style={{
@@ -310,8 +310,8 @@ export const LabelHistoryRow: Component<{
                   onClick={(e) => {
                     e.stopPropagation();
                     setPendingLabel(null);
-                    setStartTime(toTimeInputValue(startD()));
-                    setEndTime(toTimeInputValue(endD()));
+                    setStartTime(time_input_value(startD()));
+                    setEndTime(time_input_value(endD()));
                   }}
                   style={{
                     padding: "2px 8px",

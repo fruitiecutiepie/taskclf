@@ -1,6 +1,6 @@
 import { type Accessor, type Component, createMemo, Show } from "solid-js";
-import { formatTime } from "../../lib/format";
-import { dotColor } from "../../lib/labelColors";
+import { time_format } from "../../lib/format";
+import { dot_color } from "../../lib/labelColors";
 import type { ConnectionStatus, WSStats } from "../../lib/ws";
 import { StatusRow } from "../ui/StatusRow";
 import { StatusSection } from "../ui/StatusSection";
@@ -12,14 +12,14 @@ export const StatusWebSocket: Component<{
   const stats = () => props.wsStats();
 
   const summary = createMemo(() => props.status());
-  const summaryColor = createMemo(() => dotColor(props.status()));
+  const summaryColor = createMemo(() => dot_color(props.status()));
 
   return (
     <StatusSection title="WebSocket" summary={summary()} summaryColor={summaryColor()}>
       <StatusRow
         label="status"
         value={props.status()}
-        color={dotColor(props.status())}
+        color={dot_color(props.status())}
         tooltip="Current WebSocket connection state"
       />
       <StatusRow
@@ -37,7 +37,7 @@ export const StatusWebSocket: Component<{
       />
       <StatusRow
         label="last_received"
-        value={formatTime(stats().lastMessageAt)}
+        value={time_format(stats().lastMessageAt)}
         dim
         tooltip="When the last WebSocket message arrived"
       />
@@ -50,7 +50,7 @@ export const StatusWebSocket: Component<{
       <Show when={stats().connectedSince}>
         <StatusRow
           label="connected_since"
-          value={formatTime(stats().connectedSince)}
+          value={time_format(stats().connectedSince)}
           dim
           tooltip="When the current WebSocket session was established"
         />

@@ -1,5 +1,5 @@
 import { type Accessor, type Component, createMemo, Show } from "solid-js";
-import { formatTime } from "../../lib/format";
+import { time_format } from "../../lib/format";
 import { LABEL_COLORS } from "../../lib/labelColors";
 import type { Prediction } from "../../lib/ws";
 import { StatusRow } from "../ui/StatusRow";
@@ -69,7 +69,7 @@ export const StatusPrediction: Component<{
             />
             <StatusRow
               label="ts"
-              value={formatTime(p().ts)}
+              value={time_format(p().ts)}
               dim
               tooltip="When this prediction was made"
             />
