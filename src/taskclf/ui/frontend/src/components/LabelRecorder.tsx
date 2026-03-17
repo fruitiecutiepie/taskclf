@@ -32,11 +32,11 @@ function extend_forward_pref_read(): boolean {
   }
 }
 
-interface LabelRecorderProps {
+type LabelRecorderProps = {
   maxHeight?: number;
   onCollapse: () => void;
   prediction?: Accessor<Prediction | null>;
-}
+};
 
 export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
   const [labels] = createResource(core_labels_list);

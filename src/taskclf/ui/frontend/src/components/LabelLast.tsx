@@ -2,9 +2,9 @@ import { type Accessor, type Component, Show } from "solid-js";
 import { timeAgo } from "../lib/date";
 import { LABEL_COLORS } from "../lib/labelColors";
 
-interface LabelLastProps {
+type LabelLastProps = {
   lastLabel: Accessor<{ label: string; end_ts: string } | null | undefined>;
-}
+};
 
 const LabelLastContent: Component<{
   ll: Accessor<{ label: string; end_ts: string }>;

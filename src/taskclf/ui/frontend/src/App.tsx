@@ -5,8 +5,11 @@ import { PredictionBadge } from "./components/PredictionBadge";
 import { StatusPanel } from "./components/StatusPanel";
 import { StatusPanelWindow } from "./components/StatusPanelWindow";
 import { host } from "./lib/host";
-import { requestPermission, showTransitionNotification } from "./lib/notifications";
-import { useWebSocket } from "./lib/ws";
+import {
+  notification_permission_ensure,
+  transition_notification_show,
+} from "./lib/notifications";
+import { ws_store_new } from "./lib/ws";
 
 const viewParam = new URLSearchParams(window.location.search).get("view");
 const isPanelView = viewParam === "panel";
@@ -42,20 +45,20 @@ const App: Component = () => {
   const [panelHovered, setPanelHovered] = createSignal(false);
   const panelVisible = () => panelPinned() || dotHovered() || panelHovered();
 
-  const ws = useWebSocket();
+  const ws = ws_store_new();
 
   const ensurePermission = (() => {
     let asked = false;
     return () => {
       if (!asked) {
         asked = true;
-        requestPermission();
+        notification_permission_ensure();
       }
     };
   })();
 
   onMount(() => {
-    requestPermission();
+    notification_permission_ensure();
   });
 
   createEffect(() => {
@@ -74,7 +77,7 @@ const App: Component = () => {
     if (!prompt) {
       return;
     }
-    showTransitionNotification(prompt, () => {
+    transition_notification_show(prompt, () => {
       if (inBrowser) {
         setLabelPinned(true);
       } else {

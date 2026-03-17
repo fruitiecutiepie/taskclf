@@ -1,6 +1,6 @@
 import { type Component, Show } from "solid-js";
 import { host } from "../lib/host";
-import { useWebSocket } from "../lib/ws";
+import { ws_store_new } from "../lib/ws";
 import { StatusPanel } from "./StatusPanel";
 
 const CONTENT_W = 280;
@@ -8,7 +8,7 @@ const PANEL_MAX_H = 520;
 const isBrowserMode = () => window.innerWidth > 300 && !host.isNativeWindow;
 
 export const StatusPanelWindow: Component = () => {
-  const ws = useWebSocket();
+  const ws = ws_store_new();
   const inBrowser = isBrowserMode();
 
   return (

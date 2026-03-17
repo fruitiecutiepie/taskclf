@@ -1,12 +1,12 @@
 import type { OverwritePending } from "../components/LabelOverwrite";
 import { parseISODate } from "./date";
 
-export interface TimeSelection {
+export type TimeSelection = {
   selectedMinutes: number;
   fillFromLast: boolean;
   lastLabelEndTs: string | null;
   extendFwd: boolean;
-}
+};
 
 /**
  * Recalculate an overwrite-pending state after the user changes the time

@@ -1,30 +1,30 @@
 import { parseDate } from "./date";
 
-export interface LabelEntry {
+export type LabelEntry = {
   label: string;
   start_ts: string;
   end_ts: string;
-}
+};
 
-export interface TimelineSegment {
+export type TimelineSegment = {
   label: string | null;
   startMs: number;
   endMs: number;
   fraction: number;
-}
+};
 
-export interface GapItem {
+export type GapItem = {
   kind: "gap";
   start_ts: string;
   end_ts: string;
-}
+};
 
-export interface LabelItem {
+export type LabelItem = {
   kind: "label";
   label: string;
   start_ts: string;
   end_ts: string;
-}
+};
 
 export type TimelineItem = GapItem | LabelItem;
 

@@ -2,9 +2,9 @@ import type { Component } from "solid-js";
 import { Show } from "solid-js";
 import { LABEL_COLORS } from "../lib/labelColors";
 
-interface LabelFlashProps {
+type LabelFlashProps = {
   flash: string;
-}
+};
 
 export const LabelFlash: Component<LabelFlashProps> = (props) => {
   const isError = () => props.flash.startsWith("Error");

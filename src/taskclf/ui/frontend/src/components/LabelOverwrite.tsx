@@ -2,21 +2,21 @@ import { type Component, createMemo, createSignal, For, Show } from "solid-js";
 import { parseISODate } from "../lib/date";
 import { LABEL_COLORS } from "../lib/labelColors";
 
-export interface OverwritePending {
+export type OverwritePending = {
   label: string;
   start: string;
   end: string;
   conflicts: { start_ts: string; end_ts: string; label: string }[];
   confidence: number;
   extendForward: boolean;
-}
+};
 
-interface LabelOverwriteProps {
+type LabelOverwriteProps = {
   pending: OverwritePending;
   onConfirm: () => void;
   onKeepAll: () => void;
   onCancel: () => void;
-}
+};
 
 const fmt = (d: Date) =>
   d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });

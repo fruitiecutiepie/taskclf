@@ -1,6 +1,6 @@
 import { type Component, Show } from "solid-js";
 import { host } from "../lib/host";
-import { useWebSocket } from "../lib/ws";
+import { ws_store_new } from "../lib/ws";
 import { LabelRecorder } from "./LabelRecorder";
 
 const CONTENT_W = 280;
@@ -8,7 +8,7 @@ const LABEL_MAX_H = 330;
 const isBrowserMode = () => window.innerWidth > 300 && !host.isNativeWindow;
 
 export const LabelRecorderWindow: Component = () => {
-  const ws = useWebSocket();
+  const ws = ws_store_new();
   const inBrowser = isBrowserMode();
 
   function collapse() {

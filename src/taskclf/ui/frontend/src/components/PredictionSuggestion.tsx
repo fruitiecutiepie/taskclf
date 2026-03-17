@@ -75,7 +75,7 @@ export const PredictionSuggestion: Component<{
           <button
             type="button"
             onClick={() => {
-              /* parent dismisses via ws.dismissSuggestion */
+              /* parent dismisses via ws.suggestion_dismiss */
             }}
             style={{
               padding: "6px 16px",

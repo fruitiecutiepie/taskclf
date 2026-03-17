@@ -5,13 +5,13 @@ const MINUTE_OPTIONS = [0, 1, 5, 15, 30, 60] as const;
 export type TimeUnit = "s" | "m" | "h" | "d";
 const UNIT_TO_MINUTES: Record<TimeUnit, number> = { s: 1 / 60, m: 1, h: 60, d: 1440 };
 
-interface LabelTimePickerProps {
+type LabelTimePickerProps = {
   selectedMinutes: Accessor<number>;
   setSelectedMinutes: (m: number) => void;
   fillFromLast: Accessor<boolean>;
   setFillFromLast: (v: boolean) => void;
   lastLabel: Accessor<{ end_ts: string } | null | undefined>;
-}
+};
 
 export const LabelTimePicker: Component<LabelTimePickerProps> = (props) => {
   const [customActive, setCustomActive] = createSignal(false);

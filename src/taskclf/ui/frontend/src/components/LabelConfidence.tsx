@@ -1,9 +1,9 @@
 import type { Accessor, Component } from "solid-js";
 
-interface LabelConfidenceProps {
+type LabelConfidenceProps = {
   value: Accessor<number>;
   onChange: (v: number) => void;
-}
+};
 
 export const LabelConfidence: Component<LabelConfidenceProps> = (props) => (
   <div

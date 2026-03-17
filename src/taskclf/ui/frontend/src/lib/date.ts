@@ -93,10 +93,10 @@ export function timeAgo(iso: string): string {
   return `${days}d ago`;
 }
 
-export interface TimeRange {
+export type TimeRange = {
   start: string;
   end: string;
-}
+};
 
 export function timeRangeForMinutes(mins: number): TimeRange | null {
   if (mins < 1) {

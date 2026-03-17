@@ -43,12 +43,12 @@ export const LabelHistoryGapRow: Component<{
     setEndTimeDisplay(toTimeInputValueSec(gapEndD()));
   });
 
-  function handleStartChange(val: string) {
+  function gap_start_time_set(val: string) {
     setStartTimeDisplay(val);
     setStartIso(timeInputToDate(props.dateStr, val).toISOString());
   }
 
-  function handleEndChange(val: string) {
+  function gap_end_time_set(val: string) {
     setEndTimeDisplay(val);
     setEndIso(timeInputToDate(props.dateStr, val).toISOString());
   }
@@ -162,7 +162,7 @@ export const LabelHistoryGapRow: Component<{
               step="1"
               value={startTimeDisplay()}
               max={endTimeDisplay()}
-              onInput={(e) => handleStartChange(e.currentTarget.value)}
+              onInput={(e) => gap_start_time_set(e.currentTarget.value)}
               style={timeInputStyle}
             />
             <span style={{ color: "#888", "font-size": "0.58rem" }}>to</span>
@@ -171,7 +171,7 @@ export const LabelHistoryGapRow: Component<{
               step="1"
               value={endTimeDisplay()}
               min={startTimeDisplay()}
-              onInput={(e) => handleEndChange(e.currentTarget.value)}
+              onInput={(e) => gap_end_time_set(e.currentTarget.value)}
               style={timeInputStyle}
             />
           </div>

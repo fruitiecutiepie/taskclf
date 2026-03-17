@@ -1,9 +1,9 @@
 import { type Accessor, type Component, Show } from "solid-js";
 
-interface LabelExtendToggleProps {
+type LabelExtendToggleProps = {
   checked: Accessor<boolean>;
   onToggle: () => void;
-}
+};
 
 export const LabelExtendToggle: Component<LabelExtendToggleProps> = (props) => (
   <button

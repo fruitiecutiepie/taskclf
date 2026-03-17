@@ -21,10 +21,10 @@ export type HostCommand =
   | { cmd: "hideStatePanel" }
   | { cmd: "cancelPanelHide" };
 
-export interface Host {
+export type Host = {
   invoke(command: HostCommand): Promise<void>;
   readonly isNativeWindow: boolean;
-}
+};
 
 declare global {
   interface Window {
@@ -45,7 +45,7 @@ declare global {
   }
 }
 
-function getPyWebViewApi() {
+function pywebview_api_ref() {
   return window.pywebview?.api ?? null;
 }
 
@@ -57,11 +57,11 @@ function getPyWebViewApi() {
  */
 class AdaptiveHost implements Host {
   get isNativeWindow(): boolean {
-    return getPyWebViewApi() !== null;
+    return pywebview_api_ref() !== null;
   }
 
   async invoke(command: HostCommand): Promise<void> {
-    const api = getPyWebViewApi();
+    const api = pywebview_api_ref();
     if (!api) {
       return;
     }

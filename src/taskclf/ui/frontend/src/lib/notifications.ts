@@ -3,13 +3,13 @@ import type { PromptLabelEvent } from "./ws";
 // `renotify` is part of the Web Notifications API spec but missing from
 // TypeScript's lib.dom.d.ts. Extend until upstream adds it.
 // https://developer.mozilla.org/en-US/docs/Web/API/Notification/Notification#renotify
-interface NotificationOptionsExtended extends NotificationOptions {
+type NotificationOptionsExtended = NotificationOptions & {
   renotify?: boolean;
-}
+};
 
 let permissionGranted = false;
 
-export async function requestPermission(): Promise<boolean> {
+export async function notification_permission_ensure(): Promise<boolean> {
   if (!("Notification" in window)) {
     return false;
   }
@@ -25,7 +25,7 @@ export async function requestPermission(): Promise<boolean> {
   return permissionGranted;
 }
 
-export function showTransitionNotification(
+export function transition_notification_show(
   prompt: PromptLabelEvent,
   onClick: () => void,
 ): Notification | null {
