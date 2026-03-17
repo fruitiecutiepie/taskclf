@@ -6,7 +6,7 @@ const TABS: PanelTab[] = ["system", "history", "training"];
 
 export const StatusPanelTab: Component<{
   active: Accessor<PanelTab>;
-  onChange: Setter<PanelTab>;
+  on_change: Setter<PanelTab>;
 }> = (props) => (
   <div
     style={{
@@ -20,7 +20,7 @@ export const StatusPanelTab: Component<{
     {TABS.map((t) => (
       <button
         type="button"
-        onClick={() => props.onChange(t)}
+        onClick={() => props.on_change(t)}
         style={{
           flex: "1",
           padding: "3px 0",

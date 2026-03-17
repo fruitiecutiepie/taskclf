@@ -5,9 +5,9 @@ import type { TimelineSegment } from "../lib/labelTimeline";
 
 export const LabelHistoryTimeline: Component<{
   segments: TimelineSegment[];
-  onSegmentClick?: (seg: TimelineSegment, index: number) => void;
+  on_segment_click?: (seg: TimelineSegment, index: number) => void;
 }> = (props) => {
-  const [tooltip, setTooltip] = createSignal<{ text: string; x: number } | null>(null);
+  const [tooltip, set_tooltip] = createSignal<{ text: string; x: number } | null>(null);
 
   return (
     <div style={{ position: "relative", "margin-top": "3px", "margin-bottom": "4px" }}>
@@ -45,24 +45,24 @@ export const LabelHistoryTimeline: Component<{
                   e.currentTarget.getBoundingClientRect().left
                   - rect.left
                   + e.currentTarget.offsetWidth / 2;
-                const dur = duration_fmt(seg.endMs - seg.startMs);
-                const start = time_fmt(new Date(seg.startMs));
-                const end = time_fmt(new Date(seg.endMs));
+                const dur = duration_fmt(seg.end_ms - seg.start_ms);
+                const start = time_fmt(new Date(seg.start_ms));
+                const end = time_fmt(new Date(seg.end_ms));
                 const prefix = seg.label ?? "Unlabeled";
-                setTooltip({ text: `${prefix}  ${start}\u2013${end}  (${dur})`, x });
+                set_tooltip({ text: `${prefix}  ${start}\u2013${end}  (${dur})`, x });
                 if (!seg.label) {
                   e.currentTarget.style.background = "rgba(255,255,255,0.1)";
                 }
               }}
               onMouseLeave={(e) => {
-                setTooltip(null);
+                set_tooltip(null);
                 if (!seg.label) {
                   e.currentTarget.style.background = "rgba(255,255,255,0.04)";
                 }
               }}
               onClick={() => {
-                if (props.onSegmentClick) {
-                  props.onSegmentClick(seg, idx());
+                if (props.on_segment_click) {
+                  props.on_segment_click(seg, idx());
                 }
               }}
             />

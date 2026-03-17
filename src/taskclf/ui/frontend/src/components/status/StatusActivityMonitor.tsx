@@ -15,7 +15,7 @@ export const StatusActivityMonitor: Component<{
     return v.current_app ? `${v.state} · ${v.current_app}` : v.state;
   });
 
-  const transitionPct = createMemo(() => {
+  const transition_pct = createMemo(() => {
     const v = s();
     if (!v.candidate_app || !v.transition_threshold_s) {
       return null;
@@ -27,7 +27,7 @@ export const StatusActivityMonitor: Component<{
   });
 
   return (
-    <StatusSection title="Activity Monitor" summary={summary()} defaultOpen>
+    <StatusSection title="Activity Monitor" summary={summary()} default_open>
       <StatusRow
         label="state"
         value={s().state}
@@ -74,11 +74,11 @@ export const StatusActivityMonitor: Component<{
             />
             <StatusRow
               label="candidate_progress"
-              value={`${duration_format(s().candidate_duration_s)} / ${duration_format(s().transition_threshold_s)} (${transitionPct()}%)`}
+              value={`${duration_format(s().candidate_duration_s)} / ${duration_format(s().transition_threshold_s)} (${transition_pct()}%)`}
               color="#eab308"
               tooltip="Time spent on the candidate app vs. the threshold required for a transition"
             />
-            <StatusProgress pct={transitionPct() ?? 0} />
+            <StatusProgress pct={transition_pct() ?? 0} />
           </>
         )}
       </Show>

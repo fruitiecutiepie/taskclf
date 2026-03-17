@@ -15,7 +15,7 @@ function pending_make(overrides: Partial<OverwritePending> = {}): OverwritePendi
       },
     ],
     confidence: 1,
-    extendForward: false,
+    extend_forward: false,
     ...overrides,
   };
 }
@@ -50,19 +50,19 @@ describe("LabelOverwrite", () => {
     render(() => (
       <LabelOverwrite
         pending={pending}
-        onConfirm={noop}
-        onKeepAll={noop}
-        onCancel={noop}
+        on_confirm={noop}
+        on_keep_all={noop}
+        on_cancel={noop}
       />
     ));
 
     fireEvent.click(screen.getByText("show details"));
 
-    const allLabels = screen.getAllByText(/Review|Build|Debug/);
+    const all_labels = screen.getAllByText(/Review|Build|Debug/);
     // First 3 are the summary (sorted by first appearance), last 3 are detail rows (sorted by start_ts)
-    const detailLabels = allLabels.slice(3);
-    const detailOrder = detailLabels.map((el) => el.textContent);
-    expect(detailOrder).toEqual(["Review", "Build", "Debug"]);
+    const detail_labels = all_labels.slice(3);
+    const detail_order = detail_labels.map((el) => el.textContent);
+    expect(detail_order).toEqual(["Review", "Build", "Debug"]);
   });
 
   // ------------------------------------------------------------------
@@ -74,9 +74,9 @@ describe("LabelOverwrite", () => {
     render(() => (
       <LabelOverwrite
         pending={pending}
-        onConfirm={noop}
-        onKeepAll={noop}
-        onCancel={noop}
+        on_confirm={noop}
+        on_keep_all={noop}
+        on_cancel={noop}
       />
     ));
 
@@ -107,9 +107,9 @@ describe("LabelOverwrite", () => {
     render(() => (
       <LabelOverwrite
         pending={pending}
-        onConfirm={noop}
-        onKeepAll={noop}
-        onCancel={noop}
+        on_confirm={noop}
+        on_keep_all={noop}
+        on_cancel={noop}
       />
     ));
 
@@ -136,9 +136,9 @@ describe("LabelOverwrite", () => {
     render(() => (
       <LabelOverwrite
         pending={pending}
-        onConfirm={noop}
-        onKeepAll={noop}
-        onCancel={noop}
+        on_confirm={noop}
+        on_keep_all={noop}
+        on_cancel={noop}
       />
     ));
 
@@ -177,18 +177,18 @@ describe("LabelOverwrite", () => {
     render(() => (
       <LabelOverwrite
         pending={pending}
-        onConfirm={noop}
-        onKeepAll={noop}
-        onCancel={noop}
+        on_confirm={noop}
+        on_keep_all={noop}
+        on_cancel={noop}
       />
     ));
 
-    const summaryRow = screen.getByText(/3 labels:/);
-    expect(summaryRow.parentElement?.textContent).toContain("Review");
-    expect(summaryRow.parentElement?.textContent).toContain("Debug");
-    const summaryText = summaryRow.parentElement?.textContent ?? "";
-    const reviewCount = summaryText.split("Review").length - 1;
-    expect(reviewCount).toBe(1);
+    const summary_row = screen.getByText(/3 labels:/);
+    expect(summary_row.parentElement?.textContent).toContain("Review");
+    expect(summary_row.parentElement?.textContent).toContain("Debug");
+    const summary_text = summary_row.parentElement?.textContent ?? "";
+    const review_count = summary_text.split("Review").length - 1;
+    expect(review_count).toBe(1);
   });
 
   // ------------------------------------------------------------------
@@ -200,9 +200,9 @@ describe("LabelOverwrite", () => {
     render(() => (
       <LabelOverwrite
         pending={pending}
-        onConfirm={noop}
-        onKeepAll={noop}
-        onCancel={noop}
+        on_confirm={noop}
+        on_keep_all={noop}
+        on_cancel={noop}
       />
     ));
 
@@ -217,9 +217,9 @@ describe("LabelOverwrite", () => {
     render(() => (
       <LabelOverwrite
         pending={pending_make()}
-        onConfirm={noop}
-        onKeepAll={noop}
-        onCancel={noop}
+        on_confirm={noop}
+        on_keep_all={noop}
+        on_cancel={noop}
       />
     ));
 
@@ -231,45 +231,45 @@ describe("LabelOverwrite", () => {
   // ------------------------------------------------------------------
   // Button callbacks
   // ------------------------------------------------------------------
-  it("calls onConfirm when Overwrite All is clicked", () => {
-    const onConfirm = vi.fn();
+  it("calls on_confirm when Overwrite All is clicked", () => {
+    const on_confirm = vi.fn();
     render(() => (
       <LabelOverwrite
         pending={pending_make()}
-        onConfirm={onConfirm}
-        onKeepAll={noop}
-        onCancel={noop}
+        on_confirm={on_confirm}
+        on_keep_all={noop}
+        on_cancel={noop}
       />
     ));
     fireEvent.click(screen.getByText("Overwrite All"));
-    expect(onConfirm).toHaveBeenCalledOnce();
+    expect(on_confirm).toHaveBeenCalledOnce();
   });
 
-  it("calls onKeepAll when Keep All is clicked", () => {
-    const onKeepAll = vi.fn();
+  it("calls on_keep_all when Keep All is clicked", () => {
+    const on_keep_all = vi.fn();
     render(() => (
       <LabelOverwrite
         pending={pending_make()}
-        onConfirm={noop}
-        onKeepAll={onKeepAll}
-        onCancel={noop}
+        on_confirm={noop}
+        on_keep_all={on_keep_all}
+        on_cancel={noop}
       />
     ));
     fireEvent.click(screen.getByText("Keep All"));
-    expect(onKeepAll).toHaveBeenCalledOnce();
+    expect(on_keep_all).toHaveBeenCalledOnce();
   });
 
-  it("calls onCancel when Cancel is clicked", () => {
-    const onCancel = vi.fn();
+  it("calls on_cancel when Cancel is clicked", () => {
+    const on_cancel = vi.fn();
     render(() => (
       <LabelOverwrite
         pending={pending_make()}
-        onConfirm={noop}
-        onKeepAll={noop}
-        onCancel={onCancel}
+        on_confirm={noop}
+        on_keep_all={noop}
+        on_cancel={on_cancel}
       />
     ));
     fireEvent.click(screen.getByText("Cancel"));
-    expect(onCancel).toHaveBeenCalledOnce();
+    expect(on_cancel).toHaveBeenCalledOnce();
   });
 });

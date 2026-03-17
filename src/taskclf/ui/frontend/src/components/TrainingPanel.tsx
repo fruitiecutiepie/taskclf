@@ -22,43 +22,45 @@ import { StatusRow } from "./ui/StatusRow";
 import { StatusSection } from "./ui/StatusSection";
 
 export const TrainingPanel: Component<{
-  trainState: Accessor<TrainState>;
+  train_state: Accessor<TrainState>;
 }> = (props) => {
-  const initToday = new Date().toISOString().slice(0, 10);
-  const initFrom = (() => {
+  const init_today = new Date().toISOString().slice(0, 10);
+  const init_from = (() => {
     const d = new Date();
     d.setDate(d.getDate() - 30);
     return d.toISOString().slice(0, 10);
   })();
 
-  const [dateFrom, setDateFrom] = createSignal(initFrom);
-  const [dateTo, setDateTo] = createSignal(initToday);
-  const [boostRounds, setBoostRounds] = createSignal(100);
-  const [classWeight, setClassWeight] = createSignal<"balanced" | "none">("balanced");
-  const [synthetic, setSynthetic] = createSignal(false);
+  const [date_from, set_date_from] = createSignal(init_from);
+  const [date_to, set_date_to] = createSignal(init_today);
+  const [boost_rounds, set_boost_rounds] = createSignal(100);
+  const [class_weight, set_class_weight] = createSignal<"balanced" | "none">(
+    "balanced",
+  );
+  const [synthetic, set_synthetic] = createSignal(false);
 
-  const [dataCheck, setDataCheck] = createSignal<DataCheck | null>(null);
-  const [checkedRange, setCheckedRange] = createSignal<{
+  const [data_check, set_data_check] = createSignal<DataCheck | null>(null);
+  const [checked_range, set_checked_range] = createSignal<{
     from: string;
     to: string;
   } | null>(null);
-  const [models, setModels] = createSignal<ModelBundle[]>([]);
-  const [checking, setChecking] = createSignal(false);
-  const [checkError, setCheckError] = createSignal<string | null>(null);
-  const [trainError, setTrainError] = createSignal<string | null>(null);
-  const [submitting, setSubmitting] = createSignal(false);
-  const [confirmPending, setConfirmPending] = createSignal(false);
+  const [models, set_models] = createSignal<ModelBundle[]>([]);
+  const [checking, set_checking] = createSignal(false);
+  const [check_error, set_check_error] = createSignal<string | null>(null);
+  const [train_error, set_train_error] = createSignal<string | null>(null);
+  const [submitting, set_submitting] = createSignal(false);
+  const [confirm_pending, set_confirm_pending] = createSignal(false);
 
-  const ts = () => props.trainState();
-  const isRunning = () => ts().status === "running";
+  const ts = () => props.train_state();
+  const is_running = () => ts().status === "running";
 
   createEffect(
     on(
-      () => [dateFrom(), dateTo()],
+      () => [date_from(), date_to()],
       () => {
-        setDataCheck(null);
-        setCheckedRange(null);
-        setCheckError(null);
+        set_data_check(null);
+        set_checked_range(null);
+        set_check_error(null);
       },
       { defer: true },
     ),
@@ -75,22 +77,22 @@ export const TrainingPanel: Component<{
     ),
   );
 
-  const canTrain = createMemo(() => {
+  const can_train = createMemo(() => {
     if (synthetic()) {
       return true;
     }
-    const dc = dataCheck();
+    const dc = data_check();
     if (!dc) {
       return false;
     }
     return dc.trainable_rows > 0;
   });
 
-  const trainDisabledReason = createMemo(() => {
+  const train_disabled_reason = createMemo(() => {
     if (synthetic()) {
       return null;
     }
-    const dc = dataCheck();
+    const dc = data_check();
     if (!dc) {
       return "Prepare data before training";
     }
@@ -120,7 +122,7 @@ export const TrainingPanel: Component<{
   async function models_refresh() {
     try {
       const ml = await models_list();
-      setModels(models_sorted(ml));
+      set_models(models_sorted(ml));
     } catch {
       /* non-critical */
     }
@@ -130,20 +132,20 @@ export const TrainingPanel: Component<{
     if (checking()) {
       return;
     }
-    setChecking(true);
-    setCheckError(null);
+    set_checking(true);
+    set_check_error(null);
     try {
       const [dc, ml] = await Promise.all([
-        training_data_check(dateFrom(), dateTo()),
+        training_data_check(date_from(), date_to()),
         models_list(),
       ]);
-      setDataCheck(dc);
-      setCheckedRange({ from: dateFrom(), to: dateTo() });
-      setModels(models_sorted(ml));
+      set_data_check(dc);
+      set_checked_range({ from: date_from(), to: date_to() });
+      set_models(models_sorted(ml));
     } catch (e: unknown) {
-      setCheckError(e instanceof Error ? e.message : "Failed to check data");
+      set_check_error(e instanceof Error ? e.message : "Failed to check data");
     } finally {
-      setChecking(false);
+      set_checking(false);
     }
   }
 
@@ -153,25 +155,25 @@ export const TrainingPanel: Component<{
     if (submitting()) {
       return;
     }
-    if (!confirmPending()) {
-      setConfirmPending(true);
+    if (!confirm_pending()) {
+      set_confirm_pending(true);
       return;
     }
-    setConfirmPending(false);
-    setSubmitting(true);
-    setTrainError(null);
+    set_confirm_pending(false);
+    set_submitting(true);
+    set_train_error(null);
     try {
       await training_start({
-        date_from: dateFrom(),
-        date_to: dateTo(),
-        num_boost_round: boostRounds(),
-        class_weight: classWeight(),
+        date_from: date_from(),
+        date_to: date_to(),
+        num_boost_round: boost_rounds(),
+        class_weight: class_weight(),
         synthetic: synthetic(),
       });
     } catch (e: unknown) {
-      setTrainError(e instanceof Error ? e.message : "Failed to start training");
+      set_train_error(e instanceof Error ? e.message : "Failed to start training");
     } finally {
-      setSubmitting(false);
+      set_submitting(false);
     }
   }
 
@@ -179,11 +181,11 @@ export const TrainingPanel: Component<{
     try {
       await training_cancel();
     } catch (e: unknown) {
-      setTrainError(e instanceof Error ? e.message : "Failed to cancel");
+      set_train_error(e instanceof Error ? e.message : "Failed to cancel");
     }
   }
 
-  const inputStyle = {
+  const input_style = {
     width: "100%",
     padding: "3px 5px",
     background: "#252830",
@@ -195,7 +197,7 @@ export const TrainingPanel: Component<{
     "box-sizing": "border-box" as const,
   };
 
-  const btnStyle = (
+  const btn_style = (
     variant: "primary" | "danger" | "ghost" = "primary",
     disabled = false,
   ) => ({
@@ -217,7 +219,7 @@ export const TrainingPanel: Component<{
 
   return (
     <div style={{ "font-size": "0.63rem" }}>
-      <StatusSection title="Data Readiness" defaultOpen>
+      <StatusSection title="Data Readiness" default_open>
         <div style={{ display: "flex", gap: "4px", "margin-bottom": "4px" }}>
           <div style={{ flex: 1 }}>
             <label
@@ -234,9 +236,9 @@ export const TrainingPanel: Component<{
             <input
               id="train-date-from"
               type="date"
-              value={dateFrom()}
-              onInput={(e) => setDateFrom(e.currentTarget.value)}
-              style={inputStyle}
+              value={date_from()}
+              onInput={(e) => set_date_from(e.currentTarget.value)}
+              style={input_style}
             />
           </div>
           <div style={{ flex: 1 }}>
@@ -254,9 +256,9 @@ export const TrainingPanel: Component<{
             <input
               id="train-date-to"
               type="date"
-              value={dateTo()}
-              onInput={(e) => setDateTo(e.currentTarget.value)}
-              style={inputStyle}
+              value={date_to()}
+              onInput={(e) => set_date_to(e.currentTarget.value)}
+              style={input_style}
             />
           </div>
         </div>
@@ -264,43 +266,43 @@ export const TrainingPanel: Component<{
           type="button"
           onClick={data_check_submit}
           disabled={checking()}
-          style={btnStyle("ghost", checking())}
+          style={btn_style("ghost", checking())}
         >
           {checking() ? "Preparing…" : "Prepare Data"}
         </button>
-        <Show when={dataCheck()}>
+        <Show when={data_check()}>
           <div style={{ "margin-top": "4px" }}>
-            <Show when={(dataCheck()?.dates_built.length ?? 0) > 0}>
+            <Show when={(data_check()?.dates_built.length ?? 0) > 0}>
               <StatusRow
                 label="built"
-                value={`${dataCheck()?.dates_built.length} day(s) from AW`}
+                value={`${data_check()?.dates_built.length} day(s) from AW`}
                 color="#22c55e"
                 tooltip="Days where feature data was freshly fetched from ActivityWatch"
               />
             </Show>
             <StatusRow
               label="features_days"
-              value={`${dataCheck()?.dates_with_features.length ?? 0} / ${(dataCheck()?.dates_with_features.length ?? 0) + (dataCheck()?.dates_missing_features.length ?? 0)}`}
+              value={`${data_check()?.dates_with_features.length ?? 0} / ${(data_check()?.dates_with_features.length ?? 0) + (data_check()?.dates_missing_features.length ?? 0)}`}
               tooltip="Days with activity data out of total days in range"
             />
             <StatusRow
               label="label_spans"
-              value={String(dataCheck()?.label_span_count)}
+              value={String(data_check()?.label_span_count)}
               tooltip="Number of labeled time blocks in the selected range"
             />
             <StatusRow
               label="trainable_rows"
               value={
-                (dataCheck()?.trainable_rows ?? 0) > 0
-                  ? `${dataCheck()?.trainable_rows} (${dataCheck()?.trainable_labels.join(", ")})`
+                (data_check()?.trainable_rows ?? 0) > 0
+                  ? `${data_check()?.trainable_rows} (${data_check()?.trainable_labels.join(", ")})`
                   : "0"
               }
-              color={(dataCheck()?.trainable_rows ?? 0) > 0 ? "#22c55e" : "#ef4444"}
+              color={(data_check()?.trainable_rows ?? 0) > 0 ? "#22c55e" : "#ef4444"}
               tooltip="Feature rows with a matching label — only these enter training"
             />
           </div>
         </Show>
-        <Show when={checkError()}>
+        <Show when={check_error()}>
           <div
             style={{
               color: "#ef4444",
@@ -311,10 +313,10 @@ export const TrainingPanel: Component<{
               "align-items": "center",
             }}
           >
-            <span>{checkError()}</span>
+            <span>{check_error()}</span>
             <button
               type="button"
-              onClick={() => setCheckError(null)}
+              onClick={() => set_check_error(null)}
               style={{
                 cursor: "pointer",
                 "margin-left": "4px",
@@ -332,13 +334,13 @@ export const TrainingPanel: Component<{
         </Show>
       </StatusSection>
 
-      <StatusSection title="Train Model" defaultOpen>
+      <StatusSection title="Train Model" default_open>
         <div
           style={{
             display: "flex",
             "flex-direction": "column",
             gap: "4px",
-            opacity: canTrain() || isRunning() ? 1 : 0.5,
+            opacity: can_train() || is_running() ? 1 : 0.5,
             transition: "opacity 0.2s ease",
           }}
         >
@@ -356,12 +358,12 @@ export const TrainingPanel: Component<{
                 min="10"
                 max="1000"
                 step="10"
-                value={boostRounds()}
+                value={boost_rounds()}
                 onInput={(e) =>
-                  setBoostRounds(parseInt(e.currentTarget.value, 10) || 100)
+                  set_boost_rounds(parseInt(e.currentTarget.value, 10) || 100)
                 }
-                disabled={!canTrain() && !isRunning()}
-                style={inputStyle}
+                disabled={!can_train() && !is_running()}
+                style={input_style}
               />
             </div>
             <div style={{ flex: 1 }}>
@@ -373,12 +375,12 @@ export const TrainingPanel: Component<{
               </label>
               <select
                 id="train-class-weight"
-                value={classWeight()}
+                value={class_weight()}
                 onChange={(e) =>
-                  setClassWeight(e.currentTarget.value as "balanced" | "none")
+                  set_class_weight(e.currentTarget.value as "balanced" | "none")
                 }
-                disabled={!canTrain() && !isRunning()}
-                style={inputStyle}
+                disabled={!can_train() && !is_running()}
+                style={input_style}
               >
                 <option value="balanced">balanced</option>
                 <option value="none">none</option>
@@ -398,16 +400,16 @@ export const TrainingPanel: Component<{
             <input
               type="checkbox"
               checked={synthetic()}
-              onChange={(e) => setSynthetic(e.currentTarget.checked)}
+              onChange={(e) => set_synthetic(e.currentTarget.checked)}
               style={{ "accent-color": "#6366f1" }}
             />
             Synthetic data (no real data needed)
           </label>
-          <Show when={checkedRange() && !synthetic()}>
+          <Show when={checked_range() && !synthetic()}>
             <div
               style={{ "font-size": "0.56rem", color: "#808080", "margin-top": "1px" }}
             >
-              Training range: {checkedRange()?.from} — {checkedRange()?.to}
+              Training range: {checked_range()?.from} — {checked_range()?.to}
             </div>
           </Show>
           <div
@@ -419,25 +421,25 @@ export const TrainingPanel: Component<{
             }}
           >
             <Show
-              when={!isRunning()}
+              when={!is_running()}
               fallback={
                 <button
                   type="button"
                   onClick={training_cancel_submit}
-                  style={btnStyle("danger")}
+                  style={btn_style("danger")}
                 >
                   Cancel Training
                 </button>
               }
             >
               <Show
-                when={confirmPending()}
+                when={confirm_pending()}
                 fallback={
                   <button
                     type="button"
                     onClick={training_submit}
-                    disabled={submitting() || !canTrain()}
-                    style={btnStyle("primary", submitting() || !canTrain())}
+                    disabled={submitting() || !can_train()}
+                    style={btn_style("primary", submitting() || !can_train())}
                   >
                     {submitting() ? "Starting…" : "Train Model"}
                   </button>
@@ -446,28 +448,28 @@ export const TrainingPanel: Component<{
                 <button
                   type="button"
                   onClick={training_submit}
-                  style={btnStyle("primary")}
+                  style={btn_style("primary")}
                 >
                   Confirm
                 </button>
                 <button
                   type="button"
-                  onClick={() => setConfirmPending(false)}
-                  style={btnStyle("ghost")}
+                  onClick={() => set_confirm_pending(false)}
+                  style={btn_style("ghost")}
                 >
                   Cancel
                 </button>
               </Show>
             </Show>
           </div>
-          <Show when={trainDisabledReason() && !synthetic()}>
+          <Show when={train_disabled_reason() && !synthetic()}>
             <div
               style={{ "font-size": "0.56rem", color: "#808080", "margin-top": "1px" }}
             >
-              {trainDisabledReason()}
+              {train_disabled_reason()}
             </div>
           </Show>
-          <Show when={trainError()}>
+          <Show when={train_error()}>
             <div
               style={{
                 color: "#ef4444",
@@ -478,10 +480,10 @@ export const TrainingPanel: Component<{
                 "align-items": "center",
               }}
             >
-              <span>{trainError()}</span>
+              <span>{train_error()}</span>
               <button
                 type="button"
-                onClick={() => setTrainError(null)}
+                onClick={() => set_train_error(null)}
                 style={{
                   cursor: "pointer",
                   "margin-left": "4px",
@@ -512,14 +514,14 @@ export const TrainingPanel: Component<{
                   ? "failed"
                   : ""
           }
-          summaryColor={
+          summary_color={
             ts().status === "complete"
               ? "#22c55e"
               : ts().status === "failed"
                 ? "#ef4444"
                 : "#eab308"
           }
-          defaultOpen
+          default_open
         >
           <StatusRow
             label="status"
@@ -635,7 +637,7 @@ export const TrainingPanel: Component<{
         <button
           type="button"
           onClick={models_refresh}
-          style={{ ...btnStyle("ghost"), "margin-top": "4px" }}
+          style={{ ...btn_style("ghost"), "margin-top": "4px" }}
         >
           Refresh
         </button>

@@ -32,13 +32,13 @@ import { LabelHistoryTimeline } from "./LabelHistoryTimeline";
 
 export const LabelHistory: Component<{
   visible: Accessor<boolean>;
-  latestPrediction?: Accessor<Prediction | null>;
+  latest_prediction?: Accessor<Prediction | null>;
 }> = (props) => {
-  const [selectedDate, setSelectedDate] = createSignal(date_today_str());
-  let dateInputRef: HTMLInputElement | undefined;
+  const [selected_date, set_selected_date] = createSignal(date_today_str());
+  let date_input_ref: HTMLInputElement | undefined;
 
   const [labels, { refetch }] = createResource(
-    () => (props.visible() ? selectedDate() : null),
+    () => (props.visible() ? selected_date() : null),
     async (dateStr) => {
       if (!dateStr) {
         return [];
@@ -48,13 +48,13 @@ export const LabelHistory: Component<{
   );
   const [coreLabels] = createResource(core_labels_list);
 
-  const [expandedKey, setExpandedKey] = createSignal<string | null>(null);
-  const [busy, setBusy] = createSignal(false);
-  const [flash, setFlash] = createSignal<string | null>(null);
+  const [expanded_key, set_expanded_key] = createSignal<string | null>(null);
+  const [busy, set_busy] = createSignal(false);
+  const [flash, set_flash] = createSignal<string | null>(null);
 
   createEffect(
     on(
-      () => props.latestPrediction?.(),
+      () => props.latest_prediction?.(),
       () => {
         if (props.visible()) {
           refetch();
@@ -64,91 +64,91 @@ export const LabelHistory: Component<{
     ),
   );
 
-  const dayData = createMemo(() => {
+  const day_data = createMemo(() => {
     const l = labels();
     const entries: LabelEntry[] = (l ?? []).map((r) => ({
       label: r.label,
       start_ts: r.start_ts,
       end_ts: r.end_ts,
     }));
-    return day_timeline_build(entries, selectedDate());
+    return day_timeline_build(entries, selected_date());
   });
 
   function row_toggle(item: TimelineItem) {
     const key = item_key(item);
-    setExpandedKey(expandedKey() === key ? null : key);
-    setFlash(null);
+    set_expanded_key(expanded_key() === key ? null : key);
+    set_flash(null);
   }
 
   async function label_update_submit(
     item: LabelItem,
-    newLabel: string,
-    newStart: string,
-    newEnd: string,
+    new_label: string,
+    new_start: string,
+    new_end: string,
   ) {
-    setBusy(true);
-    setFlash(null);
+    set_busy(true);
+    set_flash(null);
     try {
       await label_update({
         start_ts: item.start_ts,
         end_ts: item.end_ts,
-        label: newLabel,
-        new_start_ts: newStart,
-        new_end_ts: newEnd,
+        label: new_label,
+        new_start_ts: new_start,
+        new_end_ts: new_end,
       });
-      setFlash(newLabel);
+      set_flash(new_label);
       setTimeout(() => {
-        setFlash(null);
-        setExpandedKey(null);
+        set_flash(null);
+        set_expanded_key(null);
         refetch();
       }, 800);
     } catch (err: unknown) {
-      setFlash(`Error: ${err instanceof Error ? err.message : String(err)}`);
+      set_flash(`Error: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
-      setBusy(false);
+      set_busy(false);
     }
   }
 
   async function label_delete_submit(item: LabelItem) {
-    setBusy(true);
-    setFlash(null);
+    set_busy(true);
+    set_flash(null);
     try {
       await label_delete({
         start_ts: item.start_ts,
         end_ts: item.end_ts,
       });
-      setExpandedKey(null);
+      set_expanded_key(null);
       refetch();
     } catch (err: unknown) {
-      setFlash(`Error: ${err instanceof Error ? err.message : String(err)}`);
+      set_flash(`Error: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
-      setBusy(false);
+      set_busy(false);
     }
   }
 
   async function gap_create_submit(start_ts: string, end_ts: string, label: string) {
-    setBusy(true);
-    setFlash(null);
+    set_busy(true);
+    set_flash(null);
     try {
       await label_create({
         start_ts,
         end_ts,
         label,
       });
-      setFlash(label);
+      set_flash(label);
       setTimeout(() => {
-        setFlash(null);
-        setExpandedKey(null);
+        set_flash(null);
+        set_expanded_key(null);
         refetch();
       }, 800);
     } catch (err: unknown) {
-      setFlash(`Error: ${err instanceof Error ? err.message : String(err)}`);
+      set_flash(`Error: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
-      setBusy(false);
+      set_busy(false);
     }
   }
 
-  const isFutureDate = () => selectedDate() >= date_shift(date_today_str(), 1);
+  const is_future_date = () => selected_date() >= date_shift(date_today_str(), 1);
 
   return (
     <div
@@ -171,7 +171,7 @@ export const LabelHistory: Component<{
       >
         <button
           type="button"
-          onClick={() => setSelectedDate(date_shift(selectedDate(), -1))}
+          onClick={() => set_selected_date(date_shift(selected_date(), -1))}
           style={{
             background: "none",
             border: "none",
@@ -194,7 +194,7 @@ export const LabelHistory: Component<{
         <div style={{ position: "relative" }}>
           <button
             type="button"
-            onClick={() => dateInputRef?.showPicker()}
+            onClick={() => date_input_ref?.showPicker()}
             style={{
               "font-size": "0.75rem",
               "font-weight": "700",
@@ -208,17 +208,17 @@ export const LabelHistory: Component<{
               font: "inherit",
             }}
           >
-            {date_label_fmt(selectedDate())}
+            {date_label_fmt(selected_date())}
           </button>
           <input
-            ref={dateInputRef}
+            ref={date_input_ref}
             type="date"
-            value={selectedDate()}
+            value={selected_date()}
             max={date_today_str()}
             onInput={(e) => {
               const v = e.currentTarget.value;
               if (v) {
-                setSelectedDate(v);
+                set_selected_date(v);
               }
             }}
             style={{
@@ -235,28 +235,28 @@ export const LabelHistory: Component<{
         <button
           type="button"
           onClick={() => {
-            if (!isFutureDate()) {
-              setSelectedDate(date_shift(selectedDate(), 1));
+            if (!is_future_date()) {
+              set_selected_date(date_shift(selected_date(), 1));
             }
           }}
-          disabled={isFutureDate()}
+          disabled={is_future_date()}
           style={{
             background: "none",
             border: "none",
-            color: isFutureDate() ? "#444" : "#999",
-            cursor: isFutureDate() ? "default" : "pointer",
+            color: is_future_date() ? "#444" : "#999",
+            cursor: is_future_date() ? "default" : "pointer",
             "font-size": "0.75rem",
             padding: "2px 6px",
             "border-radius": "4px",
             transition: "color 0.1s",
           }}
           onMouseEnter={(e) => {
-            if (!isFutureDate()) {
+            if (!is_future_date()) {
               e.currentTarget.style.color = "#e0e0e0";
             }
           }}
           onMouseLeave={(e) => {
-            if (!isFutureDate()) {
+            if (!is_future_date()) {
               e.currentTarget.style.color = "#999";
             }
           }}
@@ -281,46 +281,46 @@ export const LabelHistory: Component<{
         }
       >
         <LabelHistoryTimeline
-          segments={dayData().segments}
-          onSegmentClick={(_seg, index) => {
-            const item = dayData().items[index];
+          segments={day_data().segments}
+          on_segment_click={(_seg, index) => {
+            const item = day_data().items[index];
             if (!item) {
               return;
             }
             const key = item_key(item);
-            setExpandedKey(expandedKey() === key ? null : key);
-            setFlash(null);
+            set_expanded_key(expanded_key() === key ? null : key);
+            set_flash(null);
           }}
         />
-        <For each={dayData().items}>
+        <For each={day_data().items}>
           {(item) => (
             <Show
               when={item.kind === "label"}
               fallback={
                 <LabelHistoryGapRow
                   gap={item as GapItem}
-                  dateStr={selectedDate()}
-                  expanded={expandedKey() === item_key(item)}
-                  onToggle={() => row_toggle(item)}
-                  onCreate={gap_create_submit}
-                  coreLabels={coreLabels() ?? []}
+                  date_str={selected_date()}
+                  expanded={expanded_key() === item_key(item)}
+                  on_toggle={() => row_toggle(item)}
+                  on_create={gap_create_submit}
+                  core_labels={coreLabels() ?? []}
                   busy={busy()}
-                  flash={expandedKey() === item_key(item) ? flash() : null}
+                  flash={expanded_key() === item_key(item) ? flash() : null}
                 />
               }
             >
               <LabelHistoryRow
-                lbl={item as LabelItem}
-                dateStr={selectedDate()}
-                expanded={expandedKey() === item_key(item)}
-                onToggle={() => row_toggle(item)}
-                onUpdate={(newLabel, newStart, newEnd) =>
-                  label_update_submit(item as LabelItem, newLabel, newStart, newEnd)
+                label_item={item as LabelItem}
+                date_str={selected_date()}
+                expanded={expanded_key() === item_key(item)}
+                on_toggle={() => row_toggle(item)}
+                on_update={(new_label, new_start, new_end) =>
+                  label_update_submit(item as LabelItem, new_label, new_start, new_end)
                 }
-                onDelete={() => label_delete_submit(item as LabelItem)}
-                coreLabels={coreLabels() ?? []}
+                on_delete={() => label_delete_submit(item as LabelItem)}
+                core_labels={coreLabels() ?? []}
                 busy={busy()}
-                flash={expandedKey() === item_key(item) ? flash() : null}
+                flash={expanded_key() === item_key(item) ? flash() : null}
               />
             </Show>
           )}

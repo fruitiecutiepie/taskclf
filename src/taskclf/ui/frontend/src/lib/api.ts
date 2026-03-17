@@ -49,10 +49,10 @@ export async function labels_list(limit = 50): Promise<LabelResponse[]> {
 }
 
 export async function labels_list_by_date(date: string): Promise<LabelResponse[]> {
-  const dayStart = new Date(`${date}T00:00:00`);
-  const dayEnd = new Date(`${date}T23:59:59.999`);
-  const rs = encodeURIComponent(dayStart.toISOString());
-  const re = encodeURIComponent(dayEnd.toISOString());
+  const day_start = new Date(`${date}T00:00:00`);
+  const day_end = new Date(`${date}T23:59:59.999`);
+  const rs = encodeURIComponent(day_start.toISOString());
+  const re = encodeURIComponent(day_end.toISOString());
   return api_json(`${BASE}/labels?limit=500&range_start=${rs}&range_end=${re}`);
 }
 
@@ -78,10 +78,10 @@ export async function queue_list(limit = 20): Promise<QueueItem[]> {
 }
 
 export async function queue_done_mark(
-  requestId: string,
+  request_id: string,
   status: "labeled" | "skipped" = "labeled",
 ): Promise<{ status: string }> {
-  return api_json(`${BASE}/queue/${requestId}/done`, {
+  return api_json(`${BASE}/queue/${request_id}/done`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ status }),

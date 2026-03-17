@@ -2,13 +2,13 @@ import { type Accessor, type Component, Show } from "solid-js";
 
 type LabelExtendToggleProps = {
   checked: Accessor<boolean>;
-  onToggle: () => void;
+  on_toggle: () => void;
 };
 
 export const LabelExtendToggle: Component<LabelExtendToggleProps> = (props) => (
   <button
     type="button"
-    onClick={props.onToggle}
+    onClick={props.on_toggle}
     style={{
       display: "flex",
       "align-items": "center",

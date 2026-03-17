@@ -7,29 +7,29 @@ type NotificationOptionsExtended = NotificationOptions & {
   renotify?: boolean;
 };
 
-let permissionGranted = false;
+let permission_granted = false;
 
 export async function notification_permission_ensure(): Promise<boolean> {
   if (!("Notification" in window)) {
     return false;
   }
   if (Notification.permission === "granted") {
-    permissionGranted = true;
+    permission_granted = true;
     return true;
   }
   if (Notification.permission === "denied") {
     return false;
   }
   const result = await Notification.requestPermission();
-  permissionGranted = result === "granted";
-  return permissionGranted;
+  permission_granted = result === "granted";
+  return permission_granted;
 }
 
 export function transition_notification_show(
   prompt: PromptLabelEvent,
-  onClick: () => void,
+  on_click: () => void,
 ): Notification | null {
-  if (!permissionGranted || !("Notification" in window)) {
+  if (!permission_granted || !("Notification" in window)) {
     return null;
   }
 
@@ -46,7 +46,7 @@ export function transition_notification_show(
 
   n.onclick = () => {
     window.focus();
-    onClick();
+    on_click();
     n.close();
   };
 

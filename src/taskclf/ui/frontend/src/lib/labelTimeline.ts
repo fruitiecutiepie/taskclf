@@ -8,8 +8,8 @@ export type LabelEntry = {
 
 export type TimelineSegment = {
   label: string | null;
-  startMs: number;
-  endMs: number;
+  start_ms: number;
+  end_ms: number;
   fraction: number;
 };
 
@@ -30,25 +30,25 @@ export type TimelineItem = GapItem | LabelItem;
 
 export function day_timeline_build(
   entries: LabelEntry[],
-  dayDateStr: string,
-): { segments: TimelineSegment[]; items: TimelineItem[]; spanMs: number } {
-  const dayStart = new Date(`${dayDateStr}T00:00:00`).getTime();
-  const dayEnd = new Date(`${dayDateStr}T23:59:59.999`).getTime();
-  const spanMs = dayEnd - dayStart;
+  day_date_str: string,
+): { segments: TimelineSegment[]; items: TimelineItem[]; span_ms: number } {
+  const day_start = new Date(`${day_date_str}T00:00:00`).getTime();
+  const day_end = new Date(`${day_date_str}T23:59:59.999`).getTime();
+  const span_ms = day_end - day_start;
 
   if (!entries.length) {
     const seg: TimelineSegment = {
       label: null,
-      startMs: dayStart,
-      endMs: dayEnd,
+      start_ms: day_start,
+      end_ms: day_end,
       fraction: 1,
     };
     const gap: GapItem = {
       kind: "gap",
-      start_ts: new Date(dayStart).toISOString(),
-      end_ts: new Date(dayEnd).toISOString(),
+      start_ts: new Date(day_start).toISOString(),
+      end_ts: new Date(day_end).toISOString(),
     };
-    return { segments: [seg], items: [gap], spanMs };
+    return { segments: [seg], items: [gap], span_ms };
   }
 
   const sorted = [...entries].sort(
@@ -56,11 +56,11 @@ export function day_timeline_build(
   );
   const segments: TimelineSegment[] = [];
   const items: TimelineItem[] = [];
-  let cursor = dayStart;
+  let cursor = day_start;
 
   for (const entry of sorted) {
-    const s = Math.max(date_parse(entry.start_ts).getTime(), dayStart);
-    const e = Math.min(date_parse(entry.end_ts).getTime(), dayEnd);
+    const s = Math.max(date_parse(entry.start_ts).getTime(), day_start);
+    const e = Math.min(date_parse(entry.end_ts).getTime(), day_end);
     if (e <= s) {
       continue;
     }
@@ -68,9 +68,9 @@ export function day_timeline_build(
     if (s > cursor) {
       segments.push({
         label: null,
-        startMs: cursor,
-        endMs: s,
-        fraction: (s - cursor) / spanMs,
+        start_ms: cursor,
+        end_ms: s,
+        fraction: (s - cursor) / span_ms,
       });
       items.push({
         kind: "gap",
@@ -79,16 +79,16 @@ export function day_timeline_build(
       });
     }
 
-    const segStart = Math.max(s, cursor);
-    if (segStart < e) {
+    const seg_start = Math.max(s, cursor);
+    if (seg_start < e) {
       segments.push({
         label: entry.label,
-        startMs: segStart,
-        endMs: e,
-        fraction: (e - segStart) / spanMs,
+        start_ms: seg_start,
+        end_ms: e,
+        fraction: (e - seg_start) / span_ms,
       });
     } else {
-      segments.push({ label: entry.label, startMs: s, endMs: e, fraction: 0 });
+      segments.push({ label: entry.label, start_ms: s, end_ms: e, fraction: 0 });
     }
     items.push({
       kind: "label",
@@ -99,21 +99,21 @@ export function day_timeline_build(
     cursor = Math.max(cursor, e);
   }
 
-  if (cursor < dayEnd) {
+  if (cursor < day_end) {
     segments.push({
       label: null,
-      startMs: cursor,
-      endMs: dayEnd,
-      fraction: (dayEnd - cursor) / spanMs,
+      start_ms: cursor,
+      end_ms: day_end,
+      fraction: (day_end - cursor) / span_ms,
     });
     items.push({
       kind: "gap",
       start_ts: new Date(cursor).toISOString(),
-      end_ts: new Date(dayEnd).toISOString(),
+      end_ts: new Date(day_end).toISOString(),
     });
   }
 
-  return { segments, items, spanMs };
+  return { segments, items, span_ms };
 }
 
 export function item_key(item: TimelineItem): string {

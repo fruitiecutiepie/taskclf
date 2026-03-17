@@ -14,57 +14,57 @@ import { LabelFlash } from "./LabelFlash";
 
 export const LabelHistoryGapRow: Component<{
   gap: GapItem;
-  dateStr: string;
+  date_str: string;
   expanded: boolean;
-  onToggle: () => void;
-  onCreate: (start: string, end: string, label: string) => void;
-  coreLabels: string[];
+  on_toggle: () => void;
+  on_create: (start: string, end: string, label: string) => void;
+  core_labels: string[];
   busy: boolean;
   flash: string | null;
 }> = (props) => {
-  const gapStartD = () => date_parse(props.gap.start_ts);
-  const gapEndD = () => date_parse(props.gap.end_ts);
-  const dur = () => duration_fmt(gapEndD().getTime() - gapStartD().getTime());
+  const gap_start_d = () => date_parse(props.gap.start_ts);
+  const gap_end_d = () => date_parse(props.gap.end_ts);
+  const duration = () => duration_fmt(gap_end_d().getTime() - gap_start_d().getTime());
 
-  const [startIso, setStartIso] = createSignal(props.gap.start_ts);
-  const [endIso, setEndIso] = createSignal(props.gap.end_ts);
+  const [start_iso, set_start_iso] = createSignal(props.gap.start_ts);
+  const [end_iso, set_end_iso] = createSignal(props.gap.end_ts);
 
-  const [startTimeDisplay, setStartTimeDisplay] = createSignal(
-    time_input_value_sec(gapStartD()),
+  const [start_time_display, set_start_time_display] = createSignal(
+    time_input_value_sec(gap_start_d()),
   );
-  const [endTimeDisplay, setEndTimeDisplay] = createSignal(
-    time_input_value_sec(gapEndD()),
+  const [end_time_display, set_end_time_display] = createSignal(
+    time_input_value_sec(gap_end_d()),
   );
 
   createEffect(() => {
-    setStartIso(props.gap.start_ts);
-    setEndIso(props.gap.end_ts);
-    setStartTimeDisplay(time_input_value_sec(gapStartD()));
-    setEndTimeDisplay(time_input_value_sec(gapEndD()));
+    set_start_iso(props.gap.start_ts);
+    set_end_iso(props.gap.end_ts);
+    set_start_time_display(time_input_value_sec(gap_start_d()));
+    set_end_time_display(time_input_value_sec(gap_end_d()));
   });
 
   function gap_start_time_set(val: string) {
-    setStartTimeDisplay(val);
-    setStartIso(time_input_date(props.dateStr, val).toISOString());
+    set_start_time_display(val);
+    set_start_iso(time_input_date(props.date_str, val).toISOString());
   }
 
   function gap_end_time_set(val: string) {
-    setEndTimeDisplay(val);
-    setEndIso(time_input_date(props.dateStr, val).toISOString());
+    set_end_time_display(val);
+    set_end_iso(time_input_date(props.date_str, val).toISOString());
   }
 
-  const selectedRange = (): TimeRange | null => {
-    const s = date_parse(startIso()).getTime();
-    const e = date_parse(endIso()).getTime();
+  const selected_range = (): TimeRange | null => {
+    const s = date_parse(start_iso()).getTime();
+    const e = date_parse(end_iso()).getTime();
     if (e <= s) {
       return null;
     }
-    return { start: startIso(), end: endIso() };
+    return { start: start_iso(), end: end_iso() };
   };
 
-  const rangeValid = () => selectedRange() !== null;
+  const range_valid = () => selected_range() !== null;
 
-  const timeInputStyle = {
+  const time_input_style = {
     background: "#111",
     border: "1px solid #333",
     "border-radius": "4px",
@@ -80,7 +80,7 @@ export const LabelHistoryGapRow: Component<{
     <div>
       <button
         type="button"
-        onClick={props.onToggle}
+        onClick={props.on_toggle}
         style={{
           display: "flex",
           "justify-content": "space-between",
@@ -132,8 +132,8 @@ export const LabelHistoryGapRow: Component<{
         <span
           style={{ color: "#666", "font-size": "0.65rem", "white-space": "nowrap" }}
         >
-          {time_sec_fmt(gapStartD())} – {time_sec_fmt(gapEndD())}{" "}
-          <span style={{ color: "#555" }}>({dur()})</span>
+          {time_sec_fmt(gap_start_d())} – {time_sec_fmt(gap_end_d())}{" "}
+          <span style={{ color: "#555" }}>({duration()})</span>
         </span>
       </button>
 
@@ -160,23 +160,23 @@ export const LabelHistoryGapRow: Component<{
             <input
               type="time"
               step="1"
-              value={startTimeDisplay()}
-              max={endTimeDisplay()}
+              value={start_time_display()}
+              max={end_time_display()}
               onInput={(e) => gap_start_time_set(e.currentTarget.value)}
-              style={timeInputStyle}
+              style={time_input_style}
             />
             <span style={{ color: "#888", "font-size": "0.58rem" }}>to</span>
             <input
               type="time"
               step="1"
-              value={endTimeDisplay()}
-              min={startTimeDisplay()}
+              value={end_time_display()}
+              min={start_time_display()}
               onInput={(e) => gap_end_time_set(e.currentTarget.value)}
-              style={timeInputStyle}
+              style={time_input_style}
             />
           </div>
 
-          <ActivitySummary timeRange={() => selectedRange()} />
+          <ActivitySummary time_range={() => selected_range()} />
 
           {props.flash && <LabelFlash flash={props.flash} />}
 
@@ -187,16 +187,16 @@ export const LabelHistoryGapRow: Component<{
               gap: "3px",
             }}
           >
-            <For each={props.coreLabels}>
+            <For each={props.core_labels}>
               {(lbl) => (
                 <button
                   type="button"
-                  disabled={props.busy || !rangeValid()}
+                  disabled={props.busy || !range_valid()}
                   onClick={(e) => {
                     e.stopPropagation();
-                    const r = selectedRange();
+                    const r = selected_range();
                     if (r) {
-                      props.onCreate(r.start, r.end, lbl);
+                      props.on_create(r.start, r.end, lbl);
                     }
                   }}
                   style={{
@@ -205,11 +205,11 @@ export const LabelHistoryGapRow: Component<{
                     border: "1px solid #333",
                     background: "#111",
                     color: LABEL_COLORS[lbl] ?? "#e0e0e0",
-                    cursor: rangeValid() ? "pointer" : "not-allowed",
+                    cursor: range_valid() ? "pointer" : "not-allowed",
                     "font-size": "0.58rem",
                     "font-weight": "500",
                     "text-align": "center",
-                    opacity: props.busy || !rangeValid() ? "0.4" : "0.8",
+                    opacity: props.busy || !range_valid() ? "0.4" : "0.8",
                     transition: "all 0.1s ease",
                   }}
                 >

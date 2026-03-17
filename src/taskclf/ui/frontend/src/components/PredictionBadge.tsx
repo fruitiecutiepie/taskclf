@@ -11,31 +11,31 @@ import { ConnectionDot } from "./ConnectionDot";
 
 export const PredictionBadge: Component<{
   status: Accessor<ConnectionStatus>;
-  latestStatus: Accessor<StatusEvent>;
-  latestPrediction: Accessor<Prediction | null>;
-  latestTrayState: Accessor<TrayState>;
-  activeSuggestion: Accessor<LabelSuggestion | null>;
-  labelPinned?: Accessor<boolean>;
-  panelPinned?: Accessor<boolean>;
-  onTogglePanel?: () => void;
-  onShowPanel?: () => void;
-  onHidePanel?: () => void;
-  onToggleLabel?: () => void;
-  onShowLabel?: () => void;
-  onHideLabel?: () => void;
+  latest_status: Accessor<StatusEvent>;
+  latest_prediction: Accessor<Prediction | null>;
+  latest_tray_state: Accessor<TrayState>;
+  active_suggestion: Accessor<LabelSuggestion | null>;
+  label_pinned?: Accessor<boolean>;
+  panel_pinned?: Accessor<boolean>;
+  on_toggle_panel?: () => void;
+  on_show_panel?: () => void;
+  on_hide_panel?: () => void;
+  on_toggle_label?: () => void;
+  on_show_label?: () => void;
+  on_hide_label?: () => void;
 }> = (props) => {
-  const predictionLabel = () => {
-    const pred = props.latestPrediction();
+  const prediction_label = () => {
+    const pred = props.latest_prediction();
     return pred ? pred.mapped_label || pred.label : null;
   };
 
-  const noModel = () => !props.latestTrayState().model_loaded;
+  const no_model = () => !props.latest_tray_state().model_loaded;
 
-  const badgeText = () =>
-    predictionLabel() ?? (noModel() ? "No Model" : "Unknown Label");
+  const badge_text = () =>
+    prediction_label() ?? (no_model() ? "No Model" : "Unknown Label");
 
-  const predColor = () => {
-    const l = predictionLabel();
+  const pred_color = () => {
+    const l = prediction_label();
     return l ? (LABEL_COLORS[l] ?? "#555") : "#333";
   };
 
@@ -56,12 +56,12 @@ export const PredictionBadge: Component<{
           "border-radius": "20px",
           "font-size": "0.75rem",
           "font-weight": "600",
-          color: predictionLabel() ? "#fff" : "#b0b0b0",
-          background: predColor(),
-          "text-shadow": predictionLabel() ? "0 1px 3px rgba(0,0,0,0.5)" : "none",
+          color: prediction_label() ? "#fff" : "#b0b0b0",
+          background: pred_color(),
+          "text-shadow": prediction_label() ? "0 1px 3px rgba(0,0,0,0.5)" : "none",
           "white-space": "nowrap",
           cursor: "pointer",
-          outline: props.labelPinned?.() ? `2px solid ${predColor()}aa` : "none",
+          outline: props.label_pinned?.() ? `2px solid ${pred_color()}aa` : "none",
           "outline-offset": "2px",
           transition: "outline 0.15s ease",
           border: "none",
@@ -69,25 +69,25 @@ export const PredictionBadge: Component<{
           "line-height": "inherit",
         }}
         title={
-          props.labelPinned?.()
+          props.label_pinned?.()
             ? "Label grid pinned — click to unpin"
             : "Hover for label grid, click to pin"
         }
-        onMouseEnter={() => props.onShowLabel?.()}
-        onMouseLeave={() => props.onHideLabel?.()}
+        onMouseEnter={() => props.on_show_label?.()}
+        onMouseLeave={() => props.on_hide_label?.()}
         onClick={(e) => {
           e.stopPropagation();
-          props.onToggleLabel?.();
+          props.on_toggle_label?.();
         }}
       >
-        {badgeText()}
+        {badge_text()}
       </button>
       <ConnectionDot
         status={props.status}
-        panelPinned={props.panelPinned}
-        onTogglePanel={props.onTogglePanel}
-        onShowPanel={props.onShowPanel}
-        onHidePanel={props.onHidePanel}
+        panel_pinned={props.panel_pinned}
+        on_toggle_panel={props.on_toggle_panel}
+        on_show_panel={props.on_show_panel}
+        on_hide_panel={props.on_hide_panel}
       />
     </div>
   );

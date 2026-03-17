@@ -6,14 +6,14 @@ export const PredictionSuggestion: Component<{
   suggestion: Accessor<LabelSuggestion | null>;
 }> = (props) => {
   const s = () => props.suggestion();
-  const [error, setError] = createSignal<string | null>(null);
+  const [error, set_error] = createSignal<string | null>(null);
 
   async function suggestion_accept() {
     const sg = s();
     if (!sg) {
       return;
     }
-    setError(null);
+    set_error(null);
     try {
       await label_create({
         start_ts: sg.block_start,
@@ -24,8 +24,8 @@ export const PredictionSuggestion: Component<{
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to accept suggestion";
       console.error("Failed to accept suggestion", err);
-      setError(msg);
-      setTimeout(() => setError(null), 4000);
+      set_error(msg);
+      setTimeout(() => set_error(null), 4000);
     }
   }
 

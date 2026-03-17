@@ -9,9 +9,9 @@ export const StatusActivityWatch: Component<{
   const s = () => props.status();
 
   const summary = createMemo(() => (s().aw_connected ? "connected" : "disconnected"));
-  const summaryColor = createMemo(() => (s().aw_connected ? "#22c55e" : "#ef4444"));
+  const summary_color = createMemo(() => (s().aw_connected ? "#22c55e" : "#ef4444"));
 
-  const appCounts = createMemo(() => {
+  const app_counts = createMemo(() => {
     const v = s();
     if (!v.last_app_counts) {
       return [];
@@ -23,7 +23,7 @@ export const StatusActivityWatch: Component<{
     <StatusSection
       title="ActivityWatch"
       summary={summary()}
-      summaryColor={summaryColor()}
+      summary_color={summary_color()}
     >
       <StatusRow
         label="connection"
@@ -51,7 +51,7 @@ export const StatusActivityWatch: Component<{
         dim
         tooltip="Number of events returned from the last ActivityWatch poll"
       />
-      <Show when={appCounts().length > 0}>
+      <Show when={app_counts().length > 0}>
         <div
           style={{
             "margin-top": "2px",
@@ -67,7 +67,7 @@ export const StatusActivityWatch: Component<{
           >
             app distribution (last poll)
           </span>
-          <For each={appCounts()}>
+          <For each={app_counts()}>
             {([app, count]) => (
               <StatusRow label={`  ${app}`} value={String(count)} dim mono />
             )}

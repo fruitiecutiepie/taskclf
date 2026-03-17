@@ -2,10 +2,10 @@ import type { OverwritePending } from "../components/LabelOverwrite";
 import { iso_date_parse } from "./date";
 
 export type TimeSelection = {
-  selectedMinutes: number;
-  fillFromLast: boolean;
-  lastLabelEndTs: string | null;
-  extendFwd: boolean;
+  selected_minutes: number;
+  fill_from_last: boolean;
+  last_label_end_ts: string | null;
+  extend_fwd: boolean;
 };
 
 /**
@@ -20,20 +20,20 @@ export function label_overwrite_pending_upd_get(
   now: Date,
 ): OverwritePending | null {
   let start: Date;
-  if (sel.fillFromLast && sel.lastLabelEndTs) {
-    start = iso_date_parse(sel.lastLabelEndTs);
-  } else if (sel.selectedMinutes === 0) {
+  if (sel.fill_from_last && sel.last_label_end_ts) {
+    start = iso_date_parse(sel.last_label_end_ts);
+  } else if (sel.selected_minutes === 0) {
     start = now;
   } else {
-    start = new Date(now.getTime() - sel.selectedMinutes * 60_000);
+    start = new Date(now.getTime() - sel.selected_minutes * 60_000);
   }
 
-  const startMs = start.getTime();
-  const endMs = now.getTime();
+  const start_ms = start.getTime();
+  const end_ms = now.getTime();
   const remaining = pending.conflicts.filter((c) => {
     const cs = iso_date_parse(c.start_ts).getTime();
     const ce = iso_date_parse(c.end_ts).getTime();
-    return cs < endMs && startMs < ce;
+    return cs < end_ms && start_ms < ce;
   });
 
   if (remaining.length === 0) {
@@ -45,6 +45,6 @@ export function label_overwrite_pending_upd_get(
     start: start.toISOString(),
     end: now.toISOString(),
     conflicts: remaining,
-    extendForward: sel.selectedMinutes === 0 ? true : sel.extendFwd,
+    extend_forward: sel.selected_minutes === 0 ? true : sel.extend_fwd,
   };
 }

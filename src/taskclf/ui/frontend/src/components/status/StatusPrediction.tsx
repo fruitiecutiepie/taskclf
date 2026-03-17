@@ -18,7 +18,7 @@ export const StatusPrediction: Component<{
     return `${p.mapped_label} ${Math.round(p.confidence * 100)}%`;
   });
 
-  const summaryColor = createMemo(() => {
+  const summary_color = createMemo(() => {
     const p = pred();
     return p ? (LABEL_COLORS[p.mapped_label] ?? "#e0e0e0") : "#a0a0a0";
   });
@@ -27,8 +27,8 @@ export const StatusPrediction: Component<{
     <StatusSection
       title={pred()?.provenance === "manual" ? "Last Label" : "Last Prediction"}
       summary={summary()}
-      summaryColor={summaryColor()}
-      defaultOpen
+      summary_color={summary_color()}
+      default_open
     >
       <Show
         when={pred()}

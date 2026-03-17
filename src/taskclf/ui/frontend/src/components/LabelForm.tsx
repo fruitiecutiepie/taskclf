@@ -1,7 +1,7 @@
 import { type Component, createResource, createSignal, Show } from "solid-js";
 import { core_labels_list, label_create } from "../lib/api";
 
-const inputStyle = {
+const input_style = {
   padding: "8px 12px",
   background: "var(--surface)",
   border: "1px solid var(--border)",
@@ -11,7 +11,7 @@ const inputStyle = {
   width: "100%",
 };
 
-const btnStyle = {
+const btn_style = {
   padding: "10px 24px",
   background: "var(--accent)",
   color: "#fff",
@@ -24,31 +24,31 @@ const btnStyle = {
 
 export const LabelForm: Component = () => {
   const [labels] = createResource(core_labels_list);
-  const [startTs, setStartTs] = createSignal("");
-  const [endTs, setEndTs] = createSignal("");
-  const [label, setLabel] = createSignal("");
-  const [confidence, setConfidence] = createSignal(0.8);
-  const [status, setStatus] = createSignal<{
+  const [start_ts, set_start_ts] = createSignal("");
+  const [end_ts, set_end_ts] = createSignal("");
+  const [label, set_label] = createSignal("");
+  const [confidence, set_confidence] = createSignal(0.8);
+  const [status, set_status] = createSignal<{
     type: "success" | "error";
     msg: string;
   } | null>(null);
 
   async function label_submit(e: Event) {
     e.preventDefault();
-    setStatus(null);
+    set_status(null);
     try {
       const result = await label_create({
-        start_ts: startTs(),
-        end_ts: endTs(),
+        start_ts: start_ts(),
+        end_ts: end_ts(),
         label: label(),
         confidence: confidence(),
       });
-      setStatus({
+      set_status({
         type: "success",
         msg: `Saved: ${result.label} [${result.start_ts} → ${result.end_ts}]`,
       });
     } catch (err: unknown) {
-      setStatus({
+      set_status({
         type: "error",
         msg: err instanceof Error ? err.message : "Failed to save label",
       });
@@ -97,10 +97,10 @@ export const LabelForm: Component = () => {
             <input
               id="lf-start"
               type="datetime-local"
-              value={startTs()}
-              onInput={(e) => setStartTs(e.currentTarget.value)}
+              value={start_ts()}
+              onInput={(e) => set_start_ts(e.currentTarget.value)}
               required
-              style={inputStyle}
+              style={input_style}
             />
           </div>
           <div>
@@ -118,10 +118,10 @@ export const LabelForm: Component = () => {
             <input
               id="lf-end"
               type="datetime-local"
-              value={endTs()}
-              onInput={(e) => setEndTs(e.currentTarget.value)}
+              value={end_ts()}
+              onInput={(e) => set_end_ts(e.currentTarget.value)}
               required
-              style={inputStyle}
+              style={input_style}
             />
           </div>
         </div>
@@ -141,9 +141,9 @@ export const LabelForm: Component = () => {
           <select
             id="lf-label"
             value={label()}
-            onChange={(e) => setLabel(e.currentTarget.value)}
+            onChange={(e) => set_label(e.currentTarget.value)}
             required
-            style={inputStyle}
+            style={input_style}
           >
             <option value="">Select a label...</option>
             {(labels() ?? []).map((l) => (
@@ -171,12 +171,12 @@ export const LabelForm: Component = () => {
             max="1"
             step="0.05"
             value={confidence()}
-            onInput={(e) => setConfidence(parseFloat(e.currentTarget.value))}
+            onInput={(e) => set_confidence(parseFloat(e.currentTarget.value))}
             style={{ width: "100%", "margin-top": "4px" }}
           />
         </div>
 
-        <button type="submit" style={btnStyle}>
+        <button type="submit" style={btn_style}>
           Save Label Block
         </button>
       </form>

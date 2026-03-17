@@ -34,12 +34,13 @@ const PredictionBadge: Component<{ p: Accessor<Prediction> }> = (props) => (
 
 export const ActivitySummary: Component<{
   minutes?: Accessor<number>;
-  timeRange?: Accessor<TimeRange | null>;
+  time_range?: Accessor<TimeRange | null>;
   prediction?: Accessor<Prediction | null>;
-  showEmpty?: boolean;
+  show_empty?: boolean;
 }> = (props) => {
   const range = () =>
-    props.timeRange?.() ?? (props.minutes ? time_range_minutes(props.minutes()) : null);
+    props.time_range?.()
+    ?? (props.minutes ? time_range_minutes(props.minutes()) : null);
 
   const [awApps] = createResource(range, async (r) => {
     if (!r) {
@@ -64,23 +65,23 @@ export const ActivitySummary: Component<{
   });
 
   const pred = () => props.prediction?.();
-  const isLoading = () => awApps.loading || features.loading;
-  const hasAwApps = () => (awApps() ?? []).length > 0;
-  const featureApps = () => (features()?.top_apps ?? []).slice(0, 5);
-  const hasFeatureApps = () => featureApps().length > 0;
-  const hasApps = () => hasAwApps() || hasFeatureApps();
-  const hasStats = () => {
+  const is_loading = () => awApps.loading || features.loading;
+  const has_aw_apps = () => (awApps() ?? []).length > 0;
+  const feature_apps = () => (features()?.top_apps ?? []).slice(0, 5);
+  const has_feature_apps = () => feature_apps().length > 0;
+  const has_apps = () => has_aw_apps() || has_feature_apps();
+  const has_stats = () => {
     const f = features();
     return f && (f.mean_keys_per_min != null || f.mean_clicks_per_min != null);
   };
-  const hasCoverage = () => {
+  const has_coverage = () => {
     const f = features();
     return f && f.total_buckets > 0;
   };
-  const hasAnything = () => pred() || hasApps() || hasStats() || hasCoverage();
-  const shouldShow = () => hasAnything() || props.showEmpty;
+  const has_anything = () => pred() || has_apps() || has_stats() || has_coverage();
+  const should_show = () => has_anything() || props.show_empty;
 
-  const containerStyle = {
+  const container_style = {
     padding: "4px 0 6px",
     margin: "0 0 4px",
     "border-top": "1px dashed var(--border)",
@@ -91,11 +92,11 @@ export const ActivitySummary: Component<{
   } as const;
 
   return (
-    <Show when={shouldShow()}>
+    <Show when={should_show()}>
       <Show
-        when={!isLoading()}
+        when={!is_loading()}
         fallback={
-          <div style={containerStyle}>
+          <div style={container_style}>
             <div
               style={{
                 "font-size": "0.6rem",
@@ -111,10 +112,10 @@ export const ActivitySummary: Component<{
         }
       >
         <Show
-          when={hasAnything()}
+          when={has_anything()}
           fallback={
-            <Show when={props.showEmpty}>
-              <div style={containerStyle}>
+            <Show when={props.show_empty}>
+              <div style={container_style}>
                 <div
                   style={{
                     "font-size": "0.6rem",
@@ -130,10 +131,10 @@ export const ActivitySummary: Component<{
             </Show>
           }
         >
-          <div style={containerStyle}>
+          <div style={container_style}>
             <Show when={pred()}>{(p) => <PredictionBadge p={p} />}</Show>
 
-            <Show when={hasApps()}>
+            <Show when={has_apps()}>
               <div
                 style={{
                   display: "flex",
@@ -144,9 +145,9 @@ export const ActivitySummary: Component<{
                 }}
               >
                 <Show
-                  when={hasAwApps()}
+                  when={has_aw_apps()}
                   fallback={
-                    <For each={featureApps()}>
+                    <For each={feature_apps()}>
                       {(entry) => (
                         <span
                           style={{
@@ -194,7 +195,7 @@ export const ActivitySummary: Component<{
               </div>
             </Show>
 
-            <Show when={hasStats() || hasCoverage()}>
+            <Show when={has_stats() || has_coverage()}>
               <div
                 style={{
                   display: "flex",
@@ -214,7 +215,7 @@ export const ActivitySummary: Component<{
                 <Show when={rate_fmt(features()?.mean_scroll_per_min ?? null)}>
                   {(v) => <span>scroll {v()}/m</span>}
                 </Show>
-                <Show when={hasCoverage()}>
+                <Show when={has_coverage()}>
                   <span style={{ color: "var(--text-muted)", opacity: "0.7" }}>
                     {features()?.total_buckets}m
                     <Show when={(features()?.session_count ?? 0) > 1}>

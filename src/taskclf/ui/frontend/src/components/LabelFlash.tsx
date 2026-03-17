@@ -7,8 +7,8 @@ type LabelFlashProps = {
 };
 
 export const LabelFlash: Component<LabelFlashProps> = (props) => {
-  const isError = () => props.flash.startsWith("Error");
-  const labelColor = () => LABEL_COLORS[props.flash] ?? "#22c55e";
+  const is_error = () => props.flash.startsWith("Error");
+  const label_color = () => LABEL_COLORS[props.flash] ?? "#22c55e";
 
   return (
     <div
@@ -20,8 +20,8 @@ export const LabelFlash: Component<LabelFlashProps> = (props) => {
         "margin-bottom": "6px",
         padding: "4px 10px",
         "border-radius": "5px",
-        background: isError() ? "rgba(239,68,68,0.08)" : "rgba(34,197,94,0.06)",
-        border: isError()
+        background: is_error() ? "rgba(239,68,68,0.08)" : "rgba(34,197,94,0.06)",
+        border: is_error()
           ? "1px solid rgba(239,68,68,0.2)"
           : "1px solid rgba(34,197,94,0.15)",
       }}
@@ -29,14 +29,14 @@ export const LabelFlash: Component<LabelFlashProps> = (props) => {
       <span
         style={{
           "font-size": "0.6rem",
-          color: isError() ? "#ef4444" : "#22c55e",
+          color: is_error() ? "#ef4444" : "#22c55e",
           "line-height": "1",
         }}
       >
-        {isError() ? "✕" : "✓"}
+        {is_error() ? "✕" : "✓"}
       </span>
       <Show
-        when={!isError()}
+        when={!is_error()}
         fallback={
           <span style={{ "font-size": "0.58rem", color: "#ef4444" }}>
             {props.flash}
@@ -48,7 +48,7 @@ export const LabelFlash: Component<LabelFlashProps> = (props) => {
           style={{
             "font-size": "0.58rem",
             "font-weight": "700",
-            color: labelColor(),
+            color: label_color(),
           }}
         >
           {props.flash}

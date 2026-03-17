@@ -3,17 +3,17 @@ import { type Component, createSignal, type JSX, Show } from "solid-js";
 export const StatusSection: Component<{
   title: string;
   summary?: string;
-  summaryColor?: string;
-  defaultOpen?: boolean;
+  summary_color?: string;
+  default_open?: boolean;
   children: JSX.Element;
 }> = (props) => {
-  const [open, setOpen] = createSignal(props.defaultOpen ?? false);
+  const [open, set_open] = createSignal(props.default_open ?? false);
 
   return (
     <div style={{ "margin-bottom": "3px" }}>
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => set_open((v) => !v)}
         style={{
           display: "flex",
           "align-items": "center",
@@ -51,7 +51,7 @@ export const StatusSection: Component<{
             style={{
               "font-size": "0.6rem",
               "font-weight": "600",
-              color: props.summaryColor ?? "#b0b0b0",
+              color: props.summary_color ?? "#b0b0b0",
               "text-transform": "none",
               "letter-spacing": "normal",
               overflow: "hidden",

@@ -183,37 +183,37 @@ export type TrainState = {
 };
 
 export type WSStats = {
-  messageCount: number;
-  statusCount: number;
-  predictionCount: number;
-  trayStateCount: number;
-  suggestionCount: number;
-  lastMessageAt: string | null;
-  reconnectCount: number;
-  connectedSince: string | null;
+  message_count: number;
+  status_count: number;
+  prediction_count: number;
+  tray_state_count: number;
+  suggestion_count: number;
+  last_message_at: string | null;
+  reconnect_count: number;
+  connected_since: string | null;
 };
 
 export type WebSocketStore = {
-  latestStatus: StatusEvent;
-  latestPrediction: Prediction | null;
-  latestTrayState: TrayState;
-  activeSuggestion: LabelSuggestion | null;
-  latestPrompt: PromptLabelEvent | null;
-  labelGridRequested: number;
-  trainState: TrainState;
-  connectionStatus: ConnectionStatus;
-  wsStats: WSStats;
+  latest_status: StatusEvent;
+  latest_prediction: Prediction | null;
+  latest_tray_state: TrayState;
+  active_suggestion: LabelSuggestion | null;
+  latest_prompt: PromptLabelEvent | null;
+  label_grid_requested: number;
+  train_state: TrainState;
+  connection_status: ConnectionStatus;
+  ws_stats: WSStats;
 };
 
 export function ws_store_new() {
   const [store, setStore] = createStore<WebSocketStore>({
-    latestStatus: StatusEventDefault,
-    latestPrediction: null,
-    latestTrayState: TrayStateDefault,
-    activeSuggestion: null,
-    latestPrompt: null,
-    labelGridRequested: 0,
-    trainState: {
+    latest_status: StatusEventDefault,
+    latest_prediction: null,
+    latest_tray_state: TrayStateDefault,
+    active_suggestion: null,
+    latest_prompt: null,
+    label_grid_requested: 0,
+    train_state: {
       job_id: null,
       status: "idle",
       step: null,
@@ -223,47 +223,47 @@ export function ws_store_new() {
       metrics: null,
       model_dir: null,
     },
-    connectionStatus: "connecting",
-    wsStats: {
-      messageCount: 0,
-      statusCount: 0,
-      predictionCount: 0,
-      trayStateCount: 0,
-      suggestionCount: 0,
-      lastMessageAt: null,
-      reconnectCount: 0,
-      connectedSince: null,
+    connection_status: "connecting",
+    ws_stats: {
+      message_count: 0,
+      status_count: 0,
+      prediction_count: 0,
+      tray_state_count: 0,
+      suggestion_count: 0,
+      last_message_at: null,
+      reconnect_count: 0,
+      connected_since: null,
     },
   });
 
   const SUGGESTION_TTL_MS = 10 * 60 * 1000;
 
   let ws: WebSocket | null = null;
-  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  let suggestionTimer: ReturnType<typeof setTimeout> | null = null;
-  let retryDelay = 1000;
+  let reconnect_timer: ReturnType<typeof setTimeout> | null = null;
+  let suggestion_timer: ReturnType<typeof setTimeout> | null = null;
+  let retry_delay = 1000;
 
   function suggestion_timer_clear() {
-    if (suggestionTimer) {
-      clearTimeout(suggestionTimer);
-      suggestionTimer = null;
+    if (suggestion_timer) {
+      clearTimeout(suggestion_timer);
+      suggestion_timer = null;
     }
   }
 
   function suggestion_timer_start() {
     suggestion_timer_clear();
-    suggestionTimer = setTimeout(() => {
-      suggestionTimer = null;
-      setStore("activeSuggestion", null);
+    suggestion_timer = setTimeout(() => {
+      suggestion_timer = null;
+      setStore("active_suggestion", null);
     }, SUGGESTION_TTL_MS);
   }
 
   function ws_stats_bump(now: string, extra?: (s: WSStats) => void) {
     setStore(
-      "wsStats",
+      "ws_stats",
       produce((s) => {
-        s.messageCount++;
-        s.lastMessageAt = now;
+        s.message_count++;
+        s.last_message_at = now;
         extra?.(s);
       }),
     );
@@ -277,13 +277,13 @@ export function ws_store_new() {
       }
       const snap: Record<string, WSEvent> = await resp.json();
       if (snap.status) {
-        setStore("latestStatus", reconcile(snap.status as StatusEvent));
+        setStore("latest_status", reconcile(snap.status as StatusEvent));
       }
       if (snap.prediction) {
-        setStore("latestPrediction", reconcile(snap.prediction as Prediction | null));
+        setStore("latest_prediction", reconcile(snap.prediction as Prediction | null));
       }
       if (snap.tray_state) {
-        setStore("latestTrayState", snap.tray_state as TrayState);
+        setStore("latest_tray_state", snap.tray_state as TrayState);
       }
     } catch {
       // hydration is best-effort; the next push will update us
@@ -301,13 +301,13 @@ export function ws_store_new() {
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
     const url = `${proto}//${location.host}/ws/predictions`;
 
-    setStore("connectionStatus", "connecting");
+    setStore("connection_status", "connecting");
     ws = new WebSocket(url);
 
     ws.onopen = () => {
-      setStore("connectionStatus", "connected");
-      setStore("wsStats", "connectedSince", new Date().toISOString());
-      retryDelay = 1000;
+      setStore("connection_status", "connected");
+      setStore("ws_stats", "connected_since", new Date().toISOString());
+      retry_delay = 1000;
       ws_snapshot_hydrate();
     };
 
@@ -317,46 +317,46 @@ export function ws_store_new() {
         const now = new Date().toISOString();
         switch (data.type) {
           case "status":
-            setStore("latestStatus", reconcile(data));
+            setStore("latest_status", reconcile(data));
             ws_stats_bump(now, (s) => {
-              s.statusCount++;
+              s.status_count++;
             });
             break;
           case "prediction":
-            setStore("latestPrediction", reconcile(data as Prediction | null));
+            setStore("latest_prediction", reconcile(data as Prediction | null));
             ws_stats_bump(now, (s) => {
-              s.predictionCount++;
+              s.prediction_count++;
             });
             break;
           case "tray_state":
-            setStore("latestTrayState", data);
+            setStore("latest_tray_state", data);
             ws_stats_bump(now, (s) => {
-              s.trayStateCount++;
+              s.tray_state_count++;
             });
             break;
           case "suggest_label":
-            setStore("activeSuggestion", data);
+            setStore("active_suggestion", data);
             suggestion_timer_start();
             ws_stats_bump(now, (s) => {
-              s.suggestionCount++;
+              s.suggestion_count++;
             });
             break;
           case "suggestion_cleared":
-            setStore("activeSuggestion", null);
+            setStore("active_suggestion", null);
             suggestion_timer_clear();
             ws_stats_bump(now);
             break;
           case "label_grid_show":
-            setStore("labelGridRequested", (n) => n + 1);
+            setStore("label_grid_requested", (n) => n + 1);
             ws_stats_bump(now);
             break;
           case "prompt_label":
-            setStore("latestPrompt", data);
+            setStore("latest_prompt", data);
             ws_stats_bump(now);
             break;
           case "label_created":
             setStore(
-              "latestPrediction",
+              "latest_prediction",
               reconcile({
                 type: "prediction",
                 label: data.label,
@@ -367,7 +367,7 @@ export function ws_store_new() {
               } as Prediction | null),
             );
             ws_stats_bump(now, (s) => {
-              s.predictionCount++;
+              s.prediction_count++;
             });
             break;
           case "no_model_transition":
@@ -375,7 +375,7 @@ export function ws_store_new() {
             break;
           case "train_progress":
             setStore(
-              "trainState",
+              "train_state",
               produce((t) => {
                 t.job_id = data.job_id;
                 t.status = "running";
@@ -388,7 +388,7 @@ export function ws_store_new() {
             break;
           case "train_complete":
             setStore(
-              "trainState",
+              "train_state",
               produce((t) => {
                 t.job_id = data.job_id;
                 t.status = "complete";
@@ -404,7 +404,7 @@ export function ws_store_new() {
             break;
           case "train_failed":
             setStore(
-              "trainState",
+              "train_state",
               produce((t) => {
                 t.job_id = data.job_id;
                 t.status = "failed";
@@ -423,8 +423,8 @@ export function ws_store_new() {
     };
 
     ws.onclose = () => {
-      setStore("connectionStatus", "disconnected");
-      setStore("wsStats", "connectedSince", null);
+      setStore("connection_status", "disconnected");
+      setStore("ws_stats", "connected_since", null);
       reconnect_schedule();
     };
 
@@ -434,27 +434,27 @@ export function ws_store_new() {
   }
 
   function reconnect_schedule() {
-    if (reconnectTimer) {
+    if (reconnect_timer) {
       return;
     }
     if (typeof navigator !== "undefined" && !navigator.onLine) {
       // Offline — don't burn retries; the 'online' listener will trigger connect()
       return;
     }
-    const jitter = retryDelay * (0.5 + Math.random() * 0.5);
-    reconnectTimer = setTimeout(() => {
-      reconnectTimer = null;
-      retryDelay = Math.min(retryDelay * 2, 30_000);
-      setStore("wsStats", "reconnectCount", (c) => c + 1);
+    const jitter = retry_delay * (0.5 + Math.random() * 0.5);
+    reconnect_timer = setTimeout(() => {
+      reconnect_timer = null;
+      retry_delay = Math.min(retry_delay * 2, 30_000);
+      setStore("ws_stats", "reconnect_count", (c) => c + 1);
       ws_connection_open();
     }, jitter);
   }
 
   function online_event_sync() {
-    retryDelay = 1000;
-    if (reconnectTimer) {
-      clearTimeout(reconnectTimer);
-      reconnectTimer = null;
+    retry_delay = 1000;
+    if (reconnect_timer) {
+      clearTimeout(reconnect_timer);
+      reconnect_timer = null;
     }
     ws_connection_open();
   }
@@ -462,19 +462,19 @@ export function ws_store_new() {
   function visibility_event_sync() {
     if (
       document.visibilityState === "visible"
-      && store.connectionStatus === "disconnected"
+      && store.connection_status === "disconnected"
     ) {
-      retryDelay = 1000;
-      if (reconnectTimer) {
-        clearTimeout(reconnectTimer);
-        reconnectTimer = null;
+      retry_delay = 1000;
+      if (reconnect_timer) {
+        clearTimeout(reconnect_timer);
+        reconnect_timer = null;
       }
       ws_connection_open();
     }
   }
 
   function suggestion_dismiss() {
-    setStore("activeSuggestion", null);
+    setStore("active_suggestion", null);
     suggestion_timer_clear();
   }
 
@@ -487,23 +487,23 @@ export function ws_store_new() {
   onCleanup(() => {
     window.removeEventListener("online", online_event_sync);
     document.removeEventListener("visibilitychange", visibility_event_sync);
-    if (reconnectTimer) {
-      clearTimeout(reconnectTimer);
+    if (reconnect_timer) {
+      clearTimeout(reconnect_timer);
     }
     suggestion_timer_clear();
     ws?.close();
   });
 
   return {
-    latestStatus: () => store.latestStatus,
-    latestPrediction: () => store.latestPrediction,
-    latestTrayState: () => store.latestTrayState,
-    activeSuggestion: () => store.activeSuggestion,
-    latestPrompt: () => store.latestPrompt,
-    labelGridRequested: () => store.labelGridRequested,
-    connectionStatus: () => store.connectionStatus,
-    wsStats: () => store.wsStats,
-    trainState: () => store.trainState,
+    latest_status: () => store.latest_status,
+    latest_prediction: () => store.latest_prediction,
+    latest_tray_state: () => store.latest_tray_state,
+    active_suggestion: () => store.active_suggestion,
+    latest_prompt: () => store.latest_prompt,
+    label_grid_requested: () => store.label_grid_requested,
+    connection_status: () => store.connection_status,
+    ws_stats: () => store.ws_stats,
+    train_state: () => store.train_state,
     suggestion_dismiss,
   };
 }

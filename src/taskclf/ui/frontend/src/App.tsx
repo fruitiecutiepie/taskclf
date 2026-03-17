@@ -11,43 +11,43 @@ import {
 } from "./lib/notifications";
 import { ws_store_new } from "./lib/ws";
 
-const viewParam = new URLSearchParams(window.location.search).get("view");
-const isPanelView = viewParam === "panel";
-const isLabelView = viewParam === "label";
+const view_param = new URLSearchParams(window.location.search).get("view");
+const is_panel_view = view_param === "panel";
+const is_label_view = view_param === "label";
 
 const COMPACT_W = 150;
 const CONTENT_W = 280;
 const LABEL_MAX_H = 330;
 const PANEL_MAX_H = 520;
 
-const isBrowserMode = () => window.innerWidth > 300 && !host.isNativeWindow;
+const is_browser_mode = () => window.innerWidth > 300 && !host.isNativeWindow;
 
-if (!isBrowserMode()) {
+if (!is_browser_mode()) {
   document.documentElement.style.background = "transparent";
   document.body.style.background = "transparent";
 }
 
 const App: Component = () => {
-  if (isLabelView) {
+  if (is_label_view) {
     return <LabelRecorderWindow />;
   }
-  if (isPanelView) {
+  if (is_panel_view) {
     return <StatusPanelWindow />;
   }
 
-  const inBrowser = isBrowserMode();
-  const [labelPinned, setLabelPinned] = createSignal(false);
-  const [badgeHovered, setBadgeHovered] = createSignal(false);
-  const [labelHovered, setLabelHovered] = createSignal(false);
-  const labelVisible = () => labelPinned() || badgeHovered() || labelHovered();
-  const [panelPinned, setPanelPinned] = createSignal(false);
-  const [dotHovered, setDotHovered] = createSignal(false);
-  const [panelHovered, setPanelHovered] = createSignal(false);
-  const panelVisible = () => panelPinned() || dotHovered() || panelHovered();
+  const in_browser = is_browser_mode();
+  const [label_pinned, set_label_pinned] = createSignal(false);
+  const [badge_hovered, set_badge_hovered] = createSignal(false);
+  const [label_hovered, set_label_hovered] = createSignal(false);
+  const label_visible = () => label_pinned() || badge_hovered() || label_hovered();
+  const [panel_pinned, set_panel_pinned] = createSignal(false);
+  const [dot_hovered, set_dot_hovered] = createSignal(false);
+  const [panel_hovered, set_panel_hovered] = createSignal(false);
+  const panel_visible = () => panel_pinned() || dot_hovered() || panel_hovered();
 
   const ws = ws_store_new();
 
-  const ensurePermission = (() => {
+  const permission_ensure_once = (() => {
     let asked = false;
     return () => {
       if (!asked) {
@@ -62,10 +62,10 @@ const App: Component = () => {
   });
 
   createEffect(() => {
-    const count = ws.labelGridRequested();
+    const count = ws.label_grid_requested();
     if (count > 0) {
-      if (inBrowser) {
-        setLabelPinned(true);
+      if (in_browser) {
+        set_label_pinned(true);
       } else {
         host.invoke({ cmd: "toggleLabelGrid" });
       }
@@ -73,13 +73,13 @@ const App: Component = () => {
   });
 
   createEffect(() => {
-    const prompt = ws.latestPrompt();
+    const prompt = ws.latest_prompt();
     if (!prompt) {
       return;
     }
     transition_notification_show(prompt, () => {
-      if (inBrowser) {
-        setLabelPinned(true);
+      if (in_browser) {
+        set_label_pinned(true);
       } else {
         host.invoke({ cmd: "toggleLabelGrid" });
       }
@@ -89,7 +89,7 @@ const App: Component = () => {
   return (
     <div
       style={{
-        ...(inBrowser
+        ...(in_browser
           ? {
               display: "flex",
               "flex-direction": "column",
@@ -114,8 +114,8 @@ const App: Component = () => {
             background: "rgba(15, 17, 23, 0.5)",
             "backdrop-filter": "blur(20px)",
             "-webkit-backdrop-filter": "blur(20px)",
-            width: inBrowser ? `${COMPACT_W}px` : "100%",
-            ...(inBrowser
+            width: in_browser ? `${COMPACT_W}px` : "100%",
+            ...(in_browser
               ? { "box-shadow": "0 4px 24px rgba(0, 0, 0, 0.5)" }
               : { height: "100vh" }),
             overflow: "hidden",
@@ -134,59 +134,59 @@ const App: Component = () => {
             }}
           >
             <PredictionBadge
-              status={ws.connectionStatus}
-              latestStatus={ws.latestStatus}
-              latestPrediction={ws.latestPrediction}
-              latestTrayState={ws.latestTrayState}
-              activeSuggestion={ws.activeSuggestion}
-              labelPinned={labelPinned}
-              panelPinned={panelPinned}
-              onTogglePanel={
-                inBrowser
+              status={ws.connection_status}
+              latest_status={ws.latest_status}
+              latest_prediction={ws.latest_prediction}
+              latest_tray_state={ws.latest_tray_state}
+              active_suggestion={ws.active_suggestion}
+              label_pinned={label_pinned}
+              panel_pinned={panel_pinned}
+              on_toggle_panel={
+                in_browser
                   ? () => {
-                      ensurePermission();
-                      setPanelPinned((v) => !v);
+                      permission_ensure_once();
+                      set_panel_pinned((v) => !v);
                     }
                   : () => {
-                      ensurePermission();
+                      permission_ensure_once();
                       host.invoke({ cmd: "toggleStatePanel" });
                     }
               }
-              onShowPanel={
-                inBrowser
-                  ? () => setDotHovered(true)
+              on_show_panel={
+                in_browser
+                  ? () => set_dot_hovered(true)
                   : () => {
                       host.invoke({ cmd: "showStatePanel" });
                     }
               }
-              onHidePanel={
-                inBrowser
-                  ? () => setDotHovered(false)
+              on_hide_panel={
+                in_browser
+                  ? () => set_dot_hovered(false)
                   : () => {
                       host.invoke({ cmd: "hideStatePanel" });
                     }
               }
-              onToggleLabel={
-                inBrowser
+              on_toggle_label={
+                in_browser
                   ? () => {
-                      ensurePermission();
-                      setLabelPinned((v) => !v);
+                      permission_ensure_once();
+                      set_label_pinned((v) => !v);
                     }
                   : () => {
-                      ensurePermission();
+                      permission_ensure_once();
                       host.invoke({ cmd: "toggleLabelGrid" });
                     }
               }
-              onShowLabel={
-                inBrowser
-                  ? () => setBadgeHovered(true)
+              on_show_label={
+                in_browser
+                  ? () => set_badge_hovered(true)
                   : () => {
                       host.invoke({ cmd: "showLabelGrid" });
                     }
               }
-              onHideLabel={
-                inBrowser
-                  ? () => setBadgeHovered(false)
+              on_hide_label={
+                in_browser
+                  ? () => set_badge_hovered(false)
                   : () => {
                       host.invoke({ cmd: "hideLabelGrid" });
                     }
@@ -195,11 +195,11 @@ const App: Component = () => {
           </div>
         </div>
 
-        <Show when={inBrowser && labelVisible()}>
+        <Show when={in_browser && label_visible()}>
           {/* biome-ignore lint/a11y/noStaticElementInteractions: hover container */}
           <div
-            onMouseEnter={() => setLabelHovered(true)}
-            onMouseLeave={() => setLabelHovered(false)}
+            onMouseEnter={() => set_label_hovered(true)}
+            onMouseLeave={() => set_label_hovered(false)}
             style={{
               width: `${CONTENT_W}px`,
               "max-height": `${LABEL_MAX_H}px`,
@@ -210,22 +210,22 @@ const App: Component = () => {
             }}
           >
             <LabelRecorder
-              onCollapse={() => {
-                setLabelPinned(false);
-                setBadgeHovered(false);
-                setLabelHovered(false);
+              on_collapse={() => {
+                set_label_pinned(false);
+                set_badge_hovered(false);
+                set_label_hovered(false);
               }}
-              prediction={ws.latestPrediction}
+              prediction={ws.latest_prediction}
             />
           </div>
         </Show>
       </div>
 
-      <Show when={inBrowser && panelVisible()}>
+      <Show when={in_browser && panel_visible()}>
         {/* biome-ignore lint/a11y/noStaticElementInteractions: hover container */}
         <div
-          onMouseEnter={() => setPanelHovered(true)}
-          onMouseLeave={() => setPanelHovered(false)}
+          onMouseEnter={() => set_panel_hovered(true)}
+          onMouseLeave={() => set_panel_hovered(false)}
           style={{
             width: `${CONTENT_W}px`,
             "max-height": `${PANEL_MAX_H}px`,
@@ -234,13 +234,13 @@ const App: Component = () => {
           }}
         >
           <StatusPanel
-            status={ws.connectionStatus}
-            latestStatus={ws.latestStatus}
-            latestPrediction={ws.latestPrediction}
-            latestTrayState={ws.latestTrayState}
-            activeSuggestion={ws.activeSuggestion}
-            wsStats={ws.wsStats}
-            trainState={ws.trainState}
+            status={ws.connection_status}
+            latest_status={ws.latest_status}
+            latest_prediction={ws.latest_prediction}
+            latest_tray_state={ws.latest_tray_state}
+            active_suggestion={ws.active_suggestion}
+            ws_stats={ws.ws_stats}
+            train_state={ws.train_state}
           />
         </div>
       </Show>

@@ -18,7 +18,7 @@ export const StatusSuggestion: Component<{
     return `${s.suggested} ${Math.round(s.confidence * 100)}%`;
   });
 
-  const summaryColor = createMemo(() => {
+  const summary_color = createMemo(() => {
     const s = sug();
     return s ? (LABEL_COLORS[s.suggested] ?? "#e0e0e0") : "#a0a0a0";
   });
@@ -29,7 +29,7 @@ export const StatusSuggestion: Component<{
         <StatusSection
           title="Active Suggestion"
           summary={summary()}
-          summaryColor={summaryColor()}
+          summary_color={summary_color()}
         >
           <StatusRow
             label="suggested"

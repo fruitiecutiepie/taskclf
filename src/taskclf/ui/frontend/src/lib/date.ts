@@ -18,8 +18,8 @@ export function date_label_fmt(dateStr: string): string {
   }
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
-  const yStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, "0")}-${String(yesterday.getDate()).padStart(2, "0")}`;
-  if (dateStr === yStr) {
+  const y_str = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, "0")}-${String(yesterday.getDate()).padStart(2, "0")}`;
+  if (dateStr === y_str) {
     return "Yesterday";
   }
   const d = new Date(`${dateStr}T00:00:00`);
@@ -45,12 +45,12 @@ export function time_sec_fmt(d: Date): string {
 }
 
 export function duration_fmt(ms: number): string {
-  const totalMin = Math.round(ms / 60_000);
-  if (totalMin < 1) {
+  const total_min = Math.round(ms / 60_000);
+  if (total_min < 1) {
     return "<1m";
   }
-  const h = Math.floor(totalMin / 60);
-  const m = totalMin % 60;
+  const h = Math.floor(total_min / 60);
+  const m = total_min % 60;
   if (h === 0) {
     return `${m}m`;
   }

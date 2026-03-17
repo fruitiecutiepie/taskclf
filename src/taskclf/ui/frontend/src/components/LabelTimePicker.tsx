@@ -6,40 +6,40 @@ export type TimeUnit = "s" | "m" | "h" | "d";
 const UNIT_TO_MINUTES: Record<TimeUnit, number> = { s: 1 / 60, m: 1, h: 60, d: 1440 };
 
 type LabelTimePickerProps = {
-  selectedMinutes: Accessor<number>;
-  setSelectedMinutes: (m: number) => void;
-  fillFromLast: Accessor<boolean>;
-  setFillFromLast: (v: boolean) => void;
-  lastLabel: Accessor<{ end_ts: string } | null | undefined>;
+  selected_minutes: Accessor<number>;
+  set_selected_minutes: (m: number) => void;
+  fill_from_last: Accessor<boolean>;
+  set_fill_from_last: (v: boolean) => void;
+  last_label: Accessor<{ end_ts: string } | null | undefined>;
 };
 
 export const LabelTimePicker: Component<LabelTimePickerProps> = (props) => {
-  const [customActive, setCustomActive] = createSignal(false);
-  const [customValue, setCustomValue] = createSignal("");
-  const [customUnit, setCustomUnit] = createSignal<TimeUnit>("m");
+  const [custom_active, set_custom_active] = createSignal(false);
+  const [custom_value, set_custom_value] = createSignal("");
+  const [custom_unit, set_custom_unit] = createSignal<TimeUnit>("m");
 
   function preset_select(m: number) {
-    props.setSelectedMinutes(m);
-    setCustomActive(false);
-    setCustomValue("");
-    props.setFillFromLast(false);
+    props.set_selected_minutes(m);
+    set_custom_active(false);
+    set_custom_value("");
+    props.set_fill_from_last(false);
   }
 
   function custom_apply(raw: string, unit: TimeUnit) {
     const n = parseFloat(raw);
     if (!Number.isNaN(n) && n >= 0) {
-      props.setSelectedMinutes(n * UNIT_TO_MINUTES[unit]);
-      setCustomActive(true);
-      props.setFillFromLast(false);
+      props.set_selected_minutes(n * UNIT_TO_MINUTES[unit]);
+      set_custom_active(true);
+      props.set_fill_from_last(false);
     }
   }
 
   function custom_step(delta: number) {
-    const cur = parseFloat(customValue()) || 0;
+    const cur = parseFloat(custom_value()) || 0;
     const next = Math.max(0, cur + delta);
     const v = String(next);
-    setCustomValue(v);
-    custom_apply(v, customUnit());
+    set_custom_value(v);
+    custom_apply(v, custom_unit());
   }
 
   return (
@@ -65,7 +65,9 @@ export const LabelTimePicker: Component<LabelTimePickerProps> = (props) => {
       <For each={[...MINUTE_OPTIONS]}>
         {(m) => {
           const active = () =>
-            !customActive() && !props.fillFromLast() && props.selectedMinutes() === m;
+            !custom_active()
+            && !props.fill_from_last()
+            && props.selected_minutes() === m;
           return (
             <button
               type="button"
@@ -89,7 +91,7 @@ export const LabelTimePicker: Component<LabelTimePickerProps> = (props) => {
         }}
       </For>
       {(() => {
-        const ll = props.lastLabel();
+        const ll = props.last_label();
         if (!ll?.end_ts) {
           return null;
         }
@@ -107,18 +109,20 @@ export const LabelTimePicker: Component<LabelTimePickerProps> = (props) => {
           <button
             type="button"
             onClick={() => {
-              props.setFillFromLast(true);
-              setCustomActive(false);
+              props.set_fill_from_last(true);
+              set_custom_active(false);
             }}
             style={{
               padding: "2px 7px",
               "border-radius": "10px",
               border: "1px solid var(--border)",
-              background: props.fillFromLast() ? "var(--text-muted)" : "var(--surface)",
-              color: props.fillFromLast() ? "var(--bg)" : "var(--text-muted)",
+              background: props.fill_from_last()
+                ? "var(--text-muted)"
+                : "var(--surface)",
+              color: props.fill_from_last() ? "var(--bg)" : "var(--text-muted)",
               cursor: "pointer",
               "font-size": "0.7rem",
-              "font-weight": props.fillFromLast() ? "700" : "500",
+              "font-weight": props.fill_from_last() ? "700" : "500",
               "line-height": "1.4",
               transition: "all 0.1s ease",
             }}
@@ -149,19 +153,19 @@ export const LabelTimePicker: Component<LabelTimePickerProps> = (props) => {
             type="text"
             inputmode="decimal"
             placeholder="#"
-            value={customValue()}
+            value={custom_value()}
             onInput={(e) => {
               const v = e.currentTarget.value;
               if (v === "" || /^\d*\.?\d*$/.test(v)) {
-                setCustomValue(v);
-                custom_apply(v, customUnit());
+                set_custom_value(v);
+                custom_apply(v, custom_unit());
               } else {
-                e.currentTarget.value = customValue();
+                e.currentTarget.value = custom_value();
               }
             }}
             onFocus={() => {
-              if (customValue()) {
-                custom_apply(customValue(), customUnit());
+              if (custom_value()) {
+                custom_apply(custom_value(), custom_unit());
               }
             }}
             style={{
@@ -169,7 +173,7 @@ export const LabelTimePicker: Component<LabelTimePickerProps> = (props) => {
               padding: "2px 4px",
               border: "none",
               background: "transparent",
-              color: customActive() ? "var(--text)" : "var(--text-muted)",
+              color: custom_active() ? "var(--text)" : "var(--text-muted)",
               "font-size": "0.7rem",
               "text-align": "center",
               outline: "none",
@@ -238,9 +242,9 @@ export const LabelTimePicker: Component<LabelTimePickerProps> = (props) => {
               <button
                 type="button"
                 onClick={() => {
-                  setCustomUnit(u);
-                  if (customValue()) {
-                    custom_apply(customValue(), u);
+                  set_custom_unit(u);
+                  if (custom_value()) {
+                    custom_apply(custom_value(), u);
                   }
                 }}
                 style={{
@@ -248,11 +252,11 @@ export const LabelTimePicker: Component<LabelTimePickerProps> = (props) => {
                   border: "none",
                   "border-right": u !== "d" ? "1px solid var(--border)" : "none",
                   background:
-                    customUnit() === u ? "var(--text-muted)" : "var(--surface)",
-                  color: customUnit() === u ? "var(--bg)" : "var(--text-muted)",
+                    custom_unit() === u ? "var(--text-muted)" : "var(--surface)",
+                  color: custom_unit() === u ? "var(--bg)" : "var(--text-muted)",
                   cursor: "pointer",
                   "font-size": "0.65rem",
-                  "font-weight": customUnit() === u ? "700" : "500",
+                  "font-weight": custom_unit() === u ? "700" : "500",
                   "line-height": "1.4",
                   transition: "all 0.1s ease",
                 }}

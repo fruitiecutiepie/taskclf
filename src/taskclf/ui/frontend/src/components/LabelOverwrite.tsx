@@ -8,21 +8,21 @@ export type OverwritePending = {
   end: string;
   conflicts: { start_ts: string; end_ts: string; label: string }[];
   confidence: number;
-  extendForward: boolean;
+  extend_forward: boolean;
 };
 
 type LabelOverwriteProps = {
   pending: OverwritePending;
-  onConfirm: () => void;
-  onKeepAll: () => void;
-  onCancel: () => void;
+  on_confirm: () => void;
+  on_keep_all: () => void;
+  on_cancel: () => void;
 };
 
 const fmt = (d: Date) =>
   d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
 export const LabelOverwrite: Component<LabelOverwriteProps> = (props) => {
-  const [expanded, setExpanded] = createSignal(false);
+  const [expanded, set_expanded] = createSignal(false);
 
   const sorted = createMemo(() =>
     [...props.pending.conflicts].sort((a, b) =>
@@ -30,7 +30,7 @@ export const LabelOverwrite: Component<LabelOverwriteProps> = (props) => {
     ),
   );
 
-  const uniqueLabels = createMemo(() => {
+  const unique_labels = createMemo(() => {
     const seen = new Set<string>();
     const out: string[] = [];
     for (const c of sorted()) {
@@ -42,10 +42,10 @@ export const LabelOverwrite: Component<LabelOverwriteProps> = (props) => {
     return out;
   });
 
-  const affectedRange = createMemo(() => {
-    const newStart = iso_date_parse(props.pending.start);
-    const newEnd = iso_date_parse(props.pending.end);
-    return `${fmt(newStart)}\u2013${fmt(newEnd)}`;
+  const affected_range = createMemo(() => {
+    const new_start = iso_date_parse(props.pending.start);
+    const new_end = iso_date_parse(props.pending.end);
+    return `${fmt(new_start)}\u2013${fmt(new_end)}`;
   });
 
   return (
@@ -60,7 +60,7 @@ export const LabelOverwrite: Component<LabelOverwriteProps> = (props) => {
     >
       <span>
         Overlaps {sorted().length === 1 ? "" : `${sorted().length} labels: `}
-        <For each={uniqueLabels()}>
+        <For each={unique_labels()}>
           {(lbl, i) => {
             const color = LABEL_COLORS[lbl] ?? "var(--text)";
             return (
@@ -80,7 +80,7 @@ export const LabelOverwrite: Component<LabelOverwriteProps> = (props) => {
           "margin-top": "2px",
         }}
       >
-        ({affectedRange()} →{" "}
+        ({affected_range()} →{" "}
         <span
           style={{
             color: LABEL_COLORS[props.pending.label] ?? "var(--text)",
@@ -95,7 +95,7 @@ export const LabelOverwrite: Component<LabelOverwriteProps> = (props) => {
       <Show when={sorted().length > 1}>
         <button
           type="button"
-          onClick={() => setExpanded((v) => !v)}
+          onClick={() => set_expanded((v) => !v)}
           style={{
             background: "none",
             border: "none",
@@ -146,7 +146,7 @@ export const LabelOverwrite: Component<LabelOverwriteProps> = (props) => {
       >
         <button
           type="button"
-          onClick={props.onConfirm}
+          onClick={props.on_confirm}
           style={{
             padding: "2px 10px",
             "border-radius": "6px",
@@ -162,7 +162,7 @@ export const LabelOverwrite: Component<LabelOverwriteProps> = (props) => {
         </button>
         <button
           type="button"
-          onClick={props.onKeepAll}
+          onClick={props.on_keep_all}
           style={{
             padding: "2px 10px",
             "border-radius": "6px",
@@ -178,7 +178,7 @@ export const LabelOverwrite: Component<LabelOverwriteProps> = (props) => {
         </button>
         <button
           type="button"
-          onClick={props.onCancel}
+          onClick={props.on_cancel}
           style={{
             padding: "2px 10px",
             "border-radius": "6px",

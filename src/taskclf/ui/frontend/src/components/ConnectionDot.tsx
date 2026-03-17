@@ -4,16 +4,16 @@ import type { ConnectionStatus } from "../lib/ws";
 
 export const ConnectionDot: Component<{
   status: Accessor<ConnectionStatus>;
-  panelPinned?: Accessor<boolean>;
-  onTogglePanel?: () => void;
-  onShowPanel?: () => void;
-  onHidePanel?: () => void;
+  panel_pinned?: Accessor<boolean>;
+  on_toggle_panel?: () => void;
+  on_show_panel?: () => void;
+  on_hide_panel?: () => void;
 }> = (props) => {
-  const [hovered, setHovered] = createSignal(false);
+  const [hovered, set_hovered] = createSignal(false);
   const color = () => dot_color(props.status());
-  const pinned = () => props.panelPinned?.() ?? false;
+  const pinned = () => props.panel_pinned?.() ?? false;
 
-  const dotShadow = () => {
+  const dot_shadow = () => {
     if (hovered()) {
       return `0 0 0 3px ${color()}44, 0 0 6px ${color()}88`;
     }
@@ -52,16 +52,16 @@ export const ConnectionDot: Component<{
           : `${props.status()} — click to pin panel`
       }
       onMouseEnter={() => {
-        setHovered(true);
-        props.onShowPanel?.();
+        set_hovered(true);
+        props.on_show_panel?.();
       }}
       onMouseLeave={() => {
-        setHovered(false);
-        props.onHidePanel?.();
+        set_hovered(false);
+        props.on_hide_panel?.();
       }}
       onClick={(e) => {
         e.stopPropagation();
-        props.onTogglePanel?.();
+        props.on_toggle_panel?.();
       }}
     >
       <span
@@ -70,7 +70,7 @@ export const ConnectionDot: Component<{
           height: "10px",
           "border-radius": "50%",
           background: color(),
-          "box-shadow": dotShadow(),
+          "box-shadow": dot_shadow(),
           transform: hovered() ? "scale(1.25)" : pinned() ? "scale(1.1)" : "scale(1)",
           transition: "box-shadow 0.15s ease, transform 0.15s ease",
         }}

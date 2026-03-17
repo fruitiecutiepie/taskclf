@@ -3,7 +3,7 @@ import { time_ago } from "../lib/date";
 import { LABEL_COLORS } from "../lib/labelColors";
 
 type LabelLastProps = {
-  lastLabel: Accessor<{ label: string; end_ts: string } | null | undefined>;
+  last_label: Accessor<{ label: string; end_ts: string } | null | undefined>;
 };
 
 const LabelLastContent: Component<{
@@ -36,7 +36,7 @@ export const LabelLast: Component<LabelLastProps> = (props) => (
     }}
   >
     <Show
-      when={props.lastLabel()}
+      when={props.last_label()}
       fallback={<span style={{ color: "var(--text-muted)" }}>No labels yet</span>}
     >
       {(ll) => <LabelLastContent ll={ll} />}

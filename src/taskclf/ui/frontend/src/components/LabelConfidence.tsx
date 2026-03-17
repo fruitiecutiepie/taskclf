@@ -2,7 +2,7 @@ import type { Accessor, Component } from "solid-js";
 
 type LabelConfidenceProps = {
   value: Accessor<number>;
-  onChange: (v: number) => void;
+  on_change: (v: number) => void;
 };
 
 export const LabelConfidence: Component<LabelConfidenceProps> = (props) => (
@@ -30,7 +30,7 @@ export const LabelConfidence: Component<LabelConfidenceProps> = (props) => (
       max="100"
       step="5"
       value={props.value()}
-      onInput={(e) => props.onChange(parseInt(e.currentTarget.value, 10))}
+      onInput={(e) => props.on_change(parseInt(e.currentTarget.value, 10))}
       style={{
         flex: "1",
         height: "4px",

@@ -22,14 +22,14 @@ import { TrainingPanel } from "./TrainingPanel";
 
 export const StatusPanel: Component<{
   status: Accessor<ConnectionStatus>;
-  latestStatus: Accessor<StatusEvent>;
-  latestPrediction: Accessor<Prediction | null>;
-  latestTrayState: Accessor<TrayState>;
-  activeSuggestion: Accessor<LabelSuggestion | null>;
-  wsStats: Accessor<WSStats>;
-  trainState: Accessor<TrainState>;
+  latest_status: Accessor<StatusEvent>;
+  latest_prediction: Accessor<Prediction | null>;
+  latest_tray_state: Accessor<TrayState>;
+  active_suggestion: Accessor<LabelSuggestion | null>;
+  ws_stats: Accessor<WSStats>;
+  train_state: Accessor<TrainState>;
 }> = (props) => {
-  const [tab, setTab] = createSignal<PanelTab>("system");
+  const [tab, set_tab] = createSignal<PanelTab>("system");
 
   return (
     <div
@@ -45,25 +45,28 @@ export const StatusPanel: Component<{
         "box-shadow": "0 8px 32px rgba(0, 0, 0, 0.6)",
       }}
     >
-      <StatusPanelTab active={tab} onChange={setTab} />
+      <StatusPanelTab active={tab} on_change={set_tab} />
 
       <Show when={tab() === "system"}>
-        <StatusActivityMonitor status={props.latestStatus} />
-        <StatusPrediction prediction={props.latestPrediction} />
-        <StatusModel trayState={props.latestTrayState} />
-        <StatusTransitions trayState={props.latestTrayState} />
-        <StatusSuggestion suggestion={props.activeSuggestion} />
-        <StatusActivityWatch status={props.latestStatus} />
-        <StatusWebSocket status={props.status} wsStats={props.wsStats} />
-        <StatusConfig trayState={props.latestTrayState} />
+        <StatusActivityMonitor status={props.latest_status} />
+        <StatusPrediction prediction={props.latest_prediction} />
+        <StatusModel tray_state={props.latest_tray_state} />
+        <StatusTransitions tray_state={props.latest_tray_state} />
+        <StatusSuggestion suggestion={props.active_suggestion} />
+        <StatusActivityWatch status={props.latest_status} />
+        <StatusWebSocket status={props.status} ws_stats={props.ws_stats} />
+        <StatusConfig tray_state={props.latest_tray_state} />
       </Show>
 
       <Show when={tab() === "history"}>
-        <LabelHistory visible={() => true} latestPrediction={props.latestPrediction} />
+        <LabelHistory
+          visible={() => true}
+          latest_prediction={props.latest_prediction}
+        />
       </Show>
 
       <Show when={tab() === "training"}>
-        <TrainingPanel trainState={props.trainState} />
+        <TrainingPanel train_state={props.train_state} />
       </Show>
     </div>
   );

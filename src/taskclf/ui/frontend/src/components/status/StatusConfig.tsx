@@ -5,9 +5,9 @@ import { StatusRow } from "../ui/StatusRow";
 import { StatusSection } from "../ui/StatusSection";
 
 export const StatusConfig: Component<{
-  trayState: Accessor<TrayState>;
+  tray_state: Accessor<TrayState>;
 }> = (props) => {
-  const t = () => props.trayState();
+  const t = () => props.tray_state();
 
   const summary = createMemo(() => (t().dev_mode ? "dev" : "prod"));
 

@@ -5,11 +5,11 @@ import { LabelRecorder } from "./LabelRecorder";
 
 const CONTENT_W = 280;
 const LABEL_MAX_H = 330;
-const isBrowserMode = () => window.innerWidth > 300 && !host.isNativeWindow;
+const is_browser_mode = () => window.innerWidth > 300 && !host.isNativeWindow;
 
 export const LabelRecorderWindow: Component = () => {
   const ws = ws_store_new();
-  const inBrowser = isBrowserMode();
+  const in_browser = is_browser_mode();
 
   function window_collapse() {
     host.invoke({ cmd: "toggleLabelGrid" });
@@ -19,17 +19,17 @@ export const LabelRecorderWindow: Component = () => {
     // biome-ignore lint/a11y/noStaticElementInteractions: hover-only container for native window show/hide
     <div
       onMouseEnter={() => {
-        if (!inBrowser) {
+        if (!in_browser) {
           host.invoke({ cmd: "cancelLabelHide" });
         }
       }}
       onMouseLeave={() => {
-        if (!inBrowser) {
+        if (!in_browser) {
           host.invoke({ cmd: "hideLabelGrid" });
         }
       }}
       style={{
-        ...(inBrowser
+        ...(in_browser
           ? {
               display: "flex",
               "justify-content": "center",
@@ -43,15 +43,15 @@ export const LabelRecorderWindow: Component = () => {
       <div
         style={{
           background: "var(--bg)",
-          width: inBrowser ? `${CONTENT_W}px` : "100%",
-          ...(inBrowser
+          width: in_browser ? `${CONTENT_W}px` : "100%",
+          ...(in_browser
             ? { "max-height": `${LABEL_MAX_H}px` }
             : { height: "100vh", display: "flex", "flex-direction": "column" }),
           "overflow-y": "auto",
-          "border-radius": inBrowser ? "12px" : "0",
+          "border-radius": in_browser ? "12px" : "0",
         }}
       >
-        <Show when={!inBrowser}>
+        <Show when={!in_browser}>
           <div
             class="pywebview-drag-region"
             style={{
@@ -73,7 +73,10 @@ export const LabelRecorderWindow: Component = () => {
             />
           </div>
         </Show>
-        <LabelRecorder onCollapse={window_collapse} prediction={ws.latestPrediction} />
+        <LabelRecorder
+          on_collapse={window_collapse}
+          prediction={ws.latest_prediction}
+        />
       </div>
     </div>
   );

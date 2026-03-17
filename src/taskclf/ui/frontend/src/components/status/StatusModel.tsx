@@ -6,15 +6,15 @@ import { StatusRow } from "../ui/StatusRow";
 import { StatusSection } from "../ui/StatusSection";
 
 export const StatusModel: Component<{
-  trayState: Accessor<TrayState>;
+  tray_state: Accessor<TrayState>;
 }> = (props) => {
-  const t = () => props.trayState();
+  const t = () => props.tray_state();
 
   const summary = createMemo(() => (t().model_loaded ? "loaded" : "not loaded"));
-  const summaryColor = createMemo(() => (t().model_loaded ? "#22c55e" : "#ef4444"));
+  const summary_color = createMemo(() => (t().model_loaded ? "#22c55e" : "#ef4444"));
 
   return (
-    <StatusSection title="Model" summary={summary()} summaryColor={summaryColor()}>
+    <StatusSection title="Model" summary={summary()} summary_color={summary_color()}>
       <StatusRow
         label="loaded"
         value={t().model_loaded ? "yes" : "no"}

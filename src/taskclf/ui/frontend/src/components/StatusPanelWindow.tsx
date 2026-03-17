@@ -5,28 +5,28 @@ import { StatusPanel } from "./StatusPanel";
 
 const CONTENT_W = 280;
 const PANEL_MAX_H = 520;
-const isBrowserMode = () => window.innerWidth > 300 && !host.isNativeWindow;
+const is_browser_mode = () => window.innerWidth > 300 && !host.isNativeWindow;
 
 export const StatusPanelWindow: Component = () => {
   const ws = ws_store_new();
-  const inBrowser = isBrowserMode();
+  const in_browser = is_browser_mode();
 
   return (
     <>
       {/* biome-ignore lint/a11y/noStaticElementInteractions: hover-only panel show/hide, not a user interaction */}
       <div
         onMouseEnter={() => {
-          if (!inBrowser) {
+          if (!in_browser) {
             host.invoke({ cmd: "cancelPanelHide" });
           }
         }}
         onMouseLeave={() => {
-          if (!inBrowser) {
+          if (!in_browser) {
             host.invoke({ cmd: "hideStatePanel" });
           }
         }}
         style={{
-          ...(inBrowser
+          ...(in_browser
             ? {
                 display: "flex",
                 "justify-content": "center",
@@ -40,15 +40,15 @@ export const StatusPanelWindow: Component = () => {
         <div
           style={{
             background: "transparent",
-            width: inBrowser ? `${CONTENT_W}px` : "100%",
-            ...(inBrowser
+            width: in_browser ? `${CONTENT_W}px` : "100%",
+            ...(in_browser
               ? { "max-height": `${PANEL_MAX_H}px` }
               : { height: "100vh", display: "flex", "flex-direction": "column" }),
             overflow: "auto",
             padding: "4px",
           }}
         >
-          <Show when={!inBrowser}>
+          <Show when={!in_browser}>
             <div
               class="pywebview-drag-region"
               style={{
@@ -71,13 +71,13 @@ export const StatusPanelWindow: Component = () => {
             </div>
           </Show>
           <StatusPanel
-            status={ws.connectionStatus}
-            latestStatus={ws.latestStatus}
-            latestPrediction={ws.latestPrediction}
-            latestTrayState={ws.latestTrayState}
-            activeSuggestion={ws.activeSuggestion}
-            wsStats={ws.wsStats}
-            trainState={ws.trainState}
+            status={ws.connection_status}
+            latest_status={ws.latest_status}
+            latest_prediction={ws.latest_prediction}
+            latest_tray_state={ws.latest_tray_state}
+            active_suggestion={ws.active_suggestion}
+            ws_stats={ws.ws_stats}
+            train_state={ws.train_state}
           />
         </div>
       </div>

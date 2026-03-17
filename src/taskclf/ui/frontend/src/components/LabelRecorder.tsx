@@ -10,8 +10,8 @@ import {
 } from "solid-js";
 import { core_labels_list, label_create, labels_list } from "../lib/api";
 import { iso_date_parse } from "../lib/date";
+import { label_overwrite_pending_upd_get } from "../lib/label_overwrite_pending_upd_get";
 import { LABEL_COLORS } from "../lib/labelColors";
-import { label_overwrite_pending_upd_get } from "../lib/labelOverwritePendingUpdGet";
 import type { Prediction } from "../lib/ws";
 import { ActivitySummary } from "./ActivitySummary";
 import { LabelConfidence } from "./LabelConfidence";
@@ -33,15 +33,15 @@ function extend_forward_pref_read(): boolean {
 }
 
 type LabelRecorderProps = {
-  maxHeight?: number;
-  onCollapse: () => void;
+  max_height?: number;
+  on_collapse: () => void;
   prediction?: Accessor<Prediction | null>;
 };
 
 export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
   const [labels] = createResource(core_labels_list);
-  const [labelVersion, setLabelVersion] = createSignal(0);
-  const [lastLabel] = createResource(labelVersion, async () => {
+  const [label_version, set_label_version] = createSignal(0);
+  const [last_label] = createResource(label_version, async () => {
     try {
       const rows = await labels_list(1);
       return rows.length ? rows[0] : null;
@@ -49,21 +49,20 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
       return null;
     }
   });
-  const [flash, setFlash] = createSignal<string | null>(null);
-  const [overwritePending, setOverwritePending] = createSignal<OverwritePending | null>(
-    null,
-  );
-  const [selectedMinutes, setSelectedMinutes] = createSignal(0);
-  const [extendFwd, setExtendFwd] = createSignal(extend_forward_pref_read());
-  const [fillFromLast, setFillFromLast] = createSignal(false);
-  const [confPercent, setConfPercent] = createSignal(100);
+  const [flash, set_flash] = createSignal<string | null>(null);
+  const [overwrite_pending, set_overwrite_pending] =
+    createSignal<OverwritePending | null>(null);
+  const [selected_minutes, set_selected_minutes] = createSignal(0);
+  const [extend_fwd, set_extend_fwd] = createSignal(extend_forward_pref_read());
+  const [fill_from_last, set_fill_from_last] = createSignal(false);
+  const [conf_percent, set_conf_percent] = createSignal(100);
 
   createEffect(
     on(
-      lastLabel,
+      last_label,
       () => {
-        if (overwritePending()) {
-          setOverwritePending(null);
+        if (overwrite_pending()) {
+          set_overwrite_pending(null);
         }
       },
       { defer: true },
@@ -72,9 +71,9 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
 
   createEffect(
     on(
-      () => [selectedMinutes(), fillFromLast()] as const,
+      () => [selected_minutes(), fill_from_last()] as const,
       () => {
-        const pending = overwritePending();
+        const pending = overwrite_pending();
         if (!pending) {
           return;
         }
@@ -82,61 +81,61 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
         const updated = label_overwrite_pending_upd_get(
           pending,
           {
-            selectedMinutes: selectedMinutes(),
-            fillFromLast: fillFromLast(),
-            lastLabelEndTs: lastLabel()?.end_ts ?? null,
-            extendFwd: extendFwd(),
+            selected_minutes: selected_minutes(),
+            fill_from_last: fill_from_last(),
+            last_label_end_ts: last_label()?.end_ts ?? null,
+            extend_fwd: extend_fwd(),
           },
           new Date(),
         );
 
-        setOverwritePending(updated);
+        set_overwrite_pending(updated);
       },
       { defer: true },
     ),
   );
 
   function extend_fwd_toggle() {
-    const next = !extendFwd();
-    setExtendFwd(next);
+    const next = !extend_fwd();
+    set_extend_fwd(next);
     try {
       localStorage.setItem(EXTEND_FWD_KEY, String(next));
     } catch {}
   }
 
   async function label_now(label: string) {
-    const mins = selectedMinutes();
+    const mins = selected_minutes();
     const now = new Date();
     let start: Date;
-    let forceExtendFwd = false;
+    let force_extend_fwd = false;
 
-    const lastEndTs = lastLabel()?.end_ts;
-    if (fillFromLast() && lastEndTs) {
-      start = iso_date_parse(lastEndTs);
+    const last_end_ts = last_label()?.end_ts;
+    if (fill_from_last() && last_end_ts) {
+      start = iso_date_parse(last_end_ts);
     } else if (mins === 0) {
       start = now;
-      forceExtendFwd = true;
+      force_extend_fwd = true;
     } else {
       start = new Date(now.getTime() - mins * 60_000);
     }
-    const effectiveExtend = forceExtendFwd || extendFwd();
+    const effective_extend = force_extend_fwd || extend_fwd();
     try {
       await label_create({
         start_ts: start.toISOString(),
         end_ts: now.toISOString(),
         label,
-        confidence: confPercent() / 100,
-        extend_forward: effectiveExtend,
+        confidence: conf_percent() / 100,
+        extend_forward: effective_extend,
       });
-      setFlash(label);
-      setLabelVersion((v) => v + 1);
-      setTimeout(() => setFlash(null), 1500);
+      set_flash(label);
+      set_label_version((v) => v + 1);
+      setTimeout(() => set_flash(null), 1500);
     } catch (err: unknown) {
       const msg: string = err instanceof Error ? err.message : "";
-      const jsonMatch = msg.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
+      const json_match = msg.match(/\{[\s\S]*\}/);
+      if (json_match) {
         try {
-          const parsed = JSON.parse(jsonMatch[0]);
+          const parsed = JSON.parse(json_match[0]);
           const overlap = parsed.detail ?? parsed;
           const spans: { start_ts: string; end_ts: string; label: string }[] =
             overlap.conflicting_spans ?? [];
@@ -152,13 +151,13 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
             });
           }
           if (spans.length > 0) {
-            setOverwritePending({
+            set_overwrite_pending({
               label,
               start: start.toISOString(),
               end: now.toISOString(),
               conflicts: spans,
-              confidence: confPercent() / 100,
-              extendForward: effectiveExtend,
+              confidence: conf_percent() / 100,
+              extend_forward: effective_extend,
             });
             return;
           }
@@ -166,56 +165,56 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
           /* fall through to generic error */
         }
       }
-      setFlash(`Error: ${msg}`);
-      setTimeout(() => setFlash(null), 3000);
+      set_flash(`Error: ${msg}`);
+      setTimeout(() => set_flash(null), 3000);
     }
   }
 
   async function overwrite_confirm() {
-    const pending = overwritePending();
+    const pending = overwrite_pending();
     if (!pending) {
       return;
     }
-    setOverwritePending(null);
+    set_overwrite_pending(null);
     try {
       await label_create({
         start_ts: pending.start,
         end_ts: pending.end,
         label: pending.label,
         confidence: pending.confidence,
-        extend_forward: pending.extendForward,
+        extend_forward: pending.extend_forward,
         overwrite: true,
       });
-      setFlash(pending.label);
-      setLabelVersion((v) => v + 1);
-      setTimeout(() => setFlash(null), 1500);
+      set_flash(pending.label);
+      set_label_version((v) => v + 1);
+      setTimeout(() => set_flash(null), 1500);
     } catch (err: unknown) {
-      setFlash(`Error: ${err instanceof Error ? err.message : "overwrite failed"}`);
-      setTimeout(() => setFlash(null), 3000);
+      set_flash(`Error: ${err instanceof Error ? err.message : "overwrite failed"}`);
+      setTimeout(() => set_flash(null), 3000);
     }
   }
 
   async function keep_all_confirm() {
-    const pending = overwritePending();
+    const pending = overwrite_pending();
     if (!pending) {
       return;
     }
-    setOverwritePending(null);
+    set_overwrite_pending(null);
     try {
       await label_create({
         start_ts: pending.start,
         end_ts: pending.end,
         label: pending.label,
         confidence: pending.confidence,
-        extend_forward: pending.extendForward,
+        extend_forward: pending.extend_forward,
         allow_overlap: true,
       });
-      setFlash(pending.label);
-      setLabelVersion((v) => v + 1);
-      setTimeout(() => setFlash(null), 1500);
+      set_flash(pending.label);
+      set_label_version((v) => v + 1);
+      setTimeout(() => set_flash(null), 1500);
     } catch (err: unknown) {
-      setFlash(`Error: ${err instanceof Error ? err.message : "keep all failed"}`);
-      setTimeout(() => setFlash(null), 3000);
+      set_flash(`Error: ${err instanceof Error ? err.message : "keep all failed"}`);
+      setTimeout(() => set_flash(null), 3000);
     }
   }
 
@@ -224,34 +223,34 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
       style={{
         padding: "8px",
         "border-top": "1px solid var(--border)",
-        ...(props.maxHeight != null
-          ? { "max-height": `${props.maxHeight}px`, "overflow-y": "auto" }
+        ...(props.max_height != null
+          ? { "max-height": `${props.max_height}px`, "overflow-y": "auto" }
           : {}),
       }}
     >
       <LabelTimePicker
-        selectedMinutes={selectedMinutes}
-        setSelectedMinutes={setSelectedMinutes}
-        fillFromLast={fillFromLast}
-        setFillFromLast={setFillFromLast}
-        lastLabel={lastLabel}
+        selected_minutes={selected_minutes}
+        set_selected_minutes={set_selected_minutes}
+        fill_from_last={fill_from_last}
+        set_fill_from_last={set_fill_from_last}
+        last_label={last_label}
       />
 
-      <ActivitySummary minutes={selectedMinutes} prediction={props.prediction} />
+      <ActivitySummary minutes={selected_minutes} prediction={props.prediction} />
 
-      <Show when={selectedMinutes() !== 0 || fillFromLast()}>
-        <LabelExtendToggle checked={extendFwd} onToggle={extend_fwd_toggle} />
+      <Show when={selected_minutes() !== 0 || fill_from_last()}>
+        <LabelExtendToggle checked={extend_fwd} on_toggle={extend_fwd_toggle} />
       </Show>
 
-      <LabelConfidence value={confPercent} onChange={setConfPercent} />
+      <LabelConfidence value={conf_percent} on_change={set_conf_percent} />
 
-      <Show when={overwritePending()}>
+      <Show when={overwrite_pending()}>
         {(pending) => (
           <LabelOverwrite
             pending={pending()}
-            onConfirm={overwrite_confirm}
-            onKeepAll={keep_all_confirm}
-            onCancel={() => setOverwritePending(null)}
+            on_confirm={overwrite_confirm}
+            on_keep_all={keep_all_confirm}
+            on_cancel={() => set_overwrite_pending(null)}
           />
         )}
       </Show>
@@ -259,7 +258,7 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
       <Show when={flash()}>
         <button
           type="button"
-          onClick={() => setFlash(null)}
+          onClick={() => set_flash(null)}
           style={{
             cursor: "pointer",
             background: "none",
@@ -305,7 +304,7 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
         </For>
       </div>
 
-      <LabelLast lastLabel={lastLabel} />
+      <LabelLast last_label={last_label} />
     </div>
   );
 };
