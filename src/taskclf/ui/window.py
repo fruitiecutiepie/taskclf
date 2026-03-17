@@ -161,11 +161,11 @@ class WindowAPI:
         self._cancel_timer("_panel_hide_timer")
         if not self._panel_visible:
             self._panel_visible = True
+            self._position_panel()
             try:
                 self._panel_window.show()
             except Exception:
                 logger.debug("Could not show panel", exc_info=True)
-            self._position_panel()
 
     def hide_state_panel(self) -> None:
         """Schedule panel hide unless pinned."""
@@ -190,11 +190,11 @@ class WindowAPI:
             self._cancel_timer("_panel_hide_timer")
             self._panel_pinned = True
             self._panel_visible = True
+            self._position_panel()
             try:
                 self._panel_window.show()
             except Exception:
                 logger.debug("Could not show panel", exc_info=True)
-            self._position_panel()
 
     def _do_hide_panel(self) -> None:
         self._panel_hide_timer = None
@@ -227,7 +227,8 @@ class WindowAPI:
             setattr(self, timer_attr, None)
 
     def _on_main_window_moved(self) -> None:
-        """Reposition the label grid, unless the user has dragged it away."""
+        """Reposition child windows, unless the user has dragged them away."""
+        label_dragged = False
         if (
             self._label_visible
             and self._label_window is not None
@@ -237,10 +238,25 @@ class WindowAPI:
                 cx, cy = self._label_window.x, self._label_window.y
                 ex, ey = self._label_expected_pos
                 if abs(cx - ex) > _DRAG_TOLERANCE or abs(cy - ey) > _DRAG_TOLERANCE:
+                    label_dragged = True
+            except Exception:
+                pass
+        if not label_dragged:
+            self._reposition_label()
+
+        if (
+            self._panel_visible
+            and self._panel_window is not None
+            and self._panel_expected_pos is not None
+        ):
+            try:
+                cx, cy = self._panel_window.x, self._panel_window.y
+                ex, ey = self._panel_expected_pos
+                if abs(cx - ex) > _DRAG_TOLERANCE or abs(cy - ey) > _DRAG_TOLERANCE:
                     return
             except Exception:
                 pass
-        self._reposition_label()
+        self._position_panel()
 
     def _reposition_label(self) -> None:
         """Place label grid below pill, right-aligned."""
