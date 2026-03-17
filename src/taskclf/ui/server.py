@@ -1470,6 +1470,12 @@ def create_app(
 
     # -- WebSocket ------------------------------------------------------------
 
+    @app.get("/api/ws/snapshot")
+    async def ws_snapshot() -> dict[str, Any]:
+        """Return the latest event for each type so reconnecting clients
+        can hydrate their store without waiting for the next push."""
+        return bus.snapshot()
+
     @app.websocket("/ws/predictions")
     async def ws_predictions(websocket: WebSocket) -> None:
         await websocket.accept()

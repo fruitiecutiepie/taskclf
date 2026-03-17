@@ -28,6 +28,7 @@ ActivityMonitor (thread) → publish_threadsafe → EventBus
 | `publish(event)` | async | Broadcast an event dict to all current subscribers |
 | `publish_threadsafe(event)` | sync | Schedule a publish from a non-async thread |
 | `subscribe()` | async context manager | Yields an `asyncio.Queue` receiving all published events |
+| `snapshot()` | sync (thread-safe) | Return latest event per type for reconnecting client hydration |
 
 ### bind_loop
 
@@ -59,6 +60,17 @@ Schedules a `publish` coroutine on the bound event loop via
 `asyncio.run_coroutine_threadsafe`.  Safe to call from any thread
 (e.g. `ActivityMonitor`).  No-ops silently when no loop is bound or
 the loop is closed.
+
+### snapshot
+
+```python
+snapshot() -> dict[str, dict[str, Any]]
+```
+
+Returns a copy of the most recent event for each known event type.
+Thread-safe (guarded by a `threading.Lock`).  Used by
+`GET /api/ws/snapshot` so that reconnecting WebSocket clients can
+hydrate their store immediately instead of waiting for the next push.
 
 ### subscribe
 

@@ -3073,6 +3073,8 @@ def ui_serve_cmd(
         host="127.0.0.1",
         port=port,
         log_level="warning",
+        ws_ping_interval=30,
+        ws_ping_timeout=30,
     )
     server = uvicorn.Server(uvicorn_config)
     server_thread = threading.Thread(target=server.run, daemon=True)

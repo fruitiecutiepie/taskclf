@@ -163,3 +163,49 @@ class TestSubscriberCleanupOnExit:
 
         remaining = _run(_test())
         assert remaining == 0
+
+
+class TestSnapshot:
+    """TC-UI-EB-008: snapshot() returns latest event per type."""
+
+    def test_snapshot_empty_initially(self) -> None:
+        bus = EventBus()
+        assert bus.snapshot() == {}
+
+    def test_snapshot_retains_latest(self) -> None:
+        async def _test() -> dict[str, dict[str, Any]]:
+            bus = EventBus()
+            await bus.publish({"type": "status", "state": "idle"})
+            await bus.publish({"type": "status", "state": "collecting"})
+            await bus.publish({"type": "prediction", "label": "Build"})
+            return bus.snapshot()
+
+        snap = _run(_test())
+        assert snap["status"]["state"] == "collecting"
+        assert snap["prediction"]["label"] == "Build"
+
+    def test_snapshot_is_copy(self) -> None:
+        async def _test() -> tuple[dict, dict]:
+            bus = EventBus()
+            await bus.publish({"type": "status", "state": "idle"})
+            s1 = bus.snapshot()
+            s1["status"]["state"] = "mutated"
+            s2 = bus.snapshot()
+            return s1, s2
+
+        s1, s2 = _run(_test())
+        assert s1["status"]["state"] == "mutated"
+        assert s2["status"]["state"] == "idle"
+
+    def test_snapshot_threadsafe(self) -> None:
+        """publish_threadsafe updates are reflected in snapshot."""
+
+        async def _test() -> dict[str, dict[str, Any]]:
+            bus = EventBus()
+            bus.bind_loop(asyncio.get_running_loop())
+            bus.publish_threadsafe({"type": "tray_state", "paused": True})
+            await asyncio.sleep(0.05)
+            return bus.snapshot()
+
+        snap = _run(_test())
+        assert snap["tray_state"]["paused"] is True

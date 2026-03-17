@@ -431,6 +431,33 @@ class TestWebSocket:
             resp = client.get("/api/config/labels")
             assert resp.status_code == 200
 
+    def test_ws_snapshot_empty(self, data_dir: Path) -> None:
+        """TC-UI-WS-SNAP-001: snapshot returns empty dict when no events published."""
+        bus = EventBus()
+        app = create_app(data_dir=data_dir, event_bus=bus)
+        with TestClient(app) as client:
+            resp = client.get("/api/ws/snapshot")
+            assert resp.status_code == 200
+            assert resp.json() == {}
+
+    def test_ws_snapshot_after_publish(self, data_dir: Path) -> None:
+        """TC-UI-WS-SNAP-002: snapshot reflects latest published events."""
+        import time
+
+        bus = EventBus()
+        app = create_app(data_dir=data_dir, event_bus=bus)
+        with TestClient(app) as client:
+            bus.publish_threadsafe({"type": "status", "state": "idle"})
+            bus.publish_threadsafe({"type": "status", "state": "collecting"})
+            bus.publish_threadsafe({"type": "tray_state", "paused": False})
+            time.sleep(0.1)
+
+            resp = client.get("/api/ws/snapshot")
+            assert resp.status_code == 200
+            snap = resp.json()
+            assert snap["status"]["state"] == "collecting"
+            assert snap["tray_state"]["paused"] is False
+
 
 # ---------------------------------------------------------------------------
 # PUT /api/labels  (Item 34)

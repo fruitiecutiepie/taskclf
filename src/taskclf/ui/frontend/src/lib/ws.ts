@@ -269,7 +269,35 @@ export function useWebSocket() {
     );
   }
 
+  async function hydrateFromSnapshot() {
+    try {
+      const resp = await fetch("/api/ws/snapshot");
+      if (!resp.ok) {
+        return;
+      }
+      const snap: Record<string, WSEvent> = await resp.json();
+      if (snap.status) {
+        setStore("latestStatus", reconcile(snap.status as StatusEvent));
+      }
+      if (snap.prediction) {
+        setStore("latestPrediction", reconcile(snap.prediction as Prediction | null));
+      }
+      if (snap.tray_state) {
+        setStore("latestTrayState", snap.tray_state as TrayState);
+      }
+    } catch {
+      // hydration is best-effort; the next push will update us
+    }
+  }
+
   function connect() {
+    if (
+      ws &&
+      (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)
+    ) {
+      return;
+    }
+
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
     const url = `${proto}//${location.host}/ws/predictions`;
 
@@ -280,6 +308,7 @@ export function useWebSocket() {
       setStore("connectionStatus", "connected");
       setStore("wsStats", "connectedSince", new Date().toISOString());
       retryDelay = 1000;
+      hydrateFromSnapshot();
     };
 
     ws.onmessage = (event) => {
@@ -408,12 +437,40 @@ export function useWebSocket() {
     if (reconnectTimer) {
       return;
     }
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      // Offline — don't burn retries; the 'online' listener will trigger connect()
+      return;
+    }
+    const jitter = retryDelay * (0.5 + Math.random() * 0.5);
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null;
-      retryDelay = Math.min(retryDelay * 2, 30000);
+      retryDelay = Math.min(retryDelay * 2, 30_000);
       setStore("wsStats", "reconnectCount", (c) => c + 1);
       connect();
-    }, retryDelay);
+    }, jitter);
+  }
+
+  function onOnline() {
+    retryDelay = 1000;
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+    connect();
+  }
+
+  function onVisibilityChange() {
+    if (
+      document.visibilityState === "visible" &&
+      store.connectionStatus === "disconnected"
+    ) {
+      retryDelay = 1000;
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+      connect();
+    }
   }
 
   function dismissSuggestion() {
@@ -421,9 +478,15 @@ export function useWebSocket() {
     clearSuggestionTimer();
   }
 
-  onMount(() => connect());
+  onMount(() => {
+    connect();
+    window.addEventListener("online", onOnline);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+  });
 
   onCleanup(() => {
+    window.removeEventListener("online", onOnline);
+    document.removeEventListener("visibilitychange", onVisibilityChange);
     if (reconnectTimer) {
       clearTimeout(reconnectTimer);
     }
