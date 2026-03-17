@@ -141,9 +141,9 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
           const spans: { start_ts: string; end_ts: string; label: string }[] =
             overlap.conflicting_spans ?? [];
           if (
-            spans.length === 0 &&
-            overlap.conflicting_start_ts &&
-            overlap.conflicting_end_ts
+            spans.length === 0
+            && overlap.conflicting_start_ts
+            && overlap.conflicting_end_ts
           ) {
             spans.push({
               start_ts: overlap.conflicting_start_ts,

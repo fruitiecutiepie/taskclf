@@ -39,8 +39,8 @@ export const ActivitySummary: Component<{
   showEmpty?: boolean;
 }> = (props) => {
   const range = () =>
-    props.timeRange?.() ??
-    (props.minutes ? timeRangeForMinutes(props.minutes()) : null);
+    props.timeRange?.()
+    ?? (props.minutes ? timeRangeForMinutes(props.minutes()) : null);
 
   const [awApps] = createResource(range, async (r) => {
     if (!r) {

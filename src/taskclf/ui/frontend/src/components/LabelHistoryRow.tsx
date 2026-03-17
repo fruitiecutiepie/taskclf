@@ -49,8 +49,8 @@ export const LabelHistoryRow: Component<{
   const rangeValid = () => editedRange() !== null;
 
   const timeChanged = () =>
-    startTime() !== toTimeInputValue(startD()) ||
-    endTime() !== toTimeInputValue(endD());
+    startTime() !== toTimeInputValue(startD())
+    || endTime() !== toTimeInputValue(endD());
 
   const labelChanged = () =>
     pendingLabel() !== null && pendingLabel() !== props.lbl.label;

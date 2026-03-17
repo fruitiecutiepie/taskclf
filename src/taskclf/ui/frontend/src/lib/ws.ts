@@ -292,8 +292,8 @@ export function useWebSocket() {
 
   function connect() {
     if (
-      ws &&
-      (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)
+      ws
+      && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)
     ) {
       return;
     }
@@ -461,8 +461,8 @@ export function useWebSocket() {
 
   function onVisibilityChange() {
     if (
-      document.visibilityState === "visible" &&
-      store.connectionStatus === "disconnected"
+      document.visibilityState === "visible"
+      && store.connectionStatus === "disconnected"
     ) {
       retryDelay = 1000;
       if (reconnectTimer) {

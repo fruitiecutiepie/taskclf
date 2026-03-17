@@ -42,9 +42,9 @@ export const LabelHistoryTimeline: Component<{
                   e.currentTarget.parentElement as HTMLElement
                 ).getBoundingClientRect();
                 const x =
-                  e.currentTarget.getBoundingClientRect().left -
-                  rect.left +
-                  e.currentTarget.offsetWidth / 2;
+                  e.currentTarget.getBoundingClientRect().left
+                  - rect.left
+                  + e.currentTarget.offsetWidth / 2;
                 const dur = fmtDuration(seg.endMs - seg.startMs);
                 const start = fmtTime(new Date(seg.startMs));
                 const end = fmtTime(new Date(seg.endMs));
