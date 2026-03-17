@@ -1,6 +1,6 @@
 # ui.window
 
-Native floating window via pywebview.
+WindowAPI and WindowChild for pywebview-based floating UI.
 
 ## Overview
 
@@ -21,11 +21,37 @@ Child windows (label grid, panel) are anchored below the pill on
 initial show.  Once visible, children can be freely dragged to any
 monitor; they will not snap back until hidden and re-shown.
 
+## WindowChild
+
+Encapsulates the visibility / pin / timer state machine shared by the
+label-grid and state-panel child windows.  Each `WindowChild` instance
+holds its own `window` reference, visibility and pin flags, a
+delayed-hide timer, and an expected-position tuple for drag detection.
+
+Positioning logic is injected via a callback (`position_fn`) so each
+child can use different layout math while sharing the same state
+machine.
+
+### Methods
+
+| Method | Description |
+|--------|-------------|
+| `visibility_on(main)` | Show on hover (non-pinned); cancels any pending hide timer |
+| `visibility_off_deferred()` | Schedule a delayed hide (300 ms) unless pinned |
+| `visibility_off()` | Immediate hide — clears visible, pinned, and expected position |
+| `pin_toggle(main)` | Toggle pinned state (click to pin/unpin) |
+| `timer_cancel()` | Cancel any pending hide timer |
+| `position_sync()` | Reposition via the injected layout callback |
+| `drag_detected()` | True if the user has dragged the window away from expected position |
+
 ## WindowAPI
 
 Python API exposed to JavaScript as `window.pywebview.api.<method>()`.
 The `Host` adapter in the frontend's `host.ts` calls these methods;
 components never reference `window.pywebview` directly.
+
+Internally, `WindowAPI` delegates to two `WindowChild` instances
+(`_label` and `_panel`) for the label grid and state panel.
 
 ### Public methods
 
@@ -56,10 +82,10 @@ each child window).  The main pill sets `easy_drag=False` to avoid
 conflicts between the native easy-drag handler and the CSS drag region,
 which previously caused glitches on multi-monitor setups.
 
-## run_window
+## window_run (ui.window_run)
 
 ```python
-run_window(
+window_run(
     port: int = 8741,
     on_ready: Callable[..., Any] | None = None,
     window_api: WindowAPI | None = None,
@@ -68,6 +94,8 @@ run_window(
 
 Creates all three pywebview windows and starts the GUI loop.
 **Blocks on the main thread** until the user closes the window.
+
+Defined in `taskclf.ui.window_run`.
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
@@ -95,3 +123,5 @@ in the startup callback.
   webview.
 
 ::: taskclf.ui.window
+
+::: taskclf.ui.window_run

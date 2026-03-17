@@ -2992,7 +2992,8 @@ def ui_serve_cmd(
     from taskclf.ui.events import EventBus
     from taskclf.ui.server import create_app
     from taskclf.ui.tray import ActivityMonitor, _LabelSuggester
-    from taskclf.ui.window import WindowAPI, run_window
+    from taskclf.ui.window import WindowAPI
+    from taskclf.ui.window_run import window_run
 
     if dev:
         logging.getLogger("taskclf").setLevel(logging.DEBUG)
@@ -3133,7 +3134,7 @@ def ui_serve_cmd(
             webbrowser.open(f"http://127.0.0.1:{ui_port}")
             server_thread.join()
         else:
-            run_window(port=ui_port, window_api=win_api)
+            window_run(port=ui_port, window_api=win_api)
     except KeyboardInterrupt:
         pass
     finally:
