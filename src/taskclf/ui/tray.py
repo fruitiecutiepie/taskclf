@@ -46,6 +46,22 @@ logger = logging.getLogger(__name__)
 
 _VITE_DEV_PORT = 5173
 
+_LOCKSCREEN_APPS: frozenset[str] = frozenset(
+    {
+        "loginwindow",
+        "lockapp.exe",
+        "logonui.exe",
+        "gnome-screensaver",
+        "gnome-shell",
+        "xdg-desktop-portal-gnome",
+        "i3lock",
+        "swaylock",
+        "xscreensaver",
+        "light-locker",
+        "slock",
+    }
+)
+
 
 def _send_desktop_notification(title: str, message: str, timeout: int = 10) -> None:
     """Best-effort passive desktop notification (secondary fallback).
@@ -657,6 +673,63 @@ class TrayLabeler:
                 }
             )
 
+    def _is_breakidle_block(self, prev_app: str) -> bool:
+        """Return True when the completed block should be auto-labeled BreakIdle.
+
+        A block qualifies when:
+        - ``prev_app`` is a known lockscreen/screensaver process, OR
+        - the model suggested ``BreakIdle`` for this block.
+        """
+        if prev_app.lower() in _LOCKSCREEN_APPS:
+            return True
+        if self._suggested_label == "BreakIdle":
+            return True
+        return False
+
+    def _auto_save_breakidle(
+        self,
+        block_start: dt.datetime,
+        block_end: dt.datetime,
+    ) -> None:
+        """Write a BreakIdle label span directly without user confirmation."""
+        from taskclf.core.types import LabelSpan
+        from taskclf.labels.store import overwrite_label_span
+
+        uid = self._config.user_id
+        span = LabelSpan(
+            start_ts=block_start,
+            end_ts=block_end,
+            label="BreakIdle",
+            provenance="auto_idle",
+            user_id=uid,
+            confidence=1.0,
+        )
+        try:
+            overwrite_label_span(span, self._labels_path)
+            self._on_label_saved()
+            logger.info(
+                "Auto-saved BreakIdle label: %s → %s",
+                block_start.isoformat(),
+                block_end.isoformat(),
+            )
+        except Exception:
+            logger.warning("Failed to auto-save BreakIdle label", exc_info=True)
+
+        if self._event_bus is not None:
+            self._event_bus.publish_threadsafe(
+                {
+                    "type": "label_created",
+                    "label": "BreakIdle",
+                    "confidence": 1.0,
+                    "ts": block_end.isoformat(),
+                    "start_ts": block_start.isoformat(),
+                    "extend_forward": False,
+                }
+            )
+            self._event_bus.publish_threadsafe(
+                {"type": "suggestion_cleared", "reason": "auto_saved_breakidle"}
+            )
+
     def _handle_transition(
         self,
         prev_app: str,
@@ -682,6 +755,10 @@ class TrayLabeler:
         else:
             self._suggested_label = None
             self._suggested_confidence = None
+
+        if self._is_breakidle_block(prev_app):
+            self._auto_save_breakidle(block_start, block_end)
+            return
 
         if self._event_bus is None or not self._event_bus.has_subscribers:
             self._send_notification(prev_app, new_app, block_start, block_end)
