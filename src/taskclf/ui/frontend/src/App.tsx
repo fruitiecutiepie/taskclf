@@ -216,6 +216,8 @@ const App: Component = () => {
                 set_label_hovered(false);
               }}
               prediction={ws.latest_prediction}
+              suggestion={ws.active_suggestion}
+              on_suggestion_dismiss={ws.suggestion_dismiss}
             />
           </div>
         </Show>
@@ -241,6 +243,15 @@ const App: Component = () => {
             active_suggestion={ws.active_suggestion}
             ws_stats={ws.ws_stats}
             train_state={ws.train_state}
+            on_open_label_recorder={() => {
+              permission_ensure_once();
+              if (in_browser) {
+                set_label_pinned(true);
+                set_badge_hovered(true);
+              } else {
+                host.invoke({ cmd: "showLabelGrid" });
+              }
+            }}
           />
         </div>
       </Show>

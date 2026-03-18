@@ -76,6 +76,8 @@ export const LabelRecorderWindow: Component = () => {
         <LabelRecorder
           on_collapse={window_collapse}
           prediction={ws.latest_prediction}
+          suggestion={ws.active_suggestion}
+          on_suggestion_dismiss={ws.suggestion_dismiss}
         />
       </div>
     </div>

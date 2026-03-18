@@ -12,7 +12,7 @@ import { core_labels_list, label_create, labels_list } from "../lib/api";
 import { iso_date_parse } from "../lib/date";
 import { label_overwrite_pending_upd_get } from "../lib/label_overwrite_pending_upd_get";
 import { LABEL_COLORS } from "../lib/labelColors";
-import type { Prediction } from "../lib/ws";
+import type { LabelSuggestion, Prediction } from "../lib/ws";
 import { ActivitySummary } from "./ActivitySummary";
 import { LabelConfidence } from "./LabelConfidence";
 import { LabelExtendToggle } from "./LabelExtendToggle";
@@ -20,6 +20,7 @@ import { LabelFlash } from "./LabelFlash";
 import { LabelLast } from "./LabelLast";
 import { LabelOverwrite, type OverwritePending } from "./LabelOverwrite";
 import { LabelTimePicker } from "./LabelTimePicker";
+import { PredictionSuggestion } from "./PredictionSuggestion";
 
 const EXTEND_FWD_KEY = "taskclf:extendForward";
 const _LEGACY_KEY = "taskclf:extendPrevious";
@@ -36,6 +37,8 @@ type LabelRecorderProps = {
   max_height?: number;
   on_collapse: () => void;
   prediction?: Accessor<Prediction | null>;
+  suggestion?: Accessor<LabelSuggestion | null>;
+  on_suggestion_dismiss?: () => void;
 };
 
 export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
@@ -237,6 +240,14 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
       />
 
       <ActivitySummary minutes={selected_minutes} prediction={props.prediction} />
+
+      <Show when={props.suggestion}>
+        <PredictionSuggestion
+          suggestion={props.suggestion ?? (() => null)}
+          on_saved={() => set_label_version((v) => v + 1)}
+          on_dismiss={props.on_suggestion_dismiss}
+        />
+      </Show>
 
       <Show when={selected_minutes() !== 0 || fill_from_last()}>
         <LabelExtendToggle checked={extend_fwd} on_toggle={extend_fwd_toggle} />

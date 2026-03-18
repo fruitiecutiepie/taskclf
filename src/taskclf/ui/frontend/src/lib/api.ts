@@ -132,6 +132,25 @@ export async function core_labels_list(): Promise<string[]> {
   return api_json(`${BASE}/config/labels`);
 }
 
+export async function notification_accept(body: {
+  block_start: string;
+  block_end: string;
+  label: string;
+}): Promise<LabelResponse> {
+  return api_json(`${BASE}/notification/accept`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export async function notification_skip(): Promise<{ status: string }> {
+  return api_json(`${BASE}/notification/skip`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
 export type UserConfig = {
   user_id: string;
   username: string;

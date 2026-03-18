@@ -7,6 +7,8 @@ const TABS: PanelTab[] = ["system", "history", "training"];
 export const StatusPanelTab: Component<{
   active: Accessor<PanelTab>;
   on_change: Setter<PanelTab>;
+  history_pending?: Accessor<boolean>;
+  on_history_pending_click?: () => void;
 }> = (props) => (
   <div
     style={{
@@ -37,7 +39,36 @@ export const StatusPanelTab: Component<{
           transition: "all 0.15s ease",
         }}
       >
-        {t}
+        <span
+          style={{
+            display: "inline-flex",
+            "align-items": "center",
+            gap: "4px",
+          }}
+        >
+          {t}
+          {t === "history" && props.history_pending?.() && (
+            <button
+              type="button"
+              title="Pending inferred label confirmation"
+              onClick={(e) => {
+                e.stopPropagation();
+                props.on_history_pending_click?.();
+              }}
+              style={{
+                width: "6px",
+                height: "6px",
+                "border-radius": "999px",
+                background: "#f59e0b",
+                "box-shadow": "0 0 0 1px rgba(245,158,11,0.35)",
+                "flex-shrink": "0",
+                border: "none",
+                padding: "0",
+                cursor: "pointer",
+              }}
+            />
+          )}
+        </span>
       </button>
     ))}
   </div>

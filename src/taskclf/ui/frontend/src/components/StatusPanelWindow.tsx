@@ -78,6 +78,11 @@ export const StatusPanelWindow: Component = () => {
             active_suggestion={ws.active_suggestion}
             ws_stats={ws.ws_stats}
             train_state={ws.train_state}
+            on_open_label_recorder={() => {
+              if (!in_browser) {
+                host.invoke({ cmd: "showLabelGrid" });
+              }
+            }}
           />
         </div>
       </div>

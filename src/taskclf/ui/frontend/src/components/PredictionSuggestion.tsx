@@ -1,31 +1,60 @@
 import { type Accessor, type Component, createSignal, Show } from "solid-js";
-import { label_create } from "../lib/api";
+import { notification_accept, notification_skip } from "../lib/api";
 import type { LabelSuggestion } from "../lib/ws";
 
 export const PredictionSuggestion: Component<{
   suggestion: Accessor<LabelSuggestion | null>;
+  on_saved?: () => void;
+  on_dismiss?: () => void;
 }> = (props) => {
   const s = () => props.suggestion();
   const [error, set_error] = createSignal<string | null>(null);
+  const [busy, set_busy] = createSignal(false);
+  const [confirm_pending, set_confirm_pending] = createSignal(false);
 
-  async function suggestion_accept() {
+  async function suggestion_accept_confirmed() {
     const sg = s();
-    if (!sg) {
+    if (!sg || busy()) {
       return;
     }
+    set_busy(true);
     set_error(null);
     try {
-      await label_create({
-        start_ts: sg.block_start,
-        end_ts: sg.block_end,
+      await notification_accept({
+        block_start: sg.block_start,
+        block_end: sg.block_end,
         label: sg.suggested,
-        confidence: sg.confidence,
       });
+      set_confirm_pending(false);
+      props.on_saved?.();
+      props.on_dismiss?.();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to accept suggestion";
-      console.error("Failed to accept suggestion", err);
+      const msg = err instanceof Error ? err.message : "Failed to save inferred label";
+      console.error("Failed to save inferred label", err);
       set_error(msg);
       setTimeout(() => set_error(null), 4000);
+    } finally {
+      set_busy(false);
+    }
+  }
+
+  async function suggestion_dismiss() {
+    if (busy()) {
+      return;
+    }
+    set_busy(true);
+    set_error(null);
+    try {
+      await notification_skip();
+      set_confirm_pending(false);
+      props.on_dismiss?.();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to dismiss suggestion";
+      console.error("Failed to dismiss suggestion", err);
+      set_error(msg);
+      setTimeout(() => set_error(null), 4000);
+    } finally {
+      set_busy(false);
     }
   }
 
@@ -56,35 +85,78 @@ export const PredictionSuggestion: Component<{
           </span>
         </div>
         <div style={{ display: "flex", gap: "8px", "flex-shrink": "0" }}>
-          <button
-            type="button"
-            onClick={suggestion_accept}
-            style={{
-              padding: "6px 16px",
-              background: "var(--success)",
-              color: "#fff",
-              border: "none",
-              "border-radius": "var(--radius)",
-              cursor: "pointer",
-              "font-size": "0.85rem",
-              "font-weight": "500",
-            }}
+          <Show
+            when={confirm_pending()}
+            fallback={
+              <button
+                type="button"
+                disabled={busy()}
+                onClick={() => set_confirm_pending(true)}
+                style={{
+                  padding: "6px 16px",
+                  background: "var(--success)",
+                  color: "#fff",
+                  border: "none",
+                  "border-radius": "var(--radius)",
+                  cursor: busy() ? "not-allowed" : "pointer",
+                  "font-size": "0.85rem",
+                  "font-weight": "500",
+                  opacity: busy() ? "0.6" : "1",
+                }}
+              >
+                Save Suggested Label
+              </button>
+            }
           >
-            Accept
-          </button>
+            <button
+              type="button"
+              disabled={busy()}
+              onClick={suggestion_accept_confirmed}
+              style={{
+                padding: "6px 16px",
+                background: "var(--warning)",
+                color: "#111",
+                border: "none",
+                "border-radius": "var(--radius)",
+                cursor: busy() ? "not-allowed" : "pointer",
+                "font-size": "0.85rem",
+                "font-weight": "700",
+                opacity: busy() ? "0.6" : "1",
+              }}
+            >
+              Confirm Save
+            </button>
+            <button
+              type="button"
+              disabled={busy()}
+              onClick={() => set_confirm_pending(false)}
+              style={{
+                padding: "6px 16px",
+                background: "var(--border)",
+                color: "var(--text-muted)",
+                border: "none",
+                "border-radius": "var(--radius)",
+                cursor: busy() ? "not-allowed" : "pointer",
+                "font-size": "0.85rem",
+                opacity: busy() ? "0.6" : "1",
+              }}
+            >
+              Cancel
+            </button>
+          </Show>
           <button
             type="button"
-            onClick={() => {
-              /* parent dismisses via ws.suggestion_dismiss */
-            }}
+            disabled={busy()}
+            onClick={suggestion_dismiss}
             style={{
               padding: "6px 16px",
               background: "var(--border)",
               color: "var(--text-muted)",
               border: "none",
               "border-radius": "var(--radius)",
-              cursor: "pointer",
+              cursor: busy() ? "not-allowed" : "pointer",
               "font-size": "0.85rem",
+              opacity: busy() ? "0.6" : "1",
             }}
           >
             Dismiss

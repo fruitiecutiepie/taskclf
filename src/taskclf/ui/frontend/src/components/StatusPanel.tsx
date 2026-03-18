@@ -28,6 +28,7 @@ export const StatusPanel: Component<{
   active_suggestion: Accessor<LabelSuggestion | null>;
   ws_stats: Accessor<WSStats>;
   train_state: Accessor<TrainState>;
+  on_open_label_recorder?: () => void;
 }> = (props) => {
   const [tab, set_tab] = createSignal<PanelTab>("system");
 
@@ -45,7 +46,12 @@ export const StatusPanel: Component<{
         "box-shadow": "0 8px 32px rgba(0, 0, 0, 0.6)",
       }}
     >
-      <StatusPanelTab active={tab} on_change={set_tab} />
+      <StatusPanelTab
+        active={tab}
+        on_change={set_tab}
+        history_pending={() => props.active_suggestion() !== null}
+        on_history_pending_click={props.on_open_label_recorder}
+      />
 
       <Show when={tab() === "system"}>
         <StatusActivityMonitor status={props.latest_status} />
