@@ -44,6 +44,13 @@ export function time_sec_fmt(d: Date): string {
   });
 }
 
+export function time_fmt_conditional_sec(d: Date): string {
+  if (d.getSeconds() !== 0) {
+    return time_sec_fmt(d);
+  }
+  return time_fmt(d);
+}
+
 export function duration_fmt(ms: number): string {
   const total_min = Math.round(ms / 60_000);
   if (total_min < 1) {

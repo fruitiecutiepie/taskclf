@@ -3,7 +3,7 @@ import type { TimeRange } from "../lib/date";
 import {
   date_parse,
   duration_fmt,
-  time_fmt,
+  time_fmt_conditional_sec,
   time_input_date,
   time_input_value,
 } from "../lib/date";
@@ -128,7 +128,8 @@ export const LabelHistoryRow: Component<{
         <span
           style={{ color: "#a0a0a0", "font-size": "0.65rem", "white-space": "nowrap" }}
         >
-          {time_fmt(start_d())} – {is_open_ended() ? "Now" : time_fmt(end_d())}{" "}
+          {time_fmt_conditional_sec(start_d())} –{" "}
+          {is_open_ended() ? "Now" : time_fmt_conditional_sec(end_d())}{" "}
           <span style={{ color: "#808080" }}>({duration()})</span>
         </span>
       </button>
@@ -203,6 +204,20 @@ export const LabelHistoryRow: Component<{
           <ActivitySummary time_range={() => edited_range()} />
 
           {props.flash && <LabelFlash flash={props.flash} />}
+
+          <Show when={time_changed() && !range_valid()}>
+            <div
+              style={{
+                "text-align": "center",
+                color: "#f59e0b",
+                "font-size": "0.58rem",
+                "margin-bottom": "6px",
+              }}
+            >
+              End time must be after start time. End is exclusive (15:00-15:01 = 1
+              minute).
+            </div>
+          </Show>
 
           <div
             style={{
