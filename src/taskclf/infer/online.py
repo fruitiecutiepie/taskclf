@@ -51,7 +51,7 @@ logger = logging.getLogger(__name__)
 _SORTED_LABELS = sorted(LABEL_SET_V1)
 
 
-@dataclass(slots=True)
+@dataclass(eq=False)
 class OnlinePredictor:
     """Stateful single-bucket predictor with rolling smoothing.
 
@@ -63,23 +63,15 @@ class OnlinePredictor:
     model: lgb.Booster
     metadata: ModelMetadata
     _: KW_ONLY
-    cat_encoders: dict[str, LabelEncoder] | None = None
+    cat_encoders: dict[str, LabelEncoder] = field(default_factory=dict)
     smooth_window: int = DEFAULT_SMOOTH_WINDOW
     bucket_seconds: int = DEFAULT_BUCKET_SECONDS
     reject_threshold: float | None = DEFAULT_REJECT_THRESHOLD
     taxonomy: TaxonomyConfig | None = None
-    calibrator: Calibrator | None = None
+    calibrator: Calibrator = field(default_factory=IdentityCalibrator)
     calibrator_store: CalibratorStore | None = None
-    _model: lgb.Booster = field(init=False)
-    _metadata: ModelMetadata = field(init=False)
-    _cat_encoders: dict[str, LabelEncoder] = field(init=False)
-    _smooth_window: int = field(init=False)
-    _bucket_seconds: int = field(init=False)
-    _reject_threshold: float | None = field(init=False)
     _le: LabelEncoder = field(init=False)
     _resolver: TaxonomyResolver | None = field(init=False, default=None)
-    _calibrator: Calibrator = field(init=False)
-    _calibrator_store: CalibratorStore | None = field(init=False, default=None)
     _raw_buffer: deque[str] = field(init=False)
     _bucket_ts_buffer: deque[datetime] = field(init=False)
     _all_bucket_ts: list[datetime] = field(init=False, default_factory=list)
@@ -87,21 +79,11 @@ class OnlinePredictor:
     _all_smoothed: list[str] = field(init=False, default_factory=list)
 
     def __post_init__(self) -> None:
-        self._model = self.model
-        self._metadata = self.metadata
-        self._cat_encoders = self.cat_encoders or {}
-        self._smooth_window = self.smooth_window
-        self._bucket_seconds = self.bucket_seconds
-        self._reject_threshold = self.reject_threshold
-
         self._le = LabelEncoder()
         self._le.fit(_SORTED_LABELS)
 
         if self.taxonomy is not None:
             self._resolver = TaxonomyResolver(self.taxonomy)
-
-        self._calibrator = self.calibrator or IdentityCalibrator()
-        self._calibrator_store = self.calibrator_store
 
         maxlen = max(self.smooth_window, 1)
         self._raw_buffer = deque(maxlen=maxlen)
@@ -110,7 +92,7 @@ class OnlinePredictor:
     def _encode_value(self, col: str, value: Any) -> float:
         """Encode a single feature value, handling categoricals and nulls."""
         if col in CATEGORICAL_COLUMNS:
-            le = self._cat_encoders.get(col)
+            le = self.cat_encoders.get(col)
             if le is not None:
                 str_val = str(value)
                 if str_val in set(le.classes_):
@@ -136,12 +118,12 @@ class OnlinePredictor:
             [[self._encode_value(c, getattr(row, c)) for c in FEATURE_COLUMNS]],
             dtype=np.float64,
         )
-        raw_proba: np.ndarray = np.asarray(self._model.predict(x))
+        raw_proba: np.ndarray = np.asarray(self.model.predict(x))
 
-        if self._calibrator_store is not None:
-            cal = self._calibrator_store.get_calibrator(row.user_id)
+        if self.calibrator_store is not None:
+            cal = self.calibrator_store.get_calibrator(row.user_id)
         else:
-            cal = self._calibrator
+            cal = self.calibrator
         calibrated = cal.calibrate(raw_proba)
         proba_vec: np.ndarray = calibrated[0]
 
@@ -150,14 +132,14 @@ class OnlinePredictor:
         core_label_name: str = self._le.inverse_transform([pred_idx])[0]
 
         is_rejected = (
-            self._reject_threshold is not None and confidence < self._reject_threshold
+            self.reject_threshold is not None and confidence < self.reject_threshold
         )
 
         smoothing_label = MIXED_UNKNOWN if is_rejected else core_label_name
         self._raw_buffer.append(smoothing_label)
         self._bucket_ts_buffer.append(row.bucket_start_ts)
 
-        smoothed = rolling_majority(list(self._raw_buffer), window=self._smooth_window)
+        smoothed = rolling_majority(list(self._raw_buffer), window=self.smooth_window)
         smoothed_label = smoothed[-1]
 
         self._all_bucket_ts.append(row.bucket_start_ts)
@@ -188,7 +170,7 @@ class OnlinePredictor:
             is_rejected=is_rejected,
             mapped_label_name=mapped_label_name,
             mapped_probs=mapped_probs,
-            model_version=self._metadata.schema_hash,
+            model_version=self.metadata.schema_hash,
             schema_version="features_v1",
             label_version="labels_v1",
         )
@@ -204,9 +186,9 @@ class OnlinePredictor:
         segments = segmentize(
             self._all_bucket_ts,
             self._all_smoothed,
-            bucket_seconds=self._bucket_seconds,
+            bucket_seconds=self.bucket_seconds,
         )
-        return merge_short_segments(segments, bucket_seconds=self._bucket_seconds)
+        return merge_short_segments(segments, bucket_seconds=self.bucket_seconds)
 
 
 _PREDICTION_CSV_COLUMNS = [
@@ -322,7 +304,7 @@ def run_online_loop(
             "Loaded taxonomy from %s (user=%s)", taxonomy_path, taxonomy.user_id
         )
 
-    calibrator: Calibrator | None = None
+    calibrator: Calibrator = IdentityCalibrator()
     if calibrator_path is not None:
         calibrator = load_calibrator(calibrator_path)
         logger.info("Loaded calibrator from %s", calibrator_path)

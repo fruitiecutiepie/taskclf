@@ -68,7 +68,7 @@ def _build_schema_hash(columns: dict[str, type]) -> str:
     return stable_hash(payload)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, eq=False)
 class FeatureSchemaV1:
     """Schema contract for feature rows (v1).
 

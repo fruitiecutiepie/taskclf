@@ -16,9 +16,9 @@ import logging
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import lightgbm as lgb
-from sklearn.preprocessing import LabelEncoder
 
 from taskclf.core.model_io import ModelMetadata, load_model_bundle
 from taskclf.model_registry import (
@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 _ACTIVE_FILE = "active.json"
 
 
-@dataclass(slots=True)
+@dataclass(eq=False)
 class ModelResolutionError(Exception):
     """Raised when no model can be resolved for inference."""
 
@@ -100,7 +100,7 @@ def resolve_model_dir(
     raise ModelResolutionError("\n".join(lines), report=report)
 
 
-@dataclass(slots=True)
+@dataclass(eq=False)
 class ActiveModelReloader:
     """Watch ``active.json`` and reload the model bundle on change.
 
@@ -116,16 +116,12 @@ class ActiveModelReloader:
 
     models_dir: Path
     check_interval_s: float = 60.0
-    _models_dir: Path = field(init=False)
-    _check_interval_s: float = field(init=False)
     _active_path: Path = field(init=False)
     _last_mtime: float | None = field(init=False)
     _last_check: float = field(init=False)
 
     def __post_init__(self) -> None:
-        self._models_dir = self.models_dir
-        self._check_interval_s = self.check_interval_s
-        self._active_path = self._models_dir / _ACTIVE_FILE
+        self._active_path = self.models_dir / _ACTIVE_FILE
         self._last_mtime = self._current_mtime()
         self._last_check = time.monotonic()
 
@@ -138,7 +134,7 @@ class ActiveModelReloader:
 
     def check_reload(
         self,
-    ) -> tuple[lgb.Booster, ModelMetadata, dict[str, LabelEncoder] | None] | None:
+    ) -> tuple[lgb.Booster, ModelMetadata, dict[str, Any]] | None:
         """Check whether ``active.json`` changed and reload if so.
 
         Returns the new ``(model, metadata, cat_encoders)`` tuple when a
@@ -146,7 +142,7 @@ class ActiveModelReloader:
         reload fails (a warning is logged on failure).
         """
         now = time.monotonic()
-        if now - self._last_check < self._check_interval_s:
+        if now - self._last_check < self.check_interval_s:
             return None
         self._last_check = now
 
@@ -159,7 +155,7 @@ class ActiveModelReloader:
         )
 
         try:
-            resolved = resolve_model_dir(None, self._models_dir)
+            resolved = resolve_model_dir(None, self.models_dir)
             model, metadata, cat_encoders = load_model_bundle(resolved)
         except Exception:
             logger.warning(

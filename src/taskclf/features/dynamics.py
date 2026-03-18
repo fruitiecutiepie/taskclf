@@ -57,7 +57,7 @@ def delta_from_previous(
     return round(current - previous, 4)
 
 
-@dataclass(slots=True)
+@dataclass(eq=False)
 class DynamicsTracker:
     """Stateful tracker that accumulates per-bucket metrics and emits dynamics features.
 
@@ -73,9 +73,9 @@ class DynamicsTracker:
     _keys_buf: deque[float | None] = field(init=False)
     _clicks_buf: deque[float | None] = field(init=False)
     _mouse_buf: deque[float | None] = field(init=False)
-    _prev_keys: float | None = None
-    _prev_clicks: float | None = None
-    _prev_mouse: float | None = None
+    _prev_keys: float | None = field(init=False, default=None)
+    _prev_clicks: float | None = field(init=False, default=None)
+    _prev_mouse: float | None = field(init=False, default=None)
 
     def __post_init__(self) -> None:
         max_len = max(self.rolling_5, self.rolling_15)

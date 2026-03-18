@@ -322,7 +322,7 @@ class TestSaveModelBundleFileExistsError:
 
 
 class TestLoadCatEncodersRoundTrip:
-    """TC-MODEL-007/008: cat_encoders round-trip and None fallback."""
+    """TC-MODEL-007/008: cat_encoders round-trip and empty-dict fallback."""
 
     def test_cat_encoders_round_trip(self, trained_bundle) -> None:
         """TC-MODEL-007: cat_encoders present in bundle are loaded correctly."""
@@ -338,8 +338,10 @@ class TestLoadCatEncodersRoundTrip:
             assert col in cat_encoders
             np.testing.assert_array_equal(cat_encoders[col].classes_, np.array(classes))
 
-    def test_cat_encoders_absent_returns_none(self, tmp_path, trained_bundle) -> None:
-        """TC-MODEL-008: missing categorical_encoders.json returns None."""
+    def test_cat_encoders_absent_returns_empty_dict(
+        self, tmp_path, trained_bundle
+    ) -> None:
+        """TC-MODEL-008: missing categorical_encoders.json returns empty dict."""
         run_dir = tmp_path / "no_encoders_run"
         run_dir.mkdir()
         shutil.copy(trained_bundle["run_dir"] / "model.txt", run_dir / "model.txt")
@@ -348,7 +350,7 @@ class TestLoadCatEncodersRoundTrip:
         )
 
         _, _, cat_encoders = load_model_bundle(run_dir)
-        assert cat_encoders is None
+        assert cat_encoders == {}
 
     def test_unsorted_classes_produce_correct_transform(
         self, tmp_path, trained_bundle

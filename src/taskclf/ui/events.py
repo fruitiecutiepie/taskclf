@@ -14,7 +14,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-@dataclass(slots=True)
+@dataclass(eq=False)
 class EventBus:
     """Thread-safe asyncio pub/sub for server-push events.
 
@@ -27,12 +27,14 @@ class EventBus:
     immediately via :meth:`snapshot`.
     """
 
-    _subscribers: set[asyncio.Queue[dict[str, Any]]] = field(default_factory=set)
-    _lock: asyncio.Lock = field(default_factory=asyncio.Lock)
-    _loop: asyncio.AbstractEventLoop | None = None
-    _ready: threading.Event = field(default_factory=threading.Event)
-    _latest: dict[str, dict[str, Any]] = field(default_factory=dict)
-    _latest_lock: threading.Lock = field(default_factory=threading.Lock)
+    _subscribers: set[asyncio.Queue[dict[str, Any]]] = field(
+        init=False, default_factory=set
+    )
+    _lock: asyncio.Lock = field(init=False, default_factory=asyncio.Lock)
+    _loop: asyncio.AbstractEventLoop | None = field(init=False, default=None)
+    _ready: threading.Event = field(init=False, default_factory=threading.Event)
+    _latest: dict[str, dict[str, Any]] = field(init=False, default_factory=dict)
+    _latest_lock: threading.Lock = field(init=False, default_factory=threading.Lock)
 
     def bind_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         """Bind to the running event loop (call once at startup)."""

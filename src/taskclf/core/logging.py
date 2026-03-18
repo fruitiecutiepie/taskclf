@@ -52,7 +52,7 @@ def redact_message(message: str) -> str:
     )
 
 
-@dataclass(slots=True)
+@dataclass(eq=False)
 class SanitizingFilter(logging.Filter):
     """A :class:`logging.Filter` that rewrites log records to strip sensitive data.
 

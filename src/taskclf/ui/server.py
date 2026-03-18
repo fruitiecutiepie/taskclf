@@ -240,7 +240,7 @@ class DataCheckResponse(BaseModel):
     build_errors: list[str] = []
 
 
-@dataclass(slots=True)
+@dataclass(eq=False)
 class _TrainJob:
     """Mutable state for a single background training job."""
 

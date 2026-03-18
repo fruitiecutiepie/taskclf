@@ -164,7 +164,7 @@ def compute_telemetry(
 # ---------------------------------------------------------------------------
 
 
-@dataclass(slots=True)
+@dataclass(eq=False)
 class TelemetryStore:
     """Append-only JSONL store for telemetry snapshots."""
 

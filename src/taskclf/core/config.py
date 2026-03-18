@@ -53,7 +53,7 @@ _SETTING_COMMENTS: dict[str, str] = {
 }
 
 
-@dataclass(slots=True)
+@dataclass(eq=False)
 class UserConfig:
     """Read/write access to ``config.toml`` and ``.user_id`` in a data directory.
 

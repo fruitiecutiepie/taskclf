@@ -22,17 +22,17 @@ _CHILD_HIDE_DELAY_S = 0.3
 _DRAG_TOLERANCE = 10
 
 
-@dataclass(slots=True)
+@dataclass(eq=False)
 class WindowChild:
     """Visibility, pinning, and delayed-hide for an anchored child window."""
 
     name: str
     position_fn: Callable[[WindowChild], None]
-    window: Any = None
-    visible: bool = False
-    pinned: bool = False
-    hide_timer: threading.Timer | None = None
-    expected_pos: tuple[int, int] | None = None
+    window: Any = field(init=False, default=None)
+    visible: bool = field(init=False, default=False)
+    pinned: bool = field(init=False, default=False)
+    hide_timer: threading.Timer | None = field(init=False, default=None)
+    expected_pos: tuple[int, int] | None = field(init=False, default=None)
 
     def visibility_on(self, main: Any) -> None:
         """Show on hover (non-pinned)."""
@@ -110,7 +110,7 @@ class WindowChild:
             return False
 
 
-@dataclass(slots=True)
+@dataclass(eq=False)
 class WindowAPI:
     """Python methods exposed to JS as ``window.pywebview.api.<method>()``.
 
@@ -120,10 +120,10 @@ class WindowAPI:
     directly.
     """
 
-    _window: Any = None
-    _visible: bool = True
-    _default_x: int | None = None
-    _default_y: int | None = None
+    _window: Any = field(init=False, default=None)
+    _visible: bool = field(init=False, default=True)
+    _default_x: int | None = field(init=False, default=None)
+    _default_y: int | None = field(init=False, default=None)
     _label: WindowChild = field(init=False)
     _panel: WindowChild = field(init=False)
 

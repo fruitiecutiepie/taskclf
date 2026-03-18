@@ -204,7 +204,7 @@ def default_taxonomy() -> TaxonomyConfig:
 # ---------------------------------------------------------------------------
 
 
-@dataclass(slots=True)
+@dataclass(eq=False)
 class TaxonomyResolver:
     """Stateless mapper from core predictions to user-defined buckets.
 

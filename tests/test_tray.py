@@ -2187,7 +2187,7 @@ class TestReloadModel:
         labeler._model_dir = tmp_path / "models" / "run_test"
 
         mock_suggester = MagicMock()
-        mock_suggester._predictor._metadata.schema_hash = "abc123"
+        mock_suggester._predictor.metadata.schema_hash = "abc123"
 
         with (
             patch(
@@ -2771,7 +2771,7 @@ class TestSwitchModel:
         new_path.mkdir(parents=True)
 
         mock_suggester = MagicMock()
-        mock_suggester._predictor._metadata.schema_hash = "hash_301"
+        mock_suggester._predictor.metadata.schema_hash = "hash_301"
 
         with (
             patch(

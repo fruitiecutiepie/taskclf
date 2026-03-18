@@ -125,7 +125,7 @@ def load_model_bundle(
     *,
     validate_schema: bool = True,
     validate_labels: bool = True,
-) -> tuple[lgb.Booster, ModelMetadata, dict | None]:
+) -> tuple[lgb.Booster, ModelMetadata, dict[str, Any]]:
     """Load a model bundle and optionally validate schema hash and label set.
 
     Args:
@@ -140,7 +140,7 @@ def load_model_bundle(
     Returns:
         A ``(model, metadata, cat_encoders)`` tuple where *cat_encoders*
         is a dict mapping column names to fitted ``LabelEncoder``
-        instances, or ``None`` if no encoder file exists in the bundle.
+        instances. Returns an empty dict when no encoder file exists.
 
     Raises:
         ValueError: If validation is enabled and the schema hash or label
@@ -165,11 +165,10 @@ def load_model_bundle(
             f"current label set is {sorted(LABEL_SET_V1)!r}"
         )
 
-    cat_encoders: dict[str, LabelEncoder] | None = None
+    cat_encoders: dict[str, LabelEncoder] = {}
     enc_path = run_dir / "categorical_encoders.json"
     if enc_path.exists():
         vocab = json.loads(enc_path.read_text())
-        cat_encoders = {}
         for col, classes in vocab.items():
             le = LabelEncoder()
             le.fit(classes)

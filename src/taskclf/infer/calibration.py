@@ -44,7 +44,7 @@ class Calibrator(Protocol):
         ...  # pragma: no cover
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, eq=False)
 class IdentityCalibrator:
     """No-op calibrator that returns probabilities unchanged."""
 
@@ -52,7 +52,7 @@ class IdentityCalibrator:
         return core_probs
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, eq=False)
 class TemperatureCalibrator:
     """Scale logits by a learned temperature before softmax.
 
@@ -83,7 +83,7 @@ class TemperatureCalibrator:
         return exp_vals / exp_vals.sum(axis=-1, keepdims=True)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, eq=False)
 class IsotonicCalibrator:
     """Per-class isotonic regression calibrator.
 
@@ -121,7 +121,7 @@ class IsotonicCalibrator:
         return calibrated[0] if single else calibrated
 
 
-@dataclass(slots=True)
+@dataclass(eq=False)
 class CalibratorStore:
     """Per-user calibrator registry with global fallback.
 

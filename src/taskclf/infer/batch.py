@@ -159,8 +159,10 @@ def run_batch_inference(
             list(features_df["user_id"].values),
         )
     else:
-        cal = calibrator or IdentityCalibrator()
-        proba = cal.calibrate(proba)
+        effective_calibrator = (
+            calibrator if calibrator is not None else IdentityCalibrator()
+        )
+        proba = effective_calibrator.calibrate(proba)
     confidences = proba.max(axis=1)
     is_rejected = (
         confidences < reject_threshold

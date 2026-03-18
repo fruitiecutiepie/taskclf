@@ -91,7 +91,7 @@ def _send_desktop_notification(title: str, message: str, timeout: int = 10) -> N
 # ---------------------------------------------------------------------------
 
 
-@dataclass(slots=True, kw_only=True)
+@dataclass(kw_only=True, eq=False)
 class ActivityMonitor:
     """Polls ActivityWatch and fires a callback when the dominant app changes.
 
@@ -133,21 +133,21 @@ class ActivityMonitor:
         init=False, default=None
     )
     _event_bus: EventBus | None = field(init=False, default=None)
-    _current_app: str | None = None
-    _current_app_since: dt.datetime | None = None
-    _candidate_app: str | None = None
-    _candidate_duration: int = 0
-    _candidate_first_seen: dt.datetime | None = None
-    _last_check_time: dt.datetime | None = None
-    _bucket_id: str | None = None
-    _aw_warned: bool = False
+    _current_app: str | None = field(init=False, default=None)
+    _current_app_since: dt.datetime | None = field(init=False, default=None)
+    _candidate_app: str | None = field(init=False, default=None)
+    _candidate_duration: int = field(init=False, default=0)
+    _candidate_first_seen: dt.datetime | None = field(init=False, default=None)
+    _last_check_time: dt.datetime | None = field(init=False, default=None)
+    _bucket_id: str | None = field(init=False, default=None)
+    _aw_warned: bool = field(init=False, default=False)
     _stop: threading.Event = field(init=False, default_factory=threading.Event)
     _paused: threading.Event = field(init=False, default_factory=threading.Event)
-    _poll_count: int = 0
-    _last_event_count: int = 0
-    _last_app_counts: dict[str, int] = field(default_factory=dict)
-    _last_poll_ts: dt.datetime | None = None
-    _started_at: dt.datetime | None = None
+    _poll_count: int = field(init=False, default=0)
+    _last_event_count: int = field(init=False, default=0)
+    _last_app_counts: dict[str, int] = field(init=False, default_factory=dict)
+    _last_poll_ts: dt.datetime | None = field(init=False, default=None)
+    _started_at: dt.datetime | None = field(init=False, default=None)
 
     def __post_init__(self) -> None:
         self._aw_host = self.aw_host
@@ -352,14 +352,14 @@ class ActivityMonitor:
 # ---------------------------------------------------------------------------
 
 
-@dataclass(slots=True)
+@dataclass(eq=False)
 class _LabelSuggester:
     """Wraps the online predictor for single-bucket label suggestions."""
 
     model_dir: Path
     _predictor: Any = field(init=False)
-    _aw_host: str = DEFAULT_AW_HOST
-    _title_salt: str = DEFAULT_TITLE_SALT
+    _aw_host: str = field(init=False, default=DEFAULT_AW_HOST)
+    _title_salt: str = field(init=False, default=DEFAULT_TITLE_SALT)
 
     def __post_init__(self) -> None:
         from taskclf.core.model_io import load_model_bundle
@@ -424,7 +424,7 @@ def _make_icon_image(color: str = "#4CAF50", size: int = 64) -> Image.Image:
     return img
 
 
-@dataclass(slots=True, kw_only=True)
+@dataclass(kw_only=True, eq=False)
 class TrayLabeler:
     """System tray icon with labeling menus and notification support.
 
@@ -569,7 +569,7 @@ class TrayLabeler:
                 self._suggester._aw_host = aw_host
                 self._suggester._title_salt = title_salt
                 self._model_schema_hash = (
-                    self._suggester._predictor._metadata.schema_hash
+                    self._suggester._predictor.metadata.schema_hash
                 )
                 logger.info("Model loaded from %s", self.model_dir)
             except Exception:
@@ -621,7 +621,7 @@ class TrayLabeler:
             new_suggester._title_salt = self._title_salt
             self._suggester = new_suggester
             self._model_dir = model_path
-            self._model_schema_hash = new_suggester._predictor._metadata.schema_hash
+            self._model_schema_hash = new_suggester._predictor.metadata.schema_hash
             logger.info("Auto-loaded newly trained model from %s", model_path)
         except Exception:
             logger.warning(
@@ -760,7 +760,7 @@ class TrayLabeler:
 
         return (
             pystray.MenuItem(
-                "Toggle Dashboard",
+                "Open Dashboard",
                 self._open_dashboard,
                 default=True,
             ),
@@ -1025,7 +1025,7 @@ class TrayLabeler:
             new_suggester._aw_host = self._aw_host
             new_suggester._title_salt = self._title_salt
             self._suggester = new_suggester
-            self._model_schema_hash = new_suggester._predictor._metadata.schema_hash
+            self._model_schema_hash = new_suggester._predictor.metadata.schema_hash
             self._notify(f"Model reloaded from {self._model_dir.name}")
             logger.info("Model reloaded from %s", self._model_dir)
         except Exception as exc:
@@ -1174,7 +1174,7 @@ class TrayLabeler:
             new_suggester._title_salt = self._title_salt
             self._suggester = new_suggester
             self._model_dir = model_path
-            self._model_schema_hash = new_suggester._predictor._metadata.schema_hash
+            self._model_schema_hash = new_suggester._predictor.metadata.schema_hash
             self._notify(f"Switched to model {model_path.name}")
             logger.info("Switched to model %s", model_path)
         except Exception as exc:

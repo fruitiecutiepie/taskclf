@@ -47,7 +47,7 @@ class LabelRequest(BaseModel, frozen=True):
     )
 
 
-@dataclass(slots=True)
+@dataclass(eq=False)
 class ActiveLabelingQueue:
     """Manages a persisted queue of labeling requests.
 
@@ -62,32 +62,28 @@ class ActiveLabelingQueue:
 
     queue_path: Path
     max_asks_per_day: int = DEFAULT_LABEL_MAX_ASKS_PER_DAY
-    _path: Path = field(init=False)
-    _max_asks: int = field(init=False)
     _items: list[LabelRequest] = field(default_factory=list, init=False)
 
     def __post_init__(self) -> None:
-        self._path = self.queue_path
-        self._max_asks = self.max_asks_per_day
-        if self._path.exists():
+        if self.queue_path.exists():
             self._load()
 
     def _load(self) -> None:
-        raw = json.loads(self._path.read_text())
+        raw = json.loads(self.queue_path.read_text())
         self._items = [LabelRequest.model_validate(r) for r in raw]
 
     def _save(self) -> None:
-        self._path.parent.mkdir(parents=True, exist_ok=True)
+        self.queue_path.parent.mkdir(parents=True, exist_ok=True)
         payload = json.dumps(
             [r.model_dump(mode="json") for r in self._items],
             indent=2,
             default=str,
         )
-        fd, tmp = tempfile.mkstemp(dir=str(self._path.parent), suffix=".tmp")
+        fd, tmp = tempfile.mkstemp(dir=str(self.queue_path.parent), suffix=".tmp")
         try:
             os.write(fd, payload.encode())
             os.close(fd)
-            os.replace(tmp, str(self._path))
+            os.replace(tmp, str(self.queue_path))
         except BaseException:
             os.close(fd) if not os.get_inheritable(fd) else None  # pragma: no cover
             if os.path.exists(tmp):
@@ -217,7 +213,7 @@ class ActiveLabelingQueue:
             for r in self._items
             if r.status in ("labeled", "skipped") and r.created_at.date() == today
         )
-        daily_remaining = max(0, self._max_asks - served_today)
+        daily_remaining = max(0, self.max_asks_per_day - served_today)
 
         cap = daily_remaining
         if limit is not None:
