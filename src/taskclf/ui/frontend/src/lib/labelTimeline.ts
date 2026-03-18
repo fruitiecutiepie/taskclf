@@ -4,6 +4,7 @@ export type LabelEntry = {
   label: string;
   start_ts: string;
   end_ts: string;
+  extend_forward?: boolean;
 };
 
 export type TimelineSegment = {
@@ -24,6 +25,7 @@ export type LabelItem = {
   label: string;
   start_ts: string;
   end_ts: string;
+  open_ended?: boolean;
 };
 
 export type TimelineItem = GapItem | LabelItem;
@@ -59,8 +61,11 @@ export function day_timeline_build(
   let cursor = day_start;
 
   for (const entry of sorted) {
-    const s = Math.max(date_parse(entry.start_ts).getTime(), day_start);
-    const e = Math.min(date_parse(entry.end_ts).getTime(), day_end);
+    const start_ms = date_parse(entry.start_ts).getTime();
+    const end_ms = date_parse(entry.end_ts).getTime();
+    const open_ended = entry.extend_forward === true && end_ms <= start_ms;
+    const s = Math.max(start_ms, day_start);
+    const e = open_ended ? day_end : Math.min(end_ms, day_end);
     if (e <= s) {
       continue;
     }
@@ -95,6 +100,7 @@ export function day_timeline_build(
       label: entry.label,
       start_ts: entry.start_ts,
       end_ts: entry.end_ts,
+      open_ended,
     });
     cursor = Math.max(cursor, e);
   }

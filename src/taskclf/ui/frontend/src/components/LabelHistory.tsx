@@ -70,6 +70,7 @@ export const LabelHistory: Component<{
       label: r.label,
       start_ts: r.start_ts,
       end_ts: r.end_ts,
+      extend_forward: r.extend_forward,
     }));
     return day_timeline_build(entries, selected_date());
   });

@@ -23,9 +23,13 @@ export const LabelHistoryRow: Component<{
   busy: boolean;
   flash: string | null;
 }> = (props) => {
+  const is_open_ended = () => props.label_item.open_ended === true;
   const start_d = () => date_parse(props.label_item.start_ts);
   const end_d = () => date_parse(props.label_item.end_ts);
-  const duration = () => duration_fmt(end_d().getTime() - start_d().getTime());
+  const duration = () =>
+    is_open_ended()
+      ? "until next label"
+      : duration_fmt(end_d().getTime() - start_d().getTime());
   const [confirm_delete, set_confirm_delete] = createSignal(false);
   const [pending_label, set_pending_label] = createSignal<string | null>(null);
 
@@ -124,7 +128,7 @@ export const LabelHistoryRow: Component<{
         <span
           style={{ color: "#a0a0a0", "font-size": "0.65rem", "white-space": "nowrap" }}
         >
-          {time_fmt(start_d())} – {time_fmt(end_d())}{" "}
+          {time_fmt(start_d())} – {is_open_ended() ? "Now" : time_fmt(end_d())}{" "}
           <span style={{ color: "#808080" }}>({duration()})</span>
         </span>
       </button>
