@@ -165,6 +165,43 @@ def _same_user(a: LabelSpan, b: LabelSpan) -> bool:
     return a.user_id == b.user_id
 
 
+def _handoff_active_span_for_now_label(
+    existing: list[LabelSpan],
+    span: LabelSpan,
+) -> list[LabelSpan]:
+    """For zero-duration extend-forward labels, end the active previous span.
+
+    "Label from now" is represented as a point span where ``start_ts == end_ts``
+    and ``extend_forward`` is true. In this mode, users expect a clean handoff:
+    the currently active same-user label ends exactly at ``span.start_ts``, and the
+    new label starts at that same instant.
+    """
+    if not (span.extend_forward and span.start_ts == span.end_ts):
+        return existing
+
+    transition_ts = span.start_ts
+    active_idx: int | None = None
+    active_span: LabelSpan | None = None
+    for i, ex in enumerate(existing):
+        if not _same_user(ex, span):
+            continue
+        if ex.start_ts <= transition_ts < ex.end_ts:
+            if active_span is None or ex.start_ts > active_span.start_ts:
+                active_span = ex
+                active_idx = i
+
+    if active_idx is None or active_span is None:
+        return existing
+
+    if active_span.start_ts < transition_ts:
+        existing[active_idx] = active_span.model_copy(update={"end_ts": transition_ts})
+        return existing
+
+    # If both start at the same instant, dropping the old span avoids creating
+    # a zero-length non-extend span, while preserving the new "from now" label.
+    return [ex for i, ex in enumerate(existing) if i != active_idx]
+
+
 def merge_label_spans(
     existing: Sequence[LabelSpan],
     imported: Sequence[LabelSpan],
@@ -237,6 +274,8 @@ def append_label_span(
     if path.exists():
         existing = read_label_spans(path)
 
+    existing = _handoff_active_span_for_now_label(existing, span)
+
     prev: LabelSpan | None = None
     prev_idx: int | None = None
     for i, ex in enumerate(existing):
@@ -252,20 +291,17 @@ def append_label_span(
         updated = prev.model_copy(update={"end_ts": span.start_ts})
         existing[prev_idx] = updated
 
-    existing.append(span)
-
     if not allow_overlap:
-        for i, a in enumerate(existing):
-            for j, b in enumerate(existing):
-                if i >= j:
-                    continue
-                if not _same_user(a, b):
-                    continue
-                if a.start_ts < b.end_ts and b.start_ts < a.end_ts:
-                    raise ValueError(
-                        f"Span [{a.start_ts}, {a.end_ts}) overlaps "
-                        f"[{b.start_ts}, {b.end_ts}) for user {a.user_id!r}"
-                    )
+        for ex in existing:
+            if not _same_user(ex, span):
+                continue
+            if ex.start_ts < span.end_ts and span.start_ts < ex.end_ts:
+                raise ValueError(
+                    f"Span [{span.start_ts}, {span.end_ts}) overlaps "
+                    f"[{ex.start_ts}, {ex.end_ts}) for user {span.user_id!r}"
+                )
+
+    existing.append(span)
 
     return write_label_spans(existing, path)
 

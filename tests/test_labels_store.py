@@ -159,6 +159,71 @@ class TestAppendLabelSpan:
         append_label_span(s2, path)
         assert len(read_label_spans(path)) == 2
 
+    def test_historical_overlap_does_not_block_unrelated_append(
+        self, tmp_path: Path
+    ) -> None:
+        path = tmp_path / "labels.parquet"
+        s1 = LabelSpan(
+            start_ts=dt.datetime(2025, 6, 15, 9, 0),
+            end_ts=dt.datetime(2025, 6, 15, 10, 0),
+            label="Build",
+            provenance="manual",
+            user_id="u1",
+        )
+        s2 = LabelSpan(
+            start_ts=dt.datetime(2025, 6, 15, 9, 30),
+            end_ts=dt.datetime(2025, 6, 15, 10, 30),
+            label="Debug",
+            provenance="manual",
+            user_id="u1",
+        )
+        s3 = LabelSpan(
+            start_ts=dt.datetime(2025, 6, 15, 11, 0),
+            end_ts=dt.datetime(2025, 6, 15, 11, 5),
+            label="Write",
+            provenance="manual",
+            user_id="u1",
+        )
+
+        append_label_span(s1, path)
+        append_label_span(s2, path, allow_overlap=True)
+        append_label_span(s3, path)
+
+        loaded = read_label_spans(path)
+        assert len(loaded) == 3
+        assert any(s.label == "Write" for s in loaded)
+
+    def test_now_label_truncates_active_previous_without_extend_flag(
+        self, tmp_path: Path
+    ) -> None:
+        path = tmp_path / "labels.parquet"
+        prev = LabelSpan(
+            start_ts=dt.datetime(2025, 6, 15, 9, 0),
+            end_ts=dt.datetime(2025, 6, 15, 10, 0),
+            label="Build",
+            provenance="manual",
+            user_id="u1",
+        )
+        now_label = LabelSpan(
+            start_ts=dt.datetime(2025, 6, 15, 9, 30),
+            end_ts=dt.datetime(2025, 6, 15, 9, 30),
+            label="Debug",
+            provenance="manual",
+            user_id="u1",
+            extend_forward=True,
+        )
+
+        append_label_span(prev, path)
+        append_label_span(now_label, path)
+
+        loaded = read_label_spans(path)
+        assert len(loaded) == 2
+        old = [s for s in loaded if s.label == "Build"][0]
+        new = [s for s in loaded if s.label == "Debug"][0]
+        assert old.end_ts == now_label.start_ts
+        assert new.start_ts == now_label.start_ts
+        assert new.end_ts == now_label.end_ts
+
 
 class TestGenerateLabelSummary:
     def test_empty_window(self) -> None:

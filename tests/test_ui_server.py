@@ -325,6 +325,36 @@ class TestExtendForwardAPI:
         resp = client.post("/api/labels", json=body)
         assert resp.status_code == 422
 
+    def test_now_label_handoff_truncates_active_previous(
+        self, client: TestClient
+    ) -> None:
+        client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:00:00",
+                "end_ts": "2026-02-27T10:00:00",
+                "label": "Build",
+            },
+        )
+
+        resp = client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:30:00",
+                "end_ts": "2026-02-27T09:30:00",
+                "label": "Debug",
+                "extend_forward": True,
+            },
+        )
+        assert resp.status_code == 201
+
+        labels = client.get("/api/labels").json()
+        assert len(labels) == 2
+        by_label = {rec["label"]: rec for rec in labels}
+        assert by_label["Build"]["end_ts"] == "2026-02-27T09:30:00+00:00"
+        assert by_label["Debug"]["start_ts"] == "2026-02-27T09:30:00+00:00"
+        assert by_label["Debug"]["end_ts"] == "2026-02-27T09:30:00+00:00"
+
 
 class TestWebSocket:
     def test_ws_connects(self, data_dir: Path) -> None:
@@ -1195,6 +1225,37 @@ class TestStructuredOverlapError:
         assert "error" in detail
         assert detail["conflicting_start_ts"] is not None
         assert detail["conflicting_end_ts"] is not None
+
+    def test_historical_overlap_does_not_cause_false_409(
+        self, client: TestClient
+    ) -> None:
+        client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:00:00",
+                "end_ts": "2026-02-27T10:00:00",
+                "label": "Build",
+            },
+        )
+        client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:30:00",
+                "end_ts": "2026-02-27T10:30:00",
+                "label": "Debug",
+                "allow_overlap": True,
+            },
+        )
+
+        resp = client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T11:00:00",
+                "end_ts": "2026-02-27T11:01:00",
+                "label": "Write",
+            },
+        )
+        assert resp.status_code == 201
 
 
 # ---------------------------------------------------------------------------
