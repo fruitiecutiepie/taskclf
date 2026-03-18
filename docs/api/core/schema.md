@@ -11,6 +11,8 @@ pipeline that produced the input data.
 
 Central class that owns the canonical column registry, the schema hash,
 and both row-level and DataFrame-level validators.
+`FeatureSchemaV1` is implemented as a frozen slotted dataclass with
+class-level constants (`VERSION`, `COLUMNS`, `SCHEMA_HASH`).
 
 | Attribute | Type | Description |
 |-----------|------|-------------|

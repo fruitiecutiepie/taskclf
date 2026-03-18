@@ -31,6 +31,8 @@ delayed-hide timer, and an expected-position tuple for drag detection.
 Positioning logic is injected via a callback (`position_fn`) so each
 child can use different layout math while sharing the same state
 machine.
+`WindowChild` and `WindowAPI` are implemented as slotted dataclasses;
+constructor arguments remain unchanged.
 
 ### Methods
 

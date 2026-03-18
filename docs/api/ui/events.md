@@ -9,6 +9,8 @@ suggestion events to WebSocket clients.
 (like `ActivityMonitor`) and the async FastAPI WebSocket layer.  It
 provides a pub/sub mechanism where publishers push events and
 subscribers receive them via asyncio queues.
+`EventBus` is implemented as a slotted dataclass; public method behavior
+is unchanged.
 
 ```
 ActivityMonitor (thread) → publish_threadsafe → EventBus

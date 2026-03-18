@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Sequence
@@ -163,11 +164,15 @@ def compute_telemetry(
 # ---------------------------------------------------------------------------
 
 
+@dataclass(slots=True)
 class TelemetryStore:
     """Append-only JSONL store for telemetry snapshots."""
 
-    def __init__(self, store_dir: str | Path = DEFAULT_TELEMETRY_DIR) -> None:
-        self._dir = Path(store_dir)
+    store_dir: str | Path = DEFAULT_TELEMETRY_DIR
+    _dir: Path = field(init=False)
+
+    def __post_init__(self) -> None:
+        self._dir = Path(self.store_dir)
         self._dir.mkdir(parents=True, exist_ok=True)
 
     def _path_for(self, user_id: str | None) -> Path:

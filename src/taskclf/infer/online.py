@@ -11,6 +11,7 @@ import json
 import logging
 import time
 from collections import deque
+from dataclasses import KW_ONLY, dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -50,6 +51,7 @@ logger = logging.getLogger(__name__)
 _SORTED_LABELS = sorted(LABEL_SET_V1)
 
 
+@dataclass(slots=True)
 class OnlinePredictor:
     """Stateful single-bucket predictor with rolling smoothing.
 
@@ -58,41 +60,52 @@ class OnlinePredictor:
     at a time.
     """
 
-    def __init__(
-        self,
-        model: lgb.Booster,
-        metadata: ModelMetadata,
-        *,
-        cat_encoders: dict[str, LabelEncoder] | None = None,
-        smooth_window: int = DEFAULT_SMOOTH_WINDOW,
-        bucket_seconds: int = DEFAULT_BUCKET_SECONDS,
-        reject_threshold: float | None = DEFAULT_REJECT_THRESHOLD,
-        taxonomy: TaxonomyConfig | None = None,
-        calibrator: Calibrator | None = None,
-        calibrator_store: CalibratorStore | None = None,
-    ) -> None:
-        self._model = model
-        self._metadata = metadata
-        self._cat_encoders = cat_encoders or {}
-        self._smooth_window = smooth_window
-        self._bucket_seconds = bucket_seconds
-        self._reject_threshold = reject_threshold
+    model: lgb.Booster
+    metadata: ModelMetadata
+    _: KW_ONLY
+    cat_encoders: dict[str, LabelEncoder] | None = None
+    smooth_window: int = DEFAULT_SMOOTH_WINDOW
+    bucket_seconds: int = DEFAULT_BUCKET_SECONDS
+    reject_threshold: float | None = DEFAULT_REJECT_THRESHOLD
+    taxonomy: TaxonomyConfig | None = None
+    calibrator: Calibrator | None = None
+    calibrator_store: CalibratorStore | None = None
+    _model: lgb.Booster = field(init=False)
+    _metadata: ModelMetadata = field(init=False)
+    _cat_encoders: dict[str, LabelEncoder] = field(init=False)
+    _smooth_window: int = field(init=False)
+    _bucket_seconds: int = field(init=False)
+    _reject_threshold: float | None = field(init=False)
+    _le: LabelEncoder = field(init=False)
+    _resolver: TaxonomyResolver | None = field(init=False, default=None)
+    _calibrator: Calibrator = field(init=False)
+    _calibrator_store: CalibratorStore | None = field(init=False, default=None)
+    _raw_buffer: deque[str] = field(init=False)
+    _bucket_ts_buffer: deque[datetime] = field(init=False)
+    _all_bucket_ts: list[datetime] = field(init=False, default_factory=list)
+    _all_raw: list[str] = field(init=False, default_factory=list)
+    _all_smoothed: list[str] = field(init=False, default_factory=list)
+
+    def __post_init__(self) -> None:
+        self._model = self.model
+        self._metadata = self.metadata
+        self._cat_encoders = self.cat_encoders or {}
+        self._smooth_window = self.smooth_window
+        self._bucket_seconds = self.bucket_seconds
+        self._reject_threshold = self.reject_threshold
 
         self._le = LabelEncoder()
         self._le.fit(_SORTED_LABELS)
 
-        self._resolver: TaxonomyResolver | None = None
-        if taxonomy is not None:
-            self._resolver = TaxonomyResolver(taxonomy)
+        if self.taxonomy is not None:
+            self._resolver = TaxonomyResolver(self.taxonomy)
 
-        self._calibrator: Calibrator = calibrator or IdentityCalibrator()
-        self._calibrator_store: CalibratorStore | None = calibrator_store
+        self._calibrator = self.calibrator or IdentityCalibrator()
+        self._calibrator_store = self.calibrator_store
 
-        self._raw_buffer: deque[str] = deque(maxlen=max(smooth_window, 1))
-        self._bucket_ts_buffer: deque[datetime] = deque(maxlen=max(smooth_window, 1))
-        self._all_bucket_ts: list[datetime] = []
-        self._all_raw: list[str] = []
-        self._all_smoothed: list[str] = []
+        maxlen = max(self.smooth_window, 1)
+        self._raw_buffer = deque(maxlen=maxlen)
+        self._bucket_ts_buffer = deque(maxlen=maxlen)
 
     def _encode_value(self, col: str, value: Any) -> float:
         """Encode a single feature value, handling categoricals and nulls."""

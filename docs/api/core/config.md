@@ -9,6 +9,8 @@ cannot accidentally break label continuity by editing their config.
 On first run a unique UUID `user_id` is generated and written to
 `.user_id`.  This stable ID is written into every `LabelSpan` and
 never changes.
+`UserConfig` is implemented as a slotted dataclass with the same
+runtime behavior as before (`UserConfig(data_dir=...)`).
 
 The editable `username` field is a display name that can be changed
 freely without affecting label identity or continuity.

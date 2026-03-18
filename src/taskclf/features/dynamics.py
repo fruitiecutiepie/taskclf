@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from collections import deque
 from collections.abc import Sequence
+from dataclasses import dataclass, field
 
 
 def rolling_mean(
@@ -56,6 +57,7 @@ def delta_from_previous(
     return round(current - previous, 4)
 
 
+@dataclass(slots=True)
 class DynamicsTracker:
     """Stateful tracker that accumulates per-bucket metrics and emits dynamics features.
 
@@ -66,16 +68,20 @@ class DynamicsTracker:
     For batch mode, call :meth:`compute_batch` instead.
     """
 
-    def __init__(self, rolling_5: int = 5, rolling_15: int = 15) -> None:
-        self._rolling_5 = rolling_5
-        self._rolling_15 = rolling_15
-        max_len = max(rolling_5, rolling_15)
-        self._keys_buf: deque[float | None] = deque(maxlen=max_len)
-        self._clicks_buf: deque[float | None] = deque(maxlen=max_len)
-        self._mouse_buf: deque[float | None] = deque(maxlen=max_len)
-        self._prev_keys: float | None = None
-        self._prev_clicks: float | None = None
-        self._prev_mouse: float | None = None
+    rolling_5: int = 5
+    rolling_15: int = 15
+    _keys_buf: deque[float | None] = field(init=False)
+    _clicks_buf: deque[float | None] = field(init=False)
+    _mouse_buf: deque[float | None] = field(init=False)
+    _prev_keys: float | None = None
+    _prev_clicks: float | None = None
+    _prev_mouse: float | None = None
+
+    def __post_init__(self) -> None:
+        max_len = max(self.rolling_5, self.rolling_15)
+        self._keys_buf = deque(maxlen=max_len)
+        self._clicks_buf = deque(maxlen=max_len)
+        self._mouse_buf = deque(maxlen=max_len)
 
     def update(
         self,
@@ -98,12 +104,10 @@ class DynamicsTracker:
         self._mouse_buf.append(mouse_distance)
 
         result = {
-            "keys_per_min_rolling_5": rolling_mean(self._keys_buf, self._rolling_5),
-            "keys_per_min_rolling_15": rolling_mean(self._keys_buf, self._rolling_15),
-            "mouse_distance_rolling_5": rolling_mean(self._mouse_buf, self._rolling_5),
-            "mouse_distance_rolling_15": rolling_mean(
-                self._mouse_buf, self._rolling_15
-            ),
+            "keys_per_min_rolling_5": rolling_mean(self._keys_buf, self.rolling_5),
+            "keys_per_min_rolling_15": rolling_mean(self._keys_buf, self.rolling_15),
+            "mouse_distance_rolling_5": rolling_mean(self._mouse_buf, self.rolling_5),
+            "mouse_distance_rolling_15": rolling_mean(self._mouse_buf, self.rolling_15),
             "keys_per_min_delta": delta_from_previous(keys_per_min, self._prev_keys),
             "clicks_per_min_delta": delta_from_previous(
                 clicks_per_min, self._prev_clicks

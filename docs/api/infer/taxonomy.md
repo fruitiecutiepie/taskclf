@@ -12,6 +12,8 @@ underlying core predictions.
 ```
 core label + core_probs → TaxonomyResolver → mapped_label + mapped_probs
 ```
+`TaxonomyResolver` is implemented as a slotted dataclass and still
+accepts the same constructor input (`TaxonomyConfig`).
 
 See the [taxonomy guide](../../guide/taxonomy.md) and
 `configs/user_taxonomy_example.yaml` for configuration details.

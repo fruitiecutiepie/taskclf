@@ -27,6 +27,8 @@ explicit --model-dir ──► validate path exists ──► return
 For long-running online inference loops, `ActiveModelReloader` watches
 `active.json` for mtime changes and transparently reloads the model
 bundle without restarting the process.
+`ActiveModelReloader` is implemented as a dataclass; public constructor
+parameters (`models_dir`, `check_interval_s`) are unchanged.
 
 ## Resolution precedence
 

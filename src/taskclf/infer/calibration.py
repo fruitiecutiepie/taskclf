@@ -14,6 +14,7 @@ calibrator for users without enough labeled data.
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol, Sequence, runtime_checkable
 
@@ -43,6 +44,7 @@ class Calibrator(Protocol):
         ...  # pragma: no cover
 
 
+@dataclass(frozen=True, slots=True)
 class IdentityCalibrator:
     """No-op calibrator that returns probabilities unchanged."""
 
@@ -50,6 +52,7 @@ class IdentityCalibrator:
         return core_probs
 
 
+@dataclass(frozen=True, slots=True)
 class TemperatureCalibrator:
     """Scale logits by a learned temperature before softmax.
 
@@ -60,10 +63,11 @@ class TemperatureCalibrator:
         temperature: Positive scalar.  Defaults to 1.0 (identity).
     """
 
-    def __init__(self, temperature: float = 1.0) -> None:
-        if temperature <= 0:
-            raise ValueError(f"temperature must be positive, got {temperature}")
-        self.temperature = temperature
+    temperature: float = 1.0
+
+    def __post_init__(self) -> None:
+        if self.temperature <= 0:
+            raise ValueError(f"temperature must be positive, got {self.temperature}")
 
     def calibrate(self, core_probs: np.ndarray) -> np.ndarray:
         if self.temperature == 1.0:
@@ -79,6 +83,7 @@ class TemperatureCalibrator:
         return exp_vals / exp_vals.sum(axis=-1, keepdims=True)
 
 
+@dataclass(frozen=True, slots=True)
 class IsotonicCalibrator:
     """Per-class isotonic regression calibrator.
 
@@ -92,21 +97,22 @@ class IsotonicCalibrator:
             one per class, ordered by label ID.
     """
 
-    def __init__(self, regressors: list) -> None:
-        if not regressors:
+    regressors: list
+
+    def __post_init__(self) -> None:
+        if not self.regressors:
             raise ValueError("regressors list must not be empty")
-        self._regressors = regressors
 
     @property
     def n_classes(self) -> int:
-        return len(self._regressors)
+        return len(self.regressors)
 
     def calibrate(self, core_probs: np.ndarray) -> np.ndarray:
         single = core_probs.ndim == 1
         probs = core_probs[np.newaxis, :] if single else core_probs
 
         calibrated = np.empty_like(probs)
-        for c, reg in enumerate(self._regressors):
+        for c, reg in enumerate(self.regressors):
             calibrated[:, c] = np.clip(reg.predict(probs[:, c]), 1e-12, None)
 
         row_sums = calibrated.sum(axis=1, keepdims=True)
@@ -115,6 +121,7 @@ class IsotonicCalibrator:
         return calibrated[0] if single else calibrated
 
 
+@dataclass(slots=True)
 class CalibratorStore:
     """Per-user calibrator registry with global fallback.
 
@@ -132,15 +139,9 @@ class CalibratorStore:
             ``"isotonic"``).
     """
 
-    def __init__(
-        self,
-        global_calibrator: Calibrator,
-        user_calibrators: dict[str, Calibrator] | None = None,
-        method: str = "temperature",
-    ) -> None:
-        self.global_calibrator = global_calibrator
-        self.user_calibrators: dict[str, Calibrator] = user_calibrators or {}
-        self.method = method
+    global_calibrator: Calibrator
+    user_calibrators: dict[str, Calibrator] = field(default_factory=dict)
+    method: str = "temperature"
 
     def get_calibrator(self, user_id: str) -> Calibrator:
         """Return the per-user calibrator if available, else the global one."""
@@ -180,7 +181,7 @@ class CalibratorStore:
 def _serialize_isotonic(calibrator: IsotonicCalibrator) -> dict:
     """Convert an IsotonicCalibrator to a JSON-safe dict."""
     regressors_data = []
-    for reg in calibrator._regressors:
+    for reg in calibrator.regressors:
         regressors_data.append(
             {
                 "X_thresholds_": reg.X_thresholds_.tolist(),

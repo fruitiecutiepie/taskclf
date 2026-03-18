@@ -25,6 +25,9 @@ Pydantic model representing a single labeling request:
 
 ## ActiveLabelingQueue
 
+`ActiveLabelingQueue` is implemented as a slotted dataclass; constructor
+parameters remain `queue_path` and `max_asks_per_day`.
+
 ```python
 from taskclf.labels.queue import ActiveLabelingQueue
 

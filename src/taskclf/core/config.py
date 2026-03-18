@@ -26,6 +26,7 @@ import json
 import logging
 import tomllib
 import uuid
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -52,6 +53,7 @@ _SETTING_COMMENTS: dict[str, str] = {
 }
 
 
+@dataclass(slots=True)
 class UserConfig:
     """Read/write access to ``config.toml`` and ``.user_id`` in a data directory.
 
@@ -66,13 +68,20 @@ class UserConfig:
     comments above each setting so it can be hand-edited.
     """
 
-    def __init__(self, data_dir: Path | str = DEFAULT_DATA_DIR) -> None:
-        self._dir = Path(data_dir)
+    data_dir: Path | str = DEFAULT_DATA_DIR
+    _dir: Path = field(init=False)
+    _path: Path = field(init=False)
+    _user_id_path: Path = field(init=False)
+    _data: dict[str, Any] = field(init=False)
+    _uid: str = field(init=False)
+
+    def __post_init__(self) -> None:
+        self._dir = Path(self.data_dir)
         self._path = self._dir / _CONFIG_FILENAME
         self._user_id_path = self._dir / _USER_ID_FILENAME
         self._migrate_json()
-        self._data: dict[str, Any] = self._load()
-        self._uid: str = self._load_user_id()
+        self._data = self._load()
+        self._uid = self._load_user_id()
 
     # -- migration & loading ---------------------------------------------------
 

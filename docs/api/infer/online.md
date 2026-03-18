@@ -1,6 +1,8 @@
 # infer.online
 
 Real-time prediction loop: poll ActivityWatch, predict, smooth, and report.
+`OnlinePredictor` is implemented as a slotted dataclass while preserving
+its constructor shape (`model`, `metadata`, then keyword-only options).
 
 ## Model auto-resolution
 

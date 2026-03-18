@@ -8,11 +8,13 @@ import logging
 import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
+@dataclass(slots=True)
 class EventBus:
     """Thread-safe asyncio pub/sub for server-push events.
 
@@ -25,13 +27,12 @@ class EventBus:
     immediately via :meth:`snapshot`.
     """
 
-    def __init__(self) -> None:
-        self._subscribers: set[asyncio.Queue[dict[str, Any]]] = set()
-        self._lock = asyncio.Lock()
-        self._loop: asyncio.AbstractEventLoop | None = None
-        self._ready = threading.Event()
-        self._latest: dict[str, dict[str, Any]] = {}
-        self._latest_lock = threading.Lock()
+    _subscribers: set[asyncio.Queue[dict[str, Any]]] = field(default_factory=set)
+    _lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    _loop: asyncio.AbstractEventLoop | None = None
+    _ready: threading.Event = field(default_factory=threading.Event)
+    _latest: dict[str, dict[str, Any]] = field(default_factory=dict)
+    _latest_lock: threading.Lock = field(default_factory=threading.Lock)
 
     def bind_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         """Bind to the running event loop (call once at startup)."""

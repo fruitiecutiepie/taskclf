@@ -24,6 +24,8 @@ provided, all satisfying the `Calibrator` protocol:
 
 All calibrators must preserve input shape and ensure the output sums
 to 1.0 along the class axis.
+The concrete calibrator classes and `CalibratorStore` are implemented
+as dataclasses; constructor signatures are unchanged.
 
 ## Calibrator protocol
 

@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 import logging.handlers
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
@@ -51,12 +52,18 @@ def redact_message(message: str) -> str:
     )
 
 
+@dataclass(slots=True)
 class SanitizingFilter(logging.Filter):
     """A :class:`logging.Filter` that rewrites log records to strip sensitive data.
 
     Attach to any logger or handler via :func:`install_sanitizing_filter`
     to ensure sensitive key/value pairs never reach log output.
     """
+
+    name: str = ""
+
+    def __post_init__(self) -> None:
+        super().__init__(self.name)
 
     def filter(self, record: logging.LogRecord) -> bool:
         if record.args:

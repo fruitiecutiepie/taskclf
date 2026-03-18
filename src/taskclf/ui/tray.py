@@ -23,6 +23,7 @@ import subprocess
 import threading
 import time
 from collections import Counter
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
@@ -90,6 +91,7 @@ def _send_desktop_notification(title: str, message: str, timeout: int = 10) -> N
 # ---------------------------------------------------------------------------
 
 
+@dataclass(slots=True, kw_only=True)
 class ActivityMonitor:
     """Polls ActivityWatch and fires a callback when the dominant app changes.
 
@@ -111,45 +113,51 @@ class ActivityMonitor:
         event_bus: Optional shared event bus for broadcasting events.
     """
 
-    def __init__(
-        self,
-        *,
-        aw_host: str = DEFAULT_AW_HOST,
-        title_salt: str = DEFAULT_TITLE_SALT,
-        poll_seconds: int = DEFAULT_POLL_SECONDS,
-        transition_minutes: int = DEFAULT_TRANSITION_MINUTES,
-        on_transition: Callable[[str, str, dt.datetime, dt.datetime], Any]
-        | None = None,
-        on_poll: Callable[[str], Any] | None = None,
-        on_initial_app: Callable[[str, dt.datetime], Any] | None = None,
-        event_bus: EventBus | None = None,
-    ) -> None:
-        self._aw_host = aw_host
-        self._title_salt = title_salt
-        self._poll_seconds = poll_seconds
-        self._transition_threshold = transition_minutes * 60
-        self._on_transition = on_transition
-        self._on_poll = on_poll
-        self._on_initial_app = on_initial_app
-        self._event_bus = event_bus
+    aw_host: str = DEFAULT_AW_HOST
+    title_salt: str = DEFAULT_TITLE_SALT
+    poll_seconds: int = DEFAULT_POLL_SECONDS
+    transition_minutes: int = DEFAULT_TRANSITION_MINUTES
+    on_transition: Callable[[str, str, dt.datetime, dt.datetime], Any] | None = None
+    on_poll: Callable[[str], Any] | None = None
+    on_initial_app: Callable[[str, dt.datetime], Any] | None = None
+    event_bus: EventBus | None = None
+    _aw_host: str = field(init=False)
+    _title_salt: str = field(init=False)
+    _poll_seconds: int = field(init=False)
+    _transition_threshold: int = field(init=False)
+    _on_transition: Callable[[str, str, dt.datetime, dt.datetime], Any] | None = field(
+        init=False, default=None
+    )
+    _on_poll: Callable[[str], Any] | None = field(init=False, default=None)
+    _on_initial_app: Callable[[str, dt.datetime], Any] | None = field(
+        init=False, default=None
+    )
+    _event_bus: EventBus | None = field(init=False, default=None)
+    _current_app: str | None = None
+    _current_app_since: dt.datetime | None = None
+    _candidate_app: str | None = None
+    _candidate_duration: int = 0
+    _candidate_first_seen: dt.datetime | None = None
+    _last_check_time: dt.datetime | None = None
+    _bucket_id: str | None = None
+    _aw_warned: bool = False
+    _stop: threading.Event = field(init=False, default_factory=threading.Event)
+    _paused: threading.Event = field(init=False, default_factory=threading.Event)
+    _poll_count: int = 0
+    _last_event_count: int = 0
+    _last_app_counts: dict[str, int] = field(default_factory=dict)
+    _last_poll_ts: dt.datetime | None = None
+    _started_at: dt.datetime | None = None
 
-        self._current_app: str | None = None
-        self._current_app_since: dt.datetime | None = None
-        self._candidate_app: str | None = None
-        self._candidate_duration: int = 0
-        self._candidate_first_seen: dt.datetime | None = None
-        self._last_check_time: dt.datetime | None = None
-
-        self._bucket_id: str | None = None
-        self._aw_warned = False
-        self._stop = threading.Event()
-        self._paused = threading.Event()
-
-        self._poll_count: int = 0
-        self._last_event_count: int = 0
-        self._last_app_counts: dict[str, int] = {}
-        self._last_poll_ts: dt.datetime | None = None
-        self._started_at: dt.datetime | None = None
+    def __post_init__(self) -> None:
+        self._aw_host = self.aw_host
+        self._title_salt = self.title_salt
+        self._poll_seconds = self.poll_seconds
+        self._transition_threshold = self.transition_minutes * 60
+        self._on_transition = self.on_transition
+        self._on_poll = self.on_poll
+        self._on_initial_app = self.on_initial_app
+        self._event_bus = self.event_bus
 
     def _discover_bucket(self) -> str:
         from taskclf.adapters.activitywatch.client import find_window_bucket_id
@@ -344,21 +352,25 @@ class ActivityMonitor:
 # ---------------------------------------------------------------------------
 
 
+@dataclass(slots=True)
 class _LabelSuggester:
     """Wraps the online predictor for single-bucket label suggestions."""
 
-    def __init__(self, model_dir: Path) -> None:
+    model_dir: Path
+    _predictor: Any = field(init=False)
+    _aw_host: str = DEFAULT_AW_HOST
+    _title_salt: str = DEFAULT_TITLE_SALT
+
+    def __post_init__(self) -> None:
         from taskclf.core.model_io import load_model_bundle
         from taskclf.infer.online import OnlinePredictor
 
-        model, metadata, cat_encoders = load_model_bundle(model_dir)
+        model, metadata, cat_encoders = load_model_bundle(self.model_dir)
         self._predictor = OnlinePredictor(
             model,
             metadata,
             cat_encoders=cat_encoders,
         )
-        self._aw_host: str = DEFAULT_AW_HOST
-        self._title_salt: str = DEFAULT_TITLE_SALT
 
     def suggest(
         self,
@@ -412,6 +424,7 @@ def _make_icon_image(color: str = "#4CAF50", size: int = 64) -> Image.Image:
     return img
 
 
+@dataclass(slots=True, kw_only=True)
 class TrayLabeler:
     """System tray icon with labeling menus and notification support.
 
@@ -429,63 +442,91 @@ class TrayLabeler:
         ui_port: Port for the embedded UI server.
     """
 
-    def __init__(
-        self,
-        *,
-        data_dir: Path = Path(DEFAULT_DATA_DIR),
-        model_dir: Path | None = None,
-        models_dir: Path | None = None,
-        aw_host: str = DEFAULT_AW_HOST,
-        title_salt: str = DEFAULT_TITLE_SALT,
-        poll_seconds: int = DEFAULT_POLL_SECONDS,
-        transition_minutes: int = DEFAULT_TRANSITION_MINUTES,
-        event_bus: EventBus | None = None,
-        ui_port: int = 8741,
-        dev: bool = False,
-        browser: bool = False,
-        no_tray: bool = False,
-        username: str | None = None,
-        notifications_enabled: bool = True,
-        privacy_notifications: bool = True,
-        retrain_config: Path | None = None,
-    ) -> None:
-        self._data_dir = data_dir
-        self._model_dir = model_dir
-        self._models_dir = models_dir
-        self._retrain_config = retrain_config
-        self._labels_path = data_dir / "labels_v1" / "labels.parquet"
-        self._config = UserConfig(data_dir)
-        if username is not None:
-            self._config.username = username
+    data_dir: Path = field(default_factory=lambda: Path(DEFAULT_DATA_DIR))
+    model_dir: Path | None = None
+    models_dir: Path | None = None
+    aw_host: str = DEFAULT_AW_HOST
+    title_salt: str = DEFAULT_TITLE_SALT
+    poll_seconds: int = DEFAULT_POLL_SECONDS
+    transition_minutes: int = DEFAULT_TRANSITION_MINUTES
+    event_bus: EventBus | None = None
+    ui_port: int = 8741
+    dev: bool = False
+    browser: bool = False
+    no_tray: bool = False
+    username: str | None = None
+    notifications_enabled: bool = True
+    privacy_notifications: bool = True
+    retrain_config: Path | None = None
+    _data_dir: Path = field(init=False)
+    _model_dir: Path | None = field(init=False, default=None)
+    _models_dir: Path | None = field(init=False, default=None)
+    _retrain_config: Path | None = field(init=False, default=None)
+    _labels_path: Path = field(init=False)
+    _config: UserConfig = field(init=False)
+    _notifications_enabled: bool = field(init=False, default=True)
+    _privacy_notifications: bool = field(init=False, default=True)
+    _current_app: str = field(init=False, default="unknown")
+    _suggested_label: str | None = field(init=False, default=None)
+    _suggested_confidence: float | None = field(init=False, default=None)
+    _ui_port: int = field(init=False, default=8741)
+    _ui_server_running: bool = field(init=False, default=False)
+    _ui_proc: Any = field(init=False, default=None)
+    _vite_proc: Any = field(init=False, default=None)
+    _aw_host: str = field(init=False, default=DEFAULT_AW_HOST)
+    _title_salt: str = field(init=False, default=DEFAULT_TITLE_SALT)
+    _dev: bool = field(init=False, default=False)
+    _browser: bool = field(init=False, default=False)
+    _no_tray: bool = field(init=False, default=False)
+    _transition_count: int = field(init=False, default=0)
+    _last_transition: dict[str, Any] | None = field(init=False, default=None)
+    _labels_saved_count: int = field(init=False, default=0)
+    _model_schema_hash: str | None = field(init=False, default=None)
+    _event_bus: EventBus = field(init=False)
+    _suggester: _LabelSuggester | None = field(init=False, default=None)
+    _monitor: ActivityMonitor = field(init=False)
+    _icon: Any = field(init=False, default=None)
+
+    def __post_init__(self) -> None:
+        self._data_dir = self.data_dir
+        self._model_dir = self.model_dir
+        self._models_dir = self.models_dir
+        self._retrain_config = self.retrain_config
+        self._labels_path = self.data_dir / "labels_v1" / "labels.parquet"
+        self._config = UserConfig(self.data_dir)
+        if self.username is not None:
+            self._config.username = self.username
 
         saved = self._config.as_dict()
         notifications_enabled = self._resolve(
             saved,
             "notifications_enabled",
-            notifications_enabled,
+            self.notifications_enabled,
             True,
         )
         privacy_notifications = self._resolve(
             saved,
             "privacy_notifications",
-            privacy_notifications,
+            self.privacy_notifications,
             True,
         )
         poll_seconds = self._resolve(
             saved,
             "poll_seconds",
-            poll_seconds,
+            self.poll_seconds,
             DEFAULT_POLL_SECONDS,
         )
         transition_minutes = self._resolve(
             saved,
             "transition_minutes",
-            transition_minutes,
+            self.transition_minutes,
             DEFAULT_TRANSITION_MINUTES,
         )
-        aw_host = self._resolve(saved, "aw_host", aw_host, DEFAULT_AW_HOST)
-        title_salt = self._resolve(saved, "title_salt", title_salt, DEFAULT_TITLE_SALT)
-        ui_port = self._resolve(saved, "ui_port", ui_port, 8741)
+        aw_host = self._resolve(saved, "aw_host", self.aw_host, DEFAULT_AW_HOST)
+        title_salt = self._resolve(
+            saved, "title_salt", self.title_salt, DEFAULT_TITLE_SALT
+        )
+        ui_port = self._resolve(saved, "ui_port", self.ui_port, 8741)
 
         self._config.update(
             {
@@ -510,29 +551,31 @@ class TrayLabeler:
         self._vite_proc: Any = None
         self._aw_host = aw_host
         self._title_salt = title_salt
-        self._dev = dev
-        self._browser = browser
-        self._no_tray = no_tray
+        self._dev = self.dev
+        self._browser = self.browser
+        self._no_tray = self.no_tray
 
         self._transition_count: int = 0
         self._last_transition: dict[str, Any] | None = None
         self._labels_saved_count: int = 0
         self._model_schema_hash: str | None = None
 
-        self._event_bus = event_bus if event_bus is not None else EventBus()
+        self._event_bus = self.event_bus if self.event_bus is not None else EventBus()
 
         self._suggester: _LabelSuggester | None = None
-        if model_dir is not None:
+        if self.model_dir is not None:
             try:
-                self._suggester = _LabelSuggester(model_dir)
+                self._suggester = _LabelSuggester(self.model_dir)
                 self._suggester._aw_host = aw_host
                 self._suggester._title_salt = title_salt
                 self._model_schema_hash = (
                     self._suggester._predictor._metadata.schema_hash
                 )
-                logger.info("Model loaded from %s", model_dir)
+                logger.info("Model loaded from %s", self.model_dir)
             except Exception:
-                logger.warning("Could not load model from %s", model_dir, exc_info=True)
+                logger.warning(
+                    "Could not load model from %s", self.model_dir, exc_info=True
+                )
 
         self._monitor = ActivityMonitor(
             aw_host=aw_host,
@@ -544,7 +587,6 @@ class TrayLabeler:
             on_initial_app=self._handle_initial_app,
             event_bus=self._event_bus,
         )
-        self._icon: Any = None
 
     @staticmethod
     def _resolve(saved: dict[str, Any], key: str, cli_val: Any, default: Any) -> Any:

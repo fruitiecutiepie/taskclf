@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import time
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import lightgbm as lgb
@@ -31,12 +32,15 @@ logger = logging.getLogger(__name__)
 _ACTIVE_FILE = "active.json"
 
 
+@dataclass(slots=True)
 class ModelResolutionError(Exception):
     """Raised when no model can be resolved for inference."""
 
-    def __init__(self, message: str, report: SelectionReport | None = None) -> None:
-        super().__init__(message)
-        self.report = report
+    message: str
+    report: SelectionReport | None = None
+
+    def __post_init__(self) -> None:
+        super().__init__(self.message)
 
 
 def resolve_model_dir(
@@ -96,6 +100,7 @@ def resolve_model_dir(
     raise ModelResolutionError("\n".join(lines), report=report)
 
 
+@dataclass(slots=True)
 class ActiveModelReloader:
     """Watch ``active.json`` and reload the model bundle on change.
 
@@ -109,16 +114,20 @@ class ActiveModelReloader:
         check_interval_s: Minimum seconds between mtime checks.
     """
 
-    def __init__(
-        self,
-        models_dir: Path,
-        check_interval_s: float = 60.0,
-    ) -> None:
-        self._models_dir = models_dir
-        self._check_interval_s = check_interval_s
-        self._active_path = models_dir / _ACTIVE_FILE
-        self._last_mtime: float | None = self._current_mtime()
-        self._last_check: float = time.monotonic()
+    models_dir: Path
+    check_interval_s: float = 60.0
+    _models_dir: Path = field(init=False)
+    _check_interval_s: float = field(init=False)
+    _active_path: Path = field(init=False)
+    _last_mtime: float | None = field(init=False)
+    _last_check: float = field(init=False)
+
+    def __post_init__(self) -> None:
+        self._models_dir = self.models_dir
+        self._check_interval_s = self.check_interval_s
+        self._active_path = self._models_dir / _ACTIVE_FILE
+        self._last_mtime = self._current_mtime()
+        self._last_check = time.monotonic()
 
     def _current_mtime(self) -> float | None:
         try:

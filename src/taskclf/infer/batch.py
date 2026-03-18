@@ -30,7 +30,7 @@ from taskclf.infer.taxonomy import TaxonomyConfig, TaxonomyResolver
 from taskclf.train.lgbm import FEATURE_COLUMNS, encode_categoricals
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class BatchInferenceResult:
     """Container for batch inference outputs.
 

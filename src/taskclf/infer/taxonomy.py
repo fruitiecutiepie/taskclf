@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import re
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final, Literal
 
@@ -203,6 +204,7 @@ def default_taxonomy() -> TaxonomyConfig:
 # ---------------------------------------------------------------------------
 
 
+@dataclass(slots=True)
 class TaxonomyResolver:
     """Stateless mapper from core predictions to user-defined buckets.
 
@@ -213,13 +215,19 @@ class TaxonomyResolver:
         config: Validated taxonomy config.
     """
 
-    def __init__(self, config: TaxonomyConfig) -> None:
-        self.config = config
+    config: TaxonomyConfig
+    _bucket_names: list[str] = field(init=False)
+    _bucket_core_indices: list[list[int]] = field(init=False)
+    _has_fallback: bool = field(init=False)
+    _n_buckets: int = field(init=False)
+    _agg: Literal["sum", "max"] = field(init=False)
+    _reweights: np.ndarray | None = field(init=False, default=None)
 
-        self._bucket_names: list[str] = [b.name for b in config.buckets]
-        self._bucket_core_indices: list[list[int]] = []
+    def __post_init__(self) -> None:
+        self._bucket_names = [b.name for b in self.config.buckets]
+        self._bucket_core_indices = []
         covered: set[str] = set()
-        for bucket in config.buckets:
+        for bucket in self.config.buckets:
             indices = [_CORE_LABEL_INDEX[lbl] for lbl in bucket.core_labels]
             self._bucket_core_indices.append(indices)
             covered.update(bucket.core_labels)
@@ -237,12 +245,11 @@ class TaxonomyResolver:
             self._bucket_core_indices.append(fallback_indices)
 
         self._n_buckets = len(self._bucket_names)
-        self._agg = config.advanced.probability_aggregation
+        self._agg = self.config.advanced.probability_aggregation
 
-        self._reweights: np.ndarray | None = None
-        if config.advanced.reweight_core_labels:
+        if self.config.advanced.reweight_core_labels:
             w = np.ones(len(_CORE_LABEL_NAMES), dtype=np.float64)
-            for label, weight in config.advanced.reweight_core_labels.items():
+            for label, weight in self.config.advanced.reweight_core_labels.items():
                 w[_CORE_LABEL_INDEX[label]] = weight
             self._reweights = w
 

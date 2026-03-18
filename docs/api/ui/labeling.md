@@ -1,6 +1,8 @@
 # ui.server
 
 Web UI for ground-truth label collection and live prediction monitoring.
+The tray-side orchestration classes (`ActivityMonitor`, `_LabelSuggester`,
+`TrayLabeler`) are implemented as slotted dataclasses with equivalent behavior.
 
 ## Launch
 

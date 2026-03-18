@@ -18,7 +18,7 @@ from taskclf.core.defaults import (
 )
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Segment:
     """A contiguous run of identical predicted labels."""
 

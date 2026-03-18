@@ -26,7 +26,7 @@ from taskclf.core.types import LABEL_SET_V1, LabelSpan
 # ---------------------------------------------------------------------------
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class WeakRule:
     """A single heuristic labeling rule.
 

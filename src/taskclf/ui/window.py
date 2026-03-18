@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from dataclasses import dataclass, field
 from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
@@ -21,21 +22,17 @@ _CHILD_HIDE_DELAY_S = 0.3
 _DRAG_TOLERANCE = 10
 
 
+@dataclass(slots=True)
 class WindowChild:
     """Visibility, pinning, and delayed-hide for an anchored child window."""
 
-    def __init__(
-        self,
-        name: str,
-        position_fn: Callable[[WindowChild], None],
-    ) -> None:
-        self.name = name
-        self.window: Any = None
-        self.visible = False
-        self.pinned = False
-        self.hide_timer: threading.Timer | None = None
-        self.expected_pos: tuple[int, int] | None = None
-        self._position_fn = position_fn
+    name: str
+    position_fn: Callable[[WindowChild], None]
+    window: Any = None
+    visible: bool = False
+    pinned: bool = False
+    hide_timer: threading.Timer | None = None
+    expected_pos: tuple[int, int] | None = None
 
     def visibility_on(self, main: Any) -> None:
         """Show on hover (non-pinned)."""
@@ -99,7 +96,7 @@ class WindowChild:
 
     def position_sync(self) -> None:
         """Reposition via the injected layout callback."""
-        self._position_fn(self)
+        self.position_fn(self)
 
     def drag_detected(self) -> bool:
         """True if the user has dragged this window away from expected position."""
@@ -113,6 +110,7 @@ class WindowChild:
             return False
 
 
+@dataclass(slots=True)
 class WindowAPI:
     """Python methods exposed to JS as ``window.pywebview.api.<method>()``.
 
@@ -122,11 +120,14 @@ class WindowAPI:
     directly.
     """
 
-    def __init__(self) -> None:
-        self._window: Any = None
-        self._visible = True
-        self._default_x: int | None = None
-        self._default_y: int | None = None
+    _window: Any = None
+    _visible: bool = True
+    _default_x: int | None = None
+    _default_y: int | None = None
+    _label: WindowChild = field(init=False)
+    _panel: WindowChild = field(init=False)
+
+    def __post_init__(self) -> None:
         self._label = WindowChild("label", self._label_position)
         self._panel = WindowChild("panel", self._panel_position)
 

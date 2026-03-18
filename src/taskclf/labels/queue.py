@@ -11,6 +11,7 @@ import json
 import os
 import tempfile
 import uuid
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal, Sequence
@@ -46,6 +47,7 @@ class LabelRequest(BaseModel, frozen=True):
     )
 
 
+@dataclass(slots=True)
 class ActiveLabelingQueue:
     """Manages a persisted queue of labeling requests.
 
@@ -58,14 +60,15 @@ class ActiveLabelingQueue:
             calendar day (UTC).
     """
 
-    def __init__(
-        self,
-        queue_path: Path,
-        max_asks_per_day: int = DEFAULT_LABEL_MAX_ASKS_PER_DAY,
-    ) -> None:
-        self._path = queue_path
-        self._max_asks = max_asks_per_day
-        self._items: list[LabelRequest] = []
+    queue_path: Path
+    max_asks_per_day: int = DEFAULT_LABEL_MAX_ASKS_PER_DAY
+    _path: Path = field(init=False)
+    _max_asks: int = field(init=False)
+    _items: list[LabelRequest] = field(default_factory=list, init=False)
+
+    def __post_init__(self) -> None:
+        self._path = self.queue_path
+        self._max_asks = self.max_asks_per_day
         if self._path.exists():
             self._load()
 

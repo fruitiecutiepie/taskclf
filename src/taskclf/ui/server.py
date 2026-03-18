@@ -240,7 +240,7 @@ class DataCheckResponse(BaseModel):
     build_errors: list[str] = []
 
 
-@dataclass
+@dataclass(slots=True)
 class _TrainJob:
     """Mutable state for a single background training job."""
 
@@ -871,6 +871,7 @@ def create_app(
 
     @app.post("/api/notification/skip")
     async def notification_skip() -> dict[str, str]:
+        await bus.publish({"type": "suggestion_cleared", "reason": "skipped"})
         logger.info("Notification skipped by user (no label change needed)")
         return {"status": "skipped"}
 

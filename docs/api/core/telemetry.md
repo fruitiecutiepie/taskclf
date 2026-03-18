@@ -7,6 +7,8 @@ Point-in-time quality telemetry: snapshot computation and persistence.
 Collects aggregate statistics on feature quality, prediction confidence,
 reject rates, and class distributions.  Stores only numerical summaries;
 never raw content.
+`TelemetryStore` is implemented as a slotted dataclass and keeps the
+same constructor argument (`store_dir`).
 
 ## TelemetrySnapshot
 

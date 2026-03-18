@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Final
+from typing import Any, ClassVar, Final
 
 import pandas as pd
 
@@ -67,6 +68,7 @@ def _build_schema_hash(columns: dict[str, type]) -> str:
     return stable_hash(payload)
 
 
+@dataclass(frozen=True, slots=True)
 class FeatureSchemaV1:
     """Schema contract for feature rows (v1).
 
@@ -74,9 +76,9 @@ class FeatureSchemaV1:
     and validates individual rows or DataFrames against the contract.
     """
 
-    VERSION: Final[str] = "v1"
-    COLUMNS: Final[dict[str, type]] = _COLUMNS_V1
-    SCHEMA_HASH: Final[str] = _build_schema_hash(_COLUMNS_V1)
+    VERSION: ClassVar[Final[str]] = "v1"
+    COLUMNS: ClassVar[Final[dict[str, type]]] = _COLUMNS_V1
+    SCHEMA_HASH: ClassVar[Final[str]] = _build_schema_hash(_COLUMNS_V1)
 
     # -- single-row validation ------------------------------------------
 
