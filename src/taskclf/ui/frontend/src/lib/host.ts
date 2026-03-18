@@ -19,7 +19,9 @@ export type HostCommand =
   | { cmd: "toggleStatePanel" }
   | { cmd: "showStatePanel" }
   | { cmd: "hideStatePanel" }
-  | { cmd: "cancelPanelHide" };
+  | { cmd: "cancelPanelHide" }
+  | { cmd: "frontendDebugLog"; message: string }
+  | { cmd: "frontendErrorLog"; message: string };
 
 export type Host = {
   invoke(command: HostCommand): Promise<void>;
@@ -40,6 +42,8 @@ declare global {
         state_panel_show(): Promise<void>;
         state_panel_hide(): Promise<void>;
         state_panel_cancel_hide(): Promise<void>;
+        frontend_debug_log(message: string): Promise<void>;
+        frontend_error_log(message: string): Promise<void>;
       };
     };
   }
@@ -96,6 +100,12 @@ class AdaptiveHost implements Host {
           break;
         case "cancelPanelHide":
           await api.state_panel_cancel_hide();
+          break;
+        case "frontendDebugLog":
+          await api.frontend_debug_log(command.message);
+          break;
+        case "frontendErrorLog":
+          await api.frontend_error_log(command.message);
           break;
       }
     } catch {

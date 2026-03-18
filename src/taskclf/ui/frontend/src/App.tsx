@@ -1,10 +1,18 @@
-import { type Component, createEffect, createSignal, onMount, Show } from "solid-js";
+import {
+  type Component,
+  createEffect,
+  createSignal,
+  onCleanup,
+  onMount,
+  Show,
+} from "solid-js";
 import { LabelRecorder } from "./components/LabelRecorder";
 import { LabelRecorderWindow } from "./components/LabelRecorderWindow";
 import { PredictionBadge } from "./components/PredictionBadge";
 import { StatusPanel } from "./components/StatusPanel";
 import { StatusPanelWindow } from "./components/StatusPanelWindow";
 import { host } from "./lib/host";
+import { frontend_error_handlers_install } from "./lib/log";
 import {
   notification_permission_ensure,
   transition_notification_show,
@@ -59,6 +67,8 @@ const App: Component = () => {
 
   onMount(() => {
     notification_permission_ensure();
+    const cleanup_error_handlers = frontend_error_handlers_install();
+    onCleanup(cleanup_error_handlers);
   });
 
   createEffect(() => {

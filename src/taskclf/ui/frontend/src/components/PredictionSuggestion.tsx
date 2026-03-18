@@ -1,5 +1,6 @@
 import { type Accessor, type Component, createSignal, Show } from "solid-js";
 import { notification_accept, notification_skip } from "../lib/api";
+import { frontend_log_error } from "../lib/log";
 import type { LabelSuggestion } from "../lib/ws";
 
 export const PredictionSuggestion: Component<{
@@ -30,7 +31,7 @@ export const PredictionSuggestion: Component<{
       props.on_dismiss?.();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to save inferred label";
-      console.error("Failed to save inferred label", err);
+      frontend_log_error("Failed to save inferred label", err);
       set_error(msg);
       setTimeout(() => set_error(null), 4000);
     } finally {
@@ -50,7 +51,7 @@ export const PredictionSuggestion: Component<{
       props.on_dismiss?.();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to dismiss suggestion";
-      console.error("Failed to dismiss suggestion", err);
+      frontend_log_error("Failed to dismiss suggestion", err);
       set_error(msg);
       setTimeout(() => set_error(null), 4000);
     } finally {

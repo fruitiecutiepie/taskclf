@@ -134,6 +134,8 @@ taskclf tray --dev
 - **Check Retrain** -- tray menu action (inside the Model submenu) that checks whether retraining is due based on the latest model's age and the configured cadence. Shows a notification with "Retrain recommended" (with model name and creation date) or "Model is current". Uses `--retrain-config` to load a custom retrain YAML config; falls back to defaults when not provided. Disabled when `--models-dir` is not set.
 - **Open Web UI** -- menu option to open the labeling web UI in the browser.
 - **Event broadcasting** -- publishes `status`, `tray_state`, `initial_app`, `prediction`, `label_created`, and `suggest_label` events to the shared EventBus for connected WebSocket clients.
+- **Frontend log channel** -- in frontend dev mode (`--dev`), debug/error messages emitted in the SolidJS app can be forwarded through `window.pywebview.api.frontend_debug_log(...)` and `window.pywebview.api.frontend_error_log(...)`. Debug lines are written at DEBUG level (requires DEBUG logging enabled, e.g. global `--verbose`), while error lines are written at ERROR level.
+  The app also installs global `window.onerror` and `unhandledrejection` handlers in dev mode so uncaught frontend failures are captured and forwarded via the same error channel.
 - **Crash handler** -- `TrayLabeler.run()` wraps the main loop in a top-level `try/except`. On unhandled exceptions, a crash report is written to `<TASKCLF_HOME>/logs/crash_<YYYYMMDD_HHMMSS>.txt` and a desktop notification is attempted with the crash file path. See [core.crash](../core/crash.md) for details.
 
 ## Privacy

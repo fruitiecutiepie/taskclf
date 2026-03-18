@@ -219,6 +219,16 @@ class WindowAPI:
         """Toggle pinned state of the panel."""
         self._panel.pin_toggle(self._window)
 
+    def frontend_debug_log(self, message: str) -> None:
+        """Accept debug log lines from the frontend webview."""
+        if not logger.isEnabledFor(logging.DEBUG):
+            return
+        logger.debug("[frontend] %s", message)
+
+    def frontend_error_log(self, message: str) -> None:
+        """Accept error log lines from the frontend webview."""
+        logger.error("[frontend] %s", message)
+
     # -- Positioning -----------------------------------------------------------
 
     def _label_position(self, child: WindowChild) -> None:
