@@ -1537,11 +1537,13 @@ class TrayLabeler:
         """Spawn a pywebview-only subprocess pointing at the in-process server."""
         import sys
 
+        from taskclf.ui import window_run as _window_module
+
         try:
             cmd = [
                 sys.executable,
                 "-m",
-                "taskclf.ui.window_run",
+                _window_module.__name__,
                 "--port",
                 str(self._ui_port),
             ]

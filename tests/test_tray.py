@@ -1332,7 +1332,9 @@ class TestServerStartup:
         mock_popen: MagicMock,
         tmp_path: Path,
     ) -> None:
-        """_spawn_window() must invoke python -m taskclf.ui.window."""
+        """_spawn_window() must invoke python -m taskclf.ui.window_run."""
+        from taskclf.ui import window_run
+
         mock_proc = MagicMock()
         mock_proc.pid = 12345
         mock_popen.return_value = mock_proc
@@ -1342,7 +1344,7 @@ class TestServerStartup:
 
         mock_popen.assert_called_once()
         cmd = mock_popen.call_args[0][0]
-        assert "taskclf.ui.window" in cmd
+        assert window_run.__name__ in cmd
         assert "--port" in cmd
         assert "8741" in cmd
         assert "taskclf.cli.main" not in cmd
