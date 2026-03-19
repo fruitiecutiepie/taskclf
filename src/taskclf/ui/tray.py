@@ -1541,7 +1541,7 @@ class TrayLabeler:
             cmd = [
                 sys.executable,
                 "-m",
-                "taskclf.ui.window",
+                "taskclf.ui.window_run",
                 "--port",
                 str(self._ui_port),
             ]
