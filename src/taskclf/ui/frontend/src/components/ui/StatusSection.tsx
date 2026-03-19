@@ -20,7 +20,7 @@ export const StatusSection: Component<{
           "justify-content": "space-between",
           cursor: "pointer",
           "user-select": "none",
-          "font-size": "0.6rem",
+          "font-size": "0.65rem",
           "font-weight": "700",
           "text-transform": "uppercase",
           "letter-spacing": "0.06em",
@@ -38,7 +38,7 @@ export const StatusSection: Component<{
               display: "inline-block",
               transition: "transform 0.15s ease",
               transform: open() ? "rotate(90deg)" : "rotate(0deg)",
-              "font-size": "0.5rem",
+              "font-size": "0.55rem",
               color: "#808080",
             }}
           >
@@ -49,7 +49,7 @@ export const StatusSection: Component<{
         <Show when={!open() && props.summary}>
           <span
             style={{
-              "font-size": "0.6rem",
+              "font-size": "0.65rem",
               "font-weight": "600",
               color: props.summary_color ?? "#b0b0b0",
               "text-transform": "none",

@@ -21,7 +21,7 @@ export const StatusRow: Component<{
       title={props.tooltip}
       style={{
         color: "#a0a0a0",
-        "font-size": "0.65rem",
+        "font-size": "0.7rem",
         "flex-shrink": "0",
         "user-select": "none",
         cursor: props.tooltip ? "help" : undefined,
@@ -33,7 +33,7 @@ export const StatusRow: Component<{
     <span
       title={props.value}
       style={{
-        "font-size": "0.65rem",
+        "font-size": "0.7rem",
         "font-weight": props.dim ? "400" : "600",
         "font-family": props.mono ? "'SF Mono', 'Fira Code', monospace" : "inherit",
         color: props.color ?? (props.dim ? "#a0a0a0" : "#e0e0e0"),
