@@ -77,7 +77,7 @@ Make it easy for users to report errors when something goes wrong in taskclf.
 **Updated tray menu structure:**
 
 ```
-Open Dashboard        (default)
+Toggle Dashboard      (default)
 Resume/Pause
 ─────────────
 Label Stats

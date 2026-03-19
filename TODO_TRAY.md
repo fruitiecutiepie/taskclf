@@ -69,7 +69,7 @@ The `--no-tray` message now prints `"UI available at http://127.0.0.1:{port}"`.
 
 ### ~~11. `_toggle_window` doesn't toggle in browser mode~~ DONE
 
-Renamed to `_open_dashboard` for accuracy. The menu label already says "Open Dashboard".
+Renamed to `_open_dashboard` for accuracy. The menu label already says "Toggle Dashboard".
 
 ### ~~12. LabelGrid auto-collapse has a forced 1.5s delay~~ DONE
 

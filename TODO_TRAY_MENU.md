@@ -3,7 +3,7 @@
 Potential additions to the pystray tray menu in `TrayLabeler._build_menu()` (`src/taskclf/ui/tray.py`).
 
 Current menu:
-- Open Dashboard (default / left-click)
+- Toggle Dashboard (default / left-click)
 - Pause / Resume (dynamic)
 - ---
 - Label Stats (notification)
@@ -128,7 +128,7 @@ See `TODO_DYNAMIC_MODEL_MENU.md` for the proposed fix.
 After all items are implemented:
 
 ```
-Open Dashboard          (default / left-click)
+Toggle Dashboard          (default / left-click)
 Pause / Resume          (dynamic)
 ─────────────────────
 Label Stats             (notification)       ✅ DONE

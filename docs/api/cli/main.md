@@ -547,7 +547,7 @@ Run a persistent system tray app that polls ActivityWatch, detects
 activity transitions, and prompts for labels.  Automatically starts the
 web UI server.  Left-clicking the tray icon opens the web dashboard
 where all labeling is done through the UI.  Right-clicking shows a
-minimal menu with "Open Dashboard" and "Quit".  When `--model-dir` is
+minimal menu with "Toggle Dashboard" and "Quit".  When `--model-dir` is
 provided, the app suggests labels using the trained model.
 
 ```bash

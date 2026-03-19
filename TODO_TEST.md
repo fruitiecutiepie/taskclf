@@ -1181,11 +1181,11 @@ and atexit are all mocked.
 
 **Status:** Covered by `tests/test_tray.py::TestMenuStructureSnapshot` (8 tests):
 - TC-TRAY-MENU-001 top-level menu has all 14 expected items in correct order
-  (Open Dashboard, Pause, separators, Label Stats, Import/Export, Model,
+  (Toggle Dashboard, Pause, separators, Label Stats, Import/Export, Model,
   Status, Open Data Folder, Edit Config, Report Issue, Quit)
 - TC-TRAY-MENU-002 separators appear at positions 2, 6, 12
 - TC-TRAY-MENU-003 "Model" is the only item with a submenu
-- TC-TRAY-MENU-004 "Open Dashboard" has `default=True`
+- TC-TRAY-MENU-004 "Toggle Dashboard" has `default=True`
 - TC-TRAY-MENU-005 Pause/Resume label changes dynamically with monitor state
   (pystray resolves callable text via `.text` property)
 - TC-TRAY-MENU-006 Model submenu with empty `models_dir` shows "(no models

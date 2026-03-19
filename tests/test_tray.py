@@ -3812,7 +3812,7 @@ class TestMenuStructureSnapshot:
         labels_only = [label for label, _ in structure]
 
         expected = [
-            "Open Dashboard",
+            "Toggle Dashboard",
             "Pause",
             self._SEPARATOR_TEXT,
             "Label Stats",
@@ -3858,12 +3858,12 @@ class TestMenuStructureSnapshot:
         assert submenu_items == ["Model"]
 
     def test_open_dashboard_is_default(self, tmp_path: Path) -> None:
-        """TC-TRAY-MENU-004: 'Open Dashboard' has default=True."""
+        """TC-TRAY-MENU-004: 'Toggle Dashboard' has default=True."""
         bus, _ = _capture_bus()
         labeler = _make_tray_labeler(tmp_path, event_bus=bus)
         items = labeler._build_menu_items()
         dashboard = items[0]
-        assert dashboard.text == "Open Dashboard"
+        assert dashboard.text == "Toggle Dashboard"
         assert dashboard.default is True
 
     def test_pause_label_reflects_state(self, tmp_path: Path) -> None:
