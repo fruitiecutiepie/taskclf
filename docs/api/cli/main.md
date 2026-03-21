@@ -2,6 +2,14 @@
 
 Typer CLI entrypoint and commands.
 
+## Entry point
+
+The console script (`taskclf`) is defined in `cli.entry.cli_entry()`.
+It intercepts `--version` / `-v` before importing the full command
+module, so that version queries return instantly without loading the
+entire Typer command tree and its transitive dependencies.  All other
+invocations delegate to `cli_main()` in this module.
+
 ## Crash handler
 
 The CLI entry point (`cli_main()`) wraps all commands in a top-level
