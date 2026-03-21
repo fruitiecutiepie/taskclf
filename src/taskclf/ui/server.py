@@ -1219,6 +1219,7 @@ def create_app(
                     data_dir,
                     aw_host=aw_host,
                     title_salt=title_salt,
+                    user_id=user_config.user_id,
                 )
                 built += 1
                 current += dt.timedelta(days=1)
@@ -1383,6 +1384,7 @@ def create_app(
                         data_dir,
                         aw_host=aw_host,
                         title_salt=title_salt,
+                        user_id=user_config.user_id,
                     )
                     dates_built.append(current.isoformat())
                 except Exception as exc:
