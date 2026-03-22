@@ -36,6 +36,7 @@ from taskclf.core.config import UserConfig
 from taskclf.core.defaults import (
     DEFAULT_AW_HOST,
     DEFAULT_DATA_DIR,
+    DEFAULT_IDLE_TRANSITION_MINUTES,
     DEFAULT_POLL_SECONDS,
     DEFAULT_TITLE_SALT,
     DEFAULT_TRANSITION_MINUTES,
@@ -46,19 +47,19 @@ logger = logging.getLogger(__name__)
 
 _VITE_DEV_PORT = 5173
 
-_LOCKSCREEN_APPS: frozenset[str] = frozenset(
+_LOCKSCREEN_APP_IDS: frozenset[str] = frozenset(
     {
-        "loginwindow",
-        "lockapp.exe",
-        "logonui.exe",
-        "gnome-screensaver",
-        "gnome-shell",
-        "xdg-desktop-portal-gnome",
-        "i3lock",
-        "swaylock",
-        "xscreensaver",
-        "light-locker",
-        "slock",
+        "com.apple.loginwindow",
+        "com.microsoft.LockApp",
+        "com.microsoft.LogonUI",
+        "org.gnome.ScreenSaver",
+        "org.gnome.Shell",
+        "org.freedesktop.portal.Desktop",
+        "org.i3wm.i3lock",
+        "org.swaywm.swaylock",
+        "org.jwz.xscreensaver",
+        "org.freedesktop.light-locker",
+        "org.suckless.slock",
     }
 )
 
@@ -115,12 +116,18 @@ class ActivityMonitor:
     persist as dominant for >= *transition_minutes* consecutive polls before
     a transition is confirmed.
 
+    Lockscreen/idle apps use a shorter threshold
+    (*idle_transition_minutes*, default 1) so BreakIdle labels are
+    detected quickly without affecting the general transition cadence.
+
     Args:
         aw_host: ActivityWatch server base URL.
         title_salt: Salt for hashing window titles.
         poll_seconds: Seconds between polls.
         transition_minutes: Minutes a new app must persist before
             a transition is confirmed.
+        idle_transition_minutes: Minutes a lockscreen/idle app must
+            persist before a transition is confirmed (default 1).
         on_transition: Callback invoked with
             ``(prev_app, new_app, block_start, block_end)`` when a
             transition is confirmed.
@@ -133,6 +140,7 @@ class ActivityMonitor:
     title_salt: str = DEFAULT_TITLE_SALT
     poll_seconds: int = DEFAULT_POLL_SECONDS
     transition_minutes: int = DEFAULT_TRANSITION_MINUTES
+    idle_transition_minutes: int = DEFAULT_IDLE_TRANSITION_MINUTES
     on_transition: Callable[[str, str, dt.datetime, dt.datetime], Any] | None = None
     on_poll: Callable[[str], Any] | None = None
     on_initial_app: Callable[[str, dt.datetime], Any] | None = None
@@ -141,6 +149,7 @@ class ActivityMonitor:
     _title_salt: str = field(init=False)
     _poll_seconds: int = field(init=False)
     _transition_threshold: int = field(init=False)
+    _idle_transition_threshold: int = field(init=False)
     _on_transition: Callable[[str, str, dt.datetime, dt.datetime], Any] | None = field(
         init=False, default=None
     )
@@ -170,6 +179,7 @@ class ActivityMonitor:
         self._title_salt = self.title_salt
         self._poll_seconds = self.poll_seconds
         self._transition_threshold = self.transition_minutes * 60
+        self._idle_transition_threshold = self.idle_transition_minutes * 60
         self._on_transition = self.on_transition
         self._on_poll = self.on_poll
         self._on_initial_app = self.on_initial_app
@@ -253,17 +263,68 @@ class ActivityMonitor:
         if self._current_app is None:
             self._current_app = dominant_app
             self._current_app_since = now
+            logger.debug(
+                "DEBUG poll: initial app=%r",
+                dominant_app,
+            )
             if self._on_initial_app is not None:
                 self._on_initial_app(dominant_app, now)
             return
 
         if dominant_app != self._current_app:
-            if self._candidate_app == dominant_app:
+            leaving_lockscreen = (
+                self._current_app in _LOCKSCREEN_APP_IDS
+                and dominant_app not in _LOCKSCREEN_APP_IDS
+            )
+            if leaving_lockscreen:
+                block_start = self._current_app_since or now
+                block_end = now
+                prev = self._current_app
+
+                logger.debug(
+                    "DEBUG poll: IMMEDIATE idle->active transition "
+                    "%r -> %r (block %s -> %s)",
+                    prev,
+                    dominant_app,
+                    block_start.isoformat(),
+                    block_end.isoformat(),
+                )
+
+                self._current_app = dominant_app
+                self._current_app_since = block_end
+                self._candidate_app = None
+                self._candidate_duration = 0
+                self._candidate_first_seen = None
+
+                if self._on_transition is not None:
+                    self._on_transition(prev, dominant_app, block_start, block_end)
+            elif self._candidate_app == dominant_app:
                 self._candidate_duration += elapsed
-                if self._candidate_duration >= self._transition_threshold:
+                is_idle_candidate = dominant_app in _LOCKSCREEN_APP_IDS
+                effective_threshold = (
+                    self._idle_transition_threshold
+                    if is_idle_candidate
+                    else self._transition_threshold
+                )
+                logger.debug(
+                    "DEBUG poll: candidate %r held %ds / %ds threshold%s",
+                    dominant_app,
+                    self._candidate_duration,
+                    effective_threshold,
+                    " (idle)" if is_idle_candidate else "",
+                )
+                if self._candidate_duration >= effective_threshold:
                     block_start = self._current_app_since or now
                     block_end = self._candidate_first_seen or now
                     prev = self._current_app
+
+                    logger.debug(
+                        "DEBUG poll: TRANSITION FIRED %r -> %r (block %s -> %s)",
+                        prev,
+                        dominant_app,
+                        block_start.isoformat(),
+                        block_end.isoformat(),
+                    )
 
                     self._current_app = dominant_app
                     self._current_app_since = block_end
@@ -274,10 +335,22 @@ class ActivityMonitor:
                     if self._on_transition is not None:
                         self._on_transition(prev, dominant_app, block_start, block_end)
             else:
+                logger.debug(
+                    "DEBUG poll: new candidate %r (was %r, current %r)",
+                    dominant_app,
+                    self._candidate_app,
+                    self._current_app,
+                )
                 self._candidate_app = dominant_app
                 self._candidate_duration = elapsed
                 self._candidate_first_seen = now
         else:
+            if self._candidate_app is not None:
+                logger.debug(
+                    "DEBUG poll: candidate %r reset, back to current %r",
+                    self._candidate_app,
+                    self._current_app,
+                )
             self._candidate_app = None
             self._candidate_duration = 0
             self._candidate_first_seen = None
@@ -593,11 +666,19 @@ class TrayLabeler:
                     "Could not load model from %s", self.model_dir, exc_info=True
                 )
 
+        idle_transition_minutes = self._resolve(
+            saved,
+            "idle_transition_minutes",
+            DEFAULT_IDLE_TRANSITION_MINUTES,
+            DEFAULT_IDLE_TRANSITION_MINUTES,
+        )
+
         self._monitor = ActivityMonitor(
             aw_host=aw_host,
             title_salt=title_salt,
             poll_seconds=poll_seconds,
             transition_minutes=transition_minutes,
+            idle_transition_minutes=idle_transition_minutes,
             on_transition=self._handle_transition,
             on_poll=self._handle_poll,
             on_initial_app=self._handle_initial_app,
@@ -677,10 +758,14 @@ class TrayLabeler:
         """Return True when the completed block should be auto-labeled BreakIdle.
 
         A block qualifies when:
-        - ``prev_app`` is a known lockscreen/screensaver process, OR
+        - ``prev_app`` is a known lockscreen/screensaver app ID, OR
         - the model suggested ``BreakIdle`` for this block.
+
+        ``prev_app`` is a normalized reverse-domain app ID (e.g.
+        ``com.apple.loginwindow``) as returned by
+        :func:`~taskclf.adapters.activitywatch.mapping.normalize_app`.
         """
-        if prev_app.lower() in _LOCKSCREEN_APPS:
+        if prev_app in _LOCKSCREEN_APP_IDS:
             return True
         if self._suggested_label == "BreakIdle":
             return True
@@ -756,7 +841,18 @@ class TrayLabeler:
             self._suggested_label = None
             self._suggested_confidence = None
 
-        if self._is_breakidle_block(prev_app):
+        is_lockscreen = prev_app in _LOCKSCREEN_APP_IDS
+        is_breakidle = self._is_breakidle_block(prev_app)
+        logger.debug(
+            "DEBUG transition: prev_app=%r -> new_app=%r, "
+            "is_lockscreen=%s, suggested_label=%r, is_breakidle=%s",
+            prev_app,
+            new_app,
+            is_lockscreen,
+            self._suggested_label,
+            is_breakidle,
+        )
+        if is_breakidle:
             self._auto_save_breakidle(block_start, block_end)
             return
 

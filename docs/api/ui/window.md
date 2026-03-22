@@ -81,10 +81,12 @@ Internally, `WindowAPI` delegates to two `WindowChild` instances
 ### Dragging
 
 All three windows use CSS `pywebview-drag-region` elements for drag
-handles (the pill's entire surface and a small grab bar at the top of
-each child window).  The main pill sets `easy_drag=False` to avoid
-conflicts between the native easy-drag handler and the CSS drag region,
-which previously caused glitches on multi-monitor setups.
+handles. The compact pill uses a narrow dedicated drag handle so the
+badge and status dot still receive hover/click events, while each child
+window keeps a small grab bar at the top. The main pill sets
+`easy_drag=False` to avoid conflicts between the native easy-drag
+handler and the CSS drag region, which previously caused glitches on
+multi-monitor setups.
 
 ## window_run (ui.window_run)
 

@@ -133,75 +133,109 @@ const App: Component = () => {
           }}
         >
           <div
-            class="pywebview-drag-region"
             style={{
               display: "flex",
               "align-items": "center",
-              "justify-content": "center",
+              "justify-content": "space-between",
               padding: "0 8px 0 12px",
               height: "30px",
+              gap: "6px",
               "user-select": "none",
             }}
           >
-            <PredictionBadge
-              status={ws.connection_status}
-              latest_status={ws.latest_status}
-              latest_prediction={ws.latest_prediction}
-              latest_tray_state={ws.latest_tray_state}
-              active_suggestion={ws.active_suggestion}
-              label_pinned={label_pinned}
-              panel_pinned={panel_pinned}
-              on_toggle_panel={
-                in_browser
-                  ? () => {
-                      permission_ensure_once();
-                      set_panel_pinned((v) => !v);
-                    }
-                  : () => {
-                      permission_ensure_once();
-                      host.invoke({ cmd: "toggleStatePanel" });
-                    }
-              }
-              on_show_panel={
-                in_browser
-                  ? () => set_dot_hovered(true)
-                  : () => {
-                      host.invoke({ cmd: "showStatePanel" });
-                    }
-              }
-              on_hide_panel={
-                in_browser
-                  ? () => set_dot_hovered(false)
-                  : () => {
-                      host.invoke({ cmd: "hideStatePanel" });
-                    }
-              }
-              on_toggle_label={
-                in_browser
-                  ? () => {
-                      permission_ensure_once();
-                      set_label_pinned((v) => !v);
-                    }
-                  : () => {
-                      permission_ensure_once();
-                      host.invoke({ cmd: "toggleLabelGrid" });
-                    }
-              }
-              on_show_label={
-                in_browser
-                  ? () => set_badge_hovered(true)
-                  : () => {
-                      host.invoke({ cmd: "showLabelGrid" });
-                    }
-              }
-              on_hide_label={
-                in_browser
-                  ? () => set_badge_hovered(false)
-                  : () => {
-                      host.invoke({ cmd: "hideLabelGrid" });
-                    }
-              }
-            />
+            <Show when={!in_browser}>
+              <div
+                class="pywebview-drag-region"
+                style={{
+                  width: "18px",
+                  height: "100%",
+                  display: "flex",
+                  "align-items": "center",
+                  "justify-content": "center",
+                  "flex-shrink": "0",
+                  cursor: "grab",
+                }}
+                aria-hidden="true"
+              >
+                <div
+                  style={{
+                    width: "4px",
+                    height: "14px",
+                    "border-radius": "999px",
+                    background: "rgba(255,255,255,0.18)",
+                  }}
+                />
+              </div>
+            </Show>
+            <div
+              style={{
+                flex: "1",
+                display: "flex",
+                "align-items": "center",
+                "justify-content": "center",
+                "min-width": "0",
+              }}
+            >
+              <PredictionBadge
+                status={ws.connection_status}
+                latest_status={ws.latest_status}
+                latest_prediction={ws.latest_prediction}
+                latest_tray_state={ws.latest_tray_state}
+                active_suggestion={ws.active_suggestion}
+                label_pinned={label_pinned}
+                panel_pinned={panel_pinned}
+                on_toggle_panel={
+                  in_browser
+                    ? () => {
+                        permission_ensure_once();
+                        set_panel_pinned((v) => !v);
+                      }
+                    : () => {
+                        permission_ensure_once();
+                        host.invoke({ cmd: "toggleStatePanel" });
+                      }
+                }
+                on_show_panel={
+                  in_browser
+                    ? () => set_dot_hovered(true)
+                    : () => {
+                        host.invoke({ cmd: "showStatePanel" });
+                      }
+                }
+                on_hide_panel={
+                  in_browser
+                    ? () => set_dot_hovered(false)
+                    : () => {
+                        host.invoke({ cmd: "hideStatePanel" });
+                      }
+                }
+                on_toggle_label={
+                  in_browser
+                    ? () => {
+                        permission_ensure_once();
+                        set_label_pinned((v) => !v);
+                      }
+                    : () => {
+                        permission_ensure_once();
+                        host.invoke({ cmd: "toggleLabelGrid" });
+                      }
+                }
+                on_show_label={
+                  in_browser
+                    ? () => set_badge_hovered(true)
+                    : () => {
+                        host.invoke({ cmd: "showLabelGrid" });
+                      }
+                }
+                on_hide_label={
+                  in_browser
+                    ? () => set_badge_hovered(false)
+                    : () => {
+                        host.invoke({ cmd: "hideLabelGrid" });
+                      }
+                }
+              />
+            </div>
           </div>
         </div>
 
