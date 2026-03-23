@@ -1,7 +1,7 @@
 .PHONY: install \
        py-lint py-test py-typecheck \
        ui-lint ui-test ui-typecheck ui-build ui-dev \
-       lint test typecheck ci \
+       lint test typecheck ci check \
        docs-serve docs-build \
        version bump-patch bump-minor bump-major \
        retag
@@ -65,7 +65,9 @@ format: py-format ui-format
 
 build: py-build ui-build
 
-ci: lint test typecheck build
+check: lint test typecheck
+
+ci: check build
 
 # --- docs ---
 
@@ -103,16 +105,16 @@ print('$(CURRENT_VERSION) -> $(NEW_VERSION)')"
 	git tag -a v$(NEW_VERSION) -m "v$(NEW_VERSION)"
 endef
 
-bump-patch:
+bump-patch: check
 	$(call bump_version,patch)
 
-bump-minor:
+bump-minor: check
 	$(call bump_version,minor)
 
-bump-major:
+bump-major: check
 	$(call bump_version,major)
 
-retag:
+retag: check
 	@if [ -n "$$(git log origin/HEAD..HEAD --oneline)" ]; then \
 		echo "WARNING: Local commits not pushed to remote."; \
 		printf "Push now and continue? [y/N] "; \
