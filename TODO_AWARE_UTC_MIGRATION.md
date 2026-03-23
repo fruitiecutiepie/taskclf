@@ -84,8 +84,10 @@ Conflicting facts in the current code:
   - label request timestamps are parsed through `_to_naive_utc`
   - REST responses are emitted with explicit UTC suffixes via `_utc_iso()`
 - `docs/guide/time_spec.md`
-  - says timestamps must be UTC ISO-8601
-  - does not pin down one internal representation across all layers
+  - says serialized timestamps must be UTC ISO-8601 and shows explicit-UTC
+    examples like `...Z`
+  - does not pin down whether parsed Python datetimes should be naive UTC or
+    aware UTC across all layers
 
 Implication:
 
@@ -146,7 +148,7 @@ Canonical internal contract after migration:
 - all datetimes in Python domain models are aware UTC
 - all comparisons and filters are against aware UTC values
 - day boundaries are built as aware UTC datetimes
-- JSON responses keep explicit UTC offsets
+- serialized JSON/API timestamps keep explicit UTC offsets (`Z` or `+00:00`)
 - legacy naive inputs are normalized to aware UTC at the boundary
 
 Recommended boundary rule:
