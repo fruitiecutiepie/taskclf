@@ -14,6 +14,8 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from taskclf.core.types import LabelSpan
+from taskclf.labels.store import write_label_spans
 from taskclf.ui.events import EventBus
 from taskclf.ui.server import create_app
 
@@ -1742,6 +1744,38 @@ class TestAwareTimestampRoundTrip:
         )
         assert resp.status_code == 200
         assert client.get("/api/labels").json() == []
+
+    def test_range_filter_handles_aware_spans_from_storage(
+        self, client: TestClient, data_dir: Path
+    ) -> None:
+        """GET /api/labels range filters must tolerate aware legacy spans on disk."""
+        labels_path = data_dir / "labels_v1" / "labels.parquet"
+        ist = dt.timezone(dt.timedelta(hours=5, minutes=30))
+        write_label_spans(
+            [
+                LabelSpan(
+                    start_ts=dt.datetime(2026, 2, 27, 14, 30, tzinfo=ist),
+                    end_ts=dt.datetime(2026, 2, 27, 15, 30, tzinfo=ist),
+                    label="Build",
+                    provenance="manual",
+                )
+            ],
+            labels_path,
+        )
+
+        resp = client.get(
+            "/api/labels",
+            params={
+                "range_start": "2026-02-27T09:15:00Z",
+                "range_end": "2026-02-27T09:45:00Z",
+            },
+        )
+
+        assert resp.status_code == 200
+        labels = resp.json()
+        assert len(labels) == 1
+        assert labels[0]["start_ts"] == "2026-02-27T09:00:00+00:00"
+        assert labels[0]["end_ts"] == "2026-02-27T10:00:00+00:00"
 
 
 # ---------------------------------------------------------------------------

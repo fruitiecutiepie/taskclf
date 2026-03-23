@@ -88,7 +88,7 @@ The UI is a SolidJS single-page application served by a FastAPI backend:
 
   **Backpressure policy:** Each WebSocket subscriber has a 256-event queue. When the queue is full, the oldest event is evicted to make room for the new one. The subscriber is never silently dropped; it continues receiving events at the cost of missing stale ones.
 
-**Timestamp format:** All ISO-8601 timestamps emitted by the server (REST responses and WebSocket events) include an explicit UTC timezone suffix (`+00:00`). Incoming timestamps in request bodies are accepted with or without timezone info; aware timestamps are normalized to naive UTC before Parquet storage for backward compatibility.
+**Timestamp format:** All ISO-8601 timestamps emitted by the server (REST responses and WebSocket events) include an explicit UTC timezone suffix (`+00:00`). Incoming timestamps in request bodies are accepted with or without timezone info; aware timestamps are normalized to naive UTC before Parquet storage for backward compatibility. Label spans loaded from storage are normalized the same way, so legacy timezone-aware label files can still be filtered safely by date and visible range.
 
 ## Privacy
 
