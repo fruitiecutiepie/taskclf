@@ -1135,14 +1135,16 @@ class TestCrashHandler:
 
         assert exc_info.value.code == 0
 
-    def test_keyboard_interrupt_passes_through(self) -> None:
-        """KeyboardInterrupt is not caught by the crash handler."""
+    def test_keyboard_interrupt_exits_silently(self) -> None:
+        """KeyboardInterrupt exits with code 130 instead of a traceback."""
         from unittest.mock import patch as _patch
 
         from taskclf.cli.main import cli_main
 
         with (
             _patch("taskclf.cli.main.app", side_effect=KeyboardInterrupt),
-            pytest.raises(KeyboardInterrupt),
+            pytest.raises(SystemExit) as exc_info,
         ):
             cli_main()
+
+        assert exc_info.value.code == 130
