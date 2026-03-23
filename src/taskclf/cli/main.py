@@ -3200,7 +3200,9 @@ def cli_main() -> None:
     """Entry-point wrapper that catches unhandled crashes."""
     try:
         app()
-    except SystemExit, KeyboardInterrupt:
+    except KeyboardInterrupt:
+        raise SystemExit(130)
+    except SystemExit:
         raise
     except Exception as exc:
         import sys as _sys
