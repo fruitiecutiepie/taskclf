@@ -378,115 +378,116 @@ Why this is bad:
 
 ---
 
+## Recorded Decisions
+
+### 1) Personalization architecture
+
+Decision:
+
+- Long-term, personalization will move into calibrators and user-specific post-processing.
+- Long-term, `user_id` should be removed from the core model feature contract.
+- This requires a new schema/model generation rather than silently changing current models.
+
+Implications:
+
+- The base classifier should become more portable and less coupled to the training cohort.
+- Per-user behavior should be expressed through:
+  - per-user calibration
+  - per-user reject thresholds
+  - per-user priors or bias adjustments if needed
+  - per-user smoothing, taxonomy, or other post-processing where justified
+- Existing schema-v1 models still expect `user_id` in the feature vector, so live inference must continue passing the stable `user_id` correctly until those models are retired.
+
+Migration rule:
+
+- Do not remove `user_id` from live inference for current bundles until a new schema version is defined, models are retrained, and evaluation confirms that the new architecture is acceptable.
+
+Docs note:
+
+- `docs/guide/personalization.md` currently documents the existing hybrid design.
+- That guide should be updated only when the schema/model migration is implemented, not before.
+
+---
+
 ## Ordered Implementation Plan
 
 ### Phase 0) Lock the intended inference contract
 
-1. Write down the canonical inference order and keep every path consistent:
-   - build features
-   - encode categoricals
-   - impute missing values
-   - predict probabilities
-   - calibrate
-   - reject
-   - smooth or aggregate
-   - map to UI-facing label
-2. Decide which runtime behaviors are authoritative:
-   - batch inference
-   - online live loop
-   - tray suggestion flow
-3. Define what a tray suggestion should mean:
-   - last-minute prediction
-   - interval-level suggestion
-   - interval summary from bucket predictions
-4. Define whether `user_id` should remain a model feature long-term or be handled only via calibrators/personalization.
+1. Write down the canonical inference order and keep every path consistent: build features, encode categoricals, impute missing values, predict probabilities, calibrate, reject, smooth or aggregate, and map to the UI-facing label.
+
+2. Decide which runtime behaviors are authoritative: batch inference, online live loop, and tray suggestion flow.
+
+3. Define what a tray suggestion should mean: last-minute prediction, interval-level suggestion, or interval summary from bucket predictions.
+
+4. Record the long-term direction explicitly: current schema/models still require `user_id` for compatibility, the next schema/model generation should remove `user_id` from the core model, and personalization should live in calibrators and user-specific post-processing.
+
+5. Define the migration boundary clearly: old bundles keep current behavior, new bundles adopt the new personalization architecture, and schema/version gates must prevent mixing the two contracts accidentally.
 
 ### Phase 1) Remove correctness mismatches first
 
-5. Make online numeric missing-value handling match training and batch inference exactly.
-6. Pass stable `user_id` through all live feature-construction paths.
-7. Ensure suggestion-time inference can use the same input-event sources as live online inference.
-8. Decide whether unknown categoricals should continue mapping to `-1` or to an explicit trained fallback category.
+1. Make online numeric missing-value handling match training and batch inference exactly.
 
-### Phase 2) Strengthen live context for a tabular model
+2. Until the schema migration lands, pass stable `user_id` through all live feature-construction paths so current bundles keep working correctly.
 
-9. Add a persistent online feature-state layer so recent context is available at inference time instead of being reconstructed from a narrow slice.
-10. Preserve enough history for all current derived features:
+3. Ensure suggestion-time inference can use the same input-event sources as live online inference.
 
-- 5m switch counts
-- 15m switch counts
-- rolling input statistics
-- delta features
-- session features
+4. Decide whether unknown categoricals should continue mapping to `-1` or to an explicit trained fallback category.
 
-11. Ensure live session tracking and feature-state transitions are consistent with the assumptions in `build_features_from_aw_events()`.
+### Phase 2) Migrate personalization out of the core model
 
-### Phase 3) Fix tray suggestion quality
+1. Create the next schema/model contract that removes `user_id` from `FEATURE_COLUMNS` and categorical encoders.
 
-12. Replace "predict only `rows[-1]`" with an interval-aware suggestion strategy.
-13. Compare at least these aggregation strategies:
+2. Retrain and evaluate side-by-side: the current hybrid model with `user_id` in the base model, a new base model without `user_id`, and a new base model plus calibrator/post-processing personalization.
 
-- majority vote over bucket predictions
-- confidence-weighted vote over bucket predictions
-- highest-total-probability label over the interval
-- most recent confident contiguous segment within the interval
+3. Extend personalization beyond calibration where needed: per-user reject thresholds, per-user priors or bias adjustments, and per-user smoothing or taxonomy/post-processing.
 
-14. Decide whether the tray should display:
+4. Keep backward compatibility during rollout: schema-v1 bundles still receive stable `user_id`, new bundles stop depending on it, and model loading plus docs make the split explicit.
 
-- raw last-bucket label
-- smoothed label
-- interval-aggregated label
+### Phase 3) Strengthen live context for a tabular model
 
-15. Include input events and stable `user_id` in tray suggestion features.
+1. Add a persistent online feature-state layer so recent context is available at inference time instead of being reconstructed from a narrow slice.
 
-### Phase 4) Align evaluation with deployed behavior
+2. Preserve enough history for all current derived features: 5m switch counts, 15m switch counts, rolling input statistics, delta features, and session features.
 
-16. Add evaluation modes for:
+3. Ensure live session tracking and feature-state transitions are consistent with the assumptions in `build_features_from_aw_events()`.
 
-- raw probabilities
-- calibrated probabilities
-- reject-on-calibrated predictions
-- smoothed bucket labels
-- interval-level suggestion evaluation
+### Phase 4) Fix tray suggestion quality
 
-17. Tune reject thresholds on the same probability outputs used in production.
-18. Persist the chosen threshold in bundle metadata and make inference default to it unless explicitly overridden.
-19. Report both:
+1. Replace "predict only `rows[-1]`" with an interval-aware suggestion strategy.
 
-- bucket-level classification quality
-- operational-quality metrics that users actually feel
+2. Compare at least these aggregation strategies: majority vote over bucket predictions, confidence-weighted vote over bucket predictions, highest-total-probability label over the interval, and the most recent confident contiguous segment within the interval.
 
-### Phase 5) Improve features for LightGBM
+3. Decide whether the tray should display the raw last-bucket label, a smoothed label, or an interval-aggregated label.
 
-20. Prioritize features that summarize recent behavior rather than features that require a different model family.
-21. Candidate additions to evaluate:
+4. Include input events and any required user-scoped post-processing inputs in tray suggestion features.
 
-- previous accepted label
-- minutes since last accepted label
-- app dwell time
-- app entropy over the last 5m and 15m
-- share of time in browser/editor/terminal/meeting categories
-- idle-return indicator
-- top-2 app concentration over the interval
-- stability score for the current block
+### Phase 5) Align evaluation with deployed behavior
 
-22. Keep new features privacy-safe and schema-versioned.
-23. Add tests for every new feature and for schema-hash changes.
+1. Add evaluation modes for raw probabilities, calibrated probabilities, reject-on-calibrated predictions, smoothed bucket labels, and interval-level suggestion evaluation.
 
-### Phase 6) Tune only after the pipeline is correct
+2. Tune reject thresholds on the same probability outputs used in production.
 
-24. After parity and context fixes, tune LightGBM parameters on time-based validation.
-25. Tune at least:
+3. Persist the chosen threshold in bundle metadata and make inference default to it unless explicitly overridden.
 
-- `num_leaves`
-- `min_data_in_leaf`
-- `feature_fraction`
-- `bagging_fraction`
-- `lambda_l1`
-- `lambda_l2`
-- learning rate vs boost rounds
+4. Report both bucket-level classification quality and operational-quality metrics that users actually feel.
 
-26. Compare tuning results against the champion model and existing regression gates.
+### Phase 6) Improve features for LightGBM
+
+1. Prioritize features that summarize recent behavior rather than features that require a different model family.
+
+2. Candidate additions to evaluate include previous accepted label, minutes since last accepted label, app dwell time, app entropy over the last 5m and 15m, share of time in browser/editor/terminal/meeting categories, idle-return indicator, top-2 app concentration over the interval, and a stability score for the current block.
+
+3. Keep new features privacy-safe and schema-versioned.
+
+4. Add tests for every new feature and for schema-hash changes.
+
+### Phase 7) Tune only after the pipeline is correct
+
+1. After parity and context fixes, tune LightGBM parameters on time-based validation.
+
+2. Tune at least `num_leaves`, `min_data_in_leaf`, `feature_fraction`, `bagging_fraction`, `lambda_l1`, `lambda_l2`, and learning rate versus boost rounds.
+
+3. Compare tuning results against the champion model and existing regression gates.
 
 ---
 
@@ -576,20 +577,19 @@ Goal:
 
 ## Open Questions
 
-1. Should `user_id` remain in `FEATURE_COLUMNS`, or should personalization move entirely into calibrators and user-specific post-processing?
-2. What should the tray suggestion represent semantically:
+1. What should the tray suggestion represent semantically:
    - the last minute
    - the previous block
    - the whole unlabeled interval since last label
-3. Should the canonical runtime threshold live in:
+2. Should the canonical runtime threshold live in:
    - bundle metadata
    - calibrator store metadata
    - CLI config
    - all three with precedence rules
-4. Do we want the tray/UI to prefer:
+3. Do we want the tray/UI to prefer:
    - fewer but higher-confidence suggestions
    - more frequent but noisier suggestions
-5. Do we need explicit unknown-category buckets in training instead of relying on inference-time `-1`?
+4. Do we need explicit unknown-category buckets in training instead of relying on inference-time `-1`?
 
 ---
 
@@ -598,19 +598,21 @@ Goal:
 If we want the highest expected quality gain with the lowest risk, do this first:
 
 1. Fix online `NaN` vs `fillna(0)` parity.
-2. Pass stable `user_id` through live feature construction.
+2. For current schema-v1 bundles, pass stable `user_id` through live feature construction so existing models remain correct.
 3. Add input-event support to `_LabelSuggester`.
 4. Replace tray last-bucket suggestion with interval aggregation over bucket predictions.
 5. Re-run evaluation with calibrated reject tuning and compare before/after.
 
 This slice improves correctness and product behavior without changing the model family.
+It is also compatible with the chosen long-term direction: keep current bundles working now, then remove `user_id` from the core model in the next schema/model generation.
 
 ---
 
 ## Definition Of Done For "Inference Quality v1"
 
 - All inference paths share the same preprocessing contract.
-- Online and tray suggestion paths use stable `user_id` consistently.
+- Current schema-v1 inference paths preserve stable `user_id` where required for compatibility, and the next schema/model generation removes `user_id` from the core model contract.
+- Personalization is applied through calibrators and user-specific post-processing rather than identity splits in the long-term base model.
 - Suggestion-time inference uses the same feature families as training whenever the data source exists.
 - Reject threshold is tuned and evaluated on the same probability outputs used in production.
 - Tray suggestions are interval-aware, not last-bucket-only.
