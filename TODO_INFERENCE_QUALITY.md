@@ -447,6 +447,42 @@ Implications:
 - The default automatic tray suggestion should remain bounded and recoverable; over-segmentation is acceptable because adjacent same-label blocks can be merged later.
 - Longer unlabeled intervals are still valuable, but they should be handled as an explicit workflow rather than silently overloading the automatic tray suggestion.
 
+### 4) Suggestion confidence strategy
+
+Decision:
+
+- Automatic tray suggestions should default to **fewer but higher-confidence** suggestions.
+- The reject threshold should be set high enough that surfaced suggestions are correct the large majority of the time.
+- Coverage gaps left by conservative automatic suggestions are handled by the explicit gap-fill workflow (decision #3), not by lowering the automatic threshold.
+- Per-user reject thresholds (from decision #1) are the mechanism for progressively loosening the threshold as calibration quality improves for each user, rather than starting noisy and tightening later.
+
+Rationale:
+
+- Trust is asymmetric: many correct suggestions build trust slowly, but a few wrong ones break it quickly. In a notification-driven tray tool, this asymmetry is amplified because suggestions interrupt the user at context-switch moments when cognitive load is already high.
+- The cost of a wrong suggestion exceeds the cost of no suggestion. No suggestion costs X effort (manual label). A correct suggestion costs less than X (glance + accept). A wrong suggestion costs more than X (read, evaluate, reject, relabel, plus frustration). So every wrong suggestion is strictly worse than silence.
+- Label quality compounds. If noisy suggestions cause users to rubber-stamp incorrect labels, those bad labels enter training data, degrade the next model, and produce worse suggestions. A high threshold limits exposure to this feedback loop.
+- The failure mode of too-conservative (system feels quiet) is recoverable. The failure mode of too-noisy (system feels unreliable, user disables notifications) is much harder to reverse.
+- Interval aggregation (Phase 4) naturally improves confidence for homogeneous intervals and lowers it for ambiguous ones. A high reject threshold and interval aggregation are complementary.
+
+Implications:
+
+- The default reject threshold should be tuned to optimize suggestion precision rather than recall. When in doubt, suppress.
+- The inference policy should define a minimum engagement floor: if a loaded model produces zero suggestions over a full active day, the system should log a warning and the calibration pipeline should flag that the threshold may be too high.
+- Cold-start periods (new users, new apps) will produce fewer automatic suggestions. This is acceptable because the gap-fill workflow provides an explicit fallback, and the cold-start window is bounded by the time needed for personalization-eligible calibration.
+- Per-user thresholds should start conservative and lower progressively as per-user calibration quality improves, not the reverse.
+- The UI should not need to communicate uncertainty levels to the user. Suggestions should carry enough confidence that "we think you were doing X" is a clean, unhedged message.
+
+User configurability:
+
+- The reject threshold is not exposed as a user-facing preference. Users who pick "more suggestions" cannot connect that choice to the downstream effect on label quality and model degradation. The preference they actually have — notification frequency and timing — should be expressed through quiet hours, DND, batching, and snooze, which control interruption without changing the quality bar.
+- Coverage control is already expressed through the three surfaces in decision #3: users who want more coverage use the gap-fill workflow actively; users who want fewer interruptions get conservative automatic suggestions only.
+- Per-user calibration (decisions #1 and #4) achieves the same outcome as a "more suggestions" slider, but only when the model can actually back it up.
+- The existing CLI override (`--reject-threshold`) and `inference_policy.json` remain available for power users who understand the tradeoff.
+
+Guardrail:
+
+- A threshold so high that users never see suggestions is functionally broken regardless of precision. The system must track suggestions-per-active-day and flag when it drops to zero for a user with a loaded model.
+
 ---
 
 ## Ordered Implementation Plan
@@ -479,7 +515,7 @@ Implications:
 
 2. Retrain and evaluate side-by-side: the current hybrid model with `user_id` in the base model, a new base model without `user_id`, and a new base model plus calibrator/post-processing personalization.
 
-3. Extend personalization beyond calibration where needed: per-user reject thresholds, per-user priors or bias adjustments, and per-user smoothing or taxonomy/post-processing.
+3. Extend personalization beyond calibration where needed: per-user reject thresholds (starting conservative and lowering as calibration quality improves per decision #4), per-user priors or bias adjustments, and per-user smoothing or taxonomy/post-processing.
 
 4. Keep backward compatibility during rollout: schema-v1 bundles still receive stable `user_id`, new bundles stop depending on it, and model loading plus docs make the split explicit.
 
@@ -505,11 +541,13 @@ Implications:
 
 1. Add evaluation modes for raw probabilities, calibrated probabilities, reject-on-calibrated predictions, smoothed bucket labels, and interval-level suggestion evaluation.
 
-2. Tune reject thresholds on the same probability outputs used in production.
+2. Tune reject thresholds on the same probability outputs used in production. Optimize for suggestion precision over recall (decision #4): when in doubt, suppress.
 
 3. Persist the tuned threshold in the inference policy artifact (`taskclf train tune-reject --write-policy`) so inference defaults to it unless explicitly overridden via CLI.
 
 4. Report both bucket-level classification quality and operational-quality metrics that users actually feel.
+
+5. Track suggestions per active day and flag when a loaded model produces zero suggestions for a user, indicating the threshold may be too high (decision #4 guardrail).
 
 ### Phase 6) Improve features for LightGBM
 
@@ -548,6 +586,7 @@ Track at least:
 - segment duration distribution
 - suggestion acceptance rate in the tray/UI
 - suggestion precision when users accept or overwrite
+- suggestions per active day (must not drop to zero for users with a loaded model)
 
 Add explicit comparison tables for:
 
@@ -622,10 +661,7 @@ Goal:
    - what copy or labels should distinguish "right now", "previous block", and "fill unlabeled gap" actions?
    - when should the explicit gap-fill action be offered automatically versus only manually?
    - confidence and explanation should remain scoped to the interval each surface actually represents
-2. Do we want the tray/UI to prefer:
-   - fewer but higher-confidence suggestions
-   - more frequent but noisier suggestions
-3. Do we need explicit unknown-category buckets in training instead of relying on inference-time `-1`?
+2. Do we need explicit unknown-category buckets in training instead of relying on inference-time `-1`?
 
 ---
 
@@ -651,7 +687,9 @@ It leaves room for a separate last-minute live-status surface and a separate unl
 - Current schema-v1 inference paths preserve stable `user_id` where required for compatibility, and the next schema/model generation removes `user_id` from the core model contract.
 - Personalization is applied through calibrators and user-specific post-processing rather than identity splits in the long-term base model.
 - Suggestion-time inference uses the same feature families as training whenever the data source exists.
-- Reject threshold is tuned on calibrated scores and persisted in the inference policy artifact so it travels with the model+calibration pair.
+- Reject threshold is tuned on calibrated scores to optimize suggestion precision and persisted in the inference policy artifact so it travels with the model+calibration pair.
 - Automatic tray suggestions default to the previous completed block rather than the last bucket, while last-minute live status and unlabeled-gap labeling remain explicit separate semantics.
+- Automatic suggestions prefer precision over recall; coverage gaps are handled by the explicit gap-fill workflow, not by lowering the automatic threshold.
+- Suggestions per active day is tracked; a loaded model that produces zero suggestions for a user triggers a warning.
 - Evaluation includes operational metrics, not only bucket-level macro-F1.
 - Docs and tests cover the new behavior.
