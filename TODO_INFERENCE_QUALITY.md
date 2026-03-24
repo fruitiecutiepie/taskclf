@@ -452,6 +452,7 @@ Implications:
 Decision:
 
 - Automatic tray suggestions should default to **fewer but higher-confidence** suggestions.
+- The rejected alternative — more frequent but noisier suggestions (lower reject threshold, higher coverage, lower precision) — was considered and rejected because the trust, label-quality, and notification-fatigue costs outweigh the coverage and feedback-loop benefits in a notification-driven tray tool. See Rationale below.
 - The reject threshold should be set high enough that surfaced suggestions are correct the large majority of the time.
 - Coverage gaps left by conservative automatic suggestions are handled by the explicit gap-fill workflow (decision #3), not by lowering the automatic threshold.
 - Per-user reject thresholds (from decision #1) are the mechanism for progressively loosening the threshold as calibration quality improves for each user, rather than starting noisy and tightening later.
@@ -479,9 +480,26 @@ User configurability:
 - Per-user calibration (decisions #1 and #4) achieves the same outcome as a "more suggestions" slider, but only when the model can actually back it up.
 - The existing CLI override (`--reject-threshold`) and `inference_policy.json` remain available for power users who understand the tradeoff.
 
+Per-surface thresholds:
+
+- Decision #4 implies tray suggestions need a stricter operating point than batch or online inference. Currently all three surfaces share the single `InferencePolicy.reject_threshold`.
+- This works for now because the surfaces already have different effective operating points after the threshold: batch and online apply rolling-majority smoothing and segment merging downstream, which absorbs single-bucket rejects. Tray suggestions show one prediction directly to the user with no downstream recovery. So a single threshold tuned for tray precision is the most conservative and batch/online tolerate it via their post-threshold processing.
+- If Phase 5 evaluation reveals that a tray-tuned threshold leaves batch reports unacceptably gappy, the threshold should be promoted to per-surface values in the inference policy schema (`policy_version: "v2"`), not hidden as ad-hoc overrides in the tray or batch code. The architectural rule: any surface-specific operating point must live in the deployment descriptor.
+- Trigger for the split: if the `Mixed/Unknown` rate in batch inference exceeds 25% of active buckets when using the tray-tuned threshold, and lowering the threshold for batch would recover at least half of those buckets at acceptable precision, the split is justified. Measure this as part of Phase 5 evaluation.
+- Do not split before Phase 5 lands. Tuning multiple thresholds against miscalibrated scores means guessing at more numbers with no better information.
+
 Guardrail:
 
 - A threshold so high that users never see suggestions is functionally broken regardless of precision. The system must track suggestions-per-active-day and flag when it drops to zero for a user with a loaded model.
+
+Artifacts and code paths:
+
+- `InferencePolicy.reject_threshold` in `src/taskclf/core/inference_policy.py` — single threshold consumed by all surfaces today. If per-surface thresholds are added, they belong here as new fields.
+- `OnlinePredictor.predict_bucket()` in `src/taskclf/infer/online.py` — applies the reject decision. Used by both the online loop and the tray suggester.
+- `_LabelSuggester` in `src/taskclf/ui/tray.py` — wraps `OnlinePredictor` for tray suggestions. Must not introduce its own threshold override; it inherits from the policy.
+- `run_batch_inference()` in `src/taskclf/infer/batch.py` — batch reject path. Shares the same threshold today.
+- `resolve_inference_config()` in `src/taskclf/infer/resolve.py` — resolves the threshold from policy, CLI override, or fallback. If per-surface thresholds are added, resolution must be extended to accept a surface identifier.
+- Suggestions-per-active-day tracking: should be recorded in the telemetry store (`src/taskclf/core/telemetry.py`) alongside existing session telemetry, not in the tray or predictor. The tray publishes suggestion events via `EventBus`; telemetry aggregates them.
 
 ---
 
