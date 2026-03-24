@@ -5,12 +5,13 @@ Covers:
 - TC-BATCH-001 through TC-BATCH-003 (predict_proba)
 - TC-BATCH-004 through TC-BATCH-006 (run_batch_inference with taxonomy)
 - TC-BATCH-007 through TC-BATCH-008 (run_batch_inference with calibrator_store)
+- TC-BATCH-UTC-001 through TC-BATCH-UTC-004 (aware-UTC normalization)
 """
 
 from __future__ import annotations
 
 import datetime as dt
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -96,16 +97,17 @@ def _features_df() -> pd.DataFrame:
 class TestSegmentJsonRoundTrip:
     def test_round_trip_preserves_data(self, tmp_path: Path) -> None:
         """TC-BATCH-SEG-001: write then read preserves all fields."""
+        _utc = timezone.utc
         segments = [
             Segment(
-                start_ts=datetime(2025, 6, 15, 10, 0),
-                end_ts=datetime(2025, 6, 15, 10, 5),
+                start_ts=datetime(2025, 6, 15, 10, 0, tzinfo=_utc),
+                end_ts=datetime(2025, 6, 15, 10, 5, tzinfo=_utc),
                 label="Build",
                 bucket_count=5,
             ),
             Segment(
-                start_ts=datetime(2025, 6, 15, 10, 5),
-                end_ts=datetime(2025, 6, 15, 10, 12),
+                start_ts=datetime(2025, 6, 15, 10, 5, tzinfo=_utc),
+                end_ts=datetime(2025, 6, 15, 10, 12, tzinfo=_utc),
                 label="Write",
                 bucket_count=7,
             ),
@@ -131,11 +133,12 @@ class TestSegmentJsonRoundTrip:
 
     def test_parent_dirs_created(self, tmp_path: Path) -> None:
         """TC-BATCH-SEG-003: non-existent parent dirs created automatically."""
+        _utc = timezone.utc
         path = tmp_path / "deep" / "nested" / "segments.json"
         segments = [
             Segment(
-                start_ts=datetime(2025, 6, 15, 10, 0),
-                end_ts=datetime(2025, 6, 15, 10, 5),
+                start_ts=datetime(2025, 6, 15, 10, 0, tzinfo=_utc),
+                end_ts=datetime(2025, 6, 15, 10, 5, tzinfo=_utc),
                 label="Build",
                 bucket_count=5,
             ),
@@ -306,3 +309,95 @@ class TestRunBatchInferenceCalibratorStore:
 
         assert result.core_probs.shape == (len(df), _N_CLASSES)
         assert np.allclose(result.core_probs.sum(axis=1), 1.0, atol=1e-4)
+
+
+# ---------------------------------------------------------------------------
+# TC-BATCH-UTC-*: aware-UTC normalization tests (Phase 4 migration)
+# ---------------------------------------------------------------------------
+
+_UTC = timezone.utc
+
+
+class TestSegmentJsonAwareUtc:
+    """Verify read_segments_json normalizes timestamps to aware UTC."""
+
+    def test_legacy_naive_json_normalized_to_aware(self, tmp_path: Path) -> None:
+        """TC-BATCH-UTC-001: legacy naive ISO strings are read as aware UTC."""
+        import json as _json
+
+        records = [
+            {
+                "start_ts": "2025-06-15T10:00:00",
+                "end_ts": "2025-06-15T10:05:00",
+                "label": "Build",
+                "bucket_count": 5,
+            },
+        ]
+        path = tmp_path / "legacy.json"
+        path.write_text(_json.dumps(records))
+
+        loaded = read_segments_json(path)
+        assert len(loaded) == 1
+        seg = loaded[0]
+        assert seg.start_ts.tzinfo is not None
+        assert seg.start_ts == datetime(2025, 6, 15, 10, 0, tzinfo=_UTC)
+        assert seg.end_ts.tzinfo is not None
+        assert seg.end_ts == datetime(2025, 6, 15, 10, 5, tzinfo=_UTC)
+
+    def test_aware_utc_json_preserved(self, tmp_path: Path) -> None:
+        """TC-BATCH-UTC-002: aware UTC ISO strings round-trip exactly."""
+        _utc = timezone.utc
+        segments = [
+            Segment(
+                start_ts=datetime(2025, 6, 15, 10, 0, tzinfo=_utc),
+                end_ts=datetime(2025, 6, 15, 10, 5, tzinfo=_utc),
+                label="Build",
+                bucket_count=5,
+            ),
+        ]
+        path = tmp_path / "aware.json"
+        write_segments_json(segments, path)
+        loaded = read_segments_json(path)
+
+        assert loaded[0].start_ts == segments[0].start_ts
+        assert loaded[0].start_ts.tzinfo is not None
+
+    def test_non_utc_offset_json_converted_to_utc(self, tmp_path: Path) -> None:
+        """TC-BATCH-UTC-003: non-UTC offset ISO strings are converted to UTC."""
+        import json as _json
+
+        records = [
+            {
+                "start_ts": "2025-06-15T15:00:00+05:00",
+                "end_ts": "2025-06-15T15:05:00+05:00",
+                "label": "Build",
+                "bucket_count": 5,
+            },
+        ]
+        path = tmp_path / "offset.json"
+        path.write_text(_json.dumps(records))
+
+        loaded = read_segments_json(path)
+        seg = loaded[0]
+        assert seg.start_ts == datetime(2025, 6, 15, 10, 0, tzinfo=_UTC)
+        assert seg.end_ts == datetime(2025, 6, 15, 10, 5, tzinfo=_UTC)
+
+
+class TestBatchInferenceAwareUtc:
+    """Verify run_batch_inference produces aware-UTC segment timestamps."""
+
+    def test_segments_have_aware_utc_timestamps(
+        self,
+        _trained_artifacts,
+        _features_df: pd.DataFrame,
+    ) -> None:
+        """TC-BATCH-UTC-004: segments from batch inference have aware-UTC timestamps."""
+        model, _, cat_encoders = _trained_artifacts
+        result = run_batch_inference(
+            model,
+            _features_df,
+            cat_encoders=cat_encoders,
+        )
+        for seg in result.segments:
+            assert seg.start_ts.tzinfo is not None, "start_ts must be aware"
+            assert seg.end_ts.tzinfo is not None, "end_ts must be aware"

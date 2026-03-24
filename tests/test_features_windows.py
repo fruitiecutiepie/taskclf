@@ -7,6 +7,7 @@ Covers:
 - Custom window_minutes and bucket_seconds parameters
 - Events entirely before / after the window
 - compute_rolling_app_switches across multiple buckets
+- TC-FEAT-WIN-UTC-*: aware-UTC timestamp handling
 """
 
 from __future__ import annotations
@@ -162,3 +163,85 @@ class TestComputeRollingAppSwitches:
         long = compute_rolling_app_switches(events, [base], bucket_seconds=300)
         assert short[0] == 0
         assert long[0] == 1
+
+
+# ---------------------------------------------------------------------------
+# Aware-UTC timestamp tests (Phase 4 migration)
+# ---------------------------------------------------------------------------
+
+_UTC = dt.timezone.utc
+
+
+class TestAppSwitchCountAwareUtc:
+    """TC-FEAT-WIN-UTC-*: verify window logic works with aware-UTC timestamps."""
+
+    def test_aware_utc_events_and_bucket(self) -> None:
+        """TC-FEAT-WIN-UTC-001: all aware-UTC timestamps work identically to naive."""
+        base = dt.datetime(2026, 2, 23, 10, 0, 0, tzinfo=_UTC)
+        events = [
+            _ev(base, "app.one"),
+            _ev(base + dt.timedelta(minutes=1), "app.two"),
+            _ev(base + dt.timedelta(minutes=2), "app.three"),
+        ]
+        count = app_switch_count_in_window(events, base + dt.timedelta(minutes=2))
+        assert count == 2
+
+    def test_aware_matches_naive_result(self) -> None:
+        """TC-FEAT-WIN-UTC-002: aware and naive inputs produce identical counts."""
+        naive_base = dt.datetime(2026, 2, 23, 10, 0, 0)
+        aware_base = dt.datetime(2026, 2, 23, 10, 0, 0, tzinfo=_UTC)
+
+        naive_events = [
+            _ev(naive_base, "app.one"),
+            _ev(naive_base + dt.timedelta(minutes=1), "app.two"),
+            _ev(naive_base + dt.timedelta(minutes=3), "app.three"),
+        ]
+        aware_events = [
+            _ev(aware_base, "app.one"),
+            _ev(aware_base + dt.timedelta(minutes=1), "app.two"),
+            _ev(aware_base + dt.timedelta(minutes=3), "app.three"),
+        ]
+
+        naive_count = app_switch_count_in_window(
+            naive_events, naive_base + dt.timedelta(minutes=3)
+        )
+        aware_count = app_switch_count_in_window(
+            aware_events, aware_base + dt.timedelta(minutes=3)
+        )
+        assert naive_count == aware_count
+
+    def test_mixed_naive_events_aware_bucket(self) -> None:
+        """TC-FEAT-WIN-UTC-003: naive events with aware bucket still count correctly."""
+        naive_base = dt.datetime(2026, 2, 23, 10, 0, 0)
+        aware_bucket = dt.datetime(2026, 2, 23, 10, 2, 0, tzinfo=_UTC)
+
+        events = [
+            _ev(naive_base, "app.one"),
+            _ev(naive_base + dt.timedelta(minutes=1), "app.two"),
+            _ev(naive_base + dt.timedelta(minutes=2), "app.three"),
+        ]
+        count = app_switch_count_in_window(events, aware_bucket)
+        assert count == 2
+
+    def test_non_utc_offset_events_normalized(self) -> None:
+        """TC-FEAT-WIN-UTC-004: events with non-UTC offset are normalized correctly."""
+        utc_plus_5 = dt.timezone(dt.timedelta(hours=5))
+        base_local = dt.datetime(2026, 2, 23, 15, 0, 0, tzinfo=utc_plus_5)
+        base_utc = dt.datetime(2026, 2, 23, 10, 0, 0, tzinfo=_UTC)
+
+        events = [
+            _ev(base_local, "app.one"),
+            _ev(base_local + dt.timedelta(seconds=30), "app.two"),
+        ]
+        count = app_switch_count_in_window(events, base_utc)
+        assert count == 1
+
+    def test_rolling_with_aware_utc(self) -> None:
+        """TC-FEAT-WIN-UTC-005: compute_rolling_app_switches works with aware timestamps."""
+        base = dt.datetime(2026, 2, 23, 10, 0, 0, tzinfo=_UTC)
+        events = [
+            _ev(base, "app.one"),
+            _ev(base + dt.timedelta(seconds=30), "app.two"),
+        ]
+        result = compute_rolling_app_switches(events, [base])
+        assert result == [1]

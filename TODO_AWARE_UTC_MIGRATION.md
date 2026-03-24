@@ -110,9 +110,33 @@ After Phase 0-1:
     `to_naive_utc()`; aware-UTC timestamps are passed through to
     `LabelSpan`, `generate_label_summary`, and `append_label_span`
 
-### 4) Persisted artifacts are likely mixed or at least ambiguous
+### 4) Feature / train / infer / report layers audited (Phase 4 partially done)
 
-Artifacts to audit:
+After Phase 4 audit:
+
+- `src/taskclf/features/windows.py`
+  - `_epoch()` now uses `ts_utc_aware_get()` instead of inline
+    `replace(tzinfo=...)` workaround
+- `src/taskclf/features/build.py`
+  - already routes all timestamps through `align_to_bucket()` which
+    returns aware UTC; no changes needed
+- `src/taskclf/features/sessions.py`
+  - relies on callers to pass consistent timestamp types; `build.py`
+    always passes aligned (aware UTC) values; no changes needed
+- `src/taskclf/infer/batch.py`
+  - `read_segments_json()` normalizes parsed timestamps via
+    `ts_utc_aware_get()` so legacy naive JSON is read as aware UTC
+  - `run_batch_inference()` normalizes `bucket_starts` extracted from
+    DataFrame via `ts_utc_aware_get()`
+- `src/taskclf/train/retrain.py`
+  - `check_retrain_due()` and `check_calibrator_update_due()` use
+    `ts_utc_aware_get()` instead of inline `replace(tzinfo=UTC)`
+  - `except` clauses fixed to use parenthesized tuples for PEP 8 style
+- `src/taskclf/report/daily.py`
+  - only uses `.date()` on segment timestamps — safe for aware UTC;
+    no changes needed
+
+Remaining artifacts to audit:
 
 - `data/processed/labels_v1/labels.parquet`
 - `data/processed/labels_v1/queue.json`
@@ -160,11 +184,13 @@ Recommended boundary rule:
 - accepted during transition
 - interpreted as UTC and normalized immediately via `ts_utc_aware_get()`
 
-### 4) Feature schema version/hash change -- OPEN
+### 4) Feature schema version/hash change -- DECIDED
 
 - timestamp semantics on disk did not change for feature artifacts (FeatureRow
   was already aware UTC)
-- no schema version/hash bump needed so far
+- no schema version/hash bump needed
+- Phase 4 audit confirmed: `align_to_bucket()` returns aware UTC, `build.py`
+  constructs UTC day boundaries explicitly, date partitioning is unchanged
 
 ### 5) Migration tooling -- OPEN
 
@@ -227,22 +253,68 @@ Recommended boundary rule:
   - [x] aware-UTC timestamps passed through to `LabelSpan`,
     `generate_label_summary`, and `append_label_span`
 
-### Features / train / infer / report
+### Features -- DONE
 
-Must audit even if not all need changes:
+- `src/taskclf/features/windows.py`
+  - [x] Replaced inline `_epoch()` workaround with `ts_utc_aware_get()`
+  - [x] Tests: TC-FEAT-WIN-UTC-001..005
 
-- `src/taskclf/features/`
-- `src/taskclf/train/`
-- `src/taskclf/infer/`
-- `src/taskclf/report/`
+- `src/taskclf/features/build.py` — no change needed (uses `align_to_bucket`)
+- `src/taskclf/features/sessions.py` — no change needed (callers pass aware UTC)
+- `src/taskclf/features/dynamics.py` — no datetime usage
+- `src/taskclf/features/domain.py` — no datetime usage
+- `src/taskclf/features/text.py` — no datetime usage
 
-Specific risk areas:
+### Train -- DONE
 
-- label projection comparisons
-- date partitioning via `.date()`
-- joins between features and labels
-- online inference windows
-- report day boundaries
+- `src/taskclf/train/retrain.py`
+  - [x] `check_retrain_due()` uses `ts_utc_aware_get()` for timestamp
+    normalization
+  - [x] `check_calibrator_update_due()` uses `ts_utc_aware_get()` for
+    timestamp normalization
+  - [x] `except` clauses use parenthesized tuples (PEP 8 style fix)
+  - [x] Tests: TC-RETRAIN-UTC-001..007
+
+- `src/taskclf/train/build_dataset.py` — no timestamp normalization needed
+  (sorts by `bucket_start_ts` column; types from upstream)
+- `src/taskclf/train/dataset.py` — no timestamp normalization needed
+  (sorts by `bucket_start_ts`; split by index fractions)
+- `src/taskclf/train/calibrate.py` — uses `.dt.date` on DataFrame column;
+  correct for aware-UTC series
+- `src/taskclf/train/lgbm.py` — no datetime usage
+- `src/taskclf/train/evaluate.py` — no datetime usage
+
+### Infer -- PARTIALLY DONE
+
+- `src/taskclf/infer/batch.py`
+  - [x] `read_segments_json()` normalizes via `ts_utc_aware_get()`
+  - [x] `run_batch_inference()` normalizes `bucket_starts` via
+    `ts_utc_aware_get()`
+  - [x] Tests: TC-BATCH-UTC-001..004
+
+- `src/taskclf/infer/smooth.py` — only `timedelta` arithmetic; no
+  normalization needed
+- `src/taskclf/infer/baseline.py` — uses `pd.Timestamp(ts).to_pydatetime()`
+  like batch; inherits whatever tz the DataFrame column carries
+- `src/taskclf/infer/prediction.py` — `bucket_start_ts: datetime` field only
+- `src/taskclf/infer/monitor.py` — `datetime.now(tz=timezone.utc)` already
+  aware; `pd.Timestamp` arithmetic preserves tz
+- `src/taskclf/infer/resolve.py` — uses `time.monotonic()` only
+- `src/taskclf/infer/calibration.py` — `created_at` is ISO string, not parsed
+- `src/taskclf/infer/taxonomy.py` — no datetime usage
+
+Remaining:
+
+- [ ] `src/taskclf/infer/online.py` — `ev.timestamp` comparisons depend on
+  adapter output; needs review when adapter layer is audited
+- [ ] `src/taskclf/infer/baseline.py` — could normalize `bucket_starts` like
+  `batch.py` for consistency (not urgent, inherits from upstream)
+
+### Report -- DONE (no changes needed)
+
+- `src/taskclf/report/daily.py` — only uses `.date()` on first segment's
+  `start_ts`; safe for both naive and aware timestamps
+- `src/taskclf/report/export.py` — no datetime columns; only string `date`
 
 ### Docs and tests
 
@@ -254,7 +326,13 @@ Docs:
 - `docs/guide/usage.md`
 - `README.md` if timestamp examples or guarantees need updating
 
-Tests:
+Tests -- Phase 4 additions:
+
+- `tests/test_features_windows.py` -- TC-FEAT-WIN-UTC-001..005
+- `tests/test_infer_batch_segments.py` -- TC-BATCH-UTC-001..004
+- `tests/test_retrain.py` -- TC-RETRAIN-UTC-001..007
+
+Tests -- previously covered:
 
 - `tests/test_core_time.py`
 - `tests/test_core_types.py`
@@ -264,7 +342,6 @@ Tests:
 - `tests/test_label_now.py`
 - `tests/test_integration_features_labels.py`
 - `tests/test_monitor.py`
-- any train/infer/report tests that compare datetimes directly
 
 ---
 
@@ -353,15 +430,34 @@ Exit criteria met:
   normalized
 - 112 test_ui_server tests pass (was 86 with 1 skipped; now 112 with 0 skipped)
 
-### Phase 4 - Feature / Train / Infer / Report Audit
+### Phase 4 - Feature / Train / Infer / Report Audit -- PARTIALLY DONE
 
-- Audit all time comparisons and partitioning in:
+- [x] Audited all time comparisons and partitioning in:
   - features build/join paths
   - dataset construction
-  - online and batch inference
+  - batch inference
   - summaries and reports
-- Decide whether feature parquet semantics need a migration or only clearer docs
-- Verify that date partitioning still lands rows in the same UTC day buckets
+- [x] `features/windows.py`: replaced inline `_epoch()` workaround with
+  `ts_utc_aware_get()`
+- [x] `infer/batch.py`: `read_segments_json()` and `run_batch_inference()`
+  normalize timestamps via `ts_utc_aware_get()`
+- [x] `train/retrain.py`: cadence checks use `ts_utc_aware_get()`;
+  `except` clauses fixed to PEP 8 parenthesized tuples
+- [x] `report/`: audited — no changes needed (`.date()` only)
+- [x] Feature parquet semantics: no migration needed; `FeatureRow` was
+  already aware UTC, `align_to_bucket` returns aware UTC
+- [x] Date partitioning: `build.py` constructs UTC day boundaries with
+  `tzinfo=dt.timezone.utc`; buckets land in the same UTC day
+- [x] Tests: TC-FEAT-WIN-UTC-001..005, TC-BATCH-UTC-001..004,
+  TC-RETRAIN-UTC-001..007
+- [x] Updated existing tests using naive `Segment` timestamps in
+  `test_infer_batch_segments.py` to use aware UTC
+
+Remaining:
+
+- [ ] `infer/online.py` event timestamp comparisons (depends on adapter
+  output contract)
+- [ ] `infer/baseline.py` could normalize `bucket_starts` for consistency
 
 Exit criteria:
 
@@ -424,11 +520,30 @@ Files changed:
   `TestUtcHelpers` for `_ensure_utc`; added date filter, non-UTC
   normalization, and stats tests
 
+### PR 3 - feature/train/infer audit (Phase 4) -- DONE
+
+Files changed:
+
+- `src/taskclf/features/windows.py` -- replaced inline `_epoch()` naive-UTC
+  workaround with `ts_utc_aware_get()`
+- `src/taskclf/infer/batch.py` -- `read_segments_json()` and
+  `run_batch_inference()` normalize timestamps via `ts_utc_aware_get()`
+- `src/taskclf/train/retrain.py` -- `check_retrain_due()` and
+  `check_calibrator_update_due()` use `ts_utc_aware_get()` instead of inline
+  `replace(tzinfo=UTC)`; `except` clauses fixed to PEP 8 parenthesized tuples
+- `tests/test_features_windows.py` -- added TC-FEAT-WIN-UTC-001..005
+  (aware-UTC, mixed naive/aware, non-UTC offset events)
+- `tests/test_infer_batch_segments.py` -- updated existing segment round-trip
+  tests to use aware UTC; added TC-BATCH-UTC-001..004 (legacy naive JSON,
+  non-UTC offset JSON, batch inference aware segments)
+- `tests/test_retrain.py` -- added TC-RETRAIN-UTC-001..007 (cadence checks
+  with naive/aware/non-UTC-offset metadata)
+
 ### Remaining PRs
 
-### PR 3 - broader audit + migration tooling (Phase 4-6)
+### PR 4 - migration tooling + cleanup (Phase 5-6)
 
-- feature/train/infer/report audit fixes
+- online inference event timestamp audit (depends on adapter contract)
 - artifact audit/rewrite tooling
 - final doc cleanup
 

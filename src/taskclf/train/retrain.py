@@ -42,6 +42,7 @@ from taskclf.core.model_io import (
     load_model_bundle,
     save_model_bundle,
 )
+from taskclf.core.time import ts_utc_aware_get
 from taskclf.core.types import LabelSpan
 from taskclf.model_registry import (
     SelectionPolicy,
@@ -206,9 +207,7 @@ def check_retrain_due(
         return True
 
     try:
-        model_ts = datetime.fromisoformat(created_at)
-        if model_ts.tzinfo is None:
-            model_ts = model_ts.replace(tzinfo=UTC)
+        model_ts = ts_utc_aware_get(datetime.fromisoformat(created_at))
         age = datetime.now(UTC) - model_ts
         return age >= timedelta(days=cadence_days)
     except ValueError, TypeError:
@@ -239,9 +238,7 @@ def check_calibrator_update_due(
         created = raw.get("created_at", "")
         if not created:
             return True
-        store_ts = datetime.fromisoformat(created)
-        if store_ts.tzinfo is None:
-            store_ts = store_ts.replace(tzinfo=UTC)
+        store_ts = ts_utc_aware_get(datetime.fromisoformat(created))
         return datetime.now(UTC) - store_ts >= timedelta(days=cadence_days)
     except json.JSONDecodeError, ValueError, TypeError, OSError:
         logger.debug("Could not parse calibrator store.json", exc_info=True)

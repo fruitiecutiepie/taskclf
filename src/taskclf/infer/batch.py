@@ -18,6 +18,7 @@ from taskclf.core.defaults import (
     DEFAULT_SMOOTH_WINDOW,
     MIXED_UNKNOWN,
 )
+from taskclf.core.time import ts_utc_aware_get
 from taskclf.core.types import LABEL_SET_V1
 from taskclf.infer.calibration import Calibrator, CalibratorStore, IdentityCalibrator
 from taskclf.infer.smooth import (
@@ -179,7 +180,8 @@ def run_batch_inference(
     smoothed = rolling_majority(raw_labels, window=smooth_window)
 
     bucket_starts: list[datetime] = [
-        pd.Timestamp(ts).to_pydatetime() for ts in features_df["bucket_start_ts"].values
+        ts_utc_aware_get(pd.Timestamp(ts).to_pydatetime())
+        for ts in features_df["bucket_start_ts"].values
     ]
     segments = segmentize(bucket_starts, smoothed, bucket_seconds=bucket_seconds)
     segments = merge_short_segments(segments, bucket_seconds=bucket_seconds)
@@ -285,8 +287,8 @@ def read_segments_json(path: Path) -> list[Segment]:
     records = json.loads(path.read_text())
     return [
         Segment(
-            start_ts=datetime.fromisoformat(r["start_ts"]),
-            end_ts=datetime.fromisoformat(r["end_ts"]),
+            start_ts=ts_utc_aware_get(datetime.fromisoformat(r["start_ts"])),
+            end_ts=ts_utc_aware_get(datetime.fromisoformat(r["end_ts"])),
             label=r["label"],
             bucket_count=r["bucket_count"],
         )

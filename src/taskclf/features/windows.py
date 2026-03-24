@@ -15,6 +15,7 @@ from taskclf.core.defaults import (
     DEFAULT_APP_SWITCH_WINDOW_MINUTES,
     DEFAULT_BUCKET_SECONDS,
 )
+from taskclf.core.time import ts_utc_aware_get
 from taskclf.core.types import Event
 
 
@@ -44,9 +45,7 @@ def app_switch_count_in_window(
     window_end = bucket_ts + dt.timedelta(seconds=bucket_seconds)
 
     def _epoch(ts: dt.datetime) -> float:
-        if ts.tzinfo is None:
-            return ts.replace(tzinfo=dt.timezone.utc).timestamp()
-        return ts.timestamp()
+        return ts_utc_aware_get(ts).timestamp()
 
     ws_epoch = _epoch(window_start)
     we_epoch = _epoch(window_end)

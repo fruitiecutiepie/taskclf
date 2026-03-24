@@ -19,6 +19,7 @@ Covers:
 - TC-RETRAIN-020..025: check_calibrator_update_due
 - TC-RETRAIN-026..030: find_latest_model isolated
 - TC-RETRAIN-031..036: TrainParams, DatasetSnapshot, RegressionGate constructor tests
+- TC-RETRAIN-UTC-001..007: aware-UTC cadence check normalization
 """
 
 from __future__ import annotations
@@ -746,3 +747,89 @@ class TestRegressionGateConstructor:
         gate = RegressionGate(name="test", passed=False, detail="fail")
         with pytest.raises(Exception):
             gate.passed = True  # type: ignore[misc]
+
+
+# ---------------------------------------------------------------------------
+# TC-RETRAIN-UTC-*: aware-UTC cadence normalization (Phase 4 migration)
+# ---------------------------------------------------------------------------
+
+
+class TestCadenceAwareUtc:
+    """Verify cadence checks normalize naive/aware timestamps via ts_utc_aware_get."""
+
+    def test_retrain_due_with_naive_iso_metadata(self, tmp_path: Path) -> None:
+        """TC-RETRAIN-UTC-001: naive ISO created_at is treated as UTC."""
+        run = tmp_path / "run_001"
+        run.mkdir()
+        (run / "metadata.json").write_text(
+            json.dumps(
+                {"created_at": dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%S")}
+            )
+        )
+        assert check_retrain_due(tmp_path, cadence_days=7) is False
+
+    def test_retrain_due_with_aware_iso_metadata(self, tmp_path: Path) -> None:
+        """TC-RETRAIN-UTC-002: aware ISO created_at works correctly."""
+        run = tmp_path / "run_001"
+        run.mkdir()
+        (run / "metadata.json").write_text(
+            json.dumps({"created_at": dt.datetime.now(dt.UTC).isoformat()})
+        )
+        assert check_retrain_due(tmp_path, cadence_days=7) is False
+
+    def test_retrain_due_with_non_utc_offset_metadata(self, tmp_path: Path) -> None:
+        """TC-RETRAIN-UTC-003: non-UTC offset is converted to UTC for age check."""
+        utc_plus_5 = dt.timezone(dt.timedelta(hours=5))
+        now_plus_5 = dt.datetime.now(utc_plus_5)
+        run = tmp_path / "run_001"
+        run.mkdir()
+        (run / "metadata.json").write_text(
+            json.dumps({"created_at": now_plus_5.isoformat()})
+        )
+        assert check_retrain_due(tmp_path, cadence_days=7) is False
+
+    def test_retrain_due_stale_naive_metadata(self, tmp_path: Path) -> None:
+        """TC-RETRAIN-UTC-004: stale naive ISO is treated as old UTC."""
+        old_naive = (dt.datetime.now(dt.UTC) - dt.timedelta(days=30)).strftime(
+            "%Y-%m-%dT%H:%M:%S"
+        )
+        run = tmp_path / "run_001"
+        run.mkdir()
+        (run / "metadata.json").write_text(json.dumps({"created_at": old_naive}))
+        assert check_retrain_due(tmp_path, cadence_days=7) is True
+
+    def test_calibrator_due_with_naive_iso(self, tmp_path: Path) -> None:
+        """TC-RETRAIN-UTC-005: calibrator store with naive ISO created_at → not due."""
+        store = tmp_path / "store.json"
+        store.write_text(
+            json.dumps(
+                {"created_at": dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%S")}
+            )
+        )
+        assert check_calibrator_update_due(tmp_path) is False
+
+    def test_calibrator_due_with_non_utc_offset(self, tmp_path: Path) -> None:
+        """TC-RETRAIN-UTC-006: calibrator store with non-UTC offset → not due."""
+        utc_plus_9 = dt.timezone(dt.timedelta(hours=9))
+        now_plus_9 = dt.datetime.now(utc_plus_9)
+        store = tmp_path / "store.json"
+        store.write_text(json.dumps({"created_at": now_plus_9.isoformat()}))
+        assert check_calibrator_update_due(tmp_path) is False
+
+    def test_find_latest_model_with_mixed_iso_formats(self, tmp_path: Path) -> None:
+        """TC-RETRAIN-UTC-007: find_latest_model handles both naive and aware ISO."""
+        run_naive = tmp_path / "run_naive"
+        run_naive.mkdir()
+        (run_naive / "metadata.json").write_text(
+            json.dumps({"created_at": "2025-07-01T00:00:00"})
+        )
+
+        run_aware = tmp_path / "run_aware"
+        run_aware.mkdir()
+        (run_aware / "metadata.json").write_text(
+            json.dumps({"created_at": "2025-07-03T00:00:00+00:00"})
+        )
+
+        result = find_latest_model(tmp_path)
+        assert result is not None
+        assert result.name == "run_aware"
