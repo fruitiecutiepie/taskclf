@@ -407,6 +407,22 @@ Docs note:
 - `docs/guide/personalization.md` currently documents the existing hybrid design.
 - That guide should be updated only when the schema/model migration is implemented, not before.
 
+### 2) Tray suggestion semantics
+
+Decision:
+
+- The three candidate semantics are complementary product surfaces, not competing definitions of one tray suggestion.
+- Live status should answer "what am I doing right now?" and may remain last-minute.
+- Automatic transition-triggered tray suggestions should default to the previous completed block.
+- Explicit backlog or gap-fill labeling should target the whole unlabeled interval since the last confirmed label.
+
+Implications:
+
+- Trigger semantics and target semantics must stay distinct in the implementation and UI copy.
+- Confidence and explanation must always be scoped to the interval the surface actually represents.
+- The default automatic tray suggestion should remain bounded and recoverable; over-segmentation is acceptable because adjacent same-label blocks can be merged later.
+- Longer unlabeled intervals are still valuable, but they should be handled as an explicit workflow rather than silently overloading the automatic tray suggestion.
+
 ---
 
 ## Ordered Implementation Plan
@@ -417,7 +433,7 @@ Docs note:
 
 2. Decide which runtime behaviors are authoritative: batch inference, online live loop, and tray suggestion flow.
 
-3. Define what a tray suggestion should mean: last-minute prediction, interval-level suggestion, or interval summary from bucket predictions.
+3. Apply the chosen semantic split consistently: live-status predictions can stay last-minute, automatic tray suggestions should default to the previous completed block, and explicit backlog labeling can target the whole unlabeled interval since the last confirmed label.
 
 4. Record the long-term direction explicitly: current schema/models still require `user_id` for compatibility, the next schema/model generation should remove `user_id` from the core model, and personalization should live in calibrators and user-specific post-processing.
 
@@ -453,11 +469,11 @@ Docs note:
 
 ### Phase 4) Fix tray suggestion quality
 
-1. Replace "predict only `rows[-1]`" with an interval-aware suggestion strategy.
+1. Replace "predict only `rows[-1]`" for automatic tray suggestions with interval-aware aggregation over the previous completed block.
 
 2. Compare at least these aggregation strategies: majority vote over bucket predictions, confidence-weighted vote over bucket predictions, highest-total-probability label over the interval, and the most recent confident contiguous segment within the interval.
 
-3. Decide whether the tray should display the raw last-bucket label, a smoothed label, or an interval-aggregated label.
+3. Keep the UI semantic explicit: live status may show the current last-minute label, transition-triggered prompts should show an interval-aggregated label for the previous block, and manual gap-filling should target the unlabeled interval.
 
 4. Include input events and any required user-scoped post-processing inputs in tray suggestion features.
 
@@ -577,10 +593,11 @@ Goal:
 
 ## Open Questions
 
-1. What should the tray suggestion represent semantically:
-   - the last minute
-   - the previous block
-   - the whole unlabeled interval since last label
+1. How should the tray/UI expose the already-chosen complementary suggestion semantics without confusing users?
+   - should live status and automatic transition-triggered suggestions live in the same surface or in clearly separate surfaces?
+   - what copy or labels should distinguish "right now", "previous block", and "fill unlabeled gap" actions?
+   - when should the explicit gap-fill action be offered automatically versus only manually?
+   - confidence and explanation should remain scoped to the interval each surface actually represents
 2. Should the canonical runtime threshold live in:
    - bundle metadata
    - calibrator store metadata
@@ -600,11 +617,12 @@ If we want the highest expected quality gain with the lowest risk, do this first
 1. Fix online `NaN` vs `fillna(0)` parity.
 2. For current schema-v1 bundles, pass stable `user_id` through live feature construction so existing models remain correct.
 3. Add input-event support to `_LabelSuggester`.
-4. Replace tray last-bucket suggestion with interval aggregation over bucket predictions.
+4. Replace automatic tray last-bucket suggestion with previous-block interval aggregation over bucket predictions.
 5. Re-run evaluation with calibrated reject tuning and compare before/after.
 
 This slice improves correctness and product behavior without changing the model family.
 It is also compatible with the chosen long-term direction: keep current bundles working now, then remove `user_id` from the core model in the next schema/model generation.
+It leaves room for a separate last-minute live-status surface and a separate unlabeled-gap workflow without overloading the default tray suggestion.
 
 ---
 
@@ -615,6 +633,6 @@ It is also compatible with the chosen long-term direction: keep current bundles 
 - Personalization is applied through calibrators and user-specific post-processing rather than identity splits in the long-term base model.
 - Suggestion-time inference uses the same feature families as training whenever the data source exists.
 - Reject threshold is tuned and evaluated on the same probability outputs used in production.
-- Tray suggestions are interval-aware, not last-bucket-only.
+- Automatic tray suggestions default to the previous completed block rather than the last bucket, while last-minute live status and unlabeled-gap labeling remain explicit separate semantics.
 - Evaluation includes operational metrics, not only bucket-level macro-F1.
 - Docs and tests cover the new behavior.
