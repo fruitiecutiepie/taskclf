@@ -1587,7 +1587,7 @@ class TestSuggestionCleared:
 
 
 class TestUtcHelpers:
-    """Direct unit tests for _utc_iso() and _to_naive_utc()."""
+    """Direct unit tests for _utc_iso() and _ensure_utc()."""
 
     def test_utc_iso_naive_appends_offset(self) -> None:
         from taskclf.ui.server import _utc_iso
@@ -1608,30 +1608,30 @@ class TestUtcHelpers:
         aware = dt.datetime(2026, 3, 1, 17, 30, 0, tzinfo=ist)
         assert _utc_iso(aware) == "2026-03-01T12:00:00+00:00"
 
-    def test_to_naive_utc_naive_passthrough(self) -> None:
-        from taskclf.ui.server import _to_naive_utc
+    def test_ensure_utc_naive_tags_utc(self) -> None:
+        from taskclf.ui.server import _ensure_utc
 
         naive = dt.datetime(2026, 3, 1, 12, 0, 0)
-        result = _to_naive_utc(naive)
-        assert result == naive
-        assert result.tzinfo is None
+        result = _ensure_utc(naive)
+        assert result == dt.datetime(2026, 3, 1, 12, 0, 0, tzinfo=dt.timezone.utc)
+        assert result.tzinfo is not None
 
-    def test_to_naive_utc_aware_utc_strips(self) -> None:
-        from taskclf.ui.server import _to_naive_utc
+    def test_ensure_utc_aware_utc_passthrough(self) -> None:
+        from taskclf.ui.server import _ensure_utc
 
         aware = dt.datetime(2026, 3, 1, 12, 0, 0, tzinfo=dt.timezone.utc)
-        result = _to_naive_utc(aware)
-        assert result == dt.datetime(2026, 3, 1, 12, 0, 0)
-        assert result.tzinfo is None
+        result = _ensure_utc(aware)
+        assert result == aware
+        assert result.tzinfo == dt.timezone.utc
 
-    def test_to_naive_utc_aware_non_utc_converts_then_strips(self) -> None:
-        from taskclf.ui.server import _to_naive_utc
+    def test_ensure_utc_aware_non_utc_converts(self) -> None:
+        from taskclf.ui.server import _ensure_utc
 
         ist = dt.timezone(dt.timedelta(hours=5, minutes=30))
         aware = dt.datetime(2026, 3, 1, 17, 30, 0, tzinfo=ist)
-        result = _to_naive_utc(aware)
-        assert result == dt.datetime(2026, 3, 1, 12, 0, 0)
-        assert result.tzinfo is None
+        result = _ensure_utc(aware)
+        assert result == dt.datetime(2026, 3, 1, 12, 0, 0, tzinfo=dt.timezone.utc)
+        assert result.tzinfo == dt.timezone.utc
 
 
 # ---------------------------------------------------------------------------
@@ -1745,8 +1745,6 @@ class TestAwareTimestampRoundTrip:
         assert resp.status_code == 200
         assert client.get("/api/labels").json() == []
 
-    # TODO: remove skip once UI server migrates from _to_naive_utc to aware UTC (Phase 3)
-    @pytest.mark.skip(reason="server.py still uses _to_naive_utc; Phase 3 scope")
     def test_range_filter_handles_aware_spans_from_storage(
         self, client: TestClient, data_dir: Path
     ) -> None:
@@ -1778,6 +1776,64 @@ class TestAwareTimestampRoundTrip:
         assert len(labels) == 1
         assert labels[0]["start_ts"] == "2026-02-27T09:00:00+00:00"
         assert labels[0]["end_ts"] == "2026-02-27T10:00:00+00:00"
+
+    def test_date_filter_works_with_aware_spans(
+        self, client: TestClient, data_dir: Path
+    ) -> None:
+        """GET /api/labels?date= must work when stored spans are aware UTC."""
+        labels_path = data_dir / "labels_v1" / "labels.parquet"
+        write_label_spans(
+            [
+                LabelSpan(
+                    start_ts=dt.datetime(2026, 4, 10, 9, 0, tzinfo=dt.timezone.utc),
+                    end_ts=dt.datetime(2026, 4, 10, 10, 0, tzinfo=dt.timezone.utc),
+                    label="Build",
+                    provenance="manual",
+                ),
+                LabelSpan(
+                    start_ts=dt.datetime(2026, 4, 11, 14, 0, tzinfo=dt.timezone.utc),
+                    end_ts=dt.datetime(2026, 4, 11, 15, 0, tzinfo=dt.timezone.utc),
+                    label="Write",
+                    provenance="manual",
+                ),
+            ],
+            labels_path,
+        )
+
+        resp = client.get("/api/labels", params={"date": "2026-04-10"})
+        assert resp.status_code == 200
+        labels = resp.json()
+        assert len(labels) == 1
+        assert labels[0]["label"] == "Build"
+
+    def test_date_filter_non_utc_spans_normalized(
+        self, client: TestClient, data_dir: Path
+    ) -> None:
+        """Spans stored from a non-UTC timezone are normalized and filtered by UTC date."""
+        labels_path = data_dir / "labels_v1" / "labels.parquet"
+        ist = dt.timezone(dt.timedelta(hours=5, minutes=30))
+        write_label_spans(
+            [
+                LabelSpan(
+                    start_ts=dt.datetime(2026, 4, 11, 2, 0, tzinfo=ist),
+                    end_ts=dt.datetime(2026, 4, 11, 3, 0, tzinfo=ist),
+                    label="Debug",
+                    provenance="manual",
+                ),
+            ],
+            labels_path,
+        )
+
+        resp_apr10 = client.get("/api/labels", params={"date": "2026-04-10"})
+        assert resp_apr10.status_code == 200
+        labels_apr10 = resp_apr10.json()
+        assert len(labels_apr10) == 1
+        assert labels_apr10[0]["label"] == "Debug"
+        assert labels_apr10[0]["start_ts"] == "2026-04-10T20:30:00+00:00"
+
+        resp_apr11 = client.get("/api/labels", params={"date": "2026-04-11"})
+        assert resp_apr11.status_code == 200
+        assert len(resp_apr11.json()) == 0
 
 
 # ---------------------------------------------------------------------------
@@ -1844,6 +1900,53 @@ class TestLabelStats:
         data = resp.json()
         today = dt.datetime.now(dt.timezone.utc).date().isoformat()
         assert data["date"] == today
+
+    def test_stats_with_aware_utc_timestamps(self, client: TestClient) -> None:
+        """Stats endpoint correctly filters and sums aware-UTC label spans."""
+        client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-05-15T08:00:00+00:00",
+                "end_ts": "2026-05-15T09:00:00+00:00",
+                "label": "Build",
+            },
+        )
+        client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-05-15T10:00:00Z",
+                "end_ts": "2026-05-15T10:30:00Z",
+                "label": "Debug",
+            },
+        )
+
+        resp = client.get("/api/labels/stats", params={"date": "2026-05-15"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["date"] == "2026-05-15"
+        assert data["count"] == 2
+        assert data["total_minutes"] == 90.0
+        assert data["breakdown"]["Build"] == 60.0
+        assert data["breakdown"]["Debug"] == 30.0
+
+    def test_stats_non_utc_input_converted(self, client: TestClient) -> None:
+        """Labels created with non-UTC offset timestamps still land on the correct UTC date."""
+        client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-06-01T02:00:00+05:30",
+                "end_ts": "2026-06-01T03:00:00+05:30",
+                "label": "Write",
+            },
+        )
+
+        resp_may31 = client.get("/api/labels/stats", params={"date": "2026-05-31"})
+        assert resp_may31.status_code == 200
+        assert resp_may31.json()["count"] == 1
+
+        resp_jun01 = client.get("/api/labels/stats", params={"date": "2026-06-01"})
+        assert resp_jun01.status_code == 200
+        assert resp_jun01.json()["count"] == 0
 
 
 # ---------------------------------------------------------------------------

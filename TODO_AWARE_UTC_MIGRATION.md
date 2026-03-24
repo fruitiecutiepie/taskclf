@@ -94,13 +94,21 @@ After Phase 0-1:
 - `src/taskclf/labels/projection.py`
   - fixed Pandas `pd.Timestamp(ts, tz=...)` error for already-aware timestamps.
 
-### 3) UI / API / CLI still use naive-UTC internally (Phase 3 pending)
+### 3) UI / API / CLI now use aware UTC internally (Phase 3 done)
 
 - `src/taskclf/ui/server.py`
-  - label request timestamps are still parsed through `_to_naive_utc`
-  - REST responses are emitted with explicit UTC suffixes via `_utc_iso()`
-- `src/taskclf/ui/tray.py`, `src/taskclf/cli/main.py`
-  - some flows still explicitly convert to naive UTC for pipeline compatibility
+  - all request timestamps are parsed through `_ensure_utc` (alias for
+    `ts_utc_aware_get()`); the old `_to_naive_utc` alias has been removed
+  - `datetime.combine` date-filter boundaries use `tzinfo=dt.timezone.utc`
+  - `train_data_check` label-range bounds use `tzinfo=dt.timezone.utc`
+  - REST responses are still emitted with explicit UTC suffixes via `_utc_iso()`
+- `src/taskclf/ui/tray.py`
+  - `_label_stats()` simplified — redundant `hasattr` branch removed
+    (all `LabelSpan` timestamps are guaranteed aware UTC)
+- `src/taskclf/cli/main.py`
+  - `labels_label_now_cmd` uses `ts_utc_aware_get()` instead of
+    `to_naive_utc()`; aware-UTC timestamps are passed through to
+    `LabelSpan`, `generate_label_summary`, and `append_label_span`
 
 ### 4) Persisted artifacts are likely mixed or at least ambiguous
 
@@ -194,38 +202,30 @@ Recommended boundary rule:
 - `src/taskclf/labels/projection.py`
   - [x] Fixed Pandas tz-aware Timestamp construction
 
-### REST / WebSocket UI surface
+### REST / WebSocket UI surface -- DONE
 
 - `src/taskclf/ui/server.py`
+  - [x] replaced `_to_naive_utc` with `_ensure_utc` (alias for `ts_utc_aware_get`)
+  - [x] aware UTC for visible-range filters
+  - [x] aware UTC for date filters (`datetime.combine` with `tzinfo=utc`)
+  - [x] aware UTC for stats filters (`.date()` on aware timestamps)
+  - [x] aware UTC for `train_data_check` label-range bounds
+  - [x] response serialization unchanged (`_utc_iso()` handles both)
 
-Audit and likely change:
-
-- replace `_to_naive_utc` request parsing with aware-UTC normalization
-- use aware UTC for visible-range filters
-- use aware UTC for date filters and stats filters
-- verify all response serialization remains explicit and stable
-
-### Tray/UI integrations
+### Tray/UI integrations -- DONE
 
 - `src/taskclf/ui/tray.py`
-- `src/taskclf/ui/window.py`
-- `src/taskclf/ui/window_run.py`
+  - [x] `_label_stats()` simplified (redundant `hasattr` branch removed)
+- `src/taskclf/ui/window.py` — no datetime usage; no change needed
+- `src/taskclf/ui/window_run.py` — no datetime usage; no change needed
 
-Audit and likely change:
-
-- auto-saved labels
-- suggestion windows
-- any event timestamps published to the frontend
-
-### CLI
+### CLI -- DONE
 
 - `src/taskclf/cli/main.py`
-
-Audit and likely change:
-
-- label creation/edit/delete flows
-- date-range filtering helpers
-- commands that convert timestamps to naive UTC for compatibility
+  - [x] `labels_label_now_cmd` uses `ts_utc_aware_get()` instead of
+    `to_naive_utc()`
+  - [x] aware-UTC timestamps passed through to `LabelSpan`,
+    `generate_label_summary`, and `append_label_span`
 
 ### Features / train / infer / report
 
@@ -331,19 +331,27 @@ Remaining:
 - [ ] Update `docs/api/core/types.md` and `docs/api/ui/labeling.md` to
   reflect aware-UTC contract
 
-### Phase 3 - UI / API / CLI Migration
+### Phase 3 - UI / API / CLI Migration -- DONE
 
-- Replace `_to_naive_utc` parsing in `src/taskclf/ui/server.py`
-- Make label filters, stats filters, and date-window helpers aware UTC
-- Update tray paths that create `LabelSpan`
-- Remove CLI calls that coerce to naive UTC for compatibility
+- [x] Replaced `_to_naive_utc` with `_ensure_utc` (alias for `ts_utc_aware_get`)
+  across all 16 call sites in `src/taskclf/ui/server.py`
+- [x] Fixed `datetime.combine` date filter to produce aware UTC boundaries
+- [x] Fixed `train_data_check` naive datetime bounds to use `tzinfo=utc`
+- [x] Simplified `_label_stats()` in `src/taskclf/ui/tray.py`
+- [x] Replaced `to_naive_utc` with `ts_utc_aware_get()` in
+  `src/taskclf/cli/main.py` `labels_label_now_cmd`
+- [x] Unskipped `test_range_filter_handles_aware_spans_from_storage`
+- [x] Updated `TestUtcHelpers` to test `_ensure_utc` instead of `_to_naive_utc`
+- [x] Added tests: date filter with aware spans, non-UTC span normalization,
+  stats with aware-UTC timestamps, stats with non-UTC offset inputs
 
-Exit criteria:
+Exit criteria met:
 
 - all label CRUD and stats paths work with aware UTC inputs and legacy naive
   inputs
 - no naive datetime constructors remain in these flows unless immediately
   normalized
+- 112 test_ui_server tests pass (was 86 with 1 skipped; now 112 with 0 skipped)
 
 ### Phase 4 - Feature / Train / Infer / Report Audit
 
@@ -402,13 +410,21 @@ Files changed:
 - `tests/test_labels_weak_rules.py` -- updated `_ts` helper for aware UTC
 - `tests/test_ui_server.py` -- skipped Phase 3 test with TODO
 
+### PR 2 - UI / API / CLI migration (Phase 3) -- DONE
+
+Files changed:
+
+- `src/taskclf/ui/server.py` -- replaced `_to_naive_utc` with `_ensure_utc`
+  (alias for `ts_utc_aware_get`); fixed `datetime.combine` date filter and
+  `train_data_check` naive bounds
+- `src/taskclf/ui/tray.py` -- simplified `_label_stats()` filter
+- `src/taskclf/cli/main.py` -- replaced `to_naive_utc` with `ts_utc_aware_get`
+  in `labels_label_now_cmd`
+- `tests/test_ui_server.py` -- unskipped Phase 3 test; updated
+  `TestUtcHelpers` for `_ensure_utc`; added date filter, non-UTC
+  normalization, and stats tests
+
 ### Remaining PRs
-
-### PR 2 - UI / API / CLI migration (Phase 3)
-
-- replace `_to_naive_utc` in `src/taskclf/ui/server.py`
-- update tray paths, CLI label flows
-- remove skipped test marker in `test_ui_server.py`
 
 ### PR 3 - broader audit + migration tooling (Phase 4-6)
 

@@ -1223,12 +1223,7 @@ class TrayLabeler:
             return
 
         today = dt.datetime.now(dt.timezone.utc).date()
-        today_spans = [
-            s
-            for s in spans
-            if s.start_ts.date() == today
-            or (hasattr(s.start_ts, "astimezone") and s.start_ts.date() == today)
-        ]
+        today_spans = [s for s in spans if s.start_ts.date() == today]
 
         if not today_spans:
             self._notify("Today: no labels yet")

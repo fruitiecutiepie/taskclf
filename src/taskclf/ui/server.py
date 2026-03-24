@@ -42,7 +42,7 @@ from taskclf.core.defaults import (
     DEFAULT_TITLE_SALT,
 )
 from taskclf.core.store import read_parquet
-from taskclf.core.time import to_naive_utc
+from taskclf.core.time import ts_utc_aware_get
 from taskclf.core.types import CoreLabel, LabelSpan
 from taskclf.labels.queue import ActiveLabelingQueue
 from taskclf.labels.store import (
@@ -279,7 +279,7 @@ def _utc_iso(ts: dt.datetime) -> str:
     return ts.astimezone(dt.timezone.utc).isoformat()
 
 
-_to_naive_utc = to_naive_utc
+_ensure_utc = ts_utc_aware_get
 
 
 _OVERLAP_RE = re.compile(
@@ -430,8 +430,8 @@ def create_app(
 
         if range_start is not None and range_end is not None:
             try:
-                rs = _to_naive_utc(dt.datetime.fromisoformat(range_start))
-                re_ = _to_naive_utc(dt.datetime.fromisoformat(range_end))
+                rs = _ensure_utc(dt.datetime.fromisoformat(range_start))
+                re_ = _ensure_utc(dt.datetime.fromisoformat(range_end))
             except (ValueError, Exception) as exc:
                 raise HTTPException(
                     status_code=400, detail=f"Invalid range: {exc}"
@@ -444,8 +444,8 @@ def create_app(
                 raise HTTPException(
                     status_code=400, detail=f"Invalid date: {date}"
                 ) from exc
-            day_start = dt.datetime.combine(target, dt.time.min)
-            day_end = dt.datetime.combine(target, dt.time.max)
+            day_start = dt.datetime.combine(target, dt.time.min, tzinfo=dt.timezone.utc)
+            day_end = dt.datetime.combine(target, dt.time.max, tzinfo=dt.timezone.utc)
             spans = [s for s in spans if s.end_ts > day_start and s.start_ts < day_end]
 
         spans.sort(key=lambda s: s.start_ts, reverse=True)
@@ -467,8 +467,8 @@ def create_app(
         uid = body.user_id if body.user_id is not None else user_config.user_id
         try:
             span = LabelSpan(
-                start_ts=_to_naive_utc(dt.datetime.fromisoformat(body.start_ts)),
-                end_ts=_to_naive_utc(dt.datetime.fromisoformat(body.end_ts)),
+                start_ts=_ensure_utc(dt.datetime.fromisoformat(body.start_ts)),
+                end_ts=_ensure_utc(dt.datetime.fromisoformat(body.end_ts)),
                 label=body.label,
                 provenance="manual",
                 user_id=uid,
@@ -526,15 +526,15 @@ def create_app(
     @app.put("/api/labels")
     async def api_op_labels_put(body: LabelUpdateRequest) -> LabelResponse:
         try:
-            start = _to_naive_utc(dt.datetime.fromisoformat(body.start_ts))
-            end = _to_naive_utc(dt.datetime.fromisoformat(body.end_ts))
+            start = _ensure_utc(dt.datetime.fromisoformat(body.start_ts))
+            end = _ensure_utc(dt.datetime.fromisoformat(body.end_ts))
             new_start = (
-                _to_naive_utc(dt.datetime.fromisoformat(body.new_start_ts))
+                _ensure_utc(dt.datetime.fromisoformat(body.new_start_ts))
                 if body.new_start_ts
                 else None
             )
             new_end = (
-                _to_naive_utc(dt.datetime.fromisoformat(body.new_end_ts))
+                _ensure_utc(dt.datetime.fromisoformat(body.new_end_ts))
                 if body.new_end_ts
                 else None
             )
@@ -564,8 +564,8 @@ def create_app(
     @app.delete("/api/labels")
     async def api_op_labels_delete(body: LabelDeleteRequest) -> dict[str, str]:
         try:
-            start = _to_naive_utc(dt.datetime.fromisoformat(body.start_ts))
-            end = _to_naive_utc(dt.datetime.fromisoformat(body.end_ts))
+            start = _ensure_utc(dt.datetime.fromisoformat(body.start_ts))
+            end = _ensure_utc(dt.datetime.fromisoformat(body.end_ts))
         except (ValueError, Exception) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         try:
@@ -731,8 +731,8 @@ def create_app(
     ) -> FeatureSummaryResponse:
         import pandas as pd
 
-        start_ts = _to_naive_utc(dt.datetime.fromisoformat(start))
-        end_ts = _to_naive_utc(dt.datetime.fromisoformat(end))
+        start_ts = _ensure_utc(dt.datetime.fromisoformat(start))
+        end_ts = _ensure_utc(dt.datetime.fromisoformat(end))
 
         empty_resp = FeatureSummaryResponse(
             top_apps=[],
@@ -800,8 +800,8 @@ def create_app(
                 find_window_bucket_id,
             )
 
-            start_ts = _to_naive_utc(dt.datetime.fromisoformat(start))
-            end_ts = _to_naive_utc(dt.datetime.fromisoformat(end))
+            start_ts = _ensure_utc(dt.datetime.fromisoformat(start))
+            end_ts = _ensure_utc(dt.datetime.fromisoformat(end))
 
             bucket_id = find_window_bucket_id(aw_host)
             events = fetch_aw_events(
@@ -880,8 +880,8 @@ def create_app(
         uid = user_config.user_id
         try:
             span = LabelSpan(
-                start_ts=_to_naive_utc(dt.datetime.fromisoformat(body.block_start)),
-                end_ts=_to_naive_utc(dt.datetime.fromisoformat(body.block_end)),
+                start_ts=_ensure_utc(dt.datetime.fromisoformat(body.block_start)),
+                end_ts=_ensure_utc(dt.datetime.fromisoformat(body.block_end)),
                 label=body.label,
                 provenance="suggestion",
                 user_id=uid,
@@ -1423,8 +1423,12 @@ def create_app(
         if lp.exists():
             try:
                 spans = read_label_spans(lp)
-                start_dt = dt.datetime(start.year, start.month, start.day)
-                end_dt = dt.datetime(end.year, end.month, end.day, 23, 59, 59)
+                start_dt = dt.datetime(
+                    start.year, start.month, start.day, tzinfo=dt.timezone.utc
+                )
+                end_dt = dt.datetime(
+                    end.year, end.month, end.day, 23, 59, 59, tzinfo=dt.timezone.utc
+                )
                 matching_spans = [
                     s for s in spans if s.end_ts >= start_dt and s.start_ts <= end_dt
                 ]
