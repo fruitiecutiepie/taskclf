@@ -294,7 +294,10 @@ def run_online_loop(
     )
     from taskclf.features.build import build_features_from_aw_events
     from taskclf.infer.calibration import load_calibrator, load_calibrator_store
-    from taskclf.infer.resolve import ActiveModelReloader
+    from taskclf.infer.resolve import (
+        InferencePolicyReloader,
+        resolve_inference_config,
+    )
     from taskclf.infer.taxonomy import load_taxonomy
 
     taxonomy: TaxonomyConfig | None = None
@@ -304,22 +307,41 @@ def run_online_loop(
             "Loaded taxonomy from %s (user=%s)", taxonomy_path, taxonomy.user_id
         )
 
-    calibrator: Calibrator = IdentityCalibrator()
-    if calibrator_path is not None:
-        calibrator = load_calibrator(calibrator_path)
-        logger.info("Loaded calibrator from %s", calibrator_path)
-
-    cal_store: CalibratorStore | None = None
-    if calibrator_store_path is not None:
-        cal_store = load_calibrator_store(calibrator_store_path)
-        logger.info(
-            "Loaded calibrator store from %s (%d per-user calibrators)",
-            calibrator_store_path,
-            len(cal_store.user_calibrators),
+    effective_threshold: float | None
+    if models_dir is not None:
+        resolved = resolve_inference_config(
+            models_dir,
+            model_dir_override=str(model_dir),
+            reject_threshold_override=reject_threshold,
+            calibrator_store_override=calibrator_store_path,
+            calibrator_path_override=calibrator_path,
         )
+        model = resolved.model
+        metadata = resolved.metadata
+        cat_encoders = resolved.cat_encoders
+        effective_threshold = resolved.reject_threshold
+        calibrator = resolved.calibrator
+        cal_store = resolved.calibrator_store
+    else:
+        calibrator_: Calibrator = IdentityCalibrator()
+        if calibrator_path is not None:
+            calibrator_ = load_calibrator(calibrator_path)
+            logger.info("Loaded calibrator from %s", calibrator_path)
 
-    model, metadata, cat_encoders = load_model_bundle(Path(model_dir))
-    logger.info("Loaded model from %s (schema=%s)", model_dir, metadata.schema_hash)
+        cal_store_: CalibratorStore | None = None
+        if calibrator_store_path is not None:
+            cal_store_ = load_calibrator_store(calibrator_store_path)
+            logger.info(
+                "Loaded calibrator store from %s (%d per-user calibrators)",
+                calibrator_store_path,
+                len(cal_store_.user_calibrators),
+            )
+
+        model, metadata, cat_encoders = load_model_bundle(Path(model_dir))
+        logger.info("Loaded model from %s (schema=%s)", model_dir, metadata.schema_hash)
+        effective_threshold = reject_threshold
+        calibrator = calibrator_
+        cal_store = cal_store_
 
     bucket_id = find_window_bucket_id(aw_host)
     logger.info("Using AW window bucket: %s", bucket_id)
@@ -338,15 +360,15 @@ def run_online_loop(
         cat_encoders=cat_encoders,
         smooth_window=smooth_window,
         bucket_seconds=bucket_seconds,
-        reject_threshold=reject_threshold,
+        reject_threshold=effective_threshold,
         taxonomy=taxonomy,
         calibrator=calibrator,
         calibrator_store=cal_store,
     )
 
-    reloader: ActiveModelReloader | None = None
+    policy_reloader: InferencePolicyReloader | None = None
     if models_dir is not None:
-        reloader = ActiveModelReloader(models_dir)
+        policy_reloader = InferencePolicyReloader(models_dir)
 
     label_queue = None
     if label_queue_path is not None:
@@ -372,28 +394,30 @@ def run_online_loop(
     )
     if input_bucket_id:
         print(f"Input watcher active: {input_bucket_id}")
-    if reloader is not None and models_dir is not None:
-        print(f"Model reload enabled (watching {models_dir / 'active.json'})")
+    if policy_reloader is not None and models_dir is not None:
+        print(f"Policy reload enabled (watching {models_dir})")
     print("Press Ctrl+C to stop.\n")
 
     try:
         while True:
-            if reloader is not None:
-                reload_result = reloader.check_reload()
-                if reload_result is not None:
-                    new_model, new_metadata, new_cat_encoders = reload_result
+            if policy_reloader is not None:
+                new_config = policy_reloader.check_reload()
+                if new_config is not None:
                     predictor = OnlinePredictor(
-                        new_model,
-                        new_metadata,
-                        cat_encoders=new_cat_encoders,
+                        new_config.model,
+                        new_config.metadata,
+                        cat_encoders=new_config.cat_encoders,
                         smooth_window=smooth_window,
                         bucket_seconds=bucket_seconds,
-                        reject_threshold=reject_threshold,
+                        reject_threshold=new_config.reject_threshold,
                         taxonomy=taxonomy,
-                        calibrator=calibrator,
-                        calibrator_store=cal_store,
+                        calibrator=new_config.calibrator,
+                        calibrator_store=new_config.calibrator_store,
                     )
-                    print(f"Model reloaded (schema={new_metadata.schema_hash})")
+                    print(
+                        f"Config reloaded (schema={new_config.metadata.schema_hash}, "
+                        f"threshold={new_config.reject_threshold:.4f})"
+                    )
 
             now = datetime.now(timezone.utc)
             window_start = now - timedelta(seconds=poll_seconds)

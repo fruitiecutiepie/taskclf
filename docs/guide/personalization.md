@@ -114,17 +114,32 @@ calibrator_store/
 # 1. Train the model (user_id is now a feature)
 taskclf train lgbm --from 2026-01-01 --to 2026-02-01
 
-# 2. Fit calibrators
+# 2. Fit calibrators (now records model binding in store.json)
 taskclf train calibrate \
   --model-dir models/<run_id> \
   --from 2026-01-01 --to 2026-02-01 \
   --method temperature \
   --out artifacts/calibrator_store
+
+# 3. Tune reject threshold and write inference policy
+taskclf train tune-reject \
+  --model-dir models/<run_id> \
+  --calibrator-store artifacts/calibrator_store \
+  --from 2026-01-01 --to 2026-02-01 \
+  --write-policy
 ```
+
+Step 3 creates `models/inference_policy.json` which binds the model
+bundle, calibrator store, and tuned reject threshold.  This policy
+is the canonical deployment descriptor for inference.
 
 ## 6.2 Batch Inference
 
 ```bash
+# Uses inference policy automatically (model + calibrator + threshold)
+taskclf infer batch --from 2026-02-01 --to 2026-02-07
+
+# Or with explicit overrides (backward compatible)
 taskclf infer batch \
   --model-dir models/<run_id> \
   --from 2026-02-01 --to 2026-02-07 \
@@ -134,6 +149,10 @@ taskclf infer batch \
 ## 6.3 Online Inference
 
 ```bash
+# Uses inference policy automatically; hot-reloads on policy change
+taskclf infer online
+
+# Or with explicit overrides (backward compatible)
 taskclf infer online \
   --model-dir models/<run_id> \
   --calibrator-store artifacts/calibrator_store

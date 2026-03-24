@@ -407,7 +407,31 @@ Docs note:
 - `docs/guide/personalization.md` currently documents the existing hybrid design.
 - That guide should be updated only when the schema/model migration is implemented, not before.
 
-### 2) Tray suggestion semantics
+### 2) Canonical runtime threshold location
+
+Decision:
+
+- The canonical reject threshold lives in a dedicated **inference policy** artifact (`models/inference_policy.json`), not in bundle metadata, calibrator store metadata, or CLI config alone.
+- The inference policy is a small versioned deployment descriptor that binds a specific model bundle + optional calibrator store + reject threshold into a single source of truth for how inference should behave.
+- `ModelMetadata.reject_threshold` is retained as an advisory historical record of what was used during evaluation but is not authoritative at runtime.
+- `CalibratorStore` is promoted to a model-bound artifact: `store.json` now records `model_bundle_id`, `model_schema_hash`, and `created_at` for traceability and cross-validation.
+
+Implications:
+
+- Inference resolution follows a strict precedence: explicit `--model-dir` CLI override > `inference_policy.json` > `active.json` fallback > best-model selection + code defaults.
+- Hot-reload in the online loop now swaps threshold + calibrator alongside the model, eliminating silent drift where CLI-supplied values stuck after a model swap.
+- `active.json` remains for model-registry selection but is no longer the canonical deployment mechanism; inference logs a warning when falling back to it.
+- CLI flags (`--reject-threshold`, `--calibrator-store`) remain as explicit overrides that take precedence over policy values.
+- Legacy code paths (`resolve_model_dir`, `ActiveModelReloader`, direct `_LabelSuggester(model_dir)` construction) are deprecated with log warnings and docstring annotations; target removal in a future major version.
+
+Artifacts:
+
+- `src/taskclf/core/inference_policy.py` — `InferencePolicy` model, `build_inference_policy`, `save_inference_policy`, `load_inference_policy`, `validate_policy`, `PolicyValidationError`
+- `src/taskclf/infer/resolve.py` — `ResolvedInferenceConfig`, `resolve_inference_config`, `InferencePolicyReloader`
+- CLI: `taskclf policy show|create|remove`, `--write-policy` on `train tune-reject` and `train retrain`
+- Docs: `docs/api/core/inference_policy.md`
+
+### 3) Tray suggestion semantics
 
 Decision:
 
@@ -483,7 +507,7 @@ Implications:
 
 2. Tune reject thresholds on the same probability outputs used in production.
 
-3. Persist the chosen threshold in bundle metadata and make inference default to it unless explicitly overridden.
+3. Persist the tuned threshold in the inference policy artifact (`taskclf train tune-reject --write-policy`) so inference defaults to it unless explicitly overridden via CLI.
 
 4. Report both bucket-level classification quality and operational-quality metrics that users actually feel.
 
@@ -598,15 +622,10 @@ Goal:
    - what copy or labels should distinguish "right now", "previous block", and "fill unlabeled gap" actions?
    - when should the explicit gap-fill action be offered automatically versus only manually?
    - confidence and explanation should remain scoped to the interval each surface actually represents
-2. Should the canonical runtime threshold live in:
-   - bundle metadata
-   - calibrator store metadata
-   - CLI config
-   - all three with precedence rules
-3. Do we want the tray/UI to prefer:
+2. Do we want the tray/UI to prefer:
    - fewer but higher-confidence suggestions
    - more frequent but noisier suggestions
-4. Do we need explicit unknown-category buckets in training instead of relying on inference-time `-1`?
+3. Do we need explicit unknown-category buckets in training instead of relying on inference-time `-1`?
 
 ---
 
@@ -632,7 +651,7 @@ It leaves room for a separate last-minute live-status surface and a separate unl
 - Current schema-v1 inference paths preserve stable `user_id` where required for compatibility, and the next schema/model generation removes `user_id` from the core model contract.
 - Personalization is applied through calibrators and user-specific post-processing rather than identity splits in the long-term base model.
 - Suggestion-time inference uses the same feature families as training whenever the data source exists.
-- Reject threshold is tuned and evaluated on the same probability outputs used in production.
+- Reject threshold is tuned on calibrated scores and persisted in the inference policy artifact so it travels with the model+calibration pair.
 - Automatic tray suggestions default to the previous completed block rather than the last bucket, while last-minute live status and unlabeled-gap labeling remain explicit separate semantics.
 - Evaluation includes operational metrics, not only bucket-level macro-F1.
 - Docs and tests cover the new behavior.

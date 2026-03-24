@@ -267,3 +267,39 @@ class TestCalibratorStorePersistence:
         loaded = load_calibrator_store(store_path)
         assert loaded.user_ids == []
         assert isinstance(loaded.global_calibrator, TemperatureCalibrator)
+
+    def test_model_binding_persisted(self, tmp_path: Path) -> None:
+        """TC-CAL-018: model binding fields are persisted and loaded."""
+        store = CalibratorStore(
+            global_calibrator=TemperatureCalibrator(1.0),
+            method="temperature",
+            model_bundle_id="run_001",
+            model_schema_hash="abc123",
+            created_at="2026-03-24T00:00:00+00:00",
+        )
+        store_path = tmp_path / "bound_store"
+        save_calibrator_store(store, store_path)
+
+        meta = json.loads((store_path / "store.json").read_text())
+        assert meta["model_bundle_id"] == "run_001"
+        assert meta["model_schema_hash"] == "abc123"
+        assert meta["created_at"] == "2026-03-24T00:00:00+00:00"
+
+        loaded = load_calibrator_store(store_path)
+        assert loaded.model_bundle_id == "run_001"
+        assert loaded.model_schema_hash == "abc123"
+        assert loaded.created_at == "2026-03-24T00:00:00+00:00"
+
+    def test_legacy_store_without_binding(self, tmp_path: Path) -> None:
+        """TC-CAL-019: old stores without binding fields load with None."""
+        store = CalibratorStore(
+            global_calibrator=TemperatureCalibrator(1.0),
+            method="temperature",
+        )
+        store_path = tmp_path / "legacy_store"
+        save_calibrator_store(store, store_path)
+
+        loaded = load_calibrator_store(store_path)
+        assert loaded.model_bundle_id is None
+        assert loaded.model_schema_hash is None
+        assert loaded.created_at is None

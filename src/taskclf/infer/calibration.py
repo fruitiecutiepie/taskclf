@@ -137,11 +137,20 @@ class CalibratorStore:
             back to the global calibrator.
         method: Calibration method label (``"temperature"`` or
             ``"isotonic"``).
+        model_bundle_id: Run directory name of the model bundle this
+            store was fitted against.  ``None`` for legacy stores.
+        model_schema_hash: Schema hash of the model bundle.  Used by
+            :func:`~taskclf.core.inference_policy.validate_policy` to
+            verify that calibrator and model are compatible.
+        created_at: ISO-8601 timestamp of when the store was created.
     """
 
     global_calibrator: Calibrator
     user_calibrators: dict[str, Calibrator] = field(default_factory=dict)
     method: str = "temperature"
+    model_bundle_id: str | None = None
+    model_schema_hash: str | None = None
+    created_at: str | None = None
 
     def get_calibrator(self, user_id: str) -> Calibrator:
         """Return the per-user calibrator if available, else the global one."""
@@ -290,11 +299,17 @@ def save_calibrator_store(store: CalibratorStore, path: Path) -> Path:
     global_path = path / "global.json"
     save_calibrator(store.global_calibrator, global_path)
 
-    meta = {
+    meta: dict[str, object] = {
         "method": store.method,
         "user_count": len(store.user_calibrators),
         "user_ids": sorted(store.user_calibrators),
     }
+    if store.model_bundle_id is not None:
+        meta["model_bundle_id"] = store.model_bundle_id
+    if store.model_schema_hash is not None:
+        meta["model_schema_hash"] = store.model_schema_hash
+    if store.created_at is not None:
+        meta["created_at"] = store.created_at
     (path / "store.json").write_text(json.dumps(meta, indent=2))
 
     if store.user_calibrators:
@@ -329,4 +344,7 @@ def load_calibrator_store(path: Path) -> CalibratorStore:
         global_calibrator=global_cal,
         user_calibrators=user_cals,
         method=meta.get("method", "temperature"),
+        model_bundle_id=meta.get("model_bundle_id"),
+        model_schema_hash=meta.get("model_schema_hash"),
+        created_at=meta.get("created_at"),
     )

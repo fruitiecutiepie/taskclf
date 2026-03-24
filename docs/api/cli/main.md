@@ -42,6 +42,9 @@ details.
 | `taskclf train check-retrain` | Check whether retraining or calibrator update is due |
 | `taskclf train list` | List model bundles with ranking metrics and status |
 | `taskclf model set-active` | Manually set the active model pointer (rollback / override) |
+| `taskclf policy show` | Print the current inference policy |
+| `taskclf policy create` | Create an inference policy binding model + calibrator + threshold |
+| `taskclf policy remove` | Remove the inference policy (falls back to active.json) |
 | `taskclf taxonomy validate` | Validate a user taxonomy YAML file |
 | `taskclf taxonomy show` | Display taxonomy mapping as a table |
 | `taskclf taxonomy init` | Generate a default taxonomy YAML |
@@ -221,6 +224,9 @@ taskclf train tune-reject \
 | `--synthetic` | off | Generate dummy features + labels |
 | `--data-dir` | `data/processed` | Processed data directory |
 | `--out-dir` | `artifacts` | Output directory for tuning report |
+| `--write-policy / --no-write-policy` | off | Write an inference policy binding model + calibrator + tuned threshold |
+| `--calibrator-store` | *(none)* | Path to calibrator store (included in policy when `--write-policy`) |
+| `--models-dir` | `models` | Base directory for model bundles (used for policy file location) |
 
 ### train calibrate
 
@@ -350,6 +356,50 @@ taskclf model set-active --model-id run_20260215_120000 --models-dir /data/model
 | Option | Default | Description |
 |---|---|---|
 | `--model-id` | *(required)* | Bundle directory name under `models/` |
+| `--models-dir` | `models` | Base directory for model bundles |
+
+### policy show
+
+Print the current inference policy or report that none exists.
+
+```bash
+taskclf policy show
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--models-dir` | `models` | Base directory for model bundles |
+
+### policy create
+
+Create an inference policy binding model + calibrator store + reject
+threshold.  Validates all bindings before writing.
+
+```bash
+taskclf policy create \
+  --model-dir models/run_001 \
+  --calibrator-store artifacts/calibrator_store \
+  --reject-threshold 0.55
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--model-dir` | *(required)* | Path to a model run directory |
+| `--reject-threshold` | `0.55` | Reject threshold for this model+calibration pair |
+| `--calibrator-store` | *(none)* | Path to calibrator store directory |
+| `--models-dir` | `models` | Base directory for model bundles |
+
+### policy remove
+
+Remove the inference policy file.  Inference falls back to
+`active.json` resolution.
+
+```bash
+taskclf policy remove
+```
+
+| Option | Default | Description |
+|---|---|---|
 | `--models-dir` | `models` | Base directory for model bundles |
 
 ### taxonomy validate

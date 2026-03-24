@@ -443,7 +443,12 @@ class ActivityMonitor:
 
 @dataclass(eq=False)
 class _LabelSuggester:
-    """Wraps the online predictor for single-bucket label suggestions."""
+    """Wraps the online predictor for single-bucket label suggestions.
+
+    Prefer :meth:`from_policy` over direct construction.  Direct
+    construction loads only the model bundle without calibrator or
+    policy-specified reject threshold.
+    """
 
     model_dir: Path
     _predictor: Any = field(init=False)
@@ -454,12 +459,60 @@ class _LabelSuggester:
         from taskclf.core.model_io import load_model_bundle
         from taskclf.infer.online import OnlinePredictor
 
+        logger.debug(
+            "Creating _LabelSuggester via direct construction (no policy); "
+            "prefer from_policy() for full inference config."
+        )
         model, metadata, cat_encoders = load_model_bundle(self.model_dir)
         self._predictor = OnlinePredictor(
             model,
             metadata,
             cat_encoders=cat_encoders,
         )
+
+    @classmethod
+    def from_policy(
+        cls,
+        models_dir: Path,
+    ) -> "_LabelSuggester":
+        """Create a suggester from the active inference policy.
+
+        Loads model, calibrator, and reject threshold from the
+        ``inference_policy.json`` in *models_dir*.
+
+        Raises:
+            ValueError: When no policy or model can be resolved.
+        """
+        from taskclf.infer.resolve import (
+            ModelResolutionError,
+            resolve_inference_config,
+        )
+
+        try:
+            config = resolve_inference_config(models_dir)
+        except ModelResolutionError as exc:
+            raise ValueError(str(exc)) from exc
+
+        from taskclf.infer.online import OnlinePredictor
+
+        model_path = (
+            models_dir.parent / config.policy.model_dir if config.policy else None
+        )
+        effective_dir = model_path if model_path and model_path.is_dir() else models_dir
+
+        obj = object.__new__(cls)
+        obj.model_dir = effective_dir
+        obj._aw_host = DEFAULT_AW_HOST
+        obj._title_salt = DEFAULT_TITLE_SALT
+        obj._predictor = OnlinePredictor(
+            config.model,
+            config.metadata,
+            cat_encoders=config.cat_encoders,
+            reject_threshold=config.reject_threshold,
+            calibrator=config.calibrator,
+            calibrator_store=config.calibrator_store,
+        )
+        return obj
 
     def suggest(
         self,
@@ -658,7 +711,23 @@ class TrayLabeler:
         self._event_bus = self.event_bus if self.event_bus is not None else EventBus()
 
         self._suggester: _LabelSuggester | None = None
-        if self.model_dir is not None:
+
+        if self._models_dir is not None:
+            try:
+                self._suggester = _LabelSuggester.from_policy(self._models_dir)
+                self._suggester._aw_host = aw_host
+                self._suggester._title_salt = title_salt
+                self._model_schema_hash = (
+                    self._suggester._predictor.metadata.schema_hash
+                )
+                logger.info("Model loaded via inference policy")
+            except Exception:
+                logger.debug(
+                    "No inference policy; trying model_dir fallback", exc_info=True
+                )
+                self._suggester = None
+
+        if self._suggester is None and self.model_dir is not None:
             try:
                 self._suggester = _LabelSuggester(self.model_dir)
                 self._suggester._aw_host = aw_host
@@ -718,6 +787,23 @@ class TrayLabeler:
         model_path = Path(model_dir_str)
         if not model_path.is_dir():
             return
+
+        if self._models_dir is not None:
+            try:
+                new_suggester = _LabelSuggester.from_policy(self._models_dir)
+                new_suggester._aw_host = self._aw_host
+                new_suggester._title_salt = self._title_salt
+                self._suggester = new_suggester
+                self._model_dir = model_path
+                self._model_schema_hash = new_suggester._predictor.metadata.schema_hash
+                logger.info("Auto-loaded via inference policy after training")
+                return
+            except Exception:
+                logger.debug(
+                    "Policy load failed after training; using bundle directly",
+                    exc_info=True,
+                )
+
         try:
             new_suggester = _LabelSuggester(model_path)
             new_suggester._aw_host = self._aw_host
@@ -1196,6 +1282,19 @@ class TrayLabeler:
 
     def _reload_model(self, *_args: Any) -> None:
         """Re-read the model bundle from disk without restarting."""
+        if self._models_dir is not None:
+            try:
+                new_suggester = _LabelSuggester.from_policy(self._models_dir)
+                new_suggester._aw_host = self._aw_host
+                new_suggester._title_salt = self._title_salt
+                self._suggester = new_suggester
+                self._model_schema_hash = new_suggester._predictor.metadata.schema_hash
+                self._notify("Config reloaded via inference policy")
+                logger.info("Config reloaded via inference policy")
+                return
+            except Exception:
+                logger.debug("Policy reload failed; trying model_dir", exc_info=True)
+
         if self._model_dir is None:
             self._notify("No model directory configured")
             return

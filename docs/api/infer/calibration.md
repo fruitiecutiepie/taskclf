@@ -51,11 +51,27 @@ When persisted via `save_calibrator_store`, the store is written as:
 
 ```
 <store_dir>/
-    store.json          # metadata: method, user_count, user_ids
+    store.json          # metadata (see below)
     global.json         # global calibrator (any type)
     users/
         <user_id>.json  # per-user calibrator (one file per user)
 ```
+
+### store.json fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `method` | `str` | `"temperature"` or `"isotonic"` |
+| `user_count` | `int` | Number of per-user calibrators |
+| `user_ids` | `list[str]` | Sorted list of user IDs with per-user calibrators |
+| `model_bundle_id` | `str \| null` | Run directory name of the model this store was fitted against |
+| `model_schema_hash` | `str \| null` | Schema hash of the model bundle (for cross-validation with inference policy) |
+| `created_at` | `str \| null` | ISO-8601 timestamp of store creation |
+
+The `model_bundle_id`, `model_schema_hash`, and `created_at` fields
+were added to enable model-bound calibration.  Stores created before
+this change will have `null` for these fields; they still load and
+function normally.
 
 ## Serialization
 

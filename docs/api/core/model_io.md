@@ -14,7 +14,7 @@ Model bundle persistence: save, load, and metadata for trained model artifacts.
 | `params` | dict | Model hyperparameters |
 | `git_commit` | str | Git commit SHA at training time |
 | `dataset_hash` | str | SHA-256 hash of the training dataset for reproducibility |
-| `reject_threshold` | float or None | Reject threshold used during evaluation |
+| `reject_threshold` | float or None | Reject threshold used during evaluation. **Advisory only** — the canonical runtime threshold lives in [`InferencePolicy`](inference_policy.md). |
 | `data_provenance` | str | Origin: `"real"`, `"synthetic"`, or `"mixed"` |
 | `created_at` | str | ISO-8601 timestamp of bundle creation |
 

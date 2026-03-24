@@ -192,6 +192,8 @@ def fit_calibrator_store(
     min_windows: int = DEFAULT_MIN_LABELED_WINDOWS,
     min_days: int = DEFAULT_MIN_LABELED_DAYS,
     min_labels: int = DEFAULT_MIN_DISTINCT_LABELS,
+    model_bundle_id: str | None = None,
+    model_schema_hash: str | None = None,
 ) -> tuple[CalibratorStore, list[PersonalizationEligibility]]:
     """Fit a global calibrator and per-user calibrators for eligible users.
 
@@ -209,6 +211,11 @@ def fit_calibrator_store(
         min_windows: Minimum labeled windows for per-user eligibility.
         min_days: Minimum distinct days for per-user eligibility.
         min_labels: Minimum distinct labels for per-user eligibility.
+        model_bundle_id: Run directory name of the model bundle.
+            Recorded in the store for traceability.
+        model_schema_hash: Schema hash of the model bundle.  Recorded
+            in the store so the inference policy can validate
+            compatibility.
 
     Returns:
         ``(store, eligibility_reports)`` — a :class:`CalibratorStore`
@@ -266,9 +273,14 @@ def fit_calibrator_store(
         user_calibrators[uid] = user_cal
         logger.info("Fitted %s calibrator for user %s", method, uid)
 
+    from datetime import UTC, datetime
+
     store = CalibratorStore(
         global_calibrator=global_cal,
         user_calibrators=user_calibrators,
         method=method,
+        model_bundle_id=model_bundle_id,
+        model_schema_hash=model_schema_hash,
+        created_at=datetime.now(UTC).isoformat(),
     )
     return store, eligibility_reports

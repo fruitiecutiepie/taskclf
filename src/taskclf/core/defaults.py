@@ -90,6 +90,9 @@ DEFAULT_CALIBRATOR_UPDATE_CADENCE_DAYS: Final[int] = 7
 DEFAULT_DATA_LOOKBACK_DAYS: Final[int] = 30
 DEFAULT_REGRESSION_TOLERANCE: Final[float] = 0.02
 
+# ── Inference policy ──
+DEFAULT_INFERENCE_POLICY_FILE: Final[str] = "inference_policy.json"
+
 # ── Misc ──
 DEFAULT_GIT_TIMEOUT_SECONDS: Final[int] = 5
 DEFAULT_DUMMY_ROWS: Final[int] = 10

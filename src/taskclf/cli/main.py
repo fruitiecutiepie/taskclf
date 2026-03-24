@@ -1122,6 +1122,21 @@ def train_tune_reject_cmd(
     out_dir: str = typer.Option(
         DEFAULT_OUT_DIR, help="Output directory for tuning report"
     ),
+    write_policy: bool = typer.Option(
+        False,
+        "--write-policy/--no-write-policy",
+        help="Write an inference policy binding model + calibrator + tuned threshold",
+    ),
+    calibrator_store: str | None = typer.Option(
+        None,
+        "--calibrator-store",
+        help="Path to calibrator store directory (included in policy when --write-policy)",
+    ),
+    models_dir: str = typer.Option(
+        DEFAULT_MODELS_DIR,
+        "--models-dir",
+        help="Base directory for model bundles (used for policy file location)",
+    ),
 ) -> None:
     """Sweep reject thresholds on a validation set and recommend the best one."""
     import json
@@ -1227,6 +1242,35 @@ def train_tune_reject_cmd(
     report_path = out / "reject_tuning.json"
     report_path.write_text(json.dumps(result.model_dump(), indent=2))
     typer.echo(f"Tuning report: {report_path}")
+
+    if write_policy:
+        from taskclf.core.inference_policy import (
+            build_inference_policy,
+            save_inference_policy,
+        )
+
+        models_path = Path(models_dir)
+        model_path = Path(model_dir)
+        cal_store_rel: str | None = None
+        cal_method: str | None = None
+        if calibrator_store is not None:
+            cal_store_path = Path(calibrator_store)
+            cal_store_rel = str(cal_store_path.relative_to(models_path.parent))
+            store_meta_path = cal_store_path / "store.json"
+            if store_meta_path.is_file():
+                cal_method = json.loads(store_meta_path.read_text()).get("method")
+
+        policy = build_inference_policy(
+            model_dir=str(model_path.relative_to(models_path.parent)),
+            model_schema_hash=metadata.schema_hash,
+            model_label_set=list(metadata.label_set),
+            reject_threshold=result.best_threshold,
+            calibrator_store_dir=cal_store_rel,
+            calibration_method=cal_method,
+            source="tune-reject",
+        )
+        policy_path = save_inference_policy(policy, models_path)
+        typer.echo(f"Inference policy: {policy_path}")
 
 
 @train_app.command("calibrate")
@@ -1355,6 +1399,8 @@ def train_calibrate_cmd(
         min_windows=min_windows,
         min_days=min_days,
         min_labels=min_labels,
+        model_bundle_id=Path(model_dir).name,
+        model_schema_hash=metadata.schema_hash,
     )
 
     # Eligibility table
@@ -1421,6 +1467,11 @@ def train_retrain_cmd(
     ),
     reject_threshold: float = typer.Option(
         DEFAULT_REJECT_THRESHOLD, "--reject-threshold", help="Reject threshold"
+    ),
+    write_policy: bool = typer.Option(
+        False,
+        "--write-policy/--no-write-policy",
+        help="Write an inference policy on promotion",
     ),
 ) -> None:
     """Run the full retrain pipeline: train, evaluate, gate-check, promote."""
@@ -1531,6 +1582,26 @@ def train_retrain_cmd(
 
     if result.promoted:
         console.print("[bold green]Model promoted successfully.[/bold green]")
+        if write_policy and result.run_dir:
+            import json
+
+            from taskclf.core.inference_policy import (
+                build_inference_policy,
+                save_inference_policy,
+            )
+
+            run_path = Path(result.run_dir)
+            models_path = Path(models_dir)
+            meta_raw = json.loads((run_path / "metadata.json").read_text())
+            policy = build_inference_policy(
+                model_dir=str(run_path.relative_to(models_path.parent)),
+                model_schema_hash=meta_raw["schema_hash"],
+                model_label_set=meta_raw["label_set"],
+                reject_threshold=reject_threshold,
+                source="retrain",
+            )
+            policy_path = save_inference_policy(policy, models_path)
+            console.print(f"Inference policy: {policy_path}")
     else:
         console.print(f"[bold yellow]Model not promoted: {result.reason}[/bold yellow]")
 
@@ -1819,6 +1890,149 @@ def model_set_active_cmd(
         f"[green]Active model set to {model_id} "
         f"(macro_f1={macro_f1}, at={pointer.selected_at})[/green]"
     )
+
+    from taskclf.core.inference_policy import load_inference_policy
+
+    if load_inference_policy(models_path) is not None:
+        console.print(
+            "[yellow]Note: an inference_policy.json exists and takes "
+            "precedence over active.json for inference.  Use "
+            "'taskclf policy create' to update it, or "
+            "'taskclf policy remove' to revert to active.json.[/yellow]"
+        )
+
+
+# -- policy -------------------------------------------------------------------
+policy_app = typer.Typer()
+app.add_typer(policy_app, name="policy")
+
+
+@policy_app.command("show")
+def policy_show_cmd(
+    models_dir: str = typer.Option(
+        DEFAULT_MODELS_DIR,
+        "--models-dir",
+        help="Base directory for model bundles",
+    ),
+) -> None:
+    """Print the current inference policy or report that none exists."""
+    from rich.console import Console
+
+    from taskclf.core.inference_policy import load_inference_policy
+
+    console = Console()
+    policy = load_inference_policy(Path(models_dir))
+
+    if policy is None:
+        console.print("[yellow]No inference policy found.[/yellow]")
+        console.print(f"  Looked in {Path(models_dir) / 'inference_policy.json'}")
+        raise typer.Exit(code=0)
+
+    console.print("[bold]Inference Policy[/bold]")
+    console.print(f"  Policy version:  {policy.policy_version}")
+    console.print(f"  Model dir:       {policy.model_dir}")
+    console.print(f"  Schema hash:     {policy.model_schema_hash}")
+    console.print(f"  Label set:       {policy.model_label_set}")
+    console.print(f"  Reject threshold:{policy.reject_threshold:.4f}")
+    if policy.calibrator_store_dir:
+        console.print(f"  Calibrator store:{policy.calibrator_store_dir}")
+        console.print(f"  Calibration:     {policy.calibration_method}")
+    else:
+        console.print("  Calibrator:      none (identity)")
+    console.print(f"  Source:          {policy.source}")
+    console.print(f"  Created at:      {policy.created_at}")
+    console.print(f"  Git commit:      {policy.git_commit}")
+
+
+@policy_app.command("create")
+def policy_create_cmd(
+    model_dir: str = typer.Option(
+        ..., "--model-dir", help="Path to a model run directory"
+    ),
+    reject_threshold: float = typer.Option(
+        DEFAULT_REJECT_THRESHOLD,
+        "--reject-threshold",
+        help="Reject threshold for this model+calibration pair",
+    ),
+    calibrator_store_dir: str | None = typer.Option(
+        None,
+        "--calibrator-store",
+        help="Path to calibrator store directory",
+    ),
+    models_dir: str = typer.Option(
+        DEFAULT_MODELS_DIR,
+        "--models-dir",
+        help="Base directory for model bundles",
+    ),
+) -> None:
+    """Create an inference policy binding model + calibrator + threshold."""
+    import json
+
+    from rich.console import Console
+
+    from taskclf.core.inference_policy import (
+        PolicyValidationError,
+        build_inference_policy,
+        save_inference_policy,
+        validate_policy,
+    )
+
+    console = Console()
+    models_path = Path(models_dir)
+    model_path = Path(model_dir)
+
+    meta_path = model_path / "metadata.json"
+    if not meta_path.is_file():
+        console.print(f"[red]No metadata.json in {model_path}[/red]")
+        raise typer.Exit(code=1)
+
+    meta = json.loads(meta_path.read_text())
+
+    cal_store_rel: str | None = None
+    cal_method: str | None = None
+    if calibrator_store_dir is not None:
+        cal_store_path = Path(calibrator_store_dir)
+        cal_store_rel = str(cal_store_path.relative_to(models_path.parent))
+        store_meta_path = cal_store_path / "store.json"
+        if store_meta_path.is_file():
+            cal_method = json.loads(store_meta_path.read_text()).get("method")
+
+    policy = build_inference_policy(
+        model_dir=str(model_path.relative_to(models_path.parent)),
+        model_schema_hash=meta["schema_hash"],
+        model_label_set=meta["label_set"],
+        reject_threshold=reject_threshold,
+        calibrator_store_dir=cal_store_rel,
+        calibration_method=cal_method,
+        source="manual",
+    )
+
+    try:
+        validate_policy(policy, models_path)
+    except PolicyValidationError as exc:
+        console.print(f"[red]Validation failed: {exc}[/red]")
+        raise typer.Exit(code=1) from exc
+
+    policy_path = save_inference_policy(policy, models_path)
+    console.print(f"[green]Inference policy written to {policy_path}[/green]")
+
+
+@policy_app.command("remove")
+def policy_remove_cmd(
+    models_dir: str = typer.Option(
+        DEFAULT_MODELS_DIR,
+        "--models-dir",
+        help="Base directory for model bundles",
+    ),
+) -> None:
+    """Remove the inference policy file (falls back to active.json)."""
+    from taskclf.core.inference_policy import remove_inference_policy
+
+    removed = remove_inference_policy(Path(models_dir))
+    if removed:
+        typer.echo("Inference policy removed.")
+    else:
+        typer.echo("No inference policy to remove.")
 
 
 # -- taxonomy -----------------------------------------------------------------

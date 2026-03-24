@@ -38,6 +38,10 @@ class ModelMetadata(BaseModel, frozen=True):
     git_commit: str
     dataset_hash: str
     reject_threshold: float | None = None
+    """.. deprecated::
+        Advisory only.  The canonical runtime reject threshold now
+        lives in :class:`~taskclf.core.inference_policy.InferencePolicy`.
+    """
     data_provenance: Literal["real", "synthetic", "mixed"] = "real"
     created_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
 
