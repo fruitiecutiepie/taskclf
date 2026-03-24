@@ -67,63 +67,40 @@ aware datetimes, even when both represent UTC.
 
 ## Current State Summary
 
-### 1) There is no single internal UTC convention today
+### 1) Core models now use aware UTC (Phase 0-1 done)
 
-Conflicting facts in the current code:
+After Phase 0-1:
 
 - `src/taskclf/core/time.py`
-  - `to_naive_utc()` is documented as the canonical conversion for timestamps
-    entering the feature pipeline or Parquet storage.
-  - `align_to_bucket()` returns timezone-aware UTC.
+  - `ts_utc_aware_get()` is the canonical normalizer for all domain models.
+  - `to_naive_utc()` is deprecated (still functional for transitional callers).
+  - `align_to_bucket()` returns timezone-aware UTC (unchanged).
 - `src/taskclf/core/types.py`
   - `FeatureRow.bucket_start_ts` and `FeatureRow.bucket_end_ts` are normalized
-    to aware UTC.
-  - `LabelSpan.start_ts` and `LabelSpan.end_ts` are currently normalized to
-    naive UTC as a compatibility hotfix.
-- `src/taskclf/ui/server.py`
-  - label request timestamps are parsed through `_to_naive_utc`
-  - REST responses are emitted with explicit UTC suffixes via `_utc_iso()`
+    to aware UTC (unchanged).
+  - `LabelSpan.start_ts` and `LabelSpan.end_ts` are now normalized to
+    aware UTC via `ts_utc_aware_get()`.
+- `src/taskclf/labels/queue.py`
+  - `LabelRequest.bucket_start_ts`, `.bucket_end_ts`, `.created_at` are
+    normalized to aware UTC via field validator.
 - `docs/guide/time_spec.md`
-  - says serialized timestamps must be UTC ISO-8601 and shows explicit-UTC
-    examples like `...Z`
-  - does not pin down whether parsed Python datetimes should be naive UTC or
-    aware UTC across all layers
+  - section 1.2 documents the canonical internal representation as aware UTC.
 
-Implication:
+### 2) Label store boundary uses aware UTC (Phase 2 partially done)
 
-- the repo already has contradictory UTC conventions, not just one bad callsite
+- `src/taskclf/labels/store.py`
+  - `update_label_span()` and `delete_label_span()` normalize inputs.
+  - `read_label_spans()` reads legacy naive rows; `LabelSpan` normalizes them.
+- `src/taskclf/labels/projection.py`
+  - fixed Pandas `pd.Timestamp(ts, tz=...)` error for already-aware timestamps.
 
-### 2) Labels currently sit on the naive-UTC side
-
-Relevant paths:
+### 3) UI / API / CLI still use naive-UTC internally (Phase 3 pending)
 
 - `src/taskclf/ui/server.py`
-- `src/taskclf/labels/store.py`
-- `src/taskclf/ui/tray.py`
-- `src/taskclf/cli/main.py`
-
-Current behavior:
-
-- label CRUD request bodies are normalized to naive UTC before `LabelSpan`
-- CSV imports use `pandas.to_datetime()` and then build `LabelSpan`
-- label parquet reads hydrate `LabelSpan` from stored rows
-- some CLI and tray flows explicitly convert to naive UTC for pipeline
-  compatibility
-
-### 3) Other parts of the repo already lean aware UTC
-
-Relevant paths:
-
-- `src/taskclf/core/types.py` (`FeatureRow`)
-- `src/taskclf/core/time.py` (`align_to_bucket()`)
-- `src/taskclf/adapters/activitywatch/client.py`
-- `src/taskclf/features/build.py`
-- `src/taskclf/features/windows.py`
-
-Current behavior:
-
-- several adapters/features helpers already produce or preserve aware UTC
-- this makes the current label-side naive contract an outlier
+  - label request timestamps are still parsed through `_to_naive_utc`
+  - REST responses are emitted with explicit UTC suffixes via `_utc_iso()`
+- `src/taskclf/ui/tray.py`, `src/taskclf/cli/main.py`
+  - some flows still explicitly convert to naive UTC for pipeline compatibility
 
 ### 4) Persisted artifacts are likely mixed or at least ambiguous
 
@@ -158,98 +135,64 @@ Recommended boundary rule:
 
 ---
 
-## Decisions To Make Before The First PR
+## Decisions Made
 
-### 1) What is the canonical in-memory representation?
-
-Recommended:
+### 1) Canonical in-memory representation -- DECIDED
 
 - aware UTC everywhere in Python objects
+- enforced via `ts_utc_aware_get()` in model validators
 
-Reason:
-
-- Python comparisons become safe
-- it matches `FeatureRow` and `align_to_bucket()`
-- it preserves UTC explicitly instead of by convention
-
-### 2) What is the canonical on-disk representation?
-
-Recommended:
+### 2) Canonical on-disk representation -- DECIDED
 
 - aware UTC for new writes
-- transitional dual-read for legacy naive files
+- transitional dual-read for legacy naive files (LabelSpan normalizes on read)
 
-Needs confirmation:
+### 3) Naive external inputs -- DECIDED
 
-- how Pandas/PyArrow round-trip timezone-aware columns in the project's current
-  write/read helpers
+- accepted during transition
+- interpreted as UTC and normalized immediately via `ts_utc_aware_get()`
 
-### 3) Should naive external inputs still be accepted?
+### 4) Feature schema version/hash change -- OPEN
 
-Recommended:
+- timestamp semantics on disk did not change for feature artifacts (FeatureRow
+  was already aware UTC)
+- no schema version/hash bump needed so far
 
-- yes, during transition only
-- interpret them as UTC
-- optionally log/deprecate later
+### 5) Migration tooling -- OPEN
 
-Reason:
-
-- existing CLI and API callers may still send naive timestamps
-
-### 4) Does this require a feature schema version/hash change?
-
-Open question:
-
-- if timestamp semantics on disk change for feature artifacts, decide whether
-  that is:
-  - a docs-only clarification
-  - or a material contract change requiring a version/hash update
-
-Do not decide casually. This touches the repo's schema-stability rules.
-
-### 5) Do we need an explicit migration tool?
-
-Recommended:
-
-- yes, at least for labels and queue state
-- possibly for feature parquet if inspection shows mixed semantics on disk
+- not yet implemented (Phase 5)
+- label store reads handle legacy naive artifacts automatically via LabelSpan
+  normalization
 
 ---
 
 ## Migration Surface
 
-### Core time helpers
+### Core time helpers -- DONE
 
 - `src/taskclf/core/time.py`
+  - [x] Added `ts_utc_aware_get()` as canonical normalizer
+  - [x] Deprecated `to_naive_utc()` in docstring
+  - [x] Tests: TC-TIME-014..016
 
-Audit and likely change:
-
-- `to_naive_utc()` usage sites
-- helper naming and deprecation path
-- add an `ensure_utc_aware()` helper or equivalent
-- make helper behavior the single source of truth
-
-### Core models
+### Core models -- DONE
 
 - `src/taskclf/core/types.py`
+  - [x] `LabelSpan` normalizes to aware UTC
+  - [x] `FeatureRow` was already on aware UTC
+  - [x] `LabelRequest` now normalizes to aware UTC
 
-Audit and likely change:
-
-- make `LabelSpan` normalize to aware UTC
-- keep `FeatureRow` on aware UTC
-- audit any other datetime-carrying models for consistency
-
-### Label storage and import/export
+### Label storage and import/export -- PARTIALLY DONE
 
 - `src/taskclf/labels/store.py`
+  - [x] `update_label_span()` / `delete_label_span()` normalize inputs
+  - [x] Parquet read/write works (LabelSpan normalizes on read)
+  - [x] CSV import/export round-trip verified
 - `src/taskclf/labels/queue.py`
-
-Audit and likely change:
-
-- parquet read/write semantics
-- CSV import/export semantics
-- queue JSON serialization/deserialization
-- update/read/delete matching behavior with aware UTC
+  - [x] `LabelRequest` normalizes timestamps via field validator
+  - [x] `_bucket_key()` normalizes for dedup consistency
+- `src/taskclf/labels/projection.py`
+  - [x] Fixed Pandas tz-aware Timestamp construction
 
 ### REST / WebSocket UI surface
 
@@ -344,41 +287,49 @@ Tests:
 
 ## Proposed Execution Plan
 
-### Phase 0 - Spec First
+### Phase 0 - Spec First -- DONE
 
-- Decide and document the canonical rule:
+- [x] Decided and documented the canonical rule in `docs/guide/time_spec.md`
+  (section 1.2 "Internal Representation"):
   - internal = aware UTC
   - legacy naive inputs are interpreted as UTC
-- Update `docs/guide/time_spec.md` first so implementation has a target
-- Add helper tests that define:
+- [x] Added `ts_utc_aware_get()` helper to `src/taskclf/core/time.py`
+- [x] Added helper tests (TC-TIME-014..016) that define:
   - naive input -> aware UTC
   - non-UTC aware input -> converted aware UTC
   - UTC aware input -> preserved as same instant
 
-### Phase 1 - Core Helpers And Models
+### Phase 1 - Core Helpers And Models -- DONE
 
-- Introduce an aware-UTC normalization helper in `src/taskclf/core/time.py`
-- Mark `to_naive_utc()` as transitional/deprecated or remove it from active
-  paths
-- Make `LabelSpan` aware UTC
-- Audit `LabelRequest` and any other datetime models for explicit normalization
+- [x] Introduced `ts_utc_aware_get()` in `src/taskclf/core/time.py`
+- [x] Marked `to_naive_utc()` as deprecated (docstring note)
+- [x] Made `LabelSpan` normalize to aware UTC
+- [x] Added aware-UTC validator to `LabelRequest`
+- [x] `FeatureRow` was already on aware UTC (no change needed)
 
-Exit criteria:
+Exit criteria met:
 
 - all core datetime-carrying models have one documented normalization rule
 
-### Phase 2 - Label Boundary Migration
+### Phase 2 - Label Boundary Migration -- PARTIALLY DONE
 
-- Update `src/taskclf/labels/store.py` to read legacy naive rows and normalize
-  to aware UTC
-- Update label CSV import/export behavior and tests
-- Update `src/taskclf/labels/queue.py` JSON round-trip behavior
-- Verify old `labels.parquet` and `queue.json` still load
+- [x] `update_label_span()` and `delete_label_span()` normalize inputs via
+  `ts_utc_aware_get()` so equality comparisons work with either naive or
+  aware caller timestamps
+- [x] `read_label_spans()` reads legacy naive rows; `LabelSpan` normalizes
+  them to aware UTC automatically
+- [x] Label CSV import/export round-trips verified (existing tests pass)
+- [x] `ActiveLabelingQueue._bucket_key()` normalizes timestamps so
+  deduplication works across naive/aware boundaries
+- [x] Fixed `labels/projection.py` Pandas `pd.Timestamp(ts, tz=...)` error
+  for already-aware timestamps
 
-Exit criteria:
+Remaining:
 
-- legacy label artifacts load
-- new label artifacts write aware UTC
+- [ ] Verify real on-disk `labels.parquet` and `queue.json` load correctly
+  (manual smoke test needed)
+- [ ] Update `docs/api/core/types.md` and `docs/api/ui/labeling.md` to
+  reflect aware-UTC contract
 
 ### Phase 3 - UI / API / CLI Migration
 
@@ -433,26 +384,33 @@ Exit criteria:
 
 ---
 
-## Suggested PR Breakdown
+## PR History
 
-### PR 1 - Spec + helper groundwork
+### PR 1 - Core + labels boundary (Phase 0-1 + partial Phase 2) -- DONE
 
-- docs/spec updates
-- new aware-UTC helper
-- core time tests
-- no behavior changes outside helper boundaries unless required
+Files changed:
 
-### PR 2 - labels + UI + CLI
+- `src/taskclf/core/time.py` -- added `ts_utc_aware_get()`, deprecated
+  `to_naive_utc()`
+- `src/taskclf/core/types.py` -- `LabelSpan` normalizes to aware UTC
+- `src/taskclf/labels/queue.py` -- `LabelRequest` normalizes timestamps
+- `src/taskclf/labels/store.py` -- `update/delete_label_span` normalize inputs
+- `src/taskclf/labels/projection.py` -- fixed Pandas tz-aware construction
+- `docs/guide/time_spec.md` -- added section 1.2 "Internal Representation"
+- `tests/test_core_time.py` -- TC-TIME-014..016
+- `tests/test_labels_store.py` -- updated assertions for aware UTC
+- `tests/test_labels_weak_rules.py` -- updated `_ts` helper for aware UTC
+- `tests/test_ui_server.py` -- skipped Phase 3 test with TODO
 
-- `LabelSpan`
-- label store
-- queue
-- API handlers
-- tray
-- CLI label flows
-- regression tests for legacy files and aware inputs
+### Remaining PRs
 
-### PR 3 - broader audit + migration tooling
+### PR 2 - UI / API / CLI migration (Phase 3)
+
+- replace `_to_naive_utc` in `src/taskclf/ui/server.py`
+- update tray paths, CLI label flows
+- remove skipped test marker in `test_ui_server.py`
+
+### PR 3 - broader audit + migration tooling (Phase 4-6)
 
 - feature/train/infer/report audit fixes
 - artifact audit/rewrite tooling

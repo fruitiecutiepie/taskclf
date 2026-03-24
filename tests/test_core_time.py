@@ -1,13 +1,18 @@
 """Tests for time-bucket alignment, range generation, and UTC helpers.
 
-Covers: TC-TIME-001 through TC-TIME-010, TC-TIME-011 through TC-TIME-013.
+Covers: TC-TIME-001 through TC-TIME-010, TC-TIME-011 through TC-TIME-016.
 """
 
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from taskclf.core.time import align_to_bucket, generate_bucket_range, to_naive_utc
+from taskclf.core.time import (
+    align_to_bucket,
+    ts_utc_aware_get,
+    generate_bucket_range,
+    to_naive_utc,
+)
 
 _UTC = timezone.utc
 
@@ -153,3 +158,33 @@ def test_tc_time_013_to_naive_utc_aware_non_utc() -> None:
     result = to_naive_utc(aware)
     assert result == datetime(2026, 3, 1, 12, 0, 0)
     assert result.tzinfo is None
+
+
+# ---------------------------------------------------------------------------
+# ts_utc_aware_get
+# ---------------------------------------------------------------------------
+
+
+def test_tc_time_014_ts_utc_aware_get_naive_tagged() -> None:
+    """TC-TIME-014: naive datetime is tagged as UTC."""
+    naive = datetime(2026, 3, 1, 12, 0, 0)
+    result = ts_utc_aware_get(naive)
+    assert result.tzinfo is _UTC
+    assert result == _utc(2026, 3, 1, 12, 0, 0)
+
+
+def test_tc_time_015_ts_utc_aware_get_utc_preserved() -> None:
+    """TC-TIME-015: aware UTC datetime is returned unchanged."""
+    aware = _utc(2026, 3, 1, 12, 0, 0)
+    result = ts_utc_aware_get(aware)
+    assert result is aware
+    assert result.tzinfo is _UTC
+
+
+def test_tc_time_016_ts_utc_aware_get_non_utc_converted() -> None:
+    """TC-TIME-016: aware non-UTC datetime is converted to UTC."""
+    eastern = timezone(timedelta(hours=-5))
+    aware = datetime(2026, 3, 1, 7, 0, 0, tzinfo=eastern)  # 12:00 UTC
+    result = ts_utc_aware_get(aware)
+    assert result.tzinfo is _UTC
+    assert result == _utc(2026, 3, 1, 12, 0, 0)

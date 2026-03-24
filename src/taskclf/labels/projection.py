@@ -61,8 +61,12 @@ def project_blocks_to_windows(
 
     spans_data: list[tuple[pd.Timestamp, pd.Timestamp, str, str | None]] = [
         (
-            pd.Timestamp(s.start_ts, tz="UTC"),
-            pd.Timestamp(s.end_ts, tz="UTC"),
+            pd.Timestamp(s.start_ts).tz_localize("UTC")
+            if pd.Timestamp(s.start_ts).tzinfo is None
+            else pd.Timestamp(s.start_ts).tz_convert("UTC"),
+            pd.Timestamp(s.end_ts).tz_localize("UTC")
+            if pd.Timestamp(s.end_ts).tzinfo is None
+            else pd.Timestamp(s.end_ts).tz_convert("UTC"),
             s.label,
             s.user_id,
         )

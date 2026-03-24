@@ -11,6 +11,7 @@ import pandas as pd
 
 from taskclf.core.defaults import DEFAULT_BUCKET_SECONDS, DEFAULT_DUMMY_ROWS
 from taskclf.core.store import read_parquet, write_parquet
+from taskclf.core.time import ts_utc_aware_get
 from taskclf.core.types import LabelSpan
 
 # Deterministic app_id -> label mapping aligned with features/build._DUMMY_APPS.
@@ -411,6 +412,9 @@ def update_label_span(
     if not path.exists():
         raise ValueError("No labels file found")
 
+    start_ts = ts_utc_aware_get(start_ts)
+    end_ts = ts_utc_aware_get(end_ts)
+
     spans = read_label_spans(path)
     for i, s in enumerate(spans):
         if s.start_ts == start_ts and s.end_ts == end_ts:
@@ -446,6 +450,9 @@ def delete_label_span(
     """
     if not path.exists():
         raise ValueError("No labels file found")
+
+    start_ts = ts_utc_aware_get(start_ts)
+    end_ts = ts_utc_aware_get(end_ts)
 
     spans = read_label_spans(path)
     original_len = len(spans)

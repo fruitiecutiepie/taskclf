@@ -12,14 +12,32 @@ from datetime import datetime, timedelta, timezone
 from taskclf.core.defaults import DEFAULT_BUCKET_SECONDS
 
 
+def ts_utc_aware_get(ts: datetime) -> datetime:
+    """Normalize *ts* to a timezone-aware UTC datetime.
+
+    This is the canonical timestamp normalizer for all domain models.
+
+    - Naive datetimes are assumed to represent UTC and tagged with
+      ``timezone.utc``.
+    - Aware non-UTC datetimes are converted to UTC.
+    - Aware UTC datetimes are returned unchanged.
+    """
+    if ts.tzinfo is None:
+        return ts.replace(tzinfo=timezone.utc)
+    if ts.utcoffset() != timedelta(0):
+        return ts.astimezone(timezone.utc)
+    return ts
+
+
 def to_naive_utc(ts: datetime) -> datetime:
     """Normalize a datetime to naive UTC.
 
     Aware datetimes are converted to UTC then stripped of tzinfo.
     Naive datetimes are returned as-is (assumed to already represent UTC).
 
-    This is the canonical conversion for timestamps entering the feature
-    pipeline or Parquet storage, where the naive-UTC convention is used.
+    .. deprecated::
+        Use :func:`ts_utc_aware_get` instead.  This helper exists only
+        for transitional callers that still expect naive-UTC values.
     """
     if ts.tzinfo is not None:
         return ts.astimezone(timezone.utc).replace(tzinfo=None)

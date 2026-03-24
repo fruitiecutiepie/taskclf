@@ -9,7 +9,7 @@ from typing import Final, Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field, ValidationInfo, field_validator, model_validator
 
-from taskclf.core.time import to_naive_utc
+from taskclf.core.time import ts_utc_aware_get
 
 
 @runtime_checkable
@@ -317,8 +317,8 @@ class LabelSpan(BaseModel, frozen=True):
     label CSV imports.
     """
 
-    start_ts: datetime = Field(description="Span start (naive UTC, inclusive).")
-    end_ts: datetime = Field(description="Span end (naive UTC, exclusive).")
+    start_ts: datetime = Field(description="Span start (aware UTC, inclusive).")
+    end_ts: datetime = Field(description="Span end (aware UTC, exclusive).")
     label: str = Field(description="Task-type label from LABEL_SET_V1.")
     provenance: str = Field(description="Origin tag, e.g. 'manual' or 'weak:app_rule'.")
     user_id: str | None = Field(
@@ -328,11 +328,13 @@ class LabelSpan(BaseModel, frozen=True):
         default=None, ge=0.0, le=1.0, description="Labeler confidence (0-1)."
     )
 
-    @field_validator("start_ts", "end_ts")
+    @field_validator("start_ts", "end_ts", mode="before")
     @classmethod
-    def _normalize_timestamps(cls, v: datetime) -> datetime:
-        """Keep label span timestamps in the repo's naive-UTC convention."""
-        return to_naive_utc(v)
+    def _normalize_timestamps(cls, v: object) -> object:
+        """Normalize label span timestamps to aware UTC."""
+        if isinstance(v, datetime):
+            return ts_utc_aware_get(v)
+        return v
 
     @field_validator("confidence", mode="before")
     @classmethod

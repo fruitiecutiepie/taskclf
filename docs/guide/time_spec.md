@@ -1,8 +1,8 @@
 # Time & Windowing Specification v1
 
-Version: 1.0
+Version: 1.1
 Status: Stable
-Last Updated: 2026-02-23
+Last Updated: 2026-03-24
 
 This document defines the canonical time semantics used across:
 
@@ -39,6 +39,28 @@ Example:
 ```
 
 Local time (for display only) must be derived from UTC using stored user timezone.
+
+## 1.2 Internal Representation
+
+All Python domain-model datetimes MUST be **timezone-aware UTC**
+(`tzinfo=datetime.timezone.utc`).
+
+The canonical normalizer is `taskclf.core.time.ts_utc_aware_get()`:
+
+- Naive datetimes are treated as UTC and tagged with `timezone.utc`.
+- Aware non-UTC datetimes are converted to UTC.
+- Aware UTC datetimes pass through unchanged.
+
+Naive-UTC datetimes (``tzinfo is None``) MUST NOT be used in domain models.
+Legacy naive inputs from external sources (CSV, API, CLI) are accepted at
+ingestion boundaries and normalized immediately via `ts_utc_aware_get()`.
+
+Models that enforce this contract:
+
+- `FeatureRow.bucket_start_ts`, `FeatureRow.bucket_end_ts`
+- `LabelSpan.start_ts`, `LabelSpan.end_ts`
+- `LabelRequest.bucket_start_ts`, `LabelRequest.bucket_end_ts`,
+  `LabelRequest.created_at`
 
 ---
 

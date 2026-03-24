@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Literal, Sequence
 
 import pandas as pd
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from taskclf.core.defaults import (
     DEFAULT_LABEL_CONFIDENCE_THRESHOLD,
@@ -30,8 +30,10 @@ class LabelRequest(BaseModel, frozen=True):
 
     request_id: str = Field(description="Unique request identifier (UUID).")
     user_id: str = Field(description="User whose bucket needs labeling.")
-    bucket_start_ts: datetime = Field(description="Start of the bucket (UTC).")
-    bucket_end_ts: datetime = Field(description="End of the bucket (UTC, exclusive).")
+    bucket_start_ts: datetime = Field(description="Start of the bucket (aware UTC).")
+    bucket_end_ts: datetime = Field(
+        description="End of the bucket (aware UTC, exclusive)."
+    )
     reason: Literal["low_confidence", "drift"] = Field(
         description="Why this bucket was enqueued."
     )
@@ -41,10 +43,22 @@ class LabelRequest(BaseModel, frozen=True):
     predicted_label: str | None = Field(
         default=None, description="Model prediction at time of enqueue."
     )
-    created_at: datetime = Field(description="When the request was created (UTC).")
+    created_at: datetime = Field(
+        description="When the request was created (aware UTC)."
+    )
     status: Literal["pending", "labeled", "skipped"] = Field(
         default="pending", description="Current lifecycle state."
     )
+
+    @field_validator("bucket_start_ts", "bucket_end_ts", "created_at", mode="before")
+    @classmethod
+    def _ensure_aware_utc(cls, v: object) -> object:
+        """Normalize timestamp fields to aware UTC."""
+        if isinstance(v, datetime):
+            from taskclf.core.time import ts_utc_aware_get
+
+            return ts_utc_aware_get(v)
+        return v
 
 
 @dataclass(eq=False)
@@ -91,7 +105,9 @@ class ActiveLabelingQueue:
             raise
 
     def _bucket_key(self, user_id: str, bucket_start_ts: datetime) -> tuple[str, str]:
-        return (user_id, bucket_start_ts.isoformat())
+        from taskclf.core.time import ts_utc_aware_get
+
+        return (user_id, ts_utc_aware_get(bucket_start_ts).isoformat())
 
     def _existing_keys(self) -> set[tuple[str, str]]:
         return {

@@ -33,7 +33,14 @@ _BASE_DATE = dt.date(2025, 6, 15)
 
 
 def _ts(hour: int, minute: int) -> dt.datetime:
-    return dt.datetime(_BASE_DATE.year, _BASE_DATE.month, _BASE_DATE.day, hour, minute)
+    return dt.datetime(
+        _BASE_DATE.year,
+        _BASE_DATE.month,
+        _BASE_DATE.day,
+        hour,
+        minute,
+        tzinfo=dt.timezone.utc,
+    )
 
 
 def _feature_row(

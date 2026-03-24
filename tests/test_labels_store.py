@@ -16,6 +16,7 @@ import pytest
 from pydantic import ValidationError
 
 from taskclf.core.types import LABEL_SET_V1, LabelSpan
+from taskclf.core.time import ts_utc_aware_get
 from taskclf.labels.store import (
     _same_user,
     append_label_span,
@@ -334,6 +335,16 @@ class TestImportLabelsFromCsvWithOptionalColumns:
         assert len(spans) == 1
         assert spans[0].user_id is None
         assert spans[0].confidence is None
+
+
+_UTC = dt.timezone.utc
+
+
+def _utc(
+    year: int, month: int, day: int, hour: int = 0, minute: int = 0
+) -> dt.datetime:
+    """Shorthand for ``dt.datetime(..., tzinfo=dt.timezone.utc)``."""
+    return dt.datetime(year, month, day, hour, minute, tzinfo=_UTC)
 
 
 def _span(
@@ -720,13 +731,13 @@ class TestUpdateLabelSpan:
             path,
             new_start_ts=dt.datetime(2025, 6, 15, 10, 5),
         )
-        assert updated.start_ts == dt.datetime(2025, 6, 15, 10, 5)
+        assert updated.start_ts == _utc(2025, 6, 15, 10, 5)
         assert updated.end_ts == s.end_ts
         assert updated.label == "Build"
 
         loaded = read_label_spans(path)
         assert len(loaded) == 1
-        assert loaded[0].start_ts == dt.datetime(2025, 6, 15, 10, 5)
+        assert loaded[0].start_ts == _utc(2025, 6, 15, 10, 5)
 
     def test_update_end_ts(self, tmp_path: Path) -> None:
         """TC-LABEL-UPD-007: update only the end timestamp."""
@@ -742,7 +753,7 @@ class TestUpdateLabelSpan:
             new_end_ts=dt.datetime(2025, 6, 15, 11, 0),
         )
         assert updated.start_ts == s.start_ts
-        assert updated.end_ts == dt.datetime(2025, 6, 15, 11, 0)
+        assert updated.end_ts == _utc(2025, 6, 15, 11, 0)
 
     def test_update_both_timestamps(self, tmp_path: Path) -> None:
         """TC-LABEL-UPD-008: update both timestamps and label together."""
@@ -752,6 +763,8 @@ class TestUpdateLabelSpan:
 
         new_start = dt.datetime(2025, 6, 15, 9, 45)
         new_end = dt.datetime(2025, 6, 15, 11, 0)
+        new_start_utc = ts_utc_aware_get(new_start)
+        new_end_utc = ts_utc_aware_get(new_end)
         updated = update_label_span(
             s.start_ts,
             s.end_ts,
@@ -760,14 +773,14 @@ class TestUpdateLabelSpan:
             new_start_ts=new_start,
             new_end_ts=new_end,
         )
-        assert updated.start_ts == new_start
-        assert updated.end_ts == new_end
+        assert updated.start_ts == new_start_utc
+        assert updated.end_ts == new_end_utc
         assert updated.label == "Debug"
 
         loaded = read_label_spans(path)
         assert len(loaded) == 1
-        assert loaded[0].start_ts == new_start
-        assert loaded[0].end_ts == new_end
+        assert loaded[0].start_ts == new_start_utc
+        assert loaded[0].end_ts == new_end_utc
         assert loaded[0].label == "Debug"
 
     def test_update_timestamps_preserves_fields(self, tmp_path: Path) -> None:
@@ -894,7 +907,7 @@ class TestDeleteLabelSpan:
         loaded = read_label_spans(path)
         assert len(loaded) == 1
         assert loaded[0].label == "Debug"
-        assert loaded[0].end_ts == dt.datetime(2025, 6, 15, 10, 10)
+        assert loaded[0].end_ts == _utc(2025, 6, 15, 10, 10)
 
 
 # ---------------------------------------------------------------------------
@@ -1036,10 +1049,10 @@ class TestOverwriteLabelSpan:
         spans.sort(key=lambda s: s.start_ts)
         assert len(spans) == 2
         assert spans[0].label == "Build"
-        assert spans[0].end_ts == dt.datetime(2025, 6, 15, 10, 20)
+        assert spans[0].end_ts == _utc(2025, 6, 15, 10, 20)
         assert spans[1].label == "Debug"
-        assert spans[1].start_ts == dt.datetime(2025, 6, 15, 10, 20)
-        assert spans[1].end_ts == dt.datetime(2025, 6, 15, 10, 50)
+        assert spans[1].start_ts == _utc(2025, 6, 15, 10, 20)
+        assert spans[1].end_ts == _utc(2025, 6, 15, 10, 50)
 
     def test_partial_overlap_end(self, tmp_path: Path) -> None:
         """Existing starts inside new and ends after new -> move start."""
@@ -1054,9 +1067,9 @@ class TestOverwriteLabelSpan:
         spans.sort(key=lambda s: s.start_ts)
         assert len(spans) == 2
         assert spans[0].label == "Debug"
-        assert spans[0].end_ts == dt.datetime(2025, 6, 15, 10, 30)
+        assert spans[0].end_ts == _utc(2025, 6, 15, 10, 30)
         assert spans[1].label == "Build"
-        assert spans[1].start_ts == dt.datetime(2025, 6, 15, 10, 30)
+        assert spans[1].start_ts == _utc(2025, 6, 15, 10, 30)
 
     def test_fully_contained(self, tmp_path: Path) -> None:
         """Existing fully inside new -> removed."""
@@ -1084,13 +1097,13 @@ class TestOverwriteLabelSpan:
         spans.sort(key=lambda s: s.start_ts)
         assert len(spans) == 3
         assert spans[0].label == "Build"
-        assert spans[0].end_ts == dt.datetime(2025, 6, 15, 10, 20)
+        assert spans[0].end_ts == _utc(2025, 6, 15, 10, 20)
         assert spans[1].label == "Debug"
-        assert spans[1].start_ts == dt.datetime(2025, 6, 15, 10, 20)
-        assert spans[1].end_ts == dt.datetime(2025, 6, 15, 10, 40)
+        assert spans[1].start_ts == _utc(2025, 6, 15, 10, 20)
+        assert spans[1].end_ts == _utc(2025, 6, 15, 10, 40)
         assert spans[2].label == "Build"
-        assert spans[2].start_ts == dt.datetime(2025, 6, 15, 10, 40)
-        assert spans[2].end_ts == dt.datetime(2025, 6, 15, 11, 0)
+        assert spans[2].start_ts == _utc(2025, 6, 15, 10, 40)
+        assert spans[2].end_ts == _utc(2025, 6, 15, 11, 0)
 
     def test_no_overlap_appends_normally(self, tmp_path: Path) -> None:
         """No conflict -> span is simply appended."""
@@ -1117,8 +1130,8 @@ class TestOverwriteLabelSpan:
         assert len(spans) == 2
         u1_spans = [s for s in spans if s.user_id == "u1"]
         assert len(u1_spans) == 1
-        assert u1_spans[0].start_ts == dt.datetime(2025, 6, 15, 10, 0)
-        assert u1_spans[0].end_ts == dt.datetime(2025, 6, 15, 10, 30)
+        assert u1_spans[0].start_ts == _utc(2025, 6, 15, 10, 0)
+        assert u1_spans[0].end_ts == _utc(2025, 6, 15, 10, 30)
 
     def test_extend_forward_honored(self, tmp_path: Path) -> None:
         """Extend-forward on previous span is still applied before resolution."""
@@ -1131,4 +1144,4 @@ class TestOverwriteLabelSpan:
 
         spans = read_label_spans(path)
         spans.sort(key=lambda s: s.start_ts)
-        assert spans[0].end_ts == dt.datetime(2025, 6, 15, 10, 0)
+        assert spans[0].end_ts == _utc(2025, 6, 15, 10, 0)
