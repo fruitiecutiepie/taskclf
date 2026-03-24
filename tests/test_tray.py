@@ -1326,6 +1326,19 @@ class TestServerStartup:
             labeler._start_ui_embedded()
         mock_start.assert_called_once()
 
+    @patch("taskclf.ui.tray.TrayLabeler._start_server", return_value=8741)
+    def test_embedded_mode_can_skip_browser_launch(
+        self,
+        mock_start: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Electron sidecar mode should start the server without opening a tab."""
+        labeler = TrayLabeler(data_dir=tmp_path, browser=True, open_browser=False)
+        with patch("webbrowser.open") as mock_open:
+            labeler._start_ui_embedded()
+        mock_start.assert_called_once()
+        mock_open.assert_not_called()
+
     @patch("subprocess.Popen")
     def test_spawn_window_launches_pywebview_module(
         self,

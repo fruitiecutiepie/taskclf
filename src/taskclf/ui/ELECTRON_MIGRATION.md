@@ -1,146 +1,104 @@
-# Electron Migration Checklist
+# Electron Shell Status
 
-This document records the steps required to migrate the native floating window
-from pywebview to Electron, if/when that becomes desirable (e.g. for
-transparent click-through overlays, built-in tray integration, or
-cross-platform packaging).
+This document tracks the current Electron-based desktop shell that now
+coexists with the legacy pywebview shell.
 
-## Current architecture (pywebview)
+## Current status
 
-```
-taskclf ui  (single Python process)
-├── FastAPI server       (background thread, port 8741)
-├── ActivityMonitor      (background thread, polls AW)
-└── pywebview window     (main thread, loads http://127.0.0.1:8741)
-    └── SolidJS frontend
-        ├── api.ts       (REST fetch — host-agnostic)
-        ├── ws.ts        (WebSocket — host-agnostic)
-        └── host.ts      (window control — ONLY pywebview-specific file)
+The repo now has an **opt-in Electron shell** launched with:
+
+```bash
+taskclf electron
 ```
 
-The **Host API abstraction** (`src/lib/host.ts`) is the migration seam.
-Components call `host.invoke({ cmd: "setCompact" })` — never
-`window.pywebview.api.*` directly. Data operations (labels, queue,
-features) use standard HTTP/WebSocket via `api.ts` and `ws.ts`.
+The Electron app lives in `electron/` and keeps the Python backend as a
+sidecar process. The sidecar is the existing tray backend running in
+headless browser mode:
 
-## What ports cleanly (zero changes)
-
-- **All SolidJS components** — they only use `host.invoke()`, `api.ts`, `ws.ts`
-- **`api.ts`** — pure `fetch()` against the FastAPI server
-- **`ws.ts`** — pure `WebSocket` against the FastAPI server
-- **FastAPI server** (`server.py`) — stays as the Python backend
-- **All Python business logic** — models, features, labels, inference
-
-## What needs to change
-
-### 1. Create `electron/` directory
-
-```
-electron/
-├── main.ts          — app lifecycle, BrowserWindow, Tray, global hotkeys
-├── preload.ts       — contextBridge exposing ipcRenderer.invoke
-├── package.json     — electron + electron-builder deps
-└── tsconfig.json
+```bash
+taskclf tray --browser --no-tray --no-open-browser
 ```
 
-### 2. Add `ElectronHost` adapter in `host.ts`
+That keeps the existing `EventBus`, transition detection, model-backed
+suggestions, and REST/WebSocket API intact while moving the native tray
+and window management into Electron.
 
-```typescript
-class ElectronHost implements Host {
-  readonly isNativeWindow = true;
+## Runtime architecture
 
-  async invoke(command: HostCommand): Promise<void> {
-    // contextBridge exposes this from preload.ts
-    return (window as any).electronHost.invoke(command);
-  }
-}
+```text
+taskclf electron
+├── Electron main process
+│   ├── Tray icon + menu
+│   ├── Single frameless BrowserWindow
+│   └── IPC bridge (preload.ts)
+└── Python sidecar
+    └── taskclf tray --browser --no-tray --no-open-browser
+        ├── FastAPI server
+        ├── ActivityMonitor
+        └── WebSocket / tray-state publishing
 ```
 
-Update `detectHost()`:
+## Key implementation points
 
-```typescript
-function detectHost(): Host {
-  if ((window as any).electronHost) return new ElectronHost();
-  if (window.pywebview) return new PyWebViewHost();
-  return new BrowserHost();
-}
-```
+- `electron/main.ts` owns the tray icon, BrowserWindow lifecycle, and
+  Python sidecar startup.
+- `electron/preload.ts` exposes `window.electronHost.invoke(...)` to the
+  renderer.
+- `src/taskclf/ui/frontend/src/lib/host.ts` now detects
+  `window.electronHost` and routes host commands through Electron IPC.
+- The Electron renderer uses a **single-window layout** instead of the
+  pywebview shell's three native windows.
+- The renderer reports semantic window states (`compact`, `label`,
+  `panel`, `dashboard`) so Electron can resize the BrowserWindow without
+  snapping back to the primary display.
 
-### 3. Implement IPC in Electron main process
+## Why the sidecar uses `tray`
 
-```typescript
-// main.ts
-ipcMain.handle("host", (_event, command: HostCommand) => {
-  switch (command.cmd) {
-    case "setCompact":
-      mainWindow.setSize(280, 52);
-      break;
-    case "setExpanded":
-      mainWindow.setSize(420, 560);
-      break;
-    case "hideWindow":
-      mainWindow.hide();
-      break;
-  }
-});
-```
+The Electron shell deliberately spawns `taskclf tray`, not `taskclf ui`,
+because the tray backend already owns:
 
-### 4. Python backend as a sidecar process
+- pause/resume state
+- tray-state publishing
+- label/model counters
+- model suggestion lifecycle
 
-Electron spawns the Python server as a child process:
+Running it with `--no-tray --no-open-browser` strips away only the native
+Python shell pieces that Electron replaces.
 
-```typescript
-const pythonProcess = spawn("taskclf", ["ui", "--browser", "--port", "8741"]);
-```
+## What remains in pywebview
 
-The `--browser` flag (already implemented) makes the CLI skip pywebview
-and just run the FastAPI server. Electron loads `http://127.0.0.1:8741`
-in its BrowserWindow.
+The pywebview shell still exists as a fallback path:
 
-### 5. Tray integration moves into Electron
+- `taskclf tray` keeps using the pystray + pywebview shell by default
+- `taskclf ui` still launches the legacy pywebview floating window
+- `src/taskclf/ui/window.py` and `src/taskclf/ui/window_run.py` remain
+  the implementation for that legacy path
 
-Replace the separate `taskclf tray` process. Electron's `Tray` API
-handles the menu bar icon natively, with show/hide/quit built in.
-The HTTP-based `/api/window/toggle` endpoint becomes unnecessary
-(Electron controls its own window directly).
+## Current limitations
 
-### 6. Window features to implement in Electron
+- Electron packaging/signing is not implemented yet; the shell currently
+  expects a repo checkout with `electron/node_modules/` installed.
+- The Electron tray menu is intentionally minimal and does not yet mirror
+  every pystray menu action.
+- The pywebview shell remains available because the Electron path is an
+  incremental migration, not a hard cutover.
 
-- `alwaysOnTop: true` on the BrowserWindow
-- `frame: false` for frameless
-- `transparent: true` if click-through overlay is desired
-- `setIgnoreMouseEvents(true, { forward: true })` for passthrough mode
-- Global keyboard shortcut via `globalShortcut.register()`
+## Validation checklist
 
-## Migration order (minimal risk)
+### Automated checks
 
-1. **Scaffold Electron shell** — `electron/`, `main.ts`, `preload.ts`
-2. **Add `ElectronHost`** to `host.ts` (one adapter, ~15 lines)
-3. **Implement IPC** in `main.ts` for window control commands
-4. **Spawn Python sidecar** from Electron main process
-5. **Move tray** from pystray to Electron `Tray`
-6. **Overlay features** last — transparency, click-through, per-OS quirks
-7. **Package** with electron-builder for `.dmg` / `.exe` / `.AppImage`
+- `uv run ruff check src/taskclf/cli/main.py src/taskclf/ui/tray.py src/taskclf/ui/electron_shell.py tests/test_cli_commands.py tests/test_tray.py tests/test_ui_electron_shell.py`
+- `uv run pytest tests/test_ui_electron_shell.py tests/test_tray.py tests/test_cli_commands.py -k "ui_electron_shell or embedded_mode_can_skip_browser_launch or DesktopShellCommands"`
+- `pnpm exec vitest run src/App.test.tsx src/lib/host.test.ts` from `src/taskclf/ui/frontend/`
+- `pnpm run typecheck` from `src/taskclf/ui/frontend/`
+- `pnpm run typecheck` and `pnpm run build` from `electron/`
+- `pnpm exec electron --version` from `electron/`
 
-## Files involved
+### Manual multi-display checks
 
-| Scope | File | Change |
-|-------|------|--------|
-| Frontend | `src/lib/host.ts` | Add `ElectronHost` adapter (~15 lines) |
-| Frontend | `src/lib/host.ts` | Update `detectHost()` (~3 lines) |
-| Electron | `electron/main.ts` | New: app lifecycle, BrowserWindow, Tray, IPC |
-| Electron | `electron/preload.ts` | New: contextBridge for secure IPC |
-| Electron | `electron/package.json` | New: deps + build config |
-| Python | `src/taskclf/cli/main.py` | No changes (`--browser` flag already exists) |
-| Python | `src/taskclf/ui/server.py` | No changes (HTTP API stays) |
-| Components | All `.tsx` files | **No changes** |
-| Data clients | `api.ts`, `ws.ts` | **No changes** |
-
-## Estimated effort
-
-- **Scenario A** (simple floating window): 1-2 days. Scaffold Electron,
-  add adapter, spawn Python sidecar.
-- **Scenario B** (with transparent overlay / click-through): 3-4 days.
-  Add transparency, mouse-event forwarding, per-OS testing.
-- **Scenario C** (full desktop app with auto-updates): 1 week.
-  Add electron-builder, code signing, auto-updater, installer.
+1. Run `taskclf electron`.
+2. Drag the compact pill horizontally across displays and verify it does not snap back to the primary display.
+3. Repeat with vertically stacked displays and verify the top edge stays stable near the menu bar boundary.
+4. Hover the label badge and status dot so the window resizes through `compact`, `label`, `panel`, and `dashboard` modes while preserving the window's current display and right edge.
+5. Use the Electron tray menu to toggle the dashboard, open the browser fallback, and toggle pause.
+6. Quit from the Electron tray and verify the Python sidecar exits with it.

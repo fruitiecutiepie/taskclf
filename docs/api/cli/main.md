@@ -55,6 +55,7 @@ details.
 | `taskclf monitor show` | Display recent telemetry snapshots |
 | `taskclf diagnostics` | Collect environment info for bug reports |
 | `taskclf ui` | Launch the labeling UI as a native floating window |
+| `taskclf electron` | Launch the Electron desktop shell with native tray + single-window dashboard |
 | `taskclf tray` | Run system tray labeling app with activity transition detection |
 
 ### features build
@@ -580,6 +581,12 @@ Open in browser instead of native window (useful combined with `--dev`):
 taskclf tray --dev --browser
 ```
 
+Keep the browser server headless for another host shell (for example Electron):
+
+```bash
+taskclf tray --browser --no-open-browser --no-tray
+```
+
 Fully browser-based (no native tray icon, no pywebview):
 
 ```bash
@@ -596,7 +603,45 @@ taskclf tray --dev --browser --no-tray
 | `--port` | `8741` | Port for the embedded web UI server |
 | `--dev` | off | Vite hot reload + ephemeral data dir (unless `--data-dir` is set) |
 | `--browser` | off | Open UI in browser instead of native window |
+| `--open-browser` / `--no-open-browser` | `--open-browser` | When `--browser` is set, open the dashboard automatically in the default browser |
 | `--no-tray` | off | Skip the native tray icon (use with `--browser` for browser-only mode) |
+
+### electron
+
+Launch the optional Electron desktop shell.  Electron owns the native
+tray icon and a single frameless BrowserWindow, while the existing Python
+tray backend runs as a sidecar process in browser mode without opening a
+separate browser tab.
+
+```bash
+taskclf electron
+```
+
+With a model for label suggestions:
+
+```bash
+taskclf electron --model-dir models/run_20260226
+```
+
+With frontend hot reload and an ephemeral data dir:
+
+```bash
+taskclf electron --dev
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--model-dir` | *(none)* | Model bundle for label suggestions |
+| `--models-dir` | `models` | Directory containing model bundles |
+| `--aw-host` | `http://localhost:5600` | ActivityWatch server URL |
+| `--poll-seconds` | `60` | Seconds between AW polls |
+| `--title-salt` | `taskclf-default-salt` | Salt for hashing window titles |
+| `--data-dir` | `data/processed` (ephemeral in `--dev`) | Processed data directory; omit with `--dev` for an auto-cleaned temp dir |
+| `--transition-minutes` | `3` | Minutes a new app must persist before prompting |
+| `--port` | `8741` | Port for the embedded web UI server and Electron sidecar |
+| `--dev` | off | Enable frontend hot reload inside Electron; uses an ephemeral data dir unless `--data-dir` is set |
+| `--username` | *(none)* | Display name to persist in `config.json` |
+| `--retrain-config` | *(none)* | Retrain YAML config path passed through to the tray backend |
 
 ### ui
 

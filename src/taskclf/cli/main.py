@@ -2880,6 +2880,11 @@ def tray_cmd(
     browser: bool = typer.Option(
         False, "--browser", help="Open UI in browser instead of native window"
     ),
+    open_browser: bool = typer.Option(
+        True,
+        "--open-browser/--no-open-browser",
+        help="When --browser is set, open the dashboard in the default browser",
+    ),
     no_tray: bool = typer.Option(
         False,
         "--no-tray",
@@ -2931,10 +2936,115 @@ def tray_cmd(
             ui_port=port,
             dev=dev,
             browser=browser,
+            open_browser=open_browser,
             no_tray=no_tray,
             username=username,
             retrain_config=Path(retrain_config) if retrain_config else None,
         )
+    finally:
+        if tmp_dir is not None:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            typer.echo(f"Dev mode: cleaned up ephemeral data dir → {tmp_dir}")
+
+
+# -- ui -----------------------------------------------------------------------
+
+
+@app.command("electron")
+def electron_cmd(
+    model_dir: str | None = typer.Option(
+        None,
+        "--model-dir",
+        help="Path to a model run directory (enables label suggestions)",
+    ),
+    models_dir: str = typer.Option(
+        DEFAULT_MODELS_DIR,
+        "--models-dir",
+        help="Directory containing model bundles",
+    ),
+    aw_host: str = typer.Option(
+        DEFAULT_AW_HOST, "--aw-host", help="ActivityWatch server URL"
+    ),
+    poll_seconds: int = typer.Option(
+        DEFAULT_POLL_SECONDS,
+        "--poll-seconds",
+        help="Seconds between polling iterations",
+    ),
+    title_salt: str = typer.Option(
+        DEFAULT_TITLE_SALT, "--title-salt", help="Salt for hashing window titles"
+    ),
+    data_dir: str | None = typer.Option(
+        None,
+        "--data-dir",
+        help="Processed data directory (default: TASKCLF_HOME/data/processed; ephemeral in --dev)",
+    ),
+    transition_minutes: int = typer.Option(
+        DEFAULT_TRANSITION_MINUTES,
+        "--transition-minutes",
+        help="Minutes a new app must persist before prompting to label",
+    ),
+    port: int = typer.Option(
+        8741, "--port", help="Port for the embedded web UI server"
+    ),
+    dev: bool = typer.Option(
+        False, "--dev", help="Enable frontend hot reload inside the Electron shell"
+    ),
+    username: str | None = typer.Option(
+        None,
+        "--username",
+        help="Display name (persisted in config.json; does not affect label identity)",
+    ),
+    retrain_config: str | None = typer.Option(
+        None,
+        "--retrain-config",
+        help="Path to retrain YAML config passed through to the tray backend",
+    ),
+) -> None:
+    """Launch the Electron desktop shell with a native tray and floating dashboard."""
+    import shutil
+    import subprocess
+    import tempfile
+
+    from taskclf.ui.electron_shell import ElectronLaunchConfig, launch_electron_shell
+
+    if dev:
+        logging.getLogger("taskclf").setLevel(logging.DEBUG)
+
+    tmp_dir: str | None = None
+    if data_dir is not None:
+        resolved_data_dir = data_dir
+    elif dev:
+        tmp_dir = tempfile.mkdtemp(prefix="taskclf-dev-")
+        resolved_data_dir = tmp_dir
+        typer.echo(f"Dev mode: using ephemeral data dir → {tmp_dir}")
+    else:
+        resolved_data_dir = DEFAULT_DATA_DIR
+
+    try:
+        launch_electron_shell(
+            ElectronLaunchConfig(
+                model_dir=Path(model_dir) if model_dir else None,
+                models_dir=Path(models_dir),
+                aw_host=aw_host,
+                poll_seconds=poll_seconds,
+                title_salt=title_salt,
+                data_dir=Path(resolved_data_dir),
+                transition_minutes=transition_minutes,
+                ui_port=port,
+                dev=dev,
+                username=username,
+                retrain_config=Path(retrain_config) if retrain_config else None,
+            )
+        )
+    except RuntimeError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1) from exc
+    except subprocess.CalledProcessError as exc:
+        typer.echo(
+            f"Electron shell exited with status {exc.returncode}",
+            err=True,
+        )
+        raise typer.Exit(exc.returncode) from exc
     finally:
         if tmp_dir is not None:
             shutil.rmtree(tmp_dir, ignore_errors=True)

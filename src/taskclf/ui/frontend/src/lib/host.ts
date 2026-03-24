@@ -9,6 +9,10 @@
  * ipcRenderer.invoke(). Zero component code changes needed.
  */
 
+export type WindowMode = "compact" | "label" | "panel" | "dashboard";
+
+export type HostKind = "browser" | "pywebview" | "electron";
+
 export type HostCommand =
   | { cmd: "showLabelGrid" }
   | { cmd: "hideLabelGrid" }
@@ -16,6 +20,7 @@ export type HostCommand =
   | { cmd: "cancelLabelHide" }
   | { cmd: "hideWindow" }
   | { cmd: "toggleDashboard" }
+  | { cmd: "setWindowMode"; mode: WindowMode }
   | { cmd: "toggleStatePanel" }
   | { cmd: "showStatePanel" }
   | { cmd: "hideStatePanel" }
@@ -26,10 +31,14 @@ export type HostCommand =
 export type Host = {
   invoke(command: HostCommand): Promise<void>;
   readonly isNativeWindow: boolean;
+  readonly kind: HostKind;
 };
 
 declare global {
   interface Window {
+    electronHost?: {
+      invoke(command: HostCommand): Promise<void>;
+    };
     pywebview?: {
       api?: {
         label_grid_show(): Promise<void>;
@@ -49,6 +58,10 @@ declare global {
   }
 }
 
+function electron_api_ref() {
+  return window.electronHost ?? null;
+}
+
 function pywebview_api_ref() {
   return window.pywebview?.api ?? null;
 }
@@ -60,11 +73,31 @@ function pywebview_api_ref() {
  * so a one-shot check at module load time would miss it.
  */
 class AdaptiveHost implements Host {
+  get kind(): HostKind {
+    if (electron_api_ref() !== null) {
+      return "electron";
+    }
+    if (pywebview_api_ref() !== null) {
+      return "pywebview";
+    }
+    return "browser";
+  }
+
   get isNativeWindow(): boolean {
-    return pywebview_api_ref() !== null;
+    return this.kind !== "browser";
   }
 
   async invoke(command: HostCommand): Promise<void> {
+    const electron_api = electron_api_ref();
+    if (electron_api) {
+      try {
+        await electron_api.invoke(command);
+      } catch {
+        // Electron IPC can fail transiently while the shell is loading.
+      }
+      return;
+    }
+
     const api = pywebview_api_ref();
     if (!api) {
       return;
@@ -88,6 +121,8 @@ class AdaptiveHost implements Host {
           break;
         case "toggleDashboard":
           await api.dashboard_toggle();
+          break;
+        case "setWindowMode":
           break;
         case "toggleStatePanel":
           await api.state_panel_toggle();

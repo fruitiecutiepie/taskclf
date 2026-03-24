@@ -2,6 +2,11 @@
 
 WindowAPI and WindowChild for pywebview-based floating UI.
 
+This document covers the **legacy pywebview shell**. The repo also has
+an optional Electron shell for smoother single-window desktop behavior;
+see [`electron_shell.md`](electron_shell.md) and
+`src/taskclf/ui/ELECTRON_MIGRATION.md`.
+
 ## Overview
 
 Creates frameless, always-on-top, draggable windows backed by the
@@ -20,6 +25,10 @@ The compact pill is positioned at the top-right of the primary screen.
 Child windows (label grid, panel) are anchored below the pill on
 initial show.  Once visible, children can be freely dragged to any
 monitor; they will not snap back until hidden and re-shown.
+
+Electron does **not** use this three-window arrangement. Its renderer
+collapses the pill, label grid, and state panel into a single
+BrowserWindow and reports semantic window modes back to the native shell.
 
 ## WindowChild
 

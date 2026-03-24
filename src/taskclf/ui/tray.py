@@ -529,6 +529,9 @@ class TrayLabeler:
         transition_minutes: Minutes for transition detection threshold.
         event_bus: Optional shared event bus for broadcasting events.
         ui_port: Port for the embedded UI server.
+        open_browser: When ``True``, browser-mode startup opens the UI in
+            the default browser immediately.  When ``False``, the server
+            starts without launching a browser tab.
     """
 
     data_dir: Path = field(default_factory=lambda: Path(DEFAULT_DATA_DIR))
@@ -543,6 +546,7 @@ class TrayLabeler:
     dev: bool = False
     browser: bool = False
     no_tray: bool = False
+    open_browser: bool = True
     username: str | None = None
     notifications_enabled: bool = True
     privacy_notifications: bool = True
@@ -567,6 +571,7 @@ class TrayLabeler:
     _dev: bool = field(init=False, default=False)
     _browser: bool = field(init=False, default=False)
     _no_tray: bool = field(init=False, default=False)
+    _open_browser: bool = field(init=False, default=True)
     _transition_count: int = field(init=False, default=0)
     _last_transition: dict[str, Any] | None = field(init=False, default=None)
     _labels_saved_count: int = field(init=False, default=0)
@@ -643,6 +648,7 @@ class TrayLabeler:
         self._dev = self.dev
         self._browser = self.browser
         self._no_tray = self.no_tray
+        self._open_browser = self.open_browser
 
         self._transition_count: int = 0
         self._last_transition: dict[str, Any] | None = None
@@ -1655,13 +1661,17 @@ class TrayLabeler:
             )
 
     def _start_ui_embedded(self) -> None:
-        """Run FastAPI in-process and open the dashboard in the default browser."""
-        import webbrowser
-
+        """Run FastAPI in-process and optionally open the dashboard in a browser."""
         ui_port = self._start_server()
-        webbrowser.open(f"http://127.0.0.1:{ui_port}")
         mode = " (dev)" if self._dev else ""
-        print(f"UI opened in browser{mode} (port={ui_port})")
+        if self._open_browser:
+            import webbrowser
+
+            webbrowser.open(f"http://127.0.0.1:{ui_port}")
+            print(f"UI opened in browser{mode} (port={ui_port})")
+            return
+
+        print(f"UI server ready{mode} (port={ui_port})")
 
     def _cleanup_ui(self) -> None:
         """Terminate UI and Vite subprocesses if still running."""
@@ -1780,6 +1790,7 @@ def run_tray(
     dev: bool = False,
     browser: bool = False,
     no_tray: bool = False,
+    open_browser: bool = True,
     username: str | None = None,
     notifications_enabled: bool = True,
     privacy_notifications: bool = True,
@@ -1813,6 +1824,9 @@ def run_tray(
         no_tray: When ``True``, skip the native tray icon entirely.
             The main thread blocks until interrupted.  Useful with
             ``--browser`` for a fully browser-based workflow.
+        open_browser: When ``True``, browser mode launches the default
+            browser automatically.  Set to ``False`` when another host
+            shell (for example Electron) will render the web UI.
         username: Display name to persist in ``config.json``.  Does not
             affect label identity (labels use the stable auto-generated
             UUID ``user_id``).
@@ -1837,6 +1851,7 @@ def run_tray(
         dev=dev,
         browser=browser,
         no_tray=no_tray,
+        open_browser=open_browser,
         username=username,
         notifications_enabled=notifications_enabled,
         privacy_notifications=privacy_notifications,

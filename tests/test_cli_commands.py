@@ -25,7 +25,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pandas as pd
@@ -1713,3 +1713,75 @@ class TestInferOnline:
         mock_loop.assert_called_once()
         call_kwargs = mock_loop.call_args[1]
         assert call_kwargs["label_queue_path"] == data_dir / "labels_v1" / "queue.json"
+
+
+class TestDesktopShellCommands:
+    """TC-CLI-DS: Electron and headless-browser shell wiring."""
+
+    @patch("taskclf.ui.tray.run_tray")
+    def test_tray_browser_mode_can_skip_opening_a_tab(
+        self,
+        mock_run_tray: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """TC-CLI-DS-001: tray forwards --no-open-browser to run_tray()."""
+        result = runner.invoke(
+            app,
+            [
+                "tray",
+                "--browser",
+                "--no-open-browser",
+                "--no-tray",
+                "--data-dir",
+                str(tmp_path / "data"),
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        mock_run_tray.assert_called_once()
+        assert mock_run_tray.call_args.kwargs["open_browser"] is False
+
+    @patch("taskclf.ui.electron_shell.launch_electron_shell")
+    def test_electron_command_launches_shell(
+        self,
+        mock_launch: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """TC-CLI-DS-002: electron command builds ElectronLaunchConfig correctly."""
+        data_dir = tmp_path / "data"
+        result = runner.invoke(
+            app,
+            [
+                "electron",
+                "--model-dir",
+                str(tmp_path / "models" / "run_001"),
+                "--models-dir",
+                str(tmp_path / "models"),
+                "--aw-host",
+                "http://localhost:5600",
+                "--poll-seconds",
+                "30",
+                "--title-salt",
+                "salt-456",
+                "--data-dir",
+                str(data_dir),
+                "--transition-minutes",
+                "9",
+                "--port",
+                "9555",
+                "--username",
+                "Audrey",
+            ],
+        )
+
+        assert result.exit_code == 0, result.output
+        mock_launch.assert_called_once()
+        config = mock_launch.call_args.args[0]
+        assert config.model_dir == tmp_path / "models" / "run_001"
+        assert config.models_dir == tmp_path / "models"
+        assert config.aw_host == "http://localhost:5600"
+        assert config.poll_seconds == 30
+        assert config.title_salt == "salt-456"
+        assert config.data_dir == data_dir
+        assert config.transition_minutes == 9
+        assert config.ui_port == 9555
+        assert config.username == "Audrey"

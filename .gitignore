@@ -63,6 +63,7 @@ logs/
 # Frontend build artifacts
 src/taskclf/ui/frontend/node_modules/
 src/taskclf/ui/static/
+electron/node_modules/
 
 # Docs (MkDocs build output)
 site/
