@@ -27,6 +27,7 @@ from taskclf.core.defaults import (
     DEFAULT_SMOOTH_WINDOW,
     MIXED_UNKNOWN,
 )
+from taskclf.core.time import ts_utc_aware_get
 from taskclf.core.types import CoreLabel
 from taskclf.infer.smooth import Segment, rolling_majority, segmentize
 
@@ -195,7 +196,8 @@ def run_baseline_inference(
     smoothed = rolling_majority(raw_labels, window=smooth_window)
 
     bucket_starts: list[datetime] = [
-        pd.Timestamp(ts).to_pydatetime() for ts in features_df["bucket_start_ts"].values
+        ts_utc_aware_get(pd.Timestamp(ts).to_pydatetime())
+        for ts in features_df["bucket_start_ts"].values
     ]
     segments = segmentize(bucket_starts, smoothed, bucket_seconds=bucket_seconds)
 

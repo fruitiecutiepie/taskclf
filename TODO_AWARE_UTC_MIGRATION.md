@@ -110,7 +110,7 @@ After Phase 0-1:
     `to_naive_utc()`; aware-UTC timestamps are passed through to
     `LabelSpan`, `generate_label_summary`, and `append_label_span`
 
-### 4) Feature / train / infer / report layers audited (Phase 4 partially done)
+### 4) Feature / train / infer / report layers audited (Phase 4 mostly done)
 
 After Phase 4 audit:
 
@@ -136,17 +136,21 @@ After Phase 4 audit:
   - only uses `.date()` on segment timestamps — safe for aware UTC;
     no changes needed
 
-Remaining artifacts to audit:
+Artifact audit/rewrite tooling:
 
-- `data/processed/labels_v1/labels.parquet`
-- `data/processed/labels_v1/queue.json`
-- `data/processed/features_v1/**/*.parquet`
-- imported/exported labels CSVs
+- `taskclf migrate audit` scans `data/processed/` for naive datetime
+  artifacts in parquet and queue JSON files
+- `taskclf migrate rewrite` normalizes naive columns/fields to aware UTC
+  with optional backup
+- remaining on-disk artifacts can be inspected and fixed via these commands:
+  - `data/processed/labels_v1/labels.parquet`
+  - `data/processed/labels_v1/queue.json`
+  - `data/processed/features_v1/**/*.parquet`
 
 Important note:
 
-- do not assume current on-disk behavior from type hints alone
-- inspect representative real artifacts before changing write semantics
+- imported/exported labels CSVs are normalized by LabelSpan validation
+  on read; CSV artifacts do not need separate rewriting
 
 ---
 
@@ -192,11 +196,15 @@ Recommended boundary rule:
 - Phase 4 audit confirmed: `align_to_bucket()` returns aware UTC, `build.py`
   constructs UTC day boundaries explicitly, date partitioning is unchanged
 
-### 5) Migration tooling -- OPEN
+### 5) Migration tooling -- DECIDED
 
-- not yet implemented (Phase 5)
-- label store reads handle legacy naive artifacts automatically via LabelSpan
-  normalization
+- implemented in Phase 5 via `src/taskclf/migrate/timestamps.py`
+- CLI commands: `taskclf migrate audit` and `taskclf migrate rewrite`
+- audit scans parquet and queue JSON files for naive datetime columns
+- rewrite normalizes naive columns/fields to aware UTC, with optional backup
+- both operations are idempotent
+- label store reads continue to handle legacy naive artifacts via LabelSpan
+  normalization as a safety net
 
 ---
 
@@ -216,7 +224,7 @@ Recommended boundary rule:
   - [x] `FeatureRow` was already on aware UTC
   - [x] `LabelRequest` now normalizes to aware UTC
 
-### Label storage and import/export -- PARTIALLY DONE
+### Label storage and import/export -- MOSTLY DONE
 
 - `src/taskclf/labels/store.py`
   - [x] `update_label_span()` / `delete_label_span()` normalize inputs
@@ -284,7 +292,7 @@ Recommended boundary rule:
 - `src/taskclf/train/lgbm.py` — no datetime usage
 - `src/taskclf/train/evaluate.py` — no datetime usage
 
-### Infer -- PARTIALLY DONE
+### Infer -- MOSTLY DONE
 
 - `src/taskclf/infer/batch.py`
   - [x] `read_segments_json()` normalizes via `ts_utc_aware_get()`
@@ -292,10 +300,14 @@ Recommended boundary rule:
     `ts_utc_aware_get()`
   - [x] Tests: TC-BATCH-UTC-001..004
 
+- `src/taskclf/infer/baseline.py`
+  - [x] `run_baseline_inference()` normalizes `bucket_starts` via
+    `ts_utc_aware_get()` (mirrors `batch.py`)
+  - [x] `except` clause fixed to parenthesized tuple (PEP 8 style fix)
+  - [x] Tests: TC-BASE-UTC-001..003
+
 - `src/taskclf/infer/smooth.py` — only `timedelta` arithmetic; no
   normalization needed
-- `src/taskclf/infer/baseline.py` — uses `pd.Timestamp(ts).to_pydatetime()`
-  like batch; inherits whatever tz the DataFrame column carries
 - `src/taskclf/infer/prediction.py` — `bucket_start_ts: datetime` field only
 - `src/taskclf/infer/monitor.py` — `datetime.now(tz=timezone.utc)` already
   aware; `pd.Timestamp` arithmetic preserves tz
@@ -307,8 +319,25 @@ Remaining:
 
 - [ ] `src/taskclf/infer/online.py` — `ev.timestamp` comparisons depend on
   adapter output; needs review when adapter layer is audited
-- [ ] `src/taskclf/infer/baseline.py` — could normalize `bucket_starts` like
-  `batch.py` for consistency (not urgent, inherits from upstream)
+
+### Migrate -- DONE (Phase 5)
+
+- `src/taskclf/migrate/__init__.py` — new package
+- `src/taskclf/migrate/timestamps.py`
+  - [x] `audit_parquet_timestamps()` inspects parquet files for naive
+    datetime columns
+  - [x] `audit_json_timestamps()` inspects JSON files for naive datetime
+    strings in known fields
+  - [x] `audit_data_dir()` walks a directory tree and audits all parquet
+    and queue JSON files
+  - [x] `rewrite_parquet_timestamps()` localizes naive datetime columns
+    to UTC; idempotent; optional backup
+  - [x] `rewrite_json_timestamps()` normalizes naive ISO strings via
+    `ts_utc_aware_get()`; idempotent; optional backup
+  - [x] `rewrite_data_dir()` discovers and rewrites all matching files
+  - [x] Tests: TC-MIG-AUD-PQ-001..005, TC-MIG-AUD-JS-001..005,
+    TC-MIG-AUD-DIR-001..003, TC-MIG-RW-PQ-001..005, TC-MIG-RW-JS-001..005,
+    TC-MIG-RW-DIR-001..003, TC-MIG-EDGE-001..003, TC-MIG-CLI-001..004
 
 ### Report -- DONE (no changes needed)
 
@@ -320,17 +349,25 @@ Remaining:
 
 Docs:
 
-- `docs/guide/time_spec.md`
-- `docs/api/core/types.md`
-- `docs/api/ui/labeling.md`
+- `docs/guide/time_spec.md` -- updated (Phase 0)
+- `docs/api/core/types.md` -- updated LabelSpan to aware UTC (Phase 2)
+- `docs/api/ui/labeling.md` -- updated timestamp format paragraph (Phase 2)
 - `docs/guide/usage.md`
 - `README.md` if timestamp examples or guarantees need updating
+
+Tests -- Phase 5 additions:
+
+- `tests/test_migrate_timestamps.py` -- TC-MIG-AUD-PQ-001..005,
+  TC-MIG-AUD-JS-001..005, TC-MIG-AUD-DIR-001..003, TC-MIG-RW-PQ-001..005,
+  TC-MIG-RW-JS-001..005, TC-MIG-RW-DIR-001..003, TC-MIG-EDGE-001..003,
+  TC-MIG-CLI-001..004
 
 Tests -- Phase 4 additions:
 
 - `tests/test_features_windows.py` -- TC-FEAT-WIN-UTC-001..005
 - `tests/test_infer_batch_segments.py` -- TC-BATCH-UTC-001..004
 - `tests/test_retrain.py` -- TC-RETRAIN-UTC-001..007
+- `tests/test_infer_baseline.py` -- TC-BASE-UTC-001..003
 
 Tests -- previously covered:
 
@@ -388,7 +425,7 @@ Exit criteria met:
 
 - all core datetime-carrying models have one documented normalization rule
 
-### Phase 2 - Label Boundary Migration -- PARTIALLY DONE
+### Phase 2 - Label Boundary Migration -- MOSTLY DONE
 
 - [x] `update_label_span()` and `delete_label_span()` normalize inputs via
   `ts_utc_aware_get()` so equality comparisons work with either naive or
@@ -400,13 +437,15 @@ Exit criteria met:
   deduplication works across naive/aware boundaries
 - [x] Fixed `labels/projection.py` Pandas `pd.Timestamp(ts, tz=...)` error
   for already-aware timestamps
+- [x] Updated `docs/api/core/types.md` LabelSpan fields to reflect
+  aware-UTC contract
+- [x] Updated `docs/api/ui/labeling.md` timestamp format paragraph to
+  reflect aware-UTC internal normalization
 
 Remaining:
 
 - [ ] Verify real on-disk `labels.parquet` and `queue.json` load correctly
   (manual smoke test needed)
-- [ ] Update `docs/api/core/types.md` and `docs/api/ui/labeling.md` to
-  reflect aware-UTC contract
 
 ### Phase 3 - UI / API / CLI Migration -- DONE
 
@@ -430,17 +469,21 @@ Exit criteria met:
   normalized
 - 112 test_ui_server tests pass (was 86 with 1 skipped; now 112 with 0 skipped)
 
-### Phase 4 - Feature / Train / Infer / Report Audit -- PARTIALLY DONE
+### Phase 4 - Feature / Train / Infer / Report Audit -- MOSTLY DONE
 
 - [x] Audited all time comparisons and partitioning in:
   - features build/join paths
   - dataset construction
   - batch inference
+  - baseline inference
   - summaries and reports
 - [x] `features/windows.py`: replaced inline `_epoch()` workaround with
   `ts_utc_aware_get()`
 - [x] `infer/batch.py`: `read_segments_json()` and `run_batch_inference()`
   normalize timestamps via `ts_utc_aware_get()`
+- [x] `infer/baseline.py`: `run_baseline_inference()` normalizes
+  `bucket_starts` via `ts_utc_aware_get()` (mirrors `batch.py`);
+  `except` clause fixed to PEP 8 parenthesized tuple
 - [x] `train/retrain.py`: cadence checks use `ts_utc_aware_get()`;
   `except` clauses fixed to PEP 8 parenthesized tuples
 - [x] `report/`: audited — no changes needed (`.date()` only)
@@ -449,7 +492,7 @@ Exit criteria met:
 - [x] Date partitioning: `build.py` constructs UTC day boundaries with
   `tzinfo=dt.timezone.utc`; buckets land in the same UTC day
 - [x] Tests: TC-FEAT-WIN-UTC-001..005, TC-BATCH-UTC-001..004,
-  TC-RETRAIN-UTC-001..007
+  TC-RETRAIN-UTC-001..007, TC-BASE-UTC-001..003
 - [x] Updated existing tests using naive `Segment` timestamps in
   `test_infer_batch_segments.py` to use aware UTC
 
@@ -457,22 +500,27 @@ Remaining:
 
 - [ ] `infer/online.py` event timestamp comparisons (depends on adapter
   output contract)
-- [ ] `infer/baseline.py` could normalize `bucket_starts` for consistency
 
 Exit criteria:
 
 - end-to-end train/infer/report flows operate on a single aware-UTC contract
 
-### Phase 5 - Data Migration Tooling
+### Phase 5 - Data Migration Tooling -- DONE
 
-- Add a one-shot audit command or script to detect naive datetime artifacts
-- Add an optional rewrite command for:
-  - `labels.parquet`
-  - `queue.json`
-  - any confirmed mixed legacy artifacts
-- Make rewrite behavior explicit and idempotent
+- [x] Added `src/taskclf/migrate/timestamps.py` with audit and rewrite
+  functions for parquet and JSON files
+- [x] Added `taskclf migrate audit [--data-dir]` CLI command to scan for
+  naive datetime columns in parquet files and known datetime fields in
+  queue JSON files
+- [x] Added `taskclf migrate rewrite [--data-dir] [--no-backup]` CLI command
+  to normalize naive datetime columns/fields to aware UTC
+- [x] Rewrite operations are idempotent (already-aware files are skipped)
+- [x] Backup files (`.bak`) created by default before rewriting
+- [x] Tests: TC-MIG-AUD-PQ-001..005, TC-MIG-AUD-JS-001..005,
+  TC-MIG-AUD-DIR-001..003, TC-MIG-RW-PQ-001..005, TC-MIG-RW-JS-001..005,
+  TC-MIG-RW-DIR-001..003, TC-MIG-EDGE-001..003, TC-MIG-CLI-001..004
 
-Exit criteria:
+Exit criteria met:
 
 - operators can inspect and normalize old local data safely
 
@@ -539,13 +587,42 @@ Files changed:
 - `tests/test_retrain.py` -- added TC-RETRAIN-UTC-001..007 (cadence checks
   with naive/aware/non-UTC-offset metadata)
 
+### PR 4 - baseline UTC + doc updates (Phase 4 + partial Phase 2) -- DONE
+
+Files changed:
+
+- `src/taskclf/infer/baseline.py` -- `run_baseline_inference()` normalizes
+  `bucket_starts` via `ts_utc_aware_get()` (mirrors `batch.py`); `except`
+  clause fixed to PEP 8 parenthesized tuple
+- `docs/api/core/types.md` -- updated LabelSpan fields from naive UTC to
+  aware UTC
+- `docs/api/ui/labeling.md` -- updated timestamp format paragraph to reflect
+  aware-UTC internal normalization
+- `tests/test_infer_baseline.py` -- added TC-BASE-UTC-001..003 (aware-UTC,
+  naive normalization, non-UTC offset conversion)
+
+### PR 5 - migration tooling (Phase 5) -- DONE
+
+Files changed:
+
+- `src/taskclf/migrate/__init__.py` -- new package init
+- `src/taskclf/migrate/timestamps.py` -- audit and rewrite functions for
+  parquet and JSON files (FileAudit, ColumnAudit, RewriteResult data
+  structures; audit_parquet_timestamps, audit_json_timestamps,
+  audit_data_dir, rewrite_parquet_timestamps, rewrite_json_timestamps,
+  rewrite_data_dir)
+- `src/taskclf/cli/main.py` -- added `migrate` command group with `audit`
+  and `rewrite` subcommands
+- `tests/test_migrate_timestamps.py` -- 33 tests covering audit, rewrite,
+  idempotency, backup, edge cases, and CLI integration
+
 ### Remaining PRs
 
-### PR 4 - migration tooling + cleanup (Phase 5-6)
+### PR 6 - cleanup (Phase 6)
 
 - online inference event timestamp audit (depends on adapter contract)
-- artifact audit/rewrite tooling
-- final doc cleanup
+- remaining doc cleanup
+- remove transitional compatibility shims
 
 ---
 

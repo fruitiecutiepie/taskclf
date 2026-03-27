@@ -3048,6 +3048,130 @@ def monitor_show_cmd(
     console.print(table)
 
 
+# -- migrate ------------------------------------------------------------------
+migrate_app = typer.Typer()
+app.add_typer(migrate_app, name="migrate")
+
+
+@migrate_app.command("audit")
+def migrate_audit_cmd(
+    data_dir: str = typer.Option(
+        DEFAULT_DATA_DIR,
+        "--data-dir",
+        help="Root directory to scan for datetime artifacts",
+    ),
+) -> None:
+    """Scan data files for naive (tz-unaware) datetime columns."""
+    from rich.console import Console
+    from rich.table import Table
+
+    from taskclf.migrate.timestamps import audit_data_dir
+
+    console = Console()
+    dir_path = Path(data_dir)
+
+    if not dir_path.exists():
+        typer.echo(f"Data directory not found: {dir_path}")
+        raise typer.Exit(code=1)
+
+    results = audit_data_dir(dir_path)
+
+    if not results:
+        typer.echo("No parquet or queue.json files found.")
+        return
+
+    table = Table(title="Timestamp Audit")
+    table.add_column("File", style="cyan")
+    table.add_column("Type")
+    table.add_column("Column")
+    table.add_column("Total", justify="right")
+    table.add_column("Naive", justify="right")
+    table.add_column("Aware", justify="right")
+    table.add_column("Status")
+
+    needs_any = False
+    for fa in results:
+        if not fa.columns:
+            table.add_row(
+                str(fa.path),
+                fa.file_type,
+                "-",
+                "-",
+                "-",
+                "-",
+                "[dim]no datetime cols[/dim]",
+            )
+            continue
+        for ca in fa.columns:
+            status = (
+                "[red]needs migration[/red]"
+                if ca.naive_count > 0
+                else "[green]ok[/green]"
+            )
+            if ca.naive_count > 0:
+                needs_any = True
+            table.add_row(
+                str(fa.path),
+                fa.file_type,
+                ca.column,
+                str(ca.total),
+                str(ca.naive_count),
+                str(ca.aware_count),
+                status,
+            )
+
+    console.print(table)
+
+    if needs_any:
+        typer.echo("\nRun 'taskclf migrate rewrite' to normalize naive timestamps.")
+    else:
+        typer.echo("\nAll datetime columns are already timezone-aware UTC.")
+
+
+@migrate_app.command("rewrite")
+def migrate_rewrite_cmd(
+    data_dir: str = typer.Option(
+        DEFAULT_DATA_DIR,
+        "--data-dir",
+        help="Root directory to scan and rewrite",
+    ),
+    no_backup: bool = typer.Option(
+        False,
+        "--no-backup",
+        help="Skip creating .bak backup files",
+    ),
+) -> None:
+    """Rewrite naive datetime columns/fields to timezone-aware UTC."""
+    from taskclf.migrate.timestamps import rewrite_data_dir
+
+    dir_path = Path(data_dir)
+
+    if not dir_path.exists():
+        typer.echo(f"Data directory not found: {dir_path}")
+        raise typer.Exit(code=1)
+
+    results = rewrite_data_dir(dir_path, backup=not no_backup)
+
+    if not results:
+        typer.echo("No parquet or queue.json files found.")
+        return
+
+    migrated = 0
+    skipped = 0
+    for r in results:
+        if r.already_migrated:
+            skipped += 1
+            typer.echo(f"  [skip] {r.path} (already migrated)")
+        else:
+            migrated += 1
+            cols = ", ".join(r.columns_migrated)
+            typer.echo(f"  [done] {r.path} — {cols} ({r.rows_affected} rows)")
+            if r.backup_path:
+                typer.echo(f"         backup: {r.backup_path}")
+
+    typer.echo(f"\nMigrated: {migrated}  Skipped: {skipped}")
+
+
 # -- tray ---------------------------------------------------------------------
 
 

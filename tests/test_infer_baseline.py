@@ -488,3 +488,69 @@ class TestUnsortedInput:
         _, segments = run_baseline_inference(df)
         for i in range(1, len(segments)):
             assert segments[i].start_ts >= segments[i - 1].start_ts
+
+
+# ---------------------------------------------------------------------------
+# TC-BASE-UTC-*: aware-UTC normalization tests (Phase 4 migration)
+# ---------------------------------------------------------------------------
+
+_UTC = dt.timezone.utc
+
+
+class TestBaselineInferenceAwareUtc:
+    """Verify run_baseline_inference normalizes bucket timestamps to aware UTC."""
+
+    def _make_inference_df(
+        self,
+        base_ts: dt.datetime,
+        n: int = 5,
+    ) -> pd.DataFrame:
+        rows = [
+            {
+                "bucket_start_ts": base_ts + dt.timedelta(minutes=i),
+                "bucket_end_ts": base_ts + dt.timedelta(minutes=i + 1),
+                "active_seconds_any": 0.0,
+            }
+            for i in range(n)
+        ]
+        return _make_df(rows)
+
+    def test_aware_utc_produces_aware_segments(self) -> None:
+        """TC-BASE-UTC-001: aware-UTC bucket_start_ts → segments with aware-UTC timestamps."""
+        base = dt.datetime(2025, 6, 15, 10, 0, tzinfo=_UTC)
+        df = self._make_inference_df(base)
+
+        _, segments = run_baseline_inference(df)
+        assert len(segments) >= 1
+        for seg in segments:
+            assert seg.start_ts.tzinfo is not None, "start_ts must be aware"
+            assert seg.end_ts.tzinfo is not None, "end_ts must be aware"
+            assert seg.start_ts.utcoffset() == dt.timedelta(0)
+            assert seg.end_ts.utcoffset() == dt.timedelta(0)
+
+    def test_naive_normalized_to_aware_utc(self) -> None:
+        """TC-BASE-UTC-002: naive bucket_start_ts → segments normalized to aware UTC."""
+        base = dt.datetime(2025, 6, 15, 10, 0)
+        df = self._make_inference_df(base)
+
+        _, segments = run_baseline_inference(df)
+        assert len(segments) >= 1
+        for seg in segments:
+            assert seg.start_ts.tzinfo is not None, "start_ts must be aware"
+            assert seg.end_ts.tzinfo is not None, "end_ts must be aware"
+        expected_start = dt.datetime(2025, 6, 15, 10, 0, tzinfo=_UTC)
+        assert segments[0].start_ts == expected_start
+
+    def test_non_utc_offset_converted_to_utc(self) -> None:
+        """TC-BASE-UTC-003: non-UTC offset bucket_start_ts → converted to UTC."""
+        utc_plus_5 = dt.timezone(dt.timedelta(hours=5))
+        base_local = dt.datetime(2025, 6, 15, 15, 0, tzinfo=utc_plus_5)
+        df = self._make_inference_df(base_local)
+
+        _, segments = run_baseline_inference(df)
+        assert len(segments) >= 1
+        expected_utc_start = dt.datetime(2025, 6, 15, 10, 0, tzinfo=_UTC)
+        assert segments[0].start_ts == expected_utc_start
+        for seg in segments:
+            assert seg.start_ts.utcoffset() == dt.timedelta(0)
+            assert seg.end_ts.utcoffset() == dt.timedelta(0)
