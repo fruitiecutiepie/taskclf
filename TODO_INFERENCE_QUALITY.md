@@ -1227,7 +1227,7 @@ Docs to create:
 
 **Prerequisites**: Phase 1 complete.
 
-- [ ] **Step 4.1 — Implement interval-aware aggregation**
+- [x] **Step 4.1 — Implement interval-aware aggregation** ✅ 2026-03-28
 
 _Problem_: `_LabelSuggester.suggest()` predicts only `rows[-1]`. This throws away context from the rest of the interval.
 
@@ -1279,12 +1279,12 @@ Tests:
 Docs to create:
 - `docs/api/infer/aggregation.md` (new page).
 
-- [ ] **Step 4.2 — Include input events in tray suggestion features**
+- [x] **Step 4.2 — Include input events in tray suggestion features** ✅ 2026-03-28
 
 Already done in Phase 1 Step 1.3. Verify test P4-002 passes:
 - `tests/test_ui_tray_suggest.py` — P4-002: After fix, tray feature rows have non-None input fields.
 
-- [ ] **Step 4.3 — Separate transition suggestion and live status surfaces (Decision 6)**
+- [x] **Step 4.3 — Separate transition suggestion and live status surfaces (Decision 6)** ✅ 2026-03-28
 
 Files to modify:
 - `src/taskclf/ui/tray.py`

@@ -377,7 +377,8 @@ class TestHandleTransition:
 
         prompt = next(e for e in captured if e["type"] == "prompt_label")
         assert prompt["suggested_label"] is None
-        assert prompt["suggested_confidence"] is None
+        assert prompt["suggestion_text"] is None
+        assert "suggested_confidence" not in prompt
         assert prompt["prev_app"] == "com.apple.Terminal"
         assert prompt["new_app"] == "us.zoom.xos"
 
@@ -415,7 +416,8 @@ class TestHandleTransition:
 
         prompt = next(e for e in captured if e["type"] == "prompt_label")
         assert prompt["suggested_label"] == "Build"
-        assert prompt["suggested_confidence"] == 0.85
+        assert "suggested_confidence" not in prompt
+        assert prompt["suggestion_text"] == "Was this Build? 10:00\u201310:15"
 
         suggest = next(e for e in captured if e["type"] == "suggest_label")
         assert suggest["reason"] == "app_switch"

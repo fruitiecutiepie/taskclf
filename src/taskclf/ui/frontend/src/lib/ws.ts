@@ -109,7 +109,7 @@ export type PromptLabelEvent = {
   block_end: string;
   duration_min: number;
   suggested_label: string | null;
-  suggested_confidence: number | null;
+  suggestion_text: string | null;
 };
 
 export type SuggestionClearedEvent = {
@@ -132,6 +132,13 @@ export type LabelCreatedEvent = {
   ts: string;
   start_ts: string;
   extend_forward: boolean;
+};
+
+export type LiveStatusEvent = {
+  type: "live_status";
+  label: string;
+  text: string;
+  ts: string;
 };
 
 export type TrainProgressEvent = {
@@ -165,6 +172,7 @@ export type WSEvent =
   | SuggestionClearedEvent
   | NoModelTransitionEvent
   | LabelCreatedEvent
+  | LiveStatusEvent
   | TrainProgressEvent
   | TrainCompleteEvent
   | TrainFailedEvent;
@@ -199,6 +207,7 @@ export type WebSocketStore = {
   latest_tray_state: TrayState;
   active_suggestion: LabelSuggestion | null;
   latest_prompt: PromptLabelEvent | null;
+  live_status: LiveStatusEvent | null;
   label_grid_requested: number;
   train_state: TrainState;
   connection_status: ConnectionStatus;
@@ -212,6 +221,7 @@ export function ws_store_new() {
     latest_tray_state: TrayStateDefault,
     active_suggestion: null,
     latest_prompt: null,
+    live_status: null,
     label_grid_requested: 0,
     train_state: {
       job_id: null,
@@ -371,6 +381,10 @@ export function ws_store_new() {
             });
             break;
           case "no_model_transition":
+            ws_stats_bump(now);
+            break;
+          case "live_status":
+            setStore("live_status", data as LiveStatusEvent);
             ws_stats_bump(now);
             break;
           case "train_progress":

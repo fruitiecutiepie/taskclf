@@ -140,6 +140,26 @@ taskclf tray --dev
   The app also installs global `window.onerror` and `unhandledrejection` handlers in dev mode so uncaught frontend failures are captured and forwarded via the same error channel.
 - **Crash handler** -- `TrayLabeler.run()` wraps the main loop in a top-level `try/except`. On unhandled exceptions, a crash report is written to `<TASKCLF_HOME>/logs/crash_<YYYYMMDD_HHMMSS>.txt` and a desktop notification is attempted with the crash file path. See [core.crash](../core/crash.md) for details.
 
+## Surface Architecture
+
+The tray implements three distinct UI surfaces with separate code paths,
+interaction patterns, and confidence profiles (Decision 6):
+
+| Surface | Method | Event type | Copy function | Trigger |
+|---|---|---|---|---|
+| Transition suggestion | `_handle_transition` | `prompt_label` | `transition_suggestion_text` | App transition |
+| Live status | `_publish_live_status` | `live_status` | `live_status_text` | Every poll cycle |
+| Gap-fill | *(Phase 4b)* | *(planned)* | `gap_fill_prompt` | Idle return / session start |
+
+- **Transition suggestions** aggregate all buckets in the completed interval
+  via `infer.aggregation.aggregate_interval` and display an action-oriented
+  prompt with a concrete time range (e.g. "Was this Coding? 12:00–12:47").
+- **Live status** predicts only the current single bucket and publishes a
+  passive present-tense label ("Now: Coding").
+- Numeric confidence is never shown to the user on either surface.
+- All user-facing copy strings are centralized in
+  [`ui.copy`](copy.md).
+
 ## Privacy
 
 Same guarantees as the web UI: no raw window titles or keystrokes are displayed or stored.

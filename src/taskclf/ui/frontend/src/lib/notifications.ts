@@ -40,8 +40,8 @@ export function transition_notification_show(
     return null;
   }
 
-  const body = prompt.suggested_label
-    ? `${prompt.prev_app} → ${prompt.new_app} (${prompt.duration_min} min)\nSuggested: ${prompt.suggested_label}`
+  const body = prompt.suggestion_text
+    ? prompt.suggestion_text
     : `${prompt.prev_app} → ${prompt.new_app} (${prompt.duration_min} min)`;
 
   const n = new Notification("taskclf — Activity changed", {

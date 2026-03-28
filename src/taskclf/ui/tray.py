@@ -563,8 +563,11 @@ class _LabelSuggester:
             if not rows:
                 return None
 
-            prediction = self._predictor.predict_bucket(rows[-1])
-            return (prediction.core_label_name, prediction.confidence)
+            predictions = [self._predictor.predict_bucket(row) for row in rows]
+            from taskclf.infer.aggregation import aggregate_interval
+
+            label, confidence = aggregate_interval(predictions, strategy="majority")
+            return (label, confidence)
         except Exception:
             logger.warning("Could not generate label suggestion", exc_info=True)
             return None
@@ -870,6 +873,37 @@ class TrayLabeler:
                     "paused": self._monitor.is_paused,
                 }
             )
+        self._publish_live_status()
+
+    def _publish_live_status(self) -> None:
+        """Predict the current bucket and publish a ``live_status`` event.
+
+        This is a passive, glanceable status separate from transition
+        suggestions.  It uses only the latest single bucket (SEM-002).
+        """
+        if self._suggester is None or self._event_bus is None:
+            return
+
+        now = dt.datetime.now(dt.timezone.utc)
+        bucket_start = now.replace(second=0, microsecond=0)
+        bucket_end = now
+
+        result = self._suggester.suggest(bucket_start, bucket_end)
+        if result is None:
+            return
+
+        label, _confidence = result
+
+        from taskclf.ui.copy import live_status_text
+
+        self._event_bus.publish_threadsafe(
+            {
+                "type": "live_status",
+                "label": label,
+                "text": live_status_text(label),
+                "ts": now.isoformat(),
+            }
+        )
 
     def _is_breakidle_block(self, prev_app: str) -> bool:
         """Return True when the completed block should be auto-labeled BreakIdle.
@@ -977,6 +1011,15 @@ class TrayLabeler:
             self._send_notification(prev_app, new_app, block_start, block_end)
 
         if self._event_bus is not None:
+            from taskclf.ui.copy import transition_suggestion_text
+
+            start_str = block_start.strftime("%H:%M")
+            end_str = block_end.strftime("%H:%M")
+            suggestion_text = (
+                transition_suggestion_text(self._suggested_label, start_str, end_str)
+                if self._suggested_label is not None
+                else None
+            )
             self._event_bus.publish_threadsafe(
                 {
                     "type": "prompt_label",
@@ -988,7 +1031,7 @@ class TrayLabeler:
                         1, int((block_end - block_start).total_seconds() / 60)
                     ),
                     "suggested_label": self._suggested_label,
-                    "suggested_confidence": self._suggested_confidence,
+                    "suggestion_text": suggestion_text,
                 }
             )
             if (
@@ -1027,16 +1070,22 @@ class TrayLabeler:
         if not self._notifications_enabled:
             return
 
-        title = "taskclf — Activity changed"
-        duration_min = max(1, int((block_end - block_start).total_seconds() / 60))
+        from taskclf.ui.copy import transition_suggestion_text
 
-        if self._privacy_notifications:
+        title = "taskclf — Activity changed"
+        start_str = block_start.strftime("%H:%M")
+        end_str = block_end.strftime("%H:%M")
+
+        if self._suggested_label is not None:
+            message = transition_suggestion_text(
+                self._suggested_label, start_str, end_str
+            )
+        elif self._privacy_notifications:
+            duration_min = max(1, int((block_end - block_start).total_seconds() / 60))
             message = f"Activity changed\nLabel the last {duration_min} min?"
         else:
-            message = f"{prev_app} → {new_app}\nLabel the last {duration_min} min?"
-
-        if self._suggested_label is not None and self._suggested_confidence is not None:
-            message += f"\nSuggested: {self._suggested_label} ({self._suggested_confidence:.0%})"
+            duration_min = max(1, int((block_end - block_start).total_seconds() / 60))
+            message = f"{prev_app} \u2192 {new_app}\nLabel the last {duration_min} min?"
 
         _send_desktop_notification(title, message, timeout=10)
 
