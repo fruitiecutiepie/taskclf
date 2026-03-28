@@ -829,6 +829,702 @@ The surface separation (step 5) establishes the UI architecture needed for decis
 
 ---
 
+## Agent Implementation Guide
+
+Step-by-step instructions for each phase. Every step names the exact files, functions, and edits required, followed by tests and docs to update. Steps within a phase are ordered by dependency; complete each step fully before starting the next.
+
+### How to read this document
+
+This file is ~2000 lines. Do NOT read it all at once. For each step:
+
+1. Read lines 1–40 (Goals, Non-Negotiables) for project constraints.
+2. Read the specific step you are implementing (use the line ranges below).
+3. Read the corresponding Test Plan entries (referenced by test ID in each step).
+4. Read `AGENTS.md` for repo-wide rules.
+5. Read each target source file before editing it.
+
+### Progress tracking
+
+After completing a step, change its checkbox from `- [ ]` to `- [x]` and append the date:
+
+```markdown
+- [x] **Step 1.1 — Fix online numeric missing-value handling (Risk 0)** ✅ 2026-03-28
+```
+
+Do NOT delete or strikethrough completed steps — later phases reference earlier decisions and rationale.
+
+To find the next step to work on, scan for the first unchecked `- [ ]` in this section.
+
+### General rules for every step
+
+- Read the target source file before editing.
+- Run `make test` (or `pytest tests/`) after each step to confirm no regressions.
+- Run `ruff check src/ tests/` after editing Python files.
+- Update the API doc page under `docs/api/` for any file whose public interface changed.
+- Mark the corresponding test IDs from the Test Plan as implemented.
+
+---
+
+### Phase 0 — Lock the inference contract
+
+This phase is documentation and decision-recording only. No production code changes.
+
+- [ ] **Step 0.1 — Document canonical inference order**
+
+1. Create `docs/guide/inference_contract.md`.
+2. Write down the canonical pipeline order (this is already captured in the TODO above — formalize it):
+   `features → encode categoricals → impute missing → predict probabilities → calibrate → reject → smooth/aggregate → taxonomy map → UI label`
+3. For each of the three runtime paths (batch, online, tray), list which functions implement each stage:
+   - Batch: `predict_proba()` in `infer/batch.py` → `run_batch_inference()` in `infer/batch.py`
+   - Online: `OnlinePredictor.predict_bucket()` in `infer/online.py`
+   - Tray: `_LabelSuggester.suggest()` in `ui/tray.py` → delegates to `OnlinePredictor.predict_bucket()`
+4. Note any current deviations from the canonical order (these are the Phase 1 fixes).
+5. Update `docs/api/infer/online.md`, `docs/api/infer/batch.md` to cross-reference the contract.
+
+- [ ] **Step 0.2 — Record personalization migration boundary**
+
+1. Add a section to `docs/guide/personalization.md` titled "Migration boundary":
+   - Schema-v1 bundles: `user_id` in `FEATURE_COLUMNS`, must be passed correctly.
+   - Schema-v2 bundles (future): `user_id` removed from model, personalization via calibrators.
+   - Gate: schema hash prevents mixing contracts.
+2. No code changes.
+
+Verification: review docs only; no tests needed for Phase 0.
+
+---
+
+### Phase 1 — Remove correctness mismatches
+
+- [ ] **Step 1.1 — Fix online numeric missing-value handling (Risk 0)**
+
+_Problem_: `OnlinePredictor._encode_value()` returns `float("nan")` for missing numerics, but training and batch inference use `fillna(0)`.
+
+Files to modify:
+- `src/taskclf/infer/online.py`
+
+Edit:
+
+In `OnlinePredictor._encode_value()` (line ~101), change the null-numeric branch:
+
+```python
+# BEFORE
+return float(value) if value is not None else float("nan")
+
+# AFTER
+return float(value) if value is not None else 0.0
+```
+
+Tests to write/update:
+- `tests/test_integration_train_infer_parity.py` (new file) — TSP-001, TSP-002, TSP-003, P0-001, P0-002
+  - TSP-001: Build a `FeatureRow` with `None` numeric fields. Pass it through both `prepare_xy` (train path) and `OnlinePredictor._encode_value` (online path). Assert both produce `0.0`.
+  - TSP-002: Run `predict_proba` (batch) and `predict_bucket` (online) on the same input. Assert `np.allclose(batch_proba, online_proba)`.
+  - TSP-003: Parametrize over every numeric column in `FEATURE_COLUMNS`. For each, set it to `None` in a `FeatureRow`, encode via both paths, assert equal.
+  - P0-001/P0-002: Trace the pipeline stages for batch, online, and tray paths. Assert same order: encode → impute → predict → calibrate → reject → smooth.
+
+Existing test to update:
+- `tests/test_infer_online.py` — find any test asserting `NaN` behavior for missing numerics (e.g. `test_numerical_none_returns_nan`) and update it to assert `0.0` instead.
+
+Docs to update:
+- `docs/api/infer/online.md` — update `_encode_value` docstring note about null handling.
+
+- [ ] **Step 1.2 — Pass stable user_id through tray suggestion path (Risk 4)**
+
+_Problem_: `_LabelSuggester.suggest()` calls `build_features_from_aw_events(events)` without passing a `user_id`, so it defaults to `"default-user"`. The model expects the config-backed stable UUID.
+
+Files to modify:
+- `src/taskclf/ui/tray.py`
+
+Edit 1 — Add `_user_id` field to `_LabelSuggester`:
+
+The suggester needs access to the stable user ID. Add it as a field and populate it during construction:
+
+In `_LabelSuggester.__post_init__()`, after loading the model, read the user_id from config:
+
+```python
+# In __post_init__, after self._predictor is set:
+self._user_id: str = "default-user"  # overridden by TrayLabeler
+```
+
+In `_LabelSuggester.from_policy()`, after `obj._title_salt = DEFAULT_TITLE_SALT`:
+
+```python
+obj._user_id = "default-user"  # overridden by TrayLabeler
+```
+
+Edit 2 — In `TrayLabeler.__post_init__()`, after setting `self._suggester._title_salt`, also set:
+
+```python
+self._suggester._user_id = self._config.user_id
+```
+
+Do this in both places where `_suggester` is created (the `from_policy` path around line 718 and the direct-construction fallback around line 733).
+
+Also do this in `_on_model_trained()` and `_reload_model()` and `_switch_model()` wherever a new `_suggester` is assigned.
+
+Edit 3 — In `_LabelSuggester.suggest()`, pass `user_id` to `build_features_from_aw_events`:
+
+```python
+# BEFORE
+rows = build_features_from_aw_events(events)
+
+# AFTER
+rows = build_features_from_aw_events(events, user_id=self._user_id)
+```
+
+Tests to write:
+- `tests/test_ui_tray_suggest.py` (new file) — UID-001, UID-003
+  - UID-001: Mock `build_features_from_aw_events`, create a `_LabelSuggester` with a known `_user_id`, call `suggest()`, assert the mock was called with `user_id=` matching the config value.
+  - UID-003: Create a `_LabelSuggester` without setting `_user_id`. Assert it falls back to `"default-user"` (no crash).
+
+Existing test to extend:
+- `tests/test_infer_online.py` — UID-002: Assert `calibrator_store.get_calibrator()` is called with the row's `user_id`, not `"default-user"`.
+
+Docs to update:
+- `docs/api/ui/labeling.md` — note that `_LabelSuggester` now propagates the stable config user_id.
+
+- [ ] **Step 1.3 — Add input events to tray suggestion path (Risk 3)**
+
+_Problem_: `_LabelSuggester.suggest()` only fetches window events. Input-derived features (keyboard, mouse) are all `None`.
+
+Files to modify:
+- `src/taskclf/ui/tray.py`
+
+Edit — In `_LabelSuggester.suggest()`, add input event fetching after the window event fetch:
+
+```python
+# Add import at the top of the method (inside the existing lazy import block):
+from taskclf.adapters.activitywatch.client import (
+    fetch_aw_events,
+    fetch_aw_input_events,
+    find_input_bucket_id,
+    find_window_bucket_id,
+)
+
+# After fetching window events and checking `if not events: return None`:
+input_events = None
+try:
+    input_bucket_id = find_input_bucket_id(self._aw_host)
+    if input_bucket_id:
+        input_events = fetch_aw_input_events(
+            self._aw_host, input_bucket_id, start, end
+        ) or None
+except Exception:
+    logger.debug("Could not fetch input events for suggestion", exc_info=True)
+
+# Update the build call:
+rows = build_features_from_aw_events(
+    events,
+    user_id=self._user_id,
+    input_events=input_events,
+)
+```
+
+Tests to write/update:
+- `tests/test_ui_tray_suggest.py` — INP-001
+  - INP-001: Mock `fetch_aw_input_events` and `find_input_bucket_id`. Call `suggest()`. Assert the mock was called and `input_events` was passed to `build_features_from_aw_events`.
+
+- `tests/test_features_build.py` — INP-002, INP-003
+  - INP-002: Call `build_features_from_aw_events` with `input_events` provided. Assert `keys_per_min`, `clicks_per_min`, etc. are not `None`.
+  - INP-003: Call `build_features_from_aw_events` without `input_events`. Assert those fields are `None`.
+
+Docs to update:
+- `docs/api/ui/labeling.md` — note input event support in tray suggestions.
+
+- [ ] **Step 1.4 — Implement unknown-category handling (Decision 5)**
+
+_Problem_: Unseen categorical values map to `-1` at inference, a code never seen during training. Decision #5 requires explicit `__unknown__` training.
+
+Files to modify:
+- `src/taskclf/train/lgbm.py`
+- `src/taskclf/infer/online.py`
+- `src/taskclf/core/model_io.py`
+
+Edit 1 — Extend `encode_categoricals()` in `train/lgbm.py`:
+
+Add two new parameters: `min_category_freq: int = 5` and `unknown_mask_rate: float = 0.05`.
+
+When `cat_encoders is None` (training mode):
+1. For each categorical column, count value frequencies.
+2. Replace values with count < `min_category_freq` with `"__unknown__"`.
+3. Randomly mask `unknown_mask_rate` fraction of remaining known values to `"__unknown__"` (use a seed for reproducibility).
+4. Fit the `LabelEncoder` on the result (which now includes `"__unknown__"` as a class).
+
+When `cat_encoders is not None` (inference mode):
+1. Map unseen values to `"__unknown__"` instead of `-1`.
+2. Transform via the fitted encoder (which knows `"__unknown__"`).
+
+```python
+def encode_categoricals(
+    df: pd.DataFrame,
+    cat_encoders: dict[str, LabelEncoder] | None = None,
+    *,
+    min_category_freq: int = 5,
+    unknown_mask_rate: float = 0.05,
+    random_state: int | None = None,
+) -> tuple[pd.DataFrame, dict[str, LabelEncoder]]:
+```
+
+The full implementation:
+- During training (`cat_encoders is None`):
+  - For each col in `CATEGORICAL_COLUMNS`:
+    - `vals = df[col].astype(str)`
+    - `freq = vals.value_counts()`
+    - `rare_mask = vals.isin(freq[freq < min_category_freq].index)`
+    - `vals[rare_mask] = "__unknown__"`
+    - If `unknown_mask_rate > 0`: randomly set `unknown_mask_rate` fraction of non-`__unknown__` rows to `"__unknown__"` using `np.random.RandomState(random_state)`.
+    - Fit `LabelEncoder` on the result.
+- During inference (`cat_encoders is not None`):
+  - For each col: map values not in `le.classes_` to `"__unknown__"` (which IS in `le.classes_`).
+  - Transform normally.
+
+Edit 2 — Update `OnlinePredictor._encode_value()` in `infer/online.py`:
+
+```python
+# BEFORE
+return -1.0
+
+# AFTER (for unseen categoricals):
+unknown_code = "__unknown__"
+if le is not None and unknown_code in set(le.classes_):
+    return float(le.transform([unknown_code])[0])
+return -1.0  # fallback for legacy encoders without __unknown__
+```
+
+Edit 3 — Extend `ModelMetadata` in `core/model_io.py`:
+
+Add optional fields:
+```python
+unknown_category_freq_threshold: int | None = None
+unknown_category_mask_rate: float | None = None
+```
+
+Edit 4 — In `train_lgbm()` and `save_model_bundle()`, persist the threshold and mask rate in metadata.
+
+Tests to write/update:
+- `tests/test_train_lgbm.py` — UNK-001, UNK-002, UNK-003, PER-001
+  - UNK-001: Train with `min_category_freq=5`. Assert categories with < 5 occurrences become `"__unknown__"` in the encoded output.
+  - UNK-002: Train with `unknown_mask_rate=0.05`, fixed seed. Assert approximately 5% of known-category rows are masked.
+  - UNK-003: After fitting, assert `"__unknown__"` is in `le.classes_` for every categorical encoder.
+  - PER-001: Assert `"user_id"` is in `FEATURE_COLUMNS` for schema v1.
+
+- `tests/test_infer_online.py` — UNK-004
+  - UNK-004: Create an `OnlinePredictor` with encoders containing `"__unknown__"`. Call `_encode_value("app_id", "never-seen-app")`. Assert it returns the `__unknown__` code, not `-1`.
+
+- `tests/test_integration_train_infer_unknown.py` (new file) — UNK-005, UNK-006, EXP-F
+  - UNK-005: Train a model, predict on rows with withheld categories. Assert mean max-probability for unknown rows < known rows.
+  - UNK-006: Assert reject rate on withheld categories > reject rate on known categories.
+  - EXP-F: Run the 4-condition comparison from Experiment F. Assert results contain macro-F1 and reject rate for each condition.
+
+- `tests/test_core_model_io.py` — UNK-007
+  - UNK-007: Save a bundle with threshold and mask rate. Load it. Assert `metadata.unknown_category_freq_threshold` and `metadata.unknown_category_mask_rate` are present.
+
+Docs to update:
+- `docs/api/train/lgbm.md` — document new parameters on `encode_categoricals`.
+- `docs/api/core/model_io.md` — document new metadata fields.
+- `docs/api/infer/online.md` — document `__unknown__` handling in `_encode_value`.
+
+---
+
+### Phase 2 — Migrate personalization out of the core model
+
+**Prerequisites**: Phase 1 complete. All current tests passing.
+
+- [ ] **Step 2.1 — Define schema v2 without user_id**
+
+Files to modify:
+- `src/taskclf/train/lgbm.py`
+- `src/taskclf/core/schema.py`
+
+Edit:
+1. Add `FEATURE_COLUMNS_V2` and `CATEGORICAL_COLUMNS_V2` constants in `train/lgbm.py` that exclude `"user_id"`.
+2. Add `FeatureSchemaV2` class in `core/schema.py` with the updated field list and a new `SCHEMA_HASH`.
+3. Do NOT remove the v1 constants or schema class.
+4. Add a helper `get_feature_columns(schema_version: str) -> list[str]` that dispatches by version.
+
+Tests:
+- `tests/test_train_lgbm.py` — P2-001: Assert `"user_id"` is not in `FEATURE_COLUMNS_V2`.
+- `tests/test_core_schema.py` — P6-002 (adapted): Assert `FeatureSchemaV2.SCHEMA_HASH != FeatureSchemaV1.SCHEMA_HASH`.
+
+- [ ] **Step 2.2 — Side-by-side evaluation**
+
+This step is an experiment, not a production code change.
+
+1. Train three models:
+   - Model A: schema v1 with `user_id` in features (current).
+   - Model B: schema v2 without `user_id`, no per-user calibration.
+   - Model C: schema v2 without `user_id`, with per-user calibration.
+2. Evaluate all three on the same time-based test split.
+3. Compare macro-F1, per-user F1, reject rate, and calibration quality.
+4. Record results in `artifacts/experiments/personalization_migration/`.
+
+Tests:
+- `tests/test_integration_train_infer.py` — P2-002, P2-003, P2-004
+  - P2-002: Smoke test: schema-v2 model + calibrator produces metrics.
+  - P2-003: Attempt to load a v1 bundle with a v2 feature vector. Assert schema hash mismatch raises.
+  - P2-004: Reverse direction.
+
+- [ ] **Step 2.3 — Extend personalization post-processing**
+
+Files to modify:
+- `src/taskclf/infer/resolve.py`
+
+Edit:
+1. Add `per_user_reject_thresholds: dict[str, float] | None` to `ResolvedInferenceConfig`.
+2. In `resolve_inference_config()`, load per-user thresholds from the inference policy if present.
+3. In `OnlinePredictor.predict_bucket()`, apply per-user threshold when available.
+
+Tests:
+- `tests/test_infer_resolve.py` — PER-003: Assert per-user threshold overrides global.
+
+- [ ] **Step 2.4 — Keep backward compatibility**
+
+No code changes needed beyond what was done in steps 2.1–2.3. Verify:
+- Schema-v1 bundles still load and receive `user_id`.
+- Schema-v2 bundles refuse `user_id` in the feature vector.
+- Both can coexist in `models/` without conflict.
+
+Docs to update:
+- `docs/guide/personalization.md` — update with the schema-v2 migration details.
+
+---
+
+### Phase 3 — Strengthen live context
+
+**Prerequisites**: Phase 1 complete.
+
+- [ ] **Step 3.1 — Add persistent online feature state**
+
+_Problem_: The online loop reconstructs feature state from each narrow poll slice. Rolling features (5m switch counts, 15m switch counts, rolling keyboard/mouse stats, delta features) may be truncated.
+
+Files to create:
+- `src/taskclf/infer/feature_state.py` (new module)
+
+Design:
+1. Create a `OnlineFeatureState` class that maintains a circular buffer of recent `FeatureRow` values (at least 15 minutes of buckets).
+2. It exposes methods like `push(row: FeatureRow)` and `get_context() -> dict` that return rolling aggregates.
+3. The online loop feeds each new row into this state before prediction.
+
+Files to modify:
+- `src/taskclf/infer/online.py`
+
+Edit:
+1. In `run_online_loop()`, create an `OnlineFeatureState` before the poll loop.
+2. After building `rows` from `build_features_from_aw_events()`, push each row into the state.
+3. Before calling `predict_bucket()`, overlay the state's rolling aggregates onto the row so that features like `app_switch_count_last_15m` reflect the full 15-minute window.
+
+Tests:
+- `tests/test_infer_online.py` — CTX-001, CTX-002, CTX-003
+  - CTX-001: Push 16+ buckets into `OnlineFeatureState`. Assert `app_switch_count_15m` reflects the full 15-minute window.
+  - CTX-002: Assert `delta_*` fields are non-zero on the second bucket.
+  - CTX-003: Simulate an idle gap. Assert `session_length_minutes` resets.
+
+Docs to create:
+- `docs/api/infer/feature_state.md` (new page for the new module).
+
+---
+
+### Phase 4 — Fix tray suggestion quality and implement surface architecture
+
+**Prerequisites**: Phase 1 complete.
+
+- [ ] **Step 4.1 — Implement interval-aware aggregation**
+
+_Problem_: `_LabelSuggester.suggest()` predicts only `rows[-1]`. This throws away context from the rest of the interval.
+
+Files to create:
+- `src/taskclf/infer/aggregation.py` (new module)
+
+Design the aggregation module with these functions:
+
+```python
+def majority_vote(labels: list[str]) -> str: ...
+def confidence_weighted_vote(
+    labels: list[str], confidences: list[float]
+) -> str: ...
+def highest_total_probability(
+    proba_matrix: np.ndarray, label_names: list[str]
+) -> str: ...
+def aggregate_interval(
+    predictions: list[WindowPrediction],
+    strategy: str = "majority",
+) -> tuple[str, float]: ...
+```
+
+Files to modify:
+- `src/taskclf/ui/tray.py`
+
+Edit `_LabelSuggester.suggest()`:
+
+```python
+# BEFORE: predict only rows[-1]
+prediction = self._predictor.predict_bucket(rows[-1])
+return (prediction.core_label_name, prediction.confidence)
+
+# AFTER: predict all rows, aggregate
+predictions = [self._predictor.predict_bucket(row) for row in rows]
+from taskclf.infer.aggregation import aggregate_interval
+label, confidence = aggregate_interval(predictions, strategy="majority")
+return (label, confidence)
+```
+
+Tests:
+- `tests/test_infer_aggregation.py` (new file) — AGG-001 through AGG-004, P4-001, EXP-B
+  - AGG-001: Aggregation over N buckets uses all N, not just the last.
+  - AGG-002: 3x Coding, 2x Writing → majority vote returns "Coding".
+  - AGG-003: High-confidence minority wins confidence-weighted vote.
+  - AGG-004: Single-bucket interval returns same result as direct prediction.
+  - P4-001: Different strategies produce different results on mixed input.
+  - EXP-B: Compare 3+ strategies, assert per-strategy accuracy is returned.
+
+Docs to create:
+- `docs/api/infer/aggregation.md` (new page).
+
+- [ ] **Step 4.2 — Include input events in tray suggestion features**
+
+Already done in Phase 1 Step 1.3. Verify test P4-002 passes:
+- `tests/test_ui_tray_suggest.py` — P4-002: After fix, tray feature rows have non-None input fields.
+
+- [ ] **Step 4.3 — Separate transition suggestion and live status surfaces (Decision 6)**
+
+Files to modify:
+- `src/taskclf/ui/tray.py`
+
+Edit 1 — Create a centralized copy-string module:
+
+Create `src/taskclf/ui/copy.py` (new file):
+
+```python
+"""Centralized user-facing copy strings for all UI surfaces."""
+
+def transition_suggestion_text(label: str, start: str, end: str) -> str:
+    return f"Was this {label}? {start}\u2013{end}"
+
+def live_status_text(label: str) -> str:
+    return f"Now: {label}"
+
+def gap_fill_prompt(duration_str: str) -> str:
+    return f"You have {duration_str} unlabeled. Review?"
+
+def gap_fill_detail(start: str, end: str) -> str:
+    return f"Review unlabeled: {start}\u2013{end}"
+```
+
+Edit 2 — Refactor `_handle_transition()` in `TrayLabeler`:
+
+- Import and use `transition_suggestion_text()` for the notification and EventBus `prompt_label` payload.
+- Do NOT include numeric confidence in the user-facing message.
+- Include the concrete time range in the prompt.
+
+Edit 3 — Add a `_publish_live_status()` method to `TrayLabeler`:
+
+- Called from `_handle_poll()`.
+- If a model is loaded, predict the current bucket and publish a `live_status` event with `live_status_text()`.
+- This is separate from the transition/suggestion flow.
+
+Edit 4 — Update `_send_notification()` to use `transition_suggestion_text()` and exclude confidence from the user-facing notification body.
+
+Tests:
+- `tests/test_ui_tray_surfaces.py` (new file) — SEM-002, SRF-001 through SRF-004, SRF-008, CNF-004
+  - SRF-001: Transition notification text matches `"Was this {label}? {start}–{end}"`.
+  - SRF-002: Live status text matches `"Now: {label}"`.
+  - SRF-003: `_LabelSuggester` and live-status are separate methods/code paths.
+  - SRF-004: Notification payload does not contain numeric confidence.
+  - SRF-008: All user-facing strings are imported from `ui/copy.py`.
+  - CNF-004: Settings schema does not expose `reject_threshold`.
+  - SEM-002: Live status uses only the latest bucket.
+
+Docs to create:
+- `docs/api/ui/copy.md` (new page for centralized copy strings).
+
+Docs to update:
+- `docs/api/ui/labeling.md` — document the surface separation.
+
+---
+
+### Phase 4b — Gap-fill surface
+
+**Prerequisites**: Phase 4 complete (transition suggestions and live status working).
+
+- [ ] **Step 4b.1 — Passive unlabeled-time indicator**
+
+Files to modify:
+- `src/taskclf/ui/tray.py`
+
+Edit:
+1. Add an `_unlabeled_minutes` tracked field to `TrayLabeler`.
+2. In `_handle_poll()`, compute total unlabeled time since the last confirmed label (query the label store).
+3. Publish an `unlabeled_time` event via `EventBus` with the total duration.
+4. The frontend renders this as a badge/counter (frontend change, not covered here).
+
+- [ ] **Step 4b.2 — Contextual gap-fill prompting**
+
+Files to modify:
+- `src/taskclf/ui/tray.py`
+
+Edit:
+1. In `ActivityMonitor`, add idle-return detection: when transitioning from idle (>5 min) back to active, publish a `gap_fill_prompt` event.
+2. On session start (first poll after `ActivityMonitor` starts), if unlabeled time exists, publish a `gap_fill_prompt` event.
+3. In `_handle_transition()`, immediately after the user accepts a transition suggestion (detected via EventBus feedback), if adjacent unlabeled time exists, publish a `gap_fill_prompt` event.
+
+- [ ] **Step 4b.3 — Escalation threshold**
+
+Files to modify:
+- `src/taskclf/ui/tray.py`
+
+Edit:
+1. Add a configurable `gap_fill_escalation_minutes` (default: one active day = 480 minutes) to `TrayLabeler`.
+2. In the poll loop, if unlabeled minutes exceed this threshold, publish a `gap_fill_escalated` event.
+3. The tray icon changes state (e.g., color change). No popup.
+
+Tests:
+- `tests/test_ui_tray_gap_fill.py` (new file) — SEM-003, SRF-005 through SRF-007, P4b-001 through P4b-004
+  - SEM-003: Gap-fill interval spans from last label end to current time.
+  - SRF-005: Badge text includes unlabeled time duration.
+  - SRF-006: Prompt fires only at idle return, session start, or post-acceptance.
+  - SRF-007: Escalation changes tray icon state when threshold exceeded.
+  - P4b-001: Idle return (>5 min) triggers gap-fill prompt event.
+  - P4b-002: New session with unlabeled time triggers prompt.
+  - P4b-003: After accepting transition suggestion with adjacent gap, prompt fires.
+  - P4b-004: Escalation does not call the notification API (no popup).
+
+---
+
+### Phase 5 — Align evaluation with deployed behavior
+
+**Prerequisites**: Phase 1 complete.
+
+- [ ] **Step 5.1 — Add operational evaluation modes**
+
+Files to modify:
+- `src/taskclf/train/evaluate.py`
+
+Edit:
+1. Extend `evaluate_model()` (or create `evaluate_model_operational()`) to accept evaluation mode parameters:
+   - `eval_mode: Literal["raw", "calibrated", "calibrated_reject", "smoothed", "interval"]`
+2. For `"calibrated"`: apply the calibrator to raw probas before computing metrics.
+3. For `"calibrated_reject"`: apply calibrator + reject threshold.
+4. For `"smoothed"`: apply calibrator + reject + rolling majority smoothing, then compute metrics.
+5. For `"interval"`: aggregate bucket predictions into interval-level labels, then compute interval accuracy.
+6. Add flip rate, segment duration distribution, and reject rate to `EvaluationReport`.
+
+Tests:
+- `tests/test_train_evaluate.py` — EVL-001, EVL-002, EVL-003, P5-002, MSR-003, MSR-006
+  - EVL-001: Report includes flip rate, segment duration distribution, reject rate.
+  - EVL-002: Smoothed macro-F1 >= raw macro-F1.
+  - EVL-003: Interval-level evaluation produces per-interval accuracy.
+  - P5-002: Raw vs calibrated evaluation modes produce different F1 values.
+  - MSR-003: Two evaluation runs produce comparable metric dicts.
+  - MSR-006: Withhold one category; measure reject rate difference.
+
+- [ ] **Step 5.2 — Tune reject threshold on calibrated scores**
+
+Files to modify:
+- `src/taskclf/train/evaluate.py`
+
+Edit:
+1. Extend `tune_reject_threshold()` to accept an optional `calibrator` parameter.
+2. When provided, calibrate the raw probabilities before sweeping thresholds.
+3. Optimize for precision over recall (decision #4).
+
+Files to modify:
+- `src/taskclf/cli/main.py`
+
+Edit:
+1. Add `--write-policy` flag to `taskclf train tune-reject`.
+2. When set, call `save_inference_policy()` with the tuned threshold.
+
+Tests:
+- `tests/test_train_evaluate_reject.py` — REJ-003, P5-001, EXP-C
+  - REJ-003: Sweep results differ between raw and calibrated inputs.
+  - P5-001: `--write-policy` persists threshold in inference policy.
+  - EXP-C: Raw and calibrated tuning produce different `best_threshold` values.
+
+- [ ] **Step 5.3 — Track suggestions per active day**
+
+Files to modify:
+- `src/taskclf/core/telemetry.py`
+
+Edit:
+1. Add a `suggestions_per_day` metric to the telemetry snapshot.
+2. In the online loop and tray, publish suggestion events via `EventBus`.
+3. Telemetry aggregates them per active day.
+4. When a loaded model produces zero suggestions for a full active day, log a warning.
+
+Tests:
+- `tests/test_core_telemetry.py` — CNF-002, CNF-003, P5-003
+  - CNF-002: After N predictions with K accepted, telemetry shows K suggestions.
+  - CNF-003: Loaded model + full active day + zero suggestions → warning logged.
+  - P5-003: Simulated active day produces > 0 suggestions.
+
+Docs to update:
+- `docs/api/core/telemetry.md` — document the new metric.
+- `docs/api/train/evaluate.md` — document operational evaluation modes.
+
+---
+
+### Phase 6 — Improve features for LightGBM
+
+**Prerequisites**: Phases 1 and 5 complete (correct pipeline, proper evaluation).
+
+- [ ] **Step 6.1 — Add candidate features one group at a time**
+
+For each candidate feature group:
+
+1. Add the feature to `FeatureRow` in `core/types.py` (with appropriate type annotation and `None` default).
+2. Add the field to `FeatureSchemaV1` (or `V2`) in `core/schema.py`. The schema hash will change automatically.
+3. Implement computation in the appropriate `features/` module:
+   - `features/build.py` for per-bucket features.
+   - `features/sessions.py` for session-derived features.
+   - `features/windows.py` for app-window features.
+4. Add the column name to `FEATURE_COLUMNS` in `train/lgbm.py`.
+5. Add a unit test in the relevant `tests/test_features_*.py` file.
+6. Verify the schema hash changed (`tests/test_core_schema.py`).
+7. Verify privacy safety (`tests/test_security_privacy.py`).
+8. Run the full evaluation to measure impact. Only keep the feature if it improves or maintains quality.
+
+Candidate feature priority order (add one group, evaluate, then decide on the next):
+1. `app_dwell_time_seconds` — how long the dominant app has been foreground continuously.
+2. `app_entropy_5m`, `app_entropy_15m` — Shannon entropy of app distribution over 5/15 minute windows.
+3. `top2_app_concentration` — combined time share of the two most-used apps in the interval.
+4. `idle_return_indicator` — boolean, True if this bucket immediately follows an idle gap.
+5. `browser_time_share`, `editor_time_share`, `terminal_time_share`, `meeting_time_share` — category shares over the interval.
+6. `stability_score` — fraction of recent buckets with the same dominant app.
+
+Tests per feature group:
+- `tests/test_features_*.py` — P6-001: Feature builder produces expected values.
+- `tests/test_core_schema.py` — P6-002: Schema hash changes.
+- `tests/test_security_privacy.py` — P6-003: No raw keystrokes/titles stored.
+
+Docs:
+- Update `docs/api/features/build.md` for each new feature.
+
+---
+
+### Phase 7 — Tune only after the pipeline is correct
+
+**Prerequisites**: All prior phases complete.
+
+- [ ] **Step 7.1 — Hyperparameter tuning**
+
+This is an experiment step, not a production code change.
+
+1. Use `optuna` or manual grid search over:
+   - `num_leaves`: [15, 31, 63, 127]
+   - `min_data_in_leaf`: [5, 10, 20, 50]
+   - `feature_fraction`: [0.6, 0.8, 1.0]
+   - `bagging_fraction`: [0.6, 0.8, 1.0]
+   - `lambda_l1`: [0, 0.1, 1.0]
+   - `lambda_l2`: [0, 0.1, 1.0]
+   - `learning_rate` + `num_boost_round`: [(0.1, 200), (0.05, 400), (0.01, 1000)]
+2. Evaluate on time-based validation split (by day/week per `split_by_time()`).
+3. Compare against the champion model using the regression gates in `retrain.py`.
+4. If better, save as the new champion bundle.
+5. Record results and parameters in `artifacts/experiments/hyperparameter_tuning/`.
+
+No new tests needed for tuning itself. Verify existing regression gates pass.
+
+---
+
 ## Test Plan
 
 Comprehensive tests for every quality risk, recorded decision, and implementation phase in this document. Each test case has an ID, description, target file, and key assertions.
