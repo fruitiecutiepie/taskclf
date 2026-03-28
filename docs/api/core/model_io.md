@@ -6,7 +6,7 @@ Model bundle persistence: save, load, and metadata for trained model artifacts.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `schema_version` | str | Feature schema version (e.g. `"v1"`) |
+| `schema_version` | str | Feature schema version (`"v1"` or `"v2"`) |
 | `schema_hash` | str | Deterministic hash of the feature schema |
 | `label_set` | list[str] | Sorted list of core labels used in training |
 | `train_date_from` | str | First date of the training range (ISO-8601) |
@@ -19,5 +19,16 @@ Model bundle persistence: save, load, and metadata for trained model artifacts.
 | `created_at` | str | ISO-8601 timestamp of bundle creation |
 | `unknown_category_freq_threshold` | int or None | Minimum category frequency used during training (categories below this become `__unknown__`) |
 | `unknown_category_mask_rate` | float or None | Fraction of known categories randomly masked to `__unknown__` during training |
+
+## Schema Version Support
+
+`load_model_bundle` validates bundles against a registry of known schema
+versions.  Both `v1` and `v2` bundles are accepted; the bundle's
+`schema_version` field selects the expected hash.  A hash mismatch
+(e.g. loading a v1 bundle whose hash has been tampered to v2's value)
+raises `ValueError`.
+
+`build_metadata` accepts a `schema_version` parameter (default `"v1"`)
+and fills in the correct version string and hash automatically.
 
 ::: taskclf.core.model_io

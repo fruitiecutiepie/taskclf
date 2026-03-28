@@ -10,7 +10,7 @@ from typing import Any
 import pandas as pd
 import pytest
 
-from taskclf.core.schema import FeatureSchemaV1, _build_schema_hash
+from taskclf.core.schema import FeatureSchemaV1, FeatureSchemaV2, _build_schema_hash
 
 
 class TestSchemaHashStability:
@@ -92,3 +92,30 @@ class TestValidateDataFrame:
         df["hour_of_day"] = df["hour_of_day"].astype(str)
         with pytest.raises(ValueError, match="dtype mismatches"):
             FeatureSchemaV1.validate_dataframe(df)
+
+
+# ---------------------------------------------------------------------------
+# P6-002 (adapted): FeatureSchemaV2
+# ---------------------------------------------------------------------------
+
+
+class TestFeatureSchemaV2:
+    def test_schema_hash_differs_from_v1(self) -> None:
+        """P6-002: v2 hash must differ from v1 because user_id is removed."""
+        assert FeatureSchemaV2.SCHEMA_HASH != FeatureSchemaV1.SCHEMA_HASH
+
+    def test_user_id_not_in_v2_columns(self) -> None:
+        assert "user_id" not in FeatureSchemaV2.COLUMNS
+
+    def test_v2_columns_subset_of_v1(self) -> None:
+        assert set(FeatureSchemaV2.COLUMNS) == set(FeatureSchemaV1.COLUMNS) - {
+            "user_id"
+        }
+
+    def test_v2_version_string(self) -> None:
+        assert FeatureSchemaV2.VERSION == "v2"
+
+    def test_v2_hash_deterministic(self) -> None:
+        h1 = _build_schema_hash(FeatureSchemaV2.COLUMNS)
+        h2 = _build_schema_hash(FeatureSchemaV2.COLUMNS)
+        assert h1 == h2 == FeatureSchemaV2.SCHEMA_HASH

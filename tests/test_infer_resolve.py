@@ -336,3 +336,49 @@ class TestActiveModelReloader:
 
         assert reloader._current_mtime() is None
         assert reloader.check_reload() is None
+
+
+# ---------------------------------------------------------------------------
+# PER-003: per-user reject thresholds
+# ---------------------------------------------------------------------------
+
+
+class TestPerUserRejectThresholds:
+    def test_per003_per_user_threshold_overrides_global(self) -> None:
+        """PER-003: per-user threshold takes precedence over global."""
+        from unittest.mock import MagicMock
+
+        from taskclf.infer.resolve import ResolvedInferenceConfig
+
+        config = ResolvedInferenceConfig(
+            model=MagicMock(),
+            metadata=_VALID_METADATA,
+            cat_encoders={},
+            reject_threshold=0.50,
+            calibrator=MagicMock(),
+            calibrator_store=None,
+            policy=None,
+            per_user_reject_thresholds={"user-A": 0.30, "user-B": 0.70},
+        )
+
+        assert config.per_user_reject_thresholds is not None
+        assert config.per_user_reject_thresholds["user-A"] == 0.30
+        assert config.per_user_reject_thresholds["user-B"] == 0.70
+        assert config.reject_threshold == 0.50
+
+    def test_per_user_thresholds_none_by_default(self) -> None:
+        from unittest.mock import MagicMock
+
+        from taskclf.infer.resolve import ResolvedInferenceConfig
+
+        config = ResolvedInferenceConfig(
+            model=MagicMock(),
+            metadata=_VALID_METADATA,
+            cat_encoders={},
+            reject_threshold=0.50,
+            calibrator=MagicMock(),
+            calibrator_store=None,
+            policy=None,
+        )
+
+        assert config.per_user_reject_thresholds is None

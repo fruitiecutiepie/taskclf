@@ -14,8 +14,12 @@ from sklearn.preprocessing import LabelEncoder
 from taskclf.core.types import LABEL_SET_V1
 from taskclf.train.lgbm import (
     CATEGORICAL_COLUMNS,
+    CATEGORICAL_COLUMNS_V2,
     FEATURE_COLUMNS,
+    FEATURE_COLUMNS_V2,
     encode_categoricals,
+    get_categorical_columns,
+    get_feature_columns,
     prepare_xy,
 )
 
@@ -224,3 +228,35 @@ class TestUnknownCategoryHandling:
     def test_per001_user_id_in_feature_columns(self) -> None:
         """PER-001: user_id is in FEATURE_COLUMNS for schema v1."""
         assert "user_id" in FEATURE_COLUMNS
+
+
+# ---------------------------------------------------------------------------
+# P2-001: schema-v2 feature columns exclude user_id
+# ---------------------------------------------------------------------------
+
+
+class TestSchemaV2Columns:
+    def test_p2001_user_id_not_in_feature_columns_v2(self) -> None:
+        """P2-001: user_id is NOT in FEATURE_COLUMNS_V2."""
+        assert "user_id" not in FEATURE_COLUMNS_V2
+        assert "user_id" not in CATEGORICAL_COLUMNS_V2
+
+    def test_v2_columns_are_subset_of_v1(self) -> None:
+        assert set(FEATURE_COLUMNS_V2) == set(FEATURE_COLUMNS) - {"user_id"}
+        assert set(CATEGORICAL_COLUMNS_V2) == set(CATEGORICAL_COLUMNS) - {"user_id"}
+
+    def test_get_feature_columns_dispatches(self) -> None:
+        assert get_feature_columns("v1") == list(FEATURE_COLUMNS)
+        assert get_feature_columns("v2") == list(FEATURE_COLUMNS_V2)
+
+    def test_get_categorical_columns_dispatches(self) -> None:
+        assert get_categorical_columns("v1") == list(CATEGORICAL_COLUMNS)
+        assert get_categorical_columns("v2") == list(CATEGORICAL_COLUMNS_V2)
+
+    def test_get_feature_columns_unknown_version_raises(self) -> None:
+        with pytest.raises(ValueError, match="Unknown schema version"):
+            get_feature_columns("v99")
+
+    def test_get_categorical_columns_unknown_version_raises(self) -> None:
+        with pytest.raises(ValueError, match="Unknown schema version"):
+            get_categorical_columns("v99")

@@ -26,7 +26,7 @@ from taskclf.adapters.activitywatch.types import AWEvent
 from taskclf.cli.main import app
 from taskclf.core.defaults import MIXED_UNKNOWN
 from taskclf.core.model_io import load_model_bundle
-from taskclf.core.types import LABEL_SET_V1
+from taskclf.core.types import LABEL_SET_V1, FeatureRow
 from taskclf.features.build import (
     build_features_from_aw_events,
     generate_dummy_features,
@@ -202,6 +202,136 @@ class TestOnlineSessionTracking:
 
         rows = build_features_from_aw_events(events, session_start=new_session_start)
         assert rows[0].session_length_so_far == 2.0
+
+
+# ---------------------------------------------------------------------------
+# OnlineFeatureState — persistent rolling context (CTX-001, CTX-002, CTX-003)
+# ---------------------------------------------------------------------------
+
+
+class TestOnlineFeatureState:
+    """Verify OnlineFeatureState provides correct rolling aggregates."""
+
+    @staticmethod
+    def _row(
+        ts: dt.datetime,
+        *,
+        app_id: str = "org.mozilla.firefox",
+        keys_per_min: float | None = 40.0,
+        clicks_per_min: float | None = 5.0,
+        mouse_distance: float | None = 300.0,
+    ) -> FeatureRow:
+        from taskclf.core.schema import FeatureSchemaV1
+        from taskclf.core.hashing import stable_hash
+        from taskclf.features.text import title_hash_bucket
+
+        title_hash = stable_hash(f"title-{app_id}")
+        return FeatureRow(
+            user_id="test-user",
+            session_id=stable_hash("test-session"),
+            bucket_start_ts=ts,
+            bucket_end_ts=ts + dt.timedelta(seconds=60),
+            schema_version=FeatureSchemaV1.VERSION,
+            schema_hash=FeatureSchemaV1.SCHEMA_HASH,
+            source_ids=["test"],
+            app_id=app_id,
+            app_category="browser",
+            window_title_hash=title_hash,
+            is_browser=True,
+            is_editor=False,
+            is_terminal=False,
+            app_switch_count_last_5m=0,
+            app_foreground_time_ratio=1.0,
+            app_change_count=0,
+            keys_per_min=keys_per_min,
+            clicks_per_min=clicks_per_min,
+            mouse_distance=mouse_distance,
+            domain_category="unknown",
+            window_title_bucket=title_hash_bucket(title_hash, 256),
+            title_repeat_count_session=1,
+            app_switch_count_last_15m=0,
+            hour_of_day=ts.hour,
+            day_of_week=ts.weekday(),
+            session_length_so_far=0.0,
+        )
+
+    def test_ctx001_15m_history_preserved(self) -> None:
+        """CTX-001: 15-minute app switch count reflects full window."""
+        from taskclf.infer.feature_state import OnlineFeatureState
+
+        state = OnlineFeatureState(bucket_seconds=60)
+        base = dt.datetime(2026, 3, 28, 10, 0, tzinfo=dt.timezone.utc)
+
+        apps = [
+            "com.app.a",
+            "com.app.b",
+            "com.app.c",
+            "com.app.d",
+            "com.app.e",
+            "com.app.f",
+            "com.app.g",
+            "com.app.h",
+            "com.app.a",
+            "com.app.b",
+            "com.app.c",
+            "com.app.d",
+            "com.app.e",
+            "com.app.f",
+            "com.app.g",
+            "com.app.h",
+        ]
+        for i in range(16):
+            ts = base + dt.timedelta(minutes=i)
+            state.push(self._row(ts, app_id=apps[i]))
+
+        ctx = state.get_context()
+        assert ctx["app_switch_count_last_15m"] == 7
+
+    def test_ctx002_delta_nonzero_on_second_bucket(self) -> None:
+        """CTX-002: delta features are non-zero when history is available."""
+        from taskclf.infer.feature_state import OnlineFeatureState
+
+        state = OnlineFeatureState(bucket_seconds=60)
+        base = dt.datetime(2026, 3, 28, 10, 0, tzinfo=dt.timezone.utc)
+
+        state.push(
+            self._row(base, keys_per_min=30.0, clicks_per_min=2.0, mouse_distance=100.0)
+        )
+        state.push(
+            self._row(
+                base + dt.timedelta(minutes=1),
+                keys_per_min=60.0,
+                clicks_per_min=8.0,
+                mouse_distance=400.0,
+            )
+        )
+
+        ctx = state.get_context()
+        assert ctx["keys_per_min_delta"] is not None
+        assert ctx["keys_per_min_delta"] != 0.0
+        assert ctx["clicks_per_min_delta"] is not None
+        assert ctx["clicks_per_min_delta"] != 0.0
+        assert ctx["mouse_distance_delta"] is not None
+        assert ctx["mouse_distance_delta"] != 0.0
+
+    def test_ctx003_session_resets_after_idle_gap(self) -> None:
+        """CTX-003: session_length_so_far resets after idle gap."""
+        from taskclf.infer.feature_state import OnlineFeatureState
+
+        state = OnlineFeatureState(bucket_seconds=60, idle_gap_seconds=300.0)
+        base = dt.datetime(2026, 3, 28, 10, 0, tzinfo=dt.timezone.utc)
+
+        for i in range(5):
+            state.push(self._row(base + dt.timedelta(minutes=i)))
+
+        ctx_before = state.get_context()
+        assert ctx_before["session_length_so_far"] == 4.0
+
+        after_gap = base + dt.timedelta(minutes=10)
+        state.push(self._row(after_gap))
+
+        ctx_after = state.get_context()
+        assert ctx_after["session_length_so_far"] == 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -491,3 +621,55 @@ class TestRunOnlineLoop:
         assert fetch_calls["bucket_id"] == "aw-test-window"
         assert build_calls["session_start"] == aw_event.timestamp
         assert sleep_calls["count"] == 1
+
+
+# ---------------------------------------------------------------------------
+# PER-003b: OnlinePredictor per-user reject thresholds in predict_bucket
+# ---------------------------------------------------------------------------
+
+
+class TestPerUserRejectInPredict:
+    def test_per_user_threshold_overrides_global(self, trained_model_dir: Path) -> None:
+        """Per-user threshold causes rejection while global would not."""
+        model, metadata, cat_encoders = load_model_bundle(trained_model_dir)
+        rows = generate_dummy_features(dt.date(2025, 6, 15), n_rows=1)
+        user_id = rows[0].user_id
+
+        pred_global = OnlinePredictor(
+            model,
+            metadata,
+            cat_encoders=cat_encoders,
+            smooth_window=1,
+            reject_threshold=0.0,
+        )
+        result_global = pred_global.predict_bucket(rows[0])
+        assert not result_global.is_rejected
+
+        pred_per_user = OnlinePredictor(
+            model,
+            metadata,
+            cat_encoders=cat_encoders,
+            smooth_window=1,
+            reject_threshold=0.0,
+            per_user_reject_thresholds={user_id: 1.0},
+        )
+        result_per_user = pred_per_user.predict_bucket(rows[0])
+        assert result_per_user.is_rejected
+
+    def test_per_user_threshold_missing_user_falls_back_to_global(
+        self, trained_model_dir: Path
+    ) -> None:
+        """Users not in per-user dict use the global threshold."""
+        model, metadata, cat_encoders = load_model_bundle(trained_model_dir)
+        rows = generate_dummy_features(dt.date(2025, 6, 15), n_rows=1)
+
+        pred = OnlinePredictor(
+            model,
+            metadata,
+            cat_encoders=cat_encoders,
+            smooth_window=1,
+            reject_threshold=0.0,
+            per_user_reject_thresholds={"some-other-user": 1.0},
+        )
+        result = pred.predict_bucket(rows[0])
+        assert not result.is_rejected

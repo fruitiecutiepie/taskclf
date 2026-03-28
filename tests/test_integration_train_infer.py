@@ -16,12 +16,12 @@ import pytest
 from sklearn.preprocessing import LabelEncoder
 
 from taskclf.core.model_io import build_metadata, load_model_bundle, save_model_bundle
-from taskclf.core.schema import FeatureSchemaV1
+from taskclf.core.schema import FeatureSchemaV1, FeatureSchemaV2
 from taskclf.core.types import LABEL_SET_V1, LabelSpan
 from taskclf.features.build import generate_dummy_features
 from taskclf.labels.projection import project_blocks_to_windows
 from taskclf.train.dataset import split_by_time
-from taskclf.train.lgbm import FEATURE_COLUMNS, train_lgbm
+from taskclf.train.lgbm import FEATURE_COLUMNS, FEATURE_COLUMNS_V2, train_lgbm
 
 
 def _build_labeled_df() -> pd.DataFrame:
@@ -223,3 +223,147 @@ class TestSchemaAlterationRefusesInference:
         model, metadata, _ = load_model_bundle(pipeline_artifacts["run_dir"])
         assert metadata.schema_hash == FeatureSchemaV1.SCHEMA_HASH
         assert sorted(metadata.label_set) == sorted(LABEL_SET_V1)
+
+
+# ---------------------------------------------------------------------------
+# Schema-v2 pipeline artifacts
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def pipeline_artifacts_v2(tmp_path_factory: pytest.TempPathFactory):
+    """Train and save a schema-v2 model bundle (no user_id)."""
+    labeled = _build_labeled_df()
+    splits = split_by_time(labeled)
+    train_df = labeled.iloc[splits["train"]].reset_index(drop=True)
+    val_df = labeled.iloc[splits["val"]].reset_index(drop=True)
+
+    model, metrics, cm_df, params, cat_encoders = train_lgbm(
+        train_df,
+        val_df,
+        num_boost_round=5,
+        schema_version="v2",
+    )
+
+    base_dir = tmp_path_factory.mktemp("integration_models_v2")
+    metadata = build_metadata(
+        label_set=list(metrics["label_names"]),
+        train_date_from=dt.date(2025, 6, 14),
+        train_date_to=dt.date(2025, 6, 15),
+        params=params,
+        dataset_hash="integration_test_hash_v2",
+        data_provenance="synthetic",
+        schema_version="v2",
+    )
+    run_dir = save_model_bundle(
+        model, metadata, metrics, cm_df, base_dir, cat_encoders=cat_encoders
+    )
+
+    le = LabelEncoder()
+    le.fit(sorted(LABEL_SET_V1))
+
+    return {
+        "model": model,
+        "metadata": metadata,
+        "metrics": metrics,
+        "run_dir": run_dir,
+        "val_df": val_df,
+        "label_encoder": le,
+        "cat_encoders": cat_encoders,
+    }
+
+
+# ---------------------------------------------------------------------------
+# P2-002: Smoke test — schema-v2 model produces valid metrics
+# ---------------------------------------------------------------------------
+
+
+class TestSchemaV2Smoke:
+    """P2-002: schema-v2 model + calibrator produces metrics."""
+
+    def test_v2_model_produces_metrics(self, pipeline_artifacts_v2) -> None:
+        metrics = pipeline_artifacts_v2["metrics"]
+        assert "macro_f1" in metrics
+        assert "label_names" in metrics
+        assert metrics["macro_f1"] >= 0
+
+    def test_v2_metadata_has_correct_schema(self, pipeline_artifacts_v2) -> None:
+        metadata = pipeline_artifacts_v2["metadata"]
+        assert metadata.schema_version == "v2"
+        assert metadata.schema_hash == FeatureSchemaV2.SCHEMA_HASH
+
+    def test_v2_cat_encoders_exclude_user_id(self, pipeline_artifacts_v2) -> None:
+        cat_encoders = pipeline_artifacts_v2["cat_encoders"]
+        assert "user_id" not in cat_encoders
+
+    def test_v2_bundle_loads_successfully(self, pipeline_artifacts_v2) -> None:
+        model, metadata, cat_encoders = load_model_bundle(
+            pipeline_artifacts_v2["run_dir"]
+        )
+        assert metadata.schema_version == "v2"
+        assert "user_id" not in cat_encoders
+
+    def test_v2_predictions_valid(self, pipeline_artifacts_v2) -> None:
+        from taskclf.train.lgbm import encode_categoricals
+
+        model, metadata, cat_encoders = load_model_bundle(
+            pipeline_artifacts_v2["run_dir"]
+        )
+        val_df = pipeline_artifacts_v2["val_df"]
+        le = pipeline_artifacts_v2["label_encoder"]
+
+        feat_df, _ = encode_categoricals(
+            val_df[FEATURE_COLUMNS_V2].copy(),
+            cat_encoders,
+            schema_version="v2",
+        )
+        x = feat_df.fillna(0).to_numpy(dtype=np.float64)
+        proba = np.asarray(model.predict(x))
+        pred_indices = proba.argmax(axis=1)
+        pred_labels = le.inverse_transform(pred_indices)
+
+        valid_labels = set(LABEL_SET_V1)
+        for label in pred_labels:
+            assert label in valid_labels
+
+
+# ---------------------------------------------------------------------------
+# P2-003: v1 bundle with v2 features → schema hash mismatch
+# P2-004: v2 bundle with v1 features → schema hash mismatch
+# ---------------------------------------------------------------------------
+
+
+class TestSchemaVersionCrossValidation:
+    """P2-003 / P2-004: loading bundles with the wrong schema version raises."""
+
+    def test_p2003_v1_bundle_tampered_to_v2_hash_raises(
+        self, tmp_path, pipeline_artifacts
+    ) -> None:
+        """P2-003: a v1 bundle with its hash changed to v2's is rejected."""
+        run_dir = tmp_path / "v1_as_v2"
+        run_dir.mkdir()
+        shutil.copy(pipeline_artifacts["run_dir"] / "model.txt", run_dir / "model.txt")
+
+        meta_dict = pipeline_artifacts["metadata"].model_dump()
+        meta_dict["schema_hash"] = FeatureSchemaV2.SCHEMA_HASH
+        (run_dir / "metadata.json").write_text(json.dumps(meta_dict))
+
+        with pytest.raises(ValueError, match="Schema hash mismatch"):
+            load_model_bundle(run_dir)
+
+    def test_p2004_v2_bundle_tampered_to_v1_hash_raises(
+        self, tmp_path, pipeline_artifacts_v2
+    ) -> None:
+        """P2-004: a v2 bundle with its hash changed to v1's is rejected."""
+        run_dir = tmp_path / "v2_as_v1"
+        run_dir.mkdir()
+        shutil.copy(
+            pipeline_artifacts_v2["run_dir"] / "model.txt", run_dir / "model.txt"
+        )
+
+        meta_dict = pipeline_artifacts_v2["metadata"].model_dump()
+        meta_dict["schema_hash"] = FeatureSchemaV1.SCHEMA_HASH
+        (run_dir / "metadata.json").write_text(json.dumps(meta_dict))
+
+        with pytest.raises(ValueError, match="Schema hash mismatch"):
+            load_model_bundle(run_dir)

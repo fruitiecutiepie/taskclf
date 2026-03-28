@@ -49,10 +49,35 @@ taskclf infer online \
 
 At shutdown, the loop prints how many buckets were enqueued during the session.
 
+## Persistent feature state
+
+The online loop creates an `OnlineFeatureState` (see
+[`infer.feature_state`](feature_state.md)) that buffers recent
+`FeatureRow` values across poll cycles.  After each row is built from
+the current poll window, it is pushed into the state and the corrected
+rolling aggregates (15-minute app switch counts, rolling means, deltas,
+session length) are overlaid onto the row before prediction.  This
+ensures features match the full history windows the model was trained on,
+rather than being truncated to the narrow poll slice.
+
+The feature state is preserved across model hot-reloads since it tracks
+feature history, not model state.
+
 ## Missing-value handling
 
 `OnlinePredictor._encode_value()` fills missing numeric values with `0.0`,
 matching the training and batch inference paths which use `fillna(0)`.
+
+## Per-user reject thresholds
+
+`OnlinePredictor` accepts an optional `per_user_reject_thresholds` dict
+mapping user IDs to individual reject thresholds.  When present and the
+current row's `user_id` is found in the dict, the per-user threshold
+overrides the global `reject_threshold` for the rejection decision.
+Users not in the dict fall back to the global threshold.
+
+Per-user thresholds are loaded from `InferencePolicy.per_user_reject_thresholds`
+by `resolve_inference_config()` and threaded through `ResolvedInferenceConfig`.
 
 ## Unknown-category handling
 

@@ -59,6 +59,10 @@ _COLUMNS_V1: Final[dict[str, type]] = {
     "session_length_so_far": float,
 }
 
+_COLUMNS_V2: Final[dict[str, type]] = {
+    k: v for k, v in _COLUMNS_V1.items() if k != "user_id"
+}
+
 
 def _build_schema_hash(columns: dict[str, type]) -> str:
     payload = json.dumps(
@@ -133,7 +137,72 @@ class FeatureSchemaV1:
         if extra:
             raise ValueError(f"Unexpected columns: {sorted(extra)}")
 
-        _check_dataframe_dtypes(df)
+        _check_dataframe_dtypes(df, cls.COLUMNS)
+
+
+@dataclass(frozen=True, eq=False)
+class FeatureSchemaV2:
+    """Schema contract for feature rows (v2).
+
+    Identical to :class:`FeatureSchemaV1` except ``user_id`` has been
+    removed from the column registry.  Personalization shifts to
+    calibrators and per-user post-processing.
+    """
+
+    VERSION: ClassVar[Final[str]] = "v2"
+    COLUMNS: ClassVar[Final[dict[str, type]]] = _COLUMNS_V2
+    SCHEMA_HASH: ClassVar[Final[str]] = _build_schema_hash(_COLUMNS_V2)
+
+    @classmethod
+    def validate_row(cls, data: dict[str, Any]) -> FeatureRow:
+        """Validate *data* as a ``FeatureRow`` and verify schema metadata.
+
+        Args:
+            data: Raw dict of field values (e.g. from JSON or ``model_dump()``).
+
+        Returns:
+            The validated ``FeatureRow``.
+
+        Raises:
+            ValueError: If pydantic validation fails, or ``schema_version`` /
+                ``schema_hash`` do not match the v2 contract.
+        """
+        row = FeatureRow.model_validate(data)
+        if row.schema_version != cls.VERSION:
+            raise ValueError(
+                f"schema_version mismatch: expected {cls.VERSION!r}, "
+                f"got {row.schema_version!r}"
+            )
+        if row.schema_hash != cls.SCHEMA_HASH:
+            raise ValueError(
+                f"schema_hash mismatch: expected {cls.SCHEMA_HASH!r}, "
+                f"got {row.schema_hash!r}"
+            )
+        return row
+
+    @classmethod
+    def validate_dataframe(cls, df: pd.DataFrame) -> None:
+        """Check that *df* conforms to the v2 column contract.
+
+        Args:
+            df: DataFrame to validate.
+
+        Raises:
+            ValueError: If columns are missing, unexpected columns are present,
+                or pandas dtype kinds do not match the expected Python types.
+        """
+        expected = set(cls.COLUMNS)
+        actual = set(df.columns)
+
+        missing = expected - actual
+        if missing:
+            raise ValueError(f"Missing columns: {sorted(missing)}")
+
+        extra = actual - expected
+        if extra:
+            raise ValueError(f"Unexpected columns: {sorted(extra)}")
+
+        _check_dataframe_dtypes(df, cls.COLUMNS)
 
 
 # Maps Python types to sets of acceptable pandas dtype *kind* codes.
@@ -163,9 +232,12 @@ def coerce_nullable_numeric(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _check_dataframe_dtypes(df: pd.DataFrame) -> None:
+def _check_dataframe_dtypes(
+    df: pd.DataFrame,
+    columns: dict[str, type] = _COLUMNS_V1,
+) -> None:
     errors: list[str] = []
-    for col, expected_type in _COLUMNS_V1.items():
+    for col, expected_type in columns.items():
         if col not in df.columns:
             continue
         accepted = _PD_KIND_MAP.get(expected_type)

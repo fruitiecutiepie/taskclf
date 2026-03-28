@@ -225,6 +225,7 @@ class ResolvedInferenceConfig:
     calibrator: Calibrator
     calibrator_store: CalibratorStore | None
     policy: InferencePolicy | None
+    per_user_reject_thresholds: dict[str, float] | None = None
 
 
 def resolve_inference_config(
@@ -301,8 +302,10 @@ def resolve_inference_config(
             )
             model_path = resolve_model_dir(None, models_dir)
 
+    per_user_thresholds: dict[str, float] | None = None
     if policy is not None:
         reject_threshold = policy.reject_threshold
+        per_user_thresholds = policy.per_user_reject_thresholds
 
     # Load calibrator store
     if calibrator_store_override is not None:
@@ -342,6 +345,7 @@ def resolve_inference_config(
         calibrator=calibrator,
         calibrator_store=cal_store,
         policy=policy,
+        per_user_reject_thresholds=per_user_thresholds,
     )
 
 

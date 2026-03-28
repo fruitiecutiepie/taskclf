@@ -1129,7 +1129,7 @@ Docs to update:
 
 **Prerequisites**: Phase 1 complete. All current tests passing.
 
-- [ ] **Step 2.1 — Define schema v2 without user_id**
+- [x] **Step 2.1 — Define schema v2 without user_id** ✅ 2026-03-28
 
 Files to modify:
 - `src/taskclf/train/lgbm.py`
@@ -1145,7 +1145,7 @@ Tests:
 - `tests/test_train_lgbm.py` — P2-001: Assert `"user_id"` is not in `FEATURE_COLUMNS_V2`.
 - `tests/test_core_schema.py` — P6-002 (adapted): Assert `FeatureSchemaV2.SCHEMA_HASH != FeatureSchemaV1.SCHEMA_HASH`.
 
-- [ ] **Step 2.2 — Side-by-side evaluation**
+- [x] **Step 2.2 — Side-by-side evaluation** ✅ 2026-03-28
 
 This step is an experiment, not a production code change.
 
@@ -1163,7 +1163,7 @@ Tests:
   - P2-003: Attempt to load a v1 bundle with a v2 feature vector. Assert schema hash mismatch raises.
   - P2-004: Reverse direction.
 
-- [ ] **Step 2.3 — Extend personalization post-processing**
+- [x] **Step 2.3 — Extend personalization post-processing** ✅ 2026-03-28
 
 Files to modify:
 - `src/taskclf/infer/resolve.py`
@@ -1176,7 +1176,7 @@ Edit:
 Tests:
 - `tests/test_infer_resolve.py` — PER-003: Assert per-user threshold overrides global.
 
-- [ ] **Step 2.4 — Keep backward compatibility**
+- [x] **Step 2.4 — Keep backward compatibility** ✅ 2026-03-28
 
 No code changes needed beyond what was done in steps 2.1–2.3. Verify:
 - Schema-v1 bundles still load and receive `user_id`.

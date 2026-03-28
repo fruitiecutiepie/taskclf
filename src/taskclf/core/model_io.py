@@ -15,8 +15,13 @@ import pandas as pd
 from pydantic import BaseModel, Field
 
 from taskclf.core.defaults import DEFAULT_GIT_TIMEOUT_SECONDS
-from taskclf.core.schema import FeatureSchemaV1
+from taskclf.core.schema import FeatureSchemaV1, FeatureSchemaV2
 from taskclf.core.types import LABEL_SET_V1
+
+_SCHEMA_HASHES: dict[str, str] = {
+    FeatureSchemaV1.VERSION: FeatureSchemaV1.SCHEMA_HASH,
+    FeatureSchemaV2.VERSION: FeatureSchemaV2.SCHEMA_HASH,
+}
 
 logger = logging.getLogger(__name__)
 
@@ -134,12 +139,16 @@ def load_model_bundle(
 ) -> tuple[lgb.Booster, ModelMetadata, dict[str, Any]]:
     """Load a model bundle and optionally validate schema hash and label set.
 
+    Schema validation accepts both v1 and v2 bundles: the bundle's
+    ``schema_version`` is looked up in the known schema registry and its
+    ``schema_hash`` is checked against the corresponding expected hash.
+
     Args:
         run_dir: Path to an existing run directory (e.g.
             ``models/2026-02-19_013000_run-0042/``).
         validate_schema: When ``True`` (the default), raise if the
-            bundle's schema hash differs from the current
-            ``FeatureSchemaV1.SCHEMA_HASH``.
+            bundle's schema hash does not match the expected hash for
+            its declared schema version.
         validate_labels: When ``True`` (the default), raise if the
             bundle's label set differs from the current ``LABEL_SET_V1``.
 
@@ -159,11 +168,17 @@ def load_model_bundle(
     raw = json.loads((run_dir / "metadata.json").read_text())
     metadata = ModelMetadata.model_validate(raw)
 
-    if validate_schema and metadata.schema_hash != FeatureSchemaV1.SCHEMA_HASH:
-        raise ValueError(
-            f"Schema hash mismatch: bundle has {metadata.schema_hash!r}, "
-            f"current schema is {FeatureSchemaV1.SCHEMA_HASH!r}"
-        )
+    if validate_schema:
+        expected_hash = _SCHEMA_HASHES.get(metadata.schema_version)
+        if expected_hash is None:
+            raise ValueError(
+                f"Unknown schema version in bundle: {metadata.schema_version!r}"
+            )
+        if metadata.schema_hash != expected_hash:
+            raise ValueError(
+                f"Schema hash mismatch: bundle has {metadata.schema_hash!r}, "
+                f"expected {expected_hash!r} for schema {metadata.schema_version!r}"
+            )
 
     if validate_labels and sorted(metadata.label_set) != sorted(LABEL_SET_V1):
         raise ValueError(
@@ -194,6 +209,7 @@ def build_metadata(
     data_provenance: Literal["real", "synthetic", "mixed"] = "real",
     unknown_category_freq_threshold: int | None = None,
     unknown_category_mask_rate: float | None = None,
+    schema_version: str = "v1",
 ) -> ModelMetadata:
     """Convenience builder that fills in schema info and git commit.
 
@@ -211,13 +227,21 @@ def build_metadata(
             used during training (categories below this are ``__unknown__``).
         unknown_category_mask_rate: Fraction of known categories randomly
             masked to ``__unknown__`` during training.
+        schema_version: ``"v1"`` or ``"v2"``.
 
     Returns:
         A populated ``ModelMetadata`` instance.
+
+    Raises:
+        ValueError: If *schema_version* is not recognised.
     """
+    schema_hash = _SCHEMA_HASHES.get(schema_version)
+    if schema_hash is None:
+        raise ValueError(f"Unknown schema version: {schema_version!r}")
+
     return ModelMetadata(
-        schema_version=FeatureSchemaV1.VERSION,
-        schema_hash=FeatureSchemaV1.SCHEMA_HASH,
+        schema_version=schema_version,
+        schema_hash=schema_hash,
         label_set=sorted(label_set),
         train_date_from=train_date_from.isoformat(),
         train_date_to=train_date_to.isoformat(),

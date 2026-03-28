@@ -59,6 +59,7 @@ class InferencePolicy(BaseModel, frozen=True):
 
     # ── Reject threshold (tuned on calibrated scores when calibrator is present) ──
     reject_threshold: float
+    per_user_reject_thresholds: dict[str, float] | None = None
 
     # ── Provenance ──
     created_at: str = Field(

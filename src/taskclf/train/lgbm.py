@@ -57,6 +57,39 @@ CATEGORICAL_COLUMNS: Final[list[str]] = [
     "user_id",
 ]
 
+FEATURE_COLUMNS_V2: Final[list[str]] = [c for c in FEATURE_COLUMNS if c != "user_id"]
+
+CATEGORICAL_COLUMNS_V2: Final[list[str]] = [
+    c for c in CATEGORICAL_COLUMNS if c != "user_id"
+]
+
+
+def get_feature_columns(schema_version: str) -> list[str]:
+    """Return the feature column list for *schema_version*.
+
+    Raises:
+        ValueError: If *schema_version* is not ``"v1"`` or ``"v2"``.
+    """
+    if schema_version == "v1":
+        return list(FEATURE_COLUMNS)
+    if schema_version == "v2":
+        return list(FEATURE_COLUMNS_V2)
+    raise ValueError(f"Unknown schema version: {schema_version!r}")
+
+
+def get_categorical_columns(schema_version: str) -> list[str]:
+    """Return the categorical column list for *schema_version*.
+
+    Raises:
+        ValueError: If *schema_version* is not ``"v1"`` or ``"v2"``.
+    """
+    if schema_version == "v1":
+        return list(CATEGORICAL_COLUMNS)
+    if schema_version == "v2":
+        return list(CATEGORICAL_COLUMNS_V2)
+    raise ValueError(f"Unknown schema version: {schema_version!r}")
+
+
 _DEFAULT_PARAMS: Final[dict[str, Any]] = {
     "objective": "multiclass",
     "metric": "multi_logloss",
@@ -76,6 +109,7 @@ def encode_categoricals(
     min_category_freq: int = 5,
     unknown_mask_rate: float = 0.05,
     random_state: int | None = None,
+    schema_version: str = "v1",
 ) -> tuple[pd.DataFrame, dict[str, LabelEncoder]]:
     """Label-encode categorical columns in-place and return fitted encoders.
 
@@ -100,16 +134,19 @@ def encode_categoricals(
         unknown_mask_rate: Fraction of *known*-category rows to randomly
             mask to ``"__unknown__"`` during training (for robustness).
         random_state: Seed for the random masking (reproducibility).
+        schema_version: ``"v1"`` or ``"v2"``.  Selects which categorical
+            columns to encode.
 
     Returns:
         ``(encoded_df, cat_encoders)`` -- the DataFrame with categorical
         columns replaced by integer codes, and the encoder dict.
     """
+    cat_cols = get_categorical_columns(schema_version)
     df = df.copy()
     if cat_encoders is None:
         rng = np.random.RandomState(random_state)
         cat_encoders = {}
-        for col in CATEGORICAL_COLUMNS:
+        for col in cat_cols:
             vals = df[col].astype(str)
             freq = vals.value_counts()
             rare_mask = vals.isin(freq[freq < min_category_freq].index)
@@ -130,7 +167,7 @@ def encode_categoricals(
             df[col] = le.fit_transform(vals)
             cat_encoders[col] = le
     else:
-        for col in CATEGORICAL_COLUMNS:
+        for col in cat_cols:
             le = cat_encoders[col]
             known = set(le.classes_)
             has_unknown = _UNKNOWN_TOKEN in known
@@ -156,6 +193,7 @@ def prepare_xy(
     min_category_freq: int = 5,
     unknown_mask_rate: float = 0.05,
     random_state: int | None = None,
+    schema_version: str = "v1",
 ) -> tuple[np.ndarray, np.ndarray, LabelEncoder, dict[str, LabelEncoder]]:
     """Extract feature matrix and encoded label vector from *df*.
 
@@ -164,8 +202,8 @@ def prepare_xy(
     with 0.
 
     Args:
-        df: Labeled feature DataFrame (must contain ``FEATURE_COLUMNS``
-            and a ``label`` column).
+        df: Labeled feature DataFrame (must contain the feature columns
+            for the selected *schema_version* and a ``label`` column).
         label_encoder: Pre-fitted encoder to reuse (e.g. the one returned
             from the training call).  If ``None``, a new encoder is fitted
             on the canonical ``LABEL_SET_V1``.
@@ -174,17 +212,20 @@ def prepare_xy(
         min_category_freq: Forwarded to :func:`encode_categoricals`.
         unknown_mask_rate: Forwarded to :func:`encode_categoricals`.
         random_state: Forwarded to :func:`encode_categoricals`.
+        schema_version: ``"v1"`` or ``"v2"``.
 
     Returns:
         A ``(X, y, label_encoder, cat_encoders)`` tuple.
     """
-    feat_df = df[FEATURE_COLUMNS].copy()
+    feat_cols = get_feature_columns(schema_version)
+    feat_df = df[feat_cols].copy()
     feat_df, cat_encoders = encode_categoricals(
         feat_df,
         cat_encoders,
         min_category_freq=min_category_freq,
         unknown_mask_rate=unknown_mask_rate,
         random_state=random_state,
+        schema_version=schema_version,
     )
     x = feat_df.fillna(0).to_numpy(dtype=np.float64)
 
@@ -196,9 +237,11 @@ def prepare_xy(
     return x, y, label_encoder, cat_encoders
 
 
-def _categorical_feature_indices() -> list[int]:
-    """Return the positional indices of categorical columns in FEATURE_COLUMNS."""
-    return [FEATURE_COLUMNS.index(c) for c in CATEGORICAL_COLUMNS]
+def _categorical_feature_indices(schema_version: str = "v1") -> list[int]:
+    """Return the positional indices of categorical columns in feature columns."""
+    feat_cols = get_feature_columns(schema_version)
+    cat_cols = get_categorical_columns(schema_version)
+    return [feat_cols.index(c) for c in cat_cols]
 
 
 def compute_sample_weights(
@@ -236,6 +279,7 @@ def train_lgbm(
     min_category_freq: int = 5,
     unknown_mask_rate: float = 0.05,
     random_state: int | None = None,
+    schema_version: str = "v1",
 ) -> tuple[lgb.Booster, dict, pd.DataFrame, dict[str, Any], dict[str, LabelEncoder]]:
     """Train a LightGBM multiclass model and evaluate on the val set.
 
@@ -254,32 +298,40 @@ def train_lgbm(
         unknown_mask_rate: Fraction of known-category rows randomly
             masked to ``__unknown__`` during training.
         random_state: Seed for the random unknown masking.
+        schema_version: ``"v1"`` or ``"v2"``.
 
     Returns:
         A ``(model, metrics, confusion_df, params, cat_encoders)`` tuple
         where *cat_encoders* maps each categorical column name to its
         fitted ``LabelEncoder``.
     """
+    feat_cols = get_feature_columns(schema_version)
     x_train, y_train, le, cat_encoders = prepare_xy(
         train_df,
         min_category_freq=min_category_freq,
         unknown_mask_rate=unknown_mask_rate,
         random_state=random_state,
+        schema_version=schema_version,
     )
-    x_val, y_val, _, _ = prepare_xy(val_df, label_encoder=le, cat_encoders=cat_encoders)
+    x_val, y_val, _, _ = prepare_xy(
+        val_df,
+        label_encoder=le,
+        cat_encoders=cat_encoders,
+        schema_version=schema_version,
+    )
 
     params = {**_DEFAULT_PARAMS, "num_class": len(le.classes_)}
     if extra_params:
         params.update(extra_params)
 
-    cat_indices = _categorical_feature_indices()
+    cat_indices = _categorical_feature_indices(schema_version)
     sample_weights = compute_sample_weights(y_train, method=class_weight)
 
     train_ds = lgb.Dataset(
         x_train,
         label=y_train,
         weight=sample_weights,
-        feature_name=FEATURE_COLUMNS,
+        feature_name=feat_cols,
         categorical_feature=cat_indices,
         free_raw_data=False,
     )

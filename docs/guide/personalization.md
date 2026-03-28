@@ -1,8 +1,8 @@
 # Personalization Guide
 
-Version: 1.0
+Version: 2.0
 Status: Stable
-Last Updated: 2026-02-24
+Last Updated: 2026-03-28
 
 This document describes the personalization strategy for taskclf:
 how the global classifier adapts to individual users without retraining
@@ -213,32 +213,80 @@ the compatibility gate that prevents mixing old and new contracts.
 Both roles must receive the correct `user_id` for predictions to be
 accurate.
 
-## Schema-v2 bundles (future)
+## Schema-v2 bundles (implemented)
 
-The planned direction is to remove `user_id` from the core model's
-feature vector. Personalization shifts entirely to:
+`user_id` has been removed from the core model's feature vector in
+schema v2.  Personalization now relies entirely on:
 
 - Per-user calibrators (temperature scaling or isotonic regression).
-- User-specific post-processing (custom reject thresholds, taxonomy
-  overrides).
+- Per-user reject thresholds (loaded from
+  `InferencePolicy.per_user_reject_thresholds`).
+- User-specific post-processing (taxonomy overrides).
 
 The core model becomes user-agnostic, which simplifies training,
 reduces overfitting to high-volume users, and allows new users to
 receive calibrated predictions without retraining.
 
+### Training a v2 model
+
+```bash
+taskclf train lgbm \
+  --from 2026-01-01 --to 2026-02-01 \
+  --schema-version v2
+```
+
+Or programmatically:
+
+```python
+from taskclf.train.lgbm import train_lgbm
+from taskclf.core.model_io import build_metadata
+
+model, metrics, cm_df, params, cat_encoders = train_lgbm(
+    train_df, val_df,
+    schema_version="v2",
+)
+metadata = build_metadata(
+    label_set=metrics["label_names"],
+    ...,
+    schema_version="v2",
+)
+```
+
+### Key differences from v1
+
+| Aspect | v1 | v2 |
+|--------|----|----|
+| `user_id` in features | Yes (34 features) | No (33 features) |
+| `FEATURE_COLUMNS` | includes `user_id` | `FEATURE_COLUMNS_V2` excludes it |
+| `CATEGORICAL_COLUMNS` | 4 columns | `CATEGORICAL_COLUMNS_V2`: 3 columns |
+| Personalization | LightGBM learns user splits | Calibrators + per-user thresholds |
+| Schema hash | `FeatureSchemaV1.SCHEMA_HASH` | `FeatureSchemaV2.SCHEMA_HASH` |
+
+### Per-user reject thresholds
+
+The `InferencePolicy` supports an optional
+`per_user_reject_thresholds` dict that maps user IDs to individual
+reject thresholds.  When present, `OnlinePredictor.predict_bucket()`
+applies the per-user threshold instead of the global one.  Users not
+in the dict fall back to the global threshold.
+
 ## Gate
 
 The schema hash (computed from the column registry in
-`core/schema.py`) includes `user_id`. Removing `user_id` from a
-future `_COLUMNS_V2` produces a different hash. The existing
-schema-hash gate in inference refuses to run a model whose
-`metadata.schema_hash` does not match the feature set being served.
+`core/schema.py`) differs between v1 and v2 because v1 includes
+`user_id` and v2 does not.  `load_model_bundle` validates the
+bundle's `schema_hash` against the expected hash for its declared
+`schema_version`, refusing to load a bundle whose hash does not match.
 
 This prevents accidentally loading a v1 model with v2 features (or
-vice versa). The migration path is:
+vice versa).  Both v1 and v2 bundles can coexist in the same
+`models/` directory; the hash gate routes each bundle to the correct
+feature contract.
 
-1. Define `_COLUMNS_V2` without `user_id`.
-2. Train a new model on the v2 schema.
-3. Bundle the model with the v2 hash.
-4. Old v1 bundles continue to work unchanged; the hash gate routes
-   each bundle to the correct feature contract.
+### Migration steps (completed)
+
+1. `_COLUMNS_V2` and `FeatureSchemaV2` defined in `core/schema.py`.
+2. `FEATURE_COLUMNS_V2` and `CATEGORICAL_COLUMNS_V2` defined in `train/lgbm.py`.
+3. `train_lgbm`, `prepare_xy`, and `encode_categoricals` accept `schema_version`.
+4. `build_metadata` and `load_model_bundle` support both v1 and v2 schema versions.
+5. Old v1 bundles continue to work unchanged.

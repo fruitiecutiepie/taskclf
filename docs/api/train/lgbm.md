@@ -75,6 +75,30 @@ LightGBM native categorical support:
 - `domain_category`
 - `user_id`
 
+### FEATURE_COLUMNS_V2
+
+Same as `FEATURE_COLUMNS` with `user_id` removed (33 features).
+Used when training schema-v2 models where personalization is handled
+via calibrators and per-user post-processing instead of a model feature.
+
+### CATEGORICAL_COLUMNS_V2
+
+Same as `CATEGORICAL_COLUMNS` with `user_id` removed:
+
+- `app_id`
+- `app_category`
+- `domain_category`
+
+### get_feature_columns / get_categorical_columns
+
+```python
+get_feature_columns(schema_version: str) -> list[str]
+get_categorical_columns(schema_version: str) -> list[str]
+```
+
+Dispatch helpers that return the appropriate column list for
+`"v1"` or `"v2"`.  Raise `ValueError` for unknown versions.
+
 ### Default hyperparameters
 
 | Parameter | Default | Description |
@@ -98,6 +122,7 @@ encode_categoricals(
     min_category_freq: int = 5,
     unknown_mask_rate: float = 0.05,
     random_state: int | None = None,
+    schema_version: str = "v1",
 ) -> tuple[pd.DataFrame, dict[str, LabelEncoder]]
 ```
 
@@ -118,6 +143,7 @@ two modes:
 | `min_category_freq` | `5` | Minimum count for a category to keep its own code |
 | `unknown_mask_rate` | `0.05` | Fraction of known-category rows randomly masked to `__unknown__` |
 | `random_state` | `None` | Seed for reproducible masking |
+| `schema_version` | `"v1"` | Schema version (`"v1"` or `"v2"`) selecting which categorical columns to encode |
 
 ### prepare_xy
 
@@ -126,6 +152,8 @@ prepare_xy(
     df: pd.DataFrame,
     label_encoder: LabelEncoder | None = None,
     cat_encoders: dict[str, LabelEncoder] | None = None,
+    *,
+    schema_version: str = "v1",
 ) -> tuple[np.ndarray, np.ndarray, LabelEncoder, dict[str, LabelEncoder]]
 ```
 
@@ -161,6 +189,10 @@ train_lgbm(
     num_boost_round: int = DEFAULT_NUM_BOOST_ROUND,
     extra_params: dict[str, Any] | None = None,
     class_weight: Literal["balanced", "none"] = "balanced",
+    min_category_freq: int = 5,
+    unknown_mask_rate: float = 0.05,
+    random_state: int | None = None,
+    schema_version: str = "v1",
 ) -> tuple[lgb.Booster, dict, pd.DataFrame, dict[str, Any], dict[str, LabelEncoder]]
 ```
 

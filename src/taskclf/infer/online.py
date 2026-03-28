@@ -70,6 +70,7 @@ class OnlinePredictor:
     taxonomy: TaxonomyConfig | None = None
     calibrator: Calibrator = field(default_factory=IdentityCalibrator)
     calibrator_store: CalibratorStore | None = None
+    per_user_reject_thresholds: dict[str, float] | None = None
     _le: LabelEncoder = field(init=False)
     _resolver: TaxonomyResolver | None = field(init=False, default=None)
     _raw_buffer: deque[str] = field(init=False)
@@ -133,8 +134,15 @@ class OnlinePredictor:
         pred_idx = int(proba_vec.argmax())
         core_label_name: str = self._le.inverse_transform([pred_idx])[0]
 
+        effective_threshold = self.reject_threshold
+        if (
+            self.per_user_reject_thresholds is not None
+            and row.user_id in self.per_user_reject_thresholds
+        ):
+            effective_threshold = self.per_user_reject_thresholds[row.user_id]
+
         is_rejected = (
-            self.reject_threshold is not None and confidence < self.reject_threshold
+            effective_threshold is not None and confidence < effective_threshold
         )
 
         smoothing_label = MIXED_UNKNOWN if is_rejected else core_label_name
@@ -296,6 +304,7 @@ def run_online_loop(
     )
     from taskclf.features.build import build_features_from_aw_events
     from taskclf.infer.calibration import load_calibrator, load_calibrator_store
+    from taskclf.infer.feature_state import OnlineFeatureState
     from taskclf.infer.resolve import (
         InferencePolicyReloader,
         resolve_inference_config,
@@ -310,6 +319,7 @@ def run_online_loop(
         )
 
     effective_threshold: float | None
+    per_user_thresholds: dict[str, float] | None = None
     if models_dir is not None:
         resolved = resolve_inference_config(
             models_dir,
@@ -324,6 +334,7 @@ def run_online_loop(
         effective_threshold = resolved.reject_threshold
         calibrator = resolved.calibrator
         cal_store = resolved.calibrator_store
+        per_user_thresholds = resolved.per_user_reject_thresholds
     else:
         calibrator_: Calibrator = IdentityCalibrator()
         if calibrator_path is not None:
@@ -366,6 +377,12 @@ def run_online_loop(
         taxonomy=taxonomy,
         calibrator=calibrator,
         calibrator_store=cal_store,
+        per_user_reject_thresholds=per_user_thresholds,
+    )
+
+    feature_state = OnlineFeatureState(
+        bucket_seconds=bucket_seconds,
+        idle_gap_seconds=idle_gap_seconds,
     )
 
     policy_reloader: InferencePolicyReloader | None = None
@@ -415,6 +432,7 @@ def run_online_loop(
                         taxonomy=taxonomy,
                         calibrator=new_config.calibrator,
                         calibrator_store=new_config.calibrator_store,
+                        per_user_reject_thresholds=new_config.per_user_reject_thresholds,
                     )
                     print(
                         f"Config reloaded (schema={new_config.metadata.schema_hash}, "
@@ -478,6 +496,9 @@ def run_online_loop(
             last_event_ts = max(ev.timestamp for ev in events)
 
             for row in rows:
+                feature_state.push(row)
+                context = feature_state.get_context()
+                row = row.model_copy(update=context)
                 prediction = predictor.predict_bucket(row)
                 ts_str = row.bucket_start_ts.strftime("%H:%M")
                 conf_str = f"{prediction.confidence:.2f}"
