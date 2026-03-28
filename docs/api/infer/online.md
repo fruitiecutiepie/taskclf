@@ -49,6 +49,13 @@ taskclf infer online \
 
 At shutdown, the loop prints how many buckets were enqueued during the session.
 
+## Missing-value handling
+
+`OnlinePredictor._encode_value()` fills missing numeric values with `0.0`,
+matching the training and batch inference paths which use `fillna(0)`.
+Categorical columns with unknown values map to `-1` (or `__unknown__` when
+the encoder includes that class).
+
 ::: taskclf.infer.online
 
 ::: taskclf.infer.resolve

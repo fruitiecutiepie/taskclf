@@ -311,14 +311,12 @@ class TestEncodeValue:
         assert pred._encode_value(cat_col, known_val) == expected_code
         assert pred._encode_value(cat_col, "__never_seen_value__") == -1.0
 
-    def test_numerical_none_returns_nan(self, trained_model_dir: Path) -> None:
-        """TC-ONLINE-005: non-categorical None returns NaN (LightGBM handles natively)."""
-        import math
-
+    def test_numerical_none_returns_zero(self, trained_model_dir: Path) -> None:
+        """TC-ONLINE-005: non-categorical None returns 0.0 (matches train fillna(0))."""
         model, metadata, cat_encoders = load_model_bundle(trained_model_dir)
         pred = OnlinePredictor(model, metadata, cat_encoders=cat_encoders)
 
-        assert math.isnan(pred._encode_value("key_rate", None))
+        assert pred._encode_value("key_rate", None) == 0.0
         assert pred._encode_value("key_rate", 3.5) == 3.5
 
 

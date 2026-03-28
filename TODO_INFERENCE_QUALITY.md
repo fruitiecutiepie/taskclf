@@ -895,7 +895,7 @@ Verification: review docs only; no tests needed for Phase 0.
 
 ### Phase 1 — Remove correctness mismatches
 
-- [ ] **Step 1.1 — Fix online numeric missing-value handling (Risk 0)**
+- [x] **Step 1.1 — Fix online numeric missing-value handling (Risk 0)** ✅ 2026-03-28
 
 _Problem_: `OnlinePredictor._encode_value()` returns `float("nan")` for missing numerics, but training and batch inference use `fillna(0)`.
 
