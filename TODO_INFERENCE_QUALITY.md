@@ -829,6 +829,455 @@ The surface separation (step 5) establishes the UI architecture needed for decis
 
 ---
 
+## Test Plan
+
+Comprehensive tests for every quality risk, recorded decision, and implementation phase in this document. Each test case has an ID, description, target file, and key assertions.
+
+### Test naming convention
+
+All test files follow `test_{package}_{module}[_{domain}].py` — structured from most common denominator (package) to most specific (domain concern):
+
+- `{package}` = top-level subpackage: `infer`, `train`, `core`, `features`, `labels`, `ui`, `adapters`, `cli`, `report`, `migrate`
+- `{module}` = source file name (without `.py`)
+- `{domain}` = optional suffix narrowing to a specific concern within the module
+
+Cross-module tests use `test_integration_{description}[_{domain}].py`.
+
+Examples from the existing codebase:
+
+- `test_infer_batch_reject.py` → `infer/batch.py`, reject domain
+- `test_infer_batch_segments.py` → `infer/batch.py`, segments domain
+- `test_core_metrics.py` → `core/metrics.py`
+- `test_ui_server.py` → `ui/server.py`
+
+### Prerequisite: rename existing test files (done)
+
+All prerequisite test file renames have been completed. The following renames were executed:
+
+| Old name | New name | Source file |
+|---|---|---|
+| `test_tray.py` | `test_ui_tray.py` | `ui/tray.py` |
+| `test_inference_policy.py` | `test_core_inference_policy.py` | `core/inference_policy.py` |
+| `test_telemetry.py` | `test_core_telemetry.py` | `core/telemetry.py` |
+| `test_tune_reject.py` | `test_train_evaluate_reject.py` | `train/evaluate.py` |
+| `test_drift.py` | `test_core_drift.py` | `core/drift.py` |
+| `test_retrain.py` | `test_train_retrain.py` | `train/retrain.py` |
+| `test_report.py` | `test_report_daily.py` | `report/daily.py`, `report/export.py` |
+| `test_label_now.py` | `test_labels_label_now.py` | `labels/queue.py`, `labels/store.py` |
+| `test_calibration.py` | `test_train_calibrate.py` | `train/calibrate.py` |
+| `test_monitor.py` | (deleted — consolidated into `test_infer_monitor.py`) | `infer/monitor.py` |
+
+### Test file to source file map
+
+Every test file maps to the source file it exercises. When a source file has multiple distinct domains under test, the file is split by domain suffix.
+
+Existing test files to extend (already correctly named):
+
+- `tests/test_train_lgbm.py` → `train/lgbm.py`
+- `tests/test_train_evaluate.py` → `train/evaluate.py`
+- `tests/test_infer_online.py` → `infer/online.py`
+- `tests/test_infer_batch_reject.py` → `infer/batch.py`, reject domain
+- `tests/test_infer_smooth.py` → `infer/smooth.py`
+- `tests/test_infer_calibration.py` → `infer/calibration.py`
+- `tests/test_infer_resolve.py` → `infer/resolve.py`
+- `tests/test_core_model_io.py` → `core/model_io.py`
+- `tests/test_core_schema.py` → `core/schema.py`
+- `tests/test_features_build.py` → `features/build.py`
+- `tests/test_security_privacy.py` → cross-cutting privacy invariants
+
+Existing test files to extend (after prerequisite rename):
+
+- `tests/test_core_inference_policy.py` (was `test_inference_policy.py`) → `core/inference_policy.py`
+- `tests/test_core_telemetry.py` (was `test_telemetry.py`) → `core/telemetry.py`
+- `tests/test_train_evaluate_reject.py` (was `test_tune_reject.py`) → `train/evaluate.py`, reject-tuning domain
+
+New domain-split test files for `ui/tray.py`:
+
+`test_ui_tray.py` (renamed from `test_tray.py`) already has 31 test classes spanning many domains. New tests go into domain-specific files:
+
+- `tests/test_ui_tray_suggest.py` → `ui/tray.py`, suggestion domain (`_LabelSuggester.suggest`, input events, user_id propagation)
+- `tests/test_ui_tray_surfaces.py` → `ui/tray.py`, surface architecture domain (live status vs transition display, copy conventions, confidence hiding)
+- `tests/test_ui_tray_gap_fill.py` → `ui/tray.py`, gap-fill domain (passive indicator, contextual prompting, escalation)
+
+New domain-split test files for cross-module integration:
+
+`test_integration_train_infer.py` currently has 3 test classes covering schema gating. New cross-cutting concerns go into domain-specific integration files:
+
+- `tests/test_integration_train_infer_parity.py` → cross-module, preprocessing parity domain (train vs batch vs online numeric/categorical encoding)
+- `tests/test_integration_train_infer_unknown.py` → cross-module, unknown-category domain (end-to-end model behavior on withheld categories)
+
+New test file for planned source file:
+
+- `tests/test_infer_aggregation.py` → `infer/aggregation.py` (planned Phase 4: interval aggregation strategies)
+
+### Risk 0 — Train/serve mismatch on missing numeric values
+
+| ID | Description | Assertions |
+|---|---|---|
+| TSP-001 | Same FeatureRow with None numerics produces identical feature vectors through `prepare_xy` (train/batch) and `OnlinePredictor._encode_value` (online) | Both paths yield `0.0` for missing numerics (after fix); vectors are element-wise equal |
+| TSP-002 | Batch `predict_proba` and online `predict_bucket` on identical input produce identical raw probability arrays | `np.allclose(batch_proba, online_proba)` |
+| TSP-003 | Regression guard: if online imputation diverges from training, test fails | Parametrize over each numeric column in `FEATURE_COLUMNS`; assert imputed value matches |
+
+File: `tests/test_integration_train_infer_parity.py`
+Existing partial coverage: `test_train_lgbm.py::test_nan_fill` (train side only), `test_infer_online.py::test_numerical_none_returns_nan` (documents current NaN behavior, will need updating after fix)
+
+### Risk 1 — Live rolling context weaker than model expects
+
+| ID | Description | Assertions |
+|---|---|---|
+| CTX-001 | Persistent online feature state preserves 15-minute history across predict_bucket calls | After 15+ buckets, `app_switch_count_15m` reflects full window, not just latest slice |
+| CTX-002 | Delta features are non-zero when history is available | Second bucket's `delta_*` fields differ from first bucket's |
+| CTX-003 | Session features reset correctly after idle gap | After idle gap exceeding threshold, `session_length_minutes` resets near zero |
+
+File: `tests/test_infer_online.py` (extend `TestOnlineSessionTracking`)
+
+### Risk 2 — Tray suggestions ignore most of the interval
+
+| ID | Description | Assertions |
+|---|---|---|
+| AGG-001 | Interval aggregation over N buckets produces a label; last-bucket-only prediction may differ | Aggregated label uses information from all N buckets, not just `rows[-1]` |
+| AGG-002 | Majority vote aggregation selects the most frequent label | Given 5 buckets: 3x Coding, 2x Writing → "Coding" |
+| AGG-003 | Confidence-weighted vote weights by calibrated confidence | Higher-confidence minority can win over lower-confidence majority |
+| AGG-004 | Single-bucket interval degrades gracefully to last-bucket behavior | Aggregation with 1 bucket equals direct prediction |
+
+File: `tests/test_infer_aggregation.py` → planned `infer/aggregation.py`
+
+### Risk 3 — Tray suggestions do not use input events
+
+| ID | Description | Assertions |
+|---|---|---|
+| INP-001 | `_LabelSuggester.suggest` calls `fetch_aw_input_events` when available | Mock verifies `input_events` kwarg passed to `build_features_from_aw_events` |
+| INP-002 | Feature rows built with input events have non-None input fields | `keyboard_events_per_sec`, `mouse_clicks_per_sec`, etc. are populated |
+| INP-003 | Feature rows built without input events have None input fields | Backward compatibility when input source is unavailable |
+
+File: INP-001 in `tests/test_ui_tray_suggest.py`; INP-002, INP-003 in `tests/test_features_build.py`
+
+### Risk 4 — Stable user_id not passed through live suggestion feature building
+
+| ID | Description | Assertions |
+|---|---|---|
+| UID-001 | `_LabelSuggester.suggest` passes config-backed `user_id` to `build_features_from_aw_events` | Mock captures `user_id` kwarg; equals config value, not `"default-user"` |
+| UID-002 | OnlinePredictor receives correct `user_id` for per-user calibrator dispatch | `calibrator_store.get_calibrator(row.user_id)` called with stable user_id |
+| UID-003 | Fallback to default user_id when config is absent | When no stable user_id configured, "default-user" is used (not crash) |
+
+File: UID-001, UID-003 in `tests/test_ui_tray_suggest.py`; UID-002 in `tests/test_infer_online.py`
+
+### Risk 5 — Reject threshold not tied to calibrated probabilities
+
+| ID | Description | Assertions |
+|---|---|---|
+| REJ-001 | Batch inference rejects on calibrated (not raw) probabilities when calibrator is provided | Row with raw confidence > threshold but calibrated confidence < threshold is rejected |
+| REJ-002 | Online inference rejects on calibrated probabilities | Same row, same result as batch |
+| REJ-003 | `tune_reject_threshold` can operate on calibrated scores | Sweep results differ between raw and calibrated inputs |
+
+File: REJ-001 in `tests/test_infer_batch_reject.py`; REJ-002 in `tests/test_infer_online.py`; REJ-003 in `tests/test_train_evaluate_reject.py`
+
+### Risk 6 — Bundle metadata does not define active reject policy
+
+| ID | Description | Assertions |
+|---|---|---|
+| POL-001 | `train tune-reject --write-policy` persists threshold in inference policy | `load_inference_policy` returns threshold matching tuned value |
+| POL-002 | `resolve_inference_config` uses policy threshold as default | Resolved config `reject_threshold` equals policy value |
+| POL-003 | CLI `--reject-threshold` override takes precedence over policy | Resolved config uses override, not policy |
+| POL-004 | `ModelMetadata.reject_threshold` is advisory, not consumed at runtime | Online/batch paths do not read threshold from metadata when policy exists |
+
+File: POL-001 in `tests/test_core_inference_policy.py`; POL-002, POL-003, POL-004 in `tests/test_infer_resolve.py`
+
+### Risk 7 — Unknown-category handling (decision #5)
+
+| ID | Description | Assertions |
+|---|---|---|
+| UNK-001 | Frequency thresholding collapses rare categories to `__unknown__` | Categories with < threshold occurrences become `__unknown__` in encoded output |
+| UNK-002 | Random masking replaces a fraction of known categories with `__unknown__` during training | With seed, approximately `mask_rate` fraction of known values are masked |
+| UNK-003 | `__unknown__` is a first-class encoder value | `le.classes_` contains `"__unknown__"` after fit |
+| UNK-004 | Unseen values at inference map to `__unknown__` code, not -1 | `_encode_value("app_id", "never-seen-app")` returns the `__unknown__` code |
+| UNK-005 | Model produces lower, broader probabilities for `__unknown__` inputs vs known | Mean max-probability for unknown rows < mean max-probability for known rows |
+| UNK-006 | Reject threshold catches unknown-category inputs at higher rate | Reject rate on withheld categories > reject rate on known categories |
+| UNK-007 | Masking rate and frequency threshold are recorded in bundle metadata | `metadata.json` contains both hyperparameters |
+
+File: UNK-001 to UNK-003 in `tests/test_train_lgbm.py`; UNK-004 in `tests/test_infer_online.py`; UNK-005, UNK-006 in `tests/test_integration_train_infer_unknown.py`; UNK-007 in `tests/test_core_model_io.py`
+
+### Risk 8 — Evaluation is bucket-level only
+
+| ID | Description | Assertions |
+|---|---|---|
+| EVL-001 | Evaluation reports operational metrics beyond macro-F1 | Report includes flip rate, segment duration distribution, reject rate |
+| EVL-002 | Post-smoothing evaluation differs from pre-smoothing | Smoothed macro-F1 >= raw macro-F1 (smoothing should help or be neutral) |
+| EVL-003 | Interval-level suggestion evaluation produces per-interval accuracy | Each interval gets a single predicted label; accuracy computed against gold interval labels |
+
+File: `tests/test_train_evaluate.py`
+
+### Decision 1 — Personalization architecture
+
+| ID | Description | Assertions |
+|---|---|---|
+| PER-001 | Schema-v1 bundles still receive user_id in feature vector | `FEATURE_COLUMNS` for v1 includes `"user_id"` |
+| PER-002 | Per-user calibrator store dispatches correctly | Different user_ids get different calibrator objects from store |
+| PER-003 | Per-user reject thresholds (when implemented) override global | User with personalized threshold uses it, others use global |
+
+File: PER-001 in `tests/test_train_lgbm.py`; PER-002 in `tests/test_infer_calibration.py` (partially exists); PER-003 in `tests/test_infer_resolve.py` (when implemented)
+
+### Decision 2 — Canonical runtime threshold location
+
+| ID | Description | Assertions |
+|---|---|---|
+| THR-001 | Inference policy is the single source of truth for reject threshold | `resolve_inference_config` returns policy threshold when policy exists |
+| THR-002 | CLI override > policy > active.json fallback > code default | Parametrize resolution with different combinations; verify precedence |
+| THR-003 | Hot-reload swaps threshold alongside model | After `InferencePolicyReloader.check_reload()` with new policy, threshold updates |
+| THR-004 | `CalibratorStore` records `model_bundle_id` and `model_schema_hash` | `store.json` contains both fields; `validate_policy` cross-checks them |
+
+File: THR-001 to THR-003 in `tests/test_infer_resolve.py`; THR-004 in `tests/test_infer_calibration.py` (partially exists)
+
+### Decision 3 — Tray suggestion semantics
+
+| ID | Description | Assertions |
+|---|---|---|
+| SEM-001 | Transition suggestion targets the previous completed block, not current | Time range in suggestion spans `[transition_start, transition_end)`, not current bucket |
+| SEM-002 | Live status targets current bucket only | Live status prediction uses only the latest bucket |
+| SEM-003 | Gap-fill targets the full unlabeled interval since last confirmed label | Gap-fill interval spans from last label end to current time |
+
+File: SEM-001 in `tests/test_ui_tray_suggest.py`; SEM-002 in `tests/test_ui_tray_surfaces.py`; SEM-003 in `tests/test_ui_tray_gap_fill.py`
+
+### Decision 4 — Suggestion confidence strategy
+
+| ID | Description | Assertions |
+|---|---|---|
+| CNF-001 | High reject threshold suppresses low-confidence suggestions | With threshold=0.9, most synthetic predictions are suppressed |
+| CNF-002 | Suggestions-per-active-day tracking records events | After N predictions with K accepted, telemetry shows K suggestions |
+| CNF-003 | Zero-suggestions-per-day triggers warning | Loaded model + full active day + zero suggestions → warning logged |
+| CNF-004 | Reject threshold is not user-configurable via UI settings | Settings schema does not expose reject_threshold |
+
+File: CNF-001 in `tests/test_infer_online.py`; CNF-002, CNF-003 in `tests/test_core_telemetry.py`; CNF-004 in `tests/test_ui_tray_surfaces.py`
+
+### Decision 5 — Unknown-category handling
+
+Covered by UNK-001 through UNK-007 above.
+
+### Decision 6 — Tray/UI surface architecture
+
+| ID | Description | Assertions |
+|---|---|---|
+| SRF-001 | Transition suggestion surface shows action-oriented copy with time range | Notification text matches pattern "Was this {label}? {start}–{end}" |
+| SRF-002 | Live status surface shows present-tense label only | Display text matches pattern "Now: {label}" |
+| SRF-003 | Transition and live status use separate code paths | `_LabelSuggester` and live-status display are distinct methods/classes |
+| SRF-004 | No confidence percentages on transition or live surfaces | Notification payload does not contain numeric confidence |
+| SRF-005 | Gap-fill passive indicator shows unlabeled duration | Badge text includes unlabeled time duration |
+| SRF-006 | Gap-fill prompts only at idle return, session start, or post-acceptance | Prompt is not triggered at arbitrary times; only at defined trigger points |
+| SRF-007 | Escalation when unlabeled time exceeds threshold | Tray icon state changes when unlabeled time > configurable threshold |
+| SRF-008 | Copy strings are centralized in one module | All user-facing strings imported from single location |
+
+File: SRF-001 to SRF-004, SRF-008 in `tests/test_ui_tray_surfaces.py`; SRF-005 to SRF-007 in `tests/test_ui_tray_gap_fill.py`
+
+### Phase 0 — Lock the inference contract
+
+| ID | Description | Assertions |
+|---|---|---|
+| P0-001 | Canonical inference order is: features → encode → impute → predict → calibrate → reject → smooth/aggregate → taxonomy | Each step's output feeds the next; no step is skipped or reordered in any path |
+| P0-002 | All three paths (batch, online, tray) follow the same order | Instrument or trace the pipeline stages; assert same sequence |
+
+File: `tests/test_integration_train_infer_parity.py`
+
+### Phase 1 — Remove correctness mismatches
+
+Covered by TSP-001 through TSP-003, INP-001 through INP-003, UID-001 through UID-003, UNK-001 through UNK-007 above.
+
+### Phase 2 — Migrate personalization
+
+| ID | Description | Assertions |
+|---|---|---|
+| P2-001 | Schema-v2 `FEATURE_COLUMNS` does not include `user_id` | New constant excludes it |
+| P2-002 | Schema-v2 model + per-user calibrator matches or exceeds v1 hybrid model quality | Side-by-side evaluation metrics comparison |
+| P2-003 | Schema-v1 bundles reject schema-v2 feature vectors | `load_model_bundle` with v2 hash raises on v1 expectations |
+| P2-004 | Schema-v2 bundles reject schema-v1 feature vectors | Reverse direction also gated |
+
+File: P2-001 in `tests/test_train_lgbm.py`; P2-002 in `tests/test_integration_train_infer.py`; P2-003, P2-004 in `tests/test_integration_train_infer.py` (extends existing `TestSchemaAlterationRefusesInference`)
+
+### Phase 3 — Strengthen live context
+
+Covered by CTX-001 through CTX-003 above.
+
+### Phase 4 — Fix tray suggestion quality
+
+Covered by AGG-001 through AGG-004, SRF-001 through SRF-004 above. Additional:
+
+| ID | Description | Assertions |
+|---|---|---|
+| P4-001 | Aggregation strategies produce different results on heterogeneous intervals | Majority vote vs confidence-weighted vote vs highest-probability differ on mixed input |
+| P4-002 | Input events included in tray suggestion features | After fix, tray feature rows have non-None input fields |
+
+File: P4-001 in `tests/test_infer_aggregation.py`; P4-002 in `tests/test_ui_tray_suggest.py`
+
+### Phase 4b — Gap-fill surface
+
+Covered by SRF-005 through SRF-007 above. Additional:
+
+| ID | Description | Assertions |
+|---|---|---|
+| P4b-001 | Idle return (>5 min) triggers gap-fill prompt | `ActivityMonitor` idle detection → prompt event published |
+| P4b-002 | Session start triggers gap-fill prompt | New session with existing unlabeled time → prompt |
+| P4b-003 | Post-acceptance triggers gap-fill prompt | After user accepts transition suggestion, if adjacent gap exists → prompt |
+| P4b-004 | No popup on escalation, only icon state change | Escalation does not call notification API |
+
+File: `tests/test_ui_tray_gap_fill.py`
+
+### Phase 5 — Align evaluation with deployed behavior
+
+Covered by EVL-001 through EVL-003 above. Additional:
+
+| ID | Description | Assertions |
+|---|---|---|
+| P5-001 | Reject threshold tuned on calibrated scores persists via `--write-policy` | CLI command writes policy with calibrated-tuned threshold |
+| P5-002 | Evaluation mode: raw vs calibrated shows different metrics | Two evaluation runs with same data, different modes, produce different F1 |
+| P5-003 | Suggestions-per-active-day metric is nonzero for a working model | Simulated active day with loaded model produces > 0 suggestions |
+
+File: P5-001 in `tests/test_train_evaluate_reject.py`; P5-002 in `tests/test_train_evaluate.py`; P5-003 in `tests/test_core_telemetry.py`
+
+### Phase 6 — Improve features
+
+| ID | Description | Assertions |
+|---|---|---|
+| P6-001 | Each new feature has a unit test for computation correctness | Feature builder produces expected values for known inputs |
+| P6-002 | Schema hash changes when features are added | New feature → `FeatureSchemaV1.SCHEMA_HASH` differs from previous |
+| P6-003 | New features are privacy-safe | No raw keystrokes, no raw titles stored in feature row |
+
+File: P6-001 in relevant `tests/test_features_*.py`; P6-002 in `tests/test_core_schema.py`; P6-003 in `tests/test_security_privacy.py`
+
+### Privacy invariants
+
+| ID | Description | Assertions |
+|---|---|---|
+| PRV-001 | FeatureRow rejects `raw_keystrokes` field | Construction with raw keystrokes raises validation error |
+| PRV-002 | Feature rows never contain raw window titles unless explicitly opted in | Default feature build has `raw_window_title=None` |
+| PRV-003 | Persisted feature datasets contain only aggregate rates/counts | Parquet output columns do not include prohibited fields |
+
+Existing coverage: `tests/test_security_privacy.py`, `tests/test_core_schema.py`
+
+### Schema gating
+
+| ID | Description | Assertions |
+|---|---|---|
+| SCH-001 | Inference refuses to run on schema hash mismatch | `load_model_bundle` with wrong hash raises |
+| SCH-002 | Every feature row includes `schema_version` and `schema_hash` | Row construction without these fields raises |
+| SCH-003 | Schema hash is deterministic for same field set | Same `FeatureSchemaV1` → same hash across runs |
+
+Existing coverage: `tests/test_integration_train_infer.py::TestSchemaAlterationRefusesInference`, `tests/test_core_schema.py`
+
+### Deterministic artifacts
+
+| ID | Description | Assertions |
+|---|---|---|
+| DET-001 | Same training data + config + seed produces identical model bundle | Two runs with same inputs → same `metrics.json` values |
+| DET-002 | `data/processed/` is reproducible from `data/raw/` + code + configs | Feature build on same raw data → identical parquet output |
+
+File: DET-001 in `tests/test_integration_train_infer.py`; DET-002 in `tests/test_features_build.py`
+
+### Measurement plan validation
+
+| ID | Description | Assertions |
+|---|---|---|
+| MSR-001 | Flip rate computation is correct | `flap_rate(["A","B","A","B"])` returns expected value |
+| MSR-002 | Segment duration distribution is computable from segments | Given segments, histogram of durations is non-empty |
+| MSR-003 | Comparison table: raw vs calibrated can be generated | Two evaluation runs produce comparable metric dicts |
+| MSR-004 | Comparison table: smoothed vs unsmoothed can be generated | Smoothing changes at least one label in a spiky sequence |
+| MSR-005 | Comparison table: with-input vs without-input features differ | Feature rows with and without input events produce different predictions |
+| MSR-006 | Known-category vs withheld-category reject rates are computable | Hold out one category; measure reject rate on held-out vs remaining |
+
+File: MSR-001, MSR-002, MSR-004 in `tests/test_infer_smooth.py`; MSR-003, MSR-006 in `tests/test_train_evaluate.py`; MSR-005 in `tests/test_features_build.py`
+Existing coverage: `tests/test_infer_smooth.py::TestFlapRate` covers MSR-001
+
+### Experiment validation
+
+Lightweight smoke tests that verify experiment infrastructure can run:
+
+| ID | Description | Assertions |
+|---|---|---|
+| EXP-A | Train/serve parity experiment produces before/after metrics | Metrics dict has keys for both conditions |
+| EXP-B | Interval aggregation experiment compares 3+ strategies | Result contains per-strategy accuracy |
+| EXP-C | Calibrated threshold tuning experiment produces threshold on both raw and calibrated | Two `best_threshold` values returned |
+| EXP-F | Unknown-category experiment compares 4 conditions | Result contains macro-F1 and reject rate for each condition |
+
+File: EXP-A in `tests/test_integration_train_infer_parity.py`; EXP-B in `tests/test_infer_aggregation.py`; EXP-C in `tests/test_train_evaluate_reject.py`; EXP-F in `tests/test_integration_train_infer_unknown.py`
+
+### Test file index
+
+Consolidates where every test ID lands, grouped by file.
+
+`tests/test_integration_train_infer_parity.py` (new — cross-module preprocessing parity):
+TSP-001, TSP-002, TSP-003, P0-001, P0-002, EXP-A
+
+`tests/test_integration_train_infer_unknown.py` (new — cross-module unknown-category):
+UNK-005, UNK-006, EXP-F
+
+`tests/test_integration_train_infer.py` (extend existing — schema migration, determinism):
+P2-002, P2-003, P2-004, DET-001
+
+`tests/test_train_lgbm.py` (extend existing):
+UNK-001, UNK-002, UNK-003, PER-001, P2-001
+
+`tests/test_train_evaluate.py` (extend existing):
+EVL-001, EVL-002, EVL-003, P5-002, MSR-003, MSR-006
+
+`tests/test_train_evaluate_reject.py` (renamed from `test_tune_reject.py`):
+REJ-003, P5-001, EXP-C
+
+`tests/test_infer_online.py` (extend existing):
+CTX-001, CTX-002, CTX-003, UID-002, UNK-004, REJ-002, CNF-001
+
+`tests/test_infer_batch_reject.py` (extend existing):
+REJ-001
+
+`tests/test_infer_smooth.py` (extend existing):
+MSR-001, MSR-002, MSR-004
+
+`tests/test_infer_calibration.py` (extend existing):
+PER-002, THR-004
+
+`tests/test_infer_resolve.py` (extend existing):
+THR-001, THR-002, THR-003, POL-002, POL-003, POL-004, PER-003
+
+`tests/test_infer_aggregation.py` (new — planned `infer/aggregation.py`):
+AGG-001, AGG-002, AGG-003, AGG-004, P4-001, EXP-B
+
+`tests/test_core_inference_policy.py` (renamed from `test_inference_policy.py`):
+POL-001
+
+`tests/test_core_model_io.py` (extend existing):
+UNK-007
+
+`tests/test_core_schema.py` (extend existing):
+P6-002
+
+`tests/test_core_telemetry.py` (renamed from `test_telemetry.py`):
+CNF-002, CNF-003, P5-003
+
+`tests/test_ui_tray_suggest.py` (new — `ui/tray.py`, suggestion domain):
+INP-001, UID-001, UID-003, SEM-001, P4-002
+
+`tests/test_ui_tray_surfaces.py` (new — `ui/tray.py`, surface architecture domain):
+SEM-002, SRF-001, SRF-002, SRF-003, SRF-004, SRF-008, CNF-004
+
+`tests/test_ui_tray_gap_fill.py` (new — `ui/tray.py`, gap-fill domain):
+SEM-003, SRF-005, SRF-006, SRF-007, P4b-001, P4b-002, P4b-003, P4b-004
+
+`tests/test_features_build.py` (extend existing):
+INP-002, INP-003, MSR-005, DET-002
+
+`tests/test_security_privacy.py` (extend existing):
+PRV-001, PRV-002, PRV-003, P6-003
+
+### Test implementation priorities
+
+The tests should be implemented in dependency order matching the phases:
+
+1. Immediate (Phase 0–1): TSP-001 to TSP-003, UID-001 to UID-003, INP-001 to INP-003
+2. Next (Decision #5): UNK-001 to UNK-007
+3. Then (Phase 4): AGG-001 to AGG-004, SRF-001 to SRF-008
+4. Then (Phase 5): EVL-001 to EVL-003, REJ-001 to REJ-003, P5-001 to P5-003
+5. Later (Phase 4b): P4b-001 to P4b-004, SRF-005 to SRF-007
+6. Ongoing: PRV-001 to PRV-003, SCH-001 to SCH-003 (many already exist)
+
+---
+
 ## Definition Of Done For "Inference Quality v1"
 
 - All inference paths share the same preprocessing contract.
