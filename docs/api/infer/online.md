@@ -53,8 +53,17 @@ At shutdown, the loop prints how many buckets were enqueued during the session.
 
 `OnlinePredictor._encode_value()` fills missing numeric values with `0.0`,
 matching the training and batch inference paths which use `fillna(0)`.
-Categorical columns with unknown values map to `-1` (or `__unknown__` when
-the encoder includes that class).
+
+## Unknown-category handling
+
+When a categorical value is not found in the fitted encoder's vocabulary,
+`_encode_value()` checks whether the encoder contains an `"__unknown__"`
+class (present when the model was trained with `encode_categoricals`
+using `min_category_freq` / `unknown_mask_rate`).  If so, the
+`__unknown__` code is returned; otherwise `-1.0` is used as a legacy
+fallback.  This ensures that models trained with explicit unknown-category
+exposure produce calibrated confidence on novel inputs rather than
+defaulting to an out-of-vocabulary sentinel the model never learned.
 
 ::: taskclf.infer.online
 

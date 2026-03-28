@@ -5,7 +5,8 @@ TC-MODEL-003 (schema hash mismatch), TC-MODEL-004 (label set mismatch),
 TC-MODEL-RUN-001/002 (generate_run_id),
 TC-MODEL-006 (FileExistsError on duplicate run dir),
 TC-MODEL-007/008 (cat_encoders round-trip and None fallback),
-TC-MODEL-009/010 (build_metadata reject_threshold and dataset_hash).
+TC-MODEL-009/010 (build_metadata reject_threshold and dataset_hash),
+UNK-007 (unknown_category_* metadata fields round-trip).
 """
 
 from __future__ import annotations
@@ -408,3 +409,33 @@ class TestBuildMetadataParams:
             dataset_hash="my_custom_hash_xyz",
         )
         assert metadata.dataset_hash == "my_custom_hash_xyz"
+
+    def test_unk007_unknown_category_fields_round_trip(self) -> None:
+        """UNK-007: unknown_category_freq_threshold and mask_rate persist in metadata."""
+        metadata = build_metadata(
+            label_set=sorted(LABEL_SET_V1),
+            train_date_from=dt.date(2025, 6, 14),
+            train_date_to=dt.date(2025, 6, 15),
+            params={},
+            dataset_hash="hash_test",
+            unknown_category_freq_threshold=5,
+            unknown_category_mask_rate=0.05,
+        )
+        assert metadata.unknown_category_freq_threshold == 5
+        assert metadata.unknown_category_mask_rate == 0.05
+
+        serialized = metadata.model_dump()
+        assert serialized["unknown_category_freq_threshold"] == 5
+        assert serialized["unknown_category_mask_rate"] == 0.05
+
+    def test_unknown_category_fields_default_none(self) -> None:
+        """Unknown category fields default to None for backward compatibility."""
+        metadata = build_metadata(
+            label_set=sorted(LABEL_SET_V1),
+            train_date_from=dt.date(2025, 6, 14),
+            train_date_to=dt.date(2025, 6, 15),
+            params={},
+            dataset_hash="hash_test",
+        )
+        assert metadata.unknown_category_freq_threshold is None
+        assert metadata.unknown_category_mask_rate is None

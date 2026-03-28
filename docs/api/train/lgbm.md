@@ -15,7 +15,11 @@ features_df → prepare_xy → train_lgbm → (model, metrics, confusion_df, par
 
 Categorical columns (`app_id`, `app_category`, `domain_category`,
 `user_id`) are label-encoded to integers so LightGBM can use them as
-native categoricals.  Unknown values at inference time map to `-1`.
+native categoricals.  During training, rare categories (below
+`min_category_freq`) and a random fraction (`unknown_mask_rate`) of
+known categories are replaced with `__unknown__` so the model learns
+a meaningful embedding for unseen values.  At inference time, unseen
+values map to `__unknown__` (or `-1` for legacy encoders without it).
 
 ## Constants
 
@@ -90,16 +94,30 @@ LightGBM native categorical support:
 encode_categoricals(
     df: pd.DataFrame,
     cat_encoders: dict[str, LabelEncoder] | None = None,
+    *,
+    min_category_freq: int = 5,
+    unknown_mask_rate: float = 0.05,
+    random_state: int | None = None,
 ) -> tuple[pd.DataFrame, dict[str, LabelEncoder]]
 ```
 
 Label-encodes the four categorical columns in-place.  Operates in
 two modes:
 
-- **Fit-new** (`cat_encoders=None`): fits a fresh `LabelEncoder` per
-  column on the data.
+- **Fit-new** (`cat_encoders=None`): counts value frequencies, replaces
+  values with count below `min_category_freq` with `"__unknown__"`,
+  randomly masks `unknown_mask_rate` of remaining known values to
+  `"__unknown__"` (seeded by `random_state`), then fits a
+  `LabelEncoder` per column.
 - **Reuse** (`cat_encoders` provided): transforms using existing
-  encoders; values not seen during training are mapped to `-1`.
+  encoders; values not in the encoder map to `"__unknown__"` if
+  present, otherwise to `-1` (legacy fallback).
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `min_category_freq` | `5` | Minimum count for a category to keep its own code |
+| `unknown_mask_rate` | `0.05` | Fraction of known-category rows randomly masked to `__unknown__` |
+| `random_state` | `None` | Seed for reproducible masking |
 
 ### prepare_xy
 

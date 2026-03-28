@@ -97,6 +97,8 @@ class OnlinePredictor:
                 str_val = str(value)
                 if str_val in set(le.classes_):
                     return float(le.transform([str_val])[0])
+                if "__unknown__" in set(le.classes_):
+                    return float(le.transform(["__unknown__"])[0])
             return -1.0
         return float(value) if value is not None else 0.0
 

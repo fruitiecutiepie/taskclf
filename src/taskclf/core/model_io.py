@@ -44,6 +44,8 @@ class ModelMetadata(BaseModel, frozen=True):
     """
     data_provenance: Literal["real", "synthetic", "mixed"] = "real"
     created_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
+    unknown_category_freq_threshold: int | None = None
+    unknown_category_mask_rate: float | None = None
 
 
 def _current_git_commit() -> str:
@@ -190,6 +192,8 @@ def build_metadata(
     dataset_hash: str,
     reject_threshold: float | None = None,
     data_provenance: Literal["real", "synthetic", "mixed"] = "real",
+    unknown_category_freq_threshold: int | None = None,
+    unknown_category_mask_rate: float | None = None,
 ) -> ModelMetadata:
     """Convenience builder that fills in schema info and git commit.
 
@@ -203,6 +207,10 @@ def build_metadata(
         reject_threshold: Reject threshold used during evaluation.
         data_provenance: Origin of the training data
             (``"real"``, ``"synthetic"``, or ``"mixed"``).
+        unknown_category_freq_threshold: Minimum category frequency
+            used during training (categories below this are ``__unknown__``).
+        unknown_category_mask_rate: Fraction of known categories randomly
+            masked to ``__unknown__`` during training.
 
     Returns:
         A populated ``ModelMetadata`` instance.
@@ -218,4 +226,6 @@ def build_metadata(
         dataset_hash=dataset_hash,
         reject_threshold=reject_threshold,
         data_provenance=data_provenance,
+        unknown_category_freq_threshold=unknown_category_freq_threshold,
+        unknown_category_mask_rate=unknown_category_mask_rate,
     )

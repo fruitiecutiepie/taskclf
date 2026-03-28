@@ -927,7 +927,7 @@ Existing test to update:
 Docs to update:
 - `docs/api/infer/online.md` — update `_encode_value` docstring note about null handling.
 
-- [ ] **Step 1.2 — Pass stable user_id through tray suggestion path (Risk 4)**
+- [x] **Step 1.2 — Pass stable user_id through tray suggestion path (Risk 4)** ✅ 2026-03-28
 
 _Problem_: `_LabelSuggester.suggest()` calls `build_features_from_aw_events(events)` without passing a `user_id`, so it defaults to `"default-user"`. The model expects the config-backed stable UUID.
 
@@ -982,7 +982,7 @@ Existing test to extend:
 Docs to update:
 - `docs/api/ui/labeling.md` — note that `_LabelSuggester` now propagates the stable config user_id.
 
-- [ ] **Step 1.3 — Add input events to tray suggestion path (Risk 3)**
+- [x] **Step 1.3 — Add input events to tray suggestion path (Risk 3)** ✅ 2026-03-28
 
 _Problem_: `_LabelSuggester.suggest()` only fetches window events. Input-derived features (keyboard, mouse) are all `None`.
 
@@ -1030,7 +1030,7 @@ Tests to write/update:
 Docs to update:
 - `docs/api/ui/labeling.md` — note input event support in tray suggestions.
 
-- [ ] **Step 1.4 — Implement unknown-category handling (Decision 5)**
+- [x] **Step 1.4 — Implement unknown-category handling (Decision 5)** ✅ 2026-03-28
 
 _Problem_: Unseen categorical values map to `-1` at inference, a code never seen during training. Decision #5 requires explicit `__unknown__` training.
 

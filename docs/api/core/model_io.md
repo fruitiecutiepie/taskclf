@@ -17,5 +17,7 @@ Model bundle persistence: save, load, and metadata for trained model artifacts.
 | `reject_threshold` | float or None | Reject threshold used during evaluation. **Advisory only** — the canonical runtime threshold lives in [`InferencePolicy`](inference_policy.md). |
 | `data_provenance` | str | Origin: `"real"`, `"synthetic"`, or `"mixed"` |
 | `created_at` | str | ISO-8601 timestamp of bundle creation |
+| `unknown_category_freq_threshold` | int or None | Minimum category frequency used during training (categories below this become `__unknown__`) |
+| `unknown_category_mask_rate` | float or None | Fraction of known categories randomly masked to `__unknown__` during training |
 
 ::: taskclf.core.model_io

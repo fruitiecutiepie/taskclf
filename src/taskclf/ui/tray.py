@@ -454,6 +454,7 @@ class _LabelSuggester:
     _predictor: Any = field(init=False)
     _aw_host: str = field(init=False, default=DEFAULT_AW_HOST)
     _title_salt: str = field(init=False, default=DEFAULT_TITLE_SALT)
+    _user_id: str = field(init=False, default="default-user")
 
     def __post_init__(self) -> None:
         from taskclf.core.model_io import load_model_bundle
@@ -504,6 +505,7 @@ class _LabelSuggester:
         obj.model_dir = effective_dir
         obj._aw_host = DEFAULT_AW_HOST
         obj._title_salt = DEFAULT_TITLE_SALT
+        obj._user_id = "default-user"
         obj._predictor = OnlinePredictor(
             config.model,
             config.metadata,
@@ -522,6 +524,8 @@ class _LabelSuggester:
         """Predict a label for the given time window. Returns (label, confidence) or None."""
         from taskclf.adapters.activitywatch.client import (
             fetch_aw_events,
+            fetch_aw_input_events,
+            find_input_bucket_id,
             find_window_bucket_id,
         )
         from taskclf.features.build import build_features_from_aw_events
@@ -538,7 +542,24 @@ class _LabelSuggester:
             if not events:
                 return None
 
-            rows = build_features_from_aw_events(events)
+            input_events = None
+            try:
+                input_bucket_id = find_input_bucket_id(self._aw_host)
+                if input_bucket_id:
+                    input_events = (
+                        fetch_aw_input_events(
+                            self._aw_host, input_bucket_id, start, end
+                        )
+                        or None
+                    )
+            except Exception:
+                logger.debug(
+                    "Could not fetch input events for suggestion", exc_info=True
+                )
+
+            rows = build_features_from_aw_events(
+                events, user_id=self._user_id, input_events=input_events
+            )
             if not rows:
                 return None
 
@@ -717,6 +738,7 @@ class TrayLabeler:
                 self._suggester = _LabelSuggester.from_policy(self._models_dir)
                 self._suggester._aw_host = aw_host
                 self._suggester._title_salt = title_salt
+                self._suggester._user_id = self._config.user_id
                 self._model_schema_hash = (
                     self._suggester._predictor.metadata.schema_hash
                 )
@@ -732,6 +754,7 @@ class TrayLabeler:
                 self._suggester = _LabelSuggester(self.model_dir)
                 self._suggester._aw_host = aw_host
                 self._suggester._title_salt = title_salt
+                self._suggester._user_id = self._config.user_id
                 self._model_schema_hash = (
                     self._suggester._predictor.metadata.schema_hash
                 )
@@ -793,6 +816,7 @@ class TrayLabeler:
                 new_suggester = _LabelSuggester.from_policy(self._models_dir)
                 new_suggester._aw_host = self._aw_host
                 new_suggester._title_salt = self._title_salt
+                new_suggester._user_id = self._config.user_id
                 self._suggester = new_suggester
                 self._model_dir = model_path
                 self._model_schema_hash = new_suggester._predictor.metadata.schema_hash
@@ -808,6 +832,7 @@ class TrayLabeler:
             new_suggester = _LabelSuggester(model_path)
             new_suggester._aw_host = self._aw_host
             new_suggester._title_salt = self._title_salt
+            new_suggester._user_id = self._config.user_id
             self._suggester = new_suggester
             self._model_dir = model_path
             self._model_schema_hash = new_suggester._predictor.metadata.schema_hash
@@ -1282,6 +1307,7 @@ class TrayLabeler:
                 new_suggester = _LabelSuggester.from_policy(self._models_dir)
                 new_suggester._aw_host = self._aw_host
                 new_suggester._title_salt = self._title_salt
+                new_suggester._user_id = self._config.user_id
                 self._suggester = new_suggester
                 self._model_schema_hash = new_suggester._predictor.metadata.schema_hash
                 self._notify("Config reloaded via inference policy")
@@ -1297,6 +1323,7 @@ class TrayLabeler:
             new_suggester = _LabelSuggester(self._model_dir)
             new_suggester._aw_host = self._aw_host
             new_suggester._title_salt = self._title_salt
+            new_suggester._user_id = self._config.user_id
             self._suggester = new_suggester
             self._model_schema_hash = new_suggester._predictor.metadata.schema_hash
             self._notify(f"Model reloaded from {self._model_dir.name}")
@@ -1445,6 +1472,7 @@ class TrayLabeler:
             new_suggester = _LabelSuggester(model_path)
             new_suggester._aw_host = self._aw_host
             new_suggester._title_salt = self._title_salt
+            new_suggester._user_id = self._config.user_id
             self._suggester = new_suggester
             self._model_dir = model_path
             self._model_schema_hash = new_suggester._predictor.metadata.schema_hash

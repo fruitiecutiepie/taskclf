@@ -290,6 +290,33 @@ class TestOnlinePredictorCalibratorStore:
 
         assert not np.allclose(identity_confs, store_confs, atol=1e-6)
 
+    def test_calibrator_store_receives_row_user_id(
+        self,
+        trained_model_dir: Path,
+    ) -> None:
+        """UID-002: get_calibrator is called with the row's user_id, not 'default-user'."""
+        from unittest.mock import MagicMock
+
+        model, metadata, cat_encoders = load_model_bundle(trained_model_dir)
+        rows = generate_dummy_features(dt.date(2025, 6, 15), n_rows=1)
+        row = rows[0]
+
+        mock_store = MagicMock()
+        mock_store.get_calibrator.return_value = IdentityCalibrator()
+
+        pred = OnlinePredictor(
+            model,
+            metadata,
+            cat_encoders=cat_encoders,
+            smooth_window=1,
+            reject_threshold=None,
+            calibrator_store=mock_store,
+        )
+        pred.predict_bucket(row)
+
+        mock_store.get_calibrator.assert_called_once_with(row.user_id)
+        assert row.user_id != "default-user"
+
 
 # ---------------------------------------------------------------------------
 # _encode_value
@@ -298,7 +325,7 @@ class TestOnlinePredictorCalibratorStore:
 
 class TestEncodeValue:
     def test_categorical_known_value(self, trained_model_dir: Path) -> None:
-        """TC-ONLINE-004: known categorical value returns encoded int; unknown returns -1.0."""
+        """TC-ONLINE-004: known categorical value returns encoded int; unknown uses __unknown__ code."""
         model, metadata, cat_encoders = load_model_bundle(trained_model_dir)
         pred = OnlinePredictor(model, metadata, cat_encoders=cat_encoders)
 
@@ -309,7 +336,13 @@ class TestEncodeValue:
         expected_code = float(le.transform([known_val])[0])
 
         assert pred._encode_value(cat_col, known_val) == expected_code
-        assert pred._encode_value(cat_col, "__never_seen_value__") == -1.0
+        if "__unknown__" in set(le.classes_):
+            expected_unknown = float(le.transform(["__unknown__"])[0])
+            assert (
+                pred._encode_value(cat_col, "__never_seen_value__") == expected_unknown
+            )
+        else:
+            assert pred._encode_value(cat_col, "__never_seen_value__") == -1.0
 
     def test_numerical_none_returns_zero(self, trained_model_dir: Path) -> None:
         """TC-ONLINE-005: non-categorical None returns 0.0 (matches train fillna(0))."""
@@ -318,6 +351,27 @@ class TestEncodeValue:
 
         assert pred._encode_value("key_rate", None) == 0.0
         assert pred._encode_value("key_rate", 3.5) == 3.5
+
+    def test_unk004_unseen_categorical_uses_unknown_code(
+        self, trained_model_dir: Path
+    ) -> None:
+        """UNK-004: unseen categorical returns __unknown__ code, not -1."""
+        from sklearn.preprocessing import LabelEncoder as LE
+
+        model, metadata, _ = load_model_bundle(trained_model_dir)
+
+        custom_encoders: dict[str, LE] = {}
+        for col in CATEGORICAL_COLUMNS:
+            le = LE()
+            le.fit(["val_a", "val_b", "__unknown__"])
+            custom_encoders[col] = le
+
+        pred = OnlinePredictor(model, metadata, cat_encoders=custom_encoders)
+        unknown_code = float(custom_encoders["app_id"].transform(["__unknown__"])[0])
+
+        result = pred._encode_value("app_id", "never-seen-app")
+        assert result == unknown_code
+        assert result != -1.0
 
 
 # ---------------------------------------------------------------------------

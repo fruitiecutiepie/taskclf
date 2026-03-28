@@ -1,6 +1,7 @@
 """Tests for train.lgbm: encode_categoricals and prepare_xy.
 
-Covers: TC-TRAIN-LGBM-001 through TC-TRAIN-LGBM-011.
+Covers: TC-TRAIN-LGBM-001 through TC-TRAIN-LGBM-011,
+        UNK-001 through UNK-003, PER-001.
 """
 
 from __future__ import annotations
@@ -63,10 +64,10 @@ class TestEncodeCategoricals:
                 encoded_df1[col], encoded_df2[col], check_names=True
             )
 
-    def test_unknown_value_maps_to_minus_one(self) -> None:
-        """TC-TRAIN-LGBM-003: unseen values at inference time encode as -1."""
-        df_train = _make_feature_df(5)
-        _, encoders = encode_categoricals(df_train)
+    def test_unknown_value_maps_to_unknown_code(self) -> None:
+        """TC-TRAIN-LGBM-003: unseen values at inference time encode as __unknown__."""
+        df_train = _make_feature_df(20)
+        _, encoders = encode_categoricals(df_train, min_category_freq=1)
 
         df_infer = _make_feature_df(3)
         for col in CATEGORICAL_COLUMNS:
@@ -74,7 +75,9 @@ class TestEncodeCategoricals:
 
         encoded_df, _ = encode_categoricals(df_infer, cat_encoders=encoders)
         for col in CATEGORICAL_COLUMNS:
-            assert (encoded_df[col] == -1).all()
+            le = encoders[col]
+            expected = int(le.transform(["__unknown__"])[0])
+            assert (encoded_df[col] == expected).all()
 
     def test_output_shape_preserved(self) -> None:
         """TC-TRAIN-LGBM-004: encoded DataFrame has same shape as input."""
@@ -147,3 +150,77 @@ class TestPrepareXY:
         df = _make_feature_df(5)
         x, _, _, _ = prepare_xy(df)
         assert x.dtype == np.float64
+
+
+# ---------------------------------------------------------------------------
+# UNK-001 through UNK-003, PER-001: unknown-category handling
+# ---------------------------------------------------------------------------
+
+
+def _make_feature_df_with_rare(
+    n_rows: int = 50,
+    rare_count: int = 2,
+) -> pd.DataFrame:
+    """Build a DataFrame where some categorical values appear rarely."""
+    data: dict[str, list] = {}
+    for col in FEATURE_COLUMNS:
+        if col in CATEGORICAL_COLUMNS:
+            vals = [f"{col}_common_{i % 3}" for i in range(n_rows)]
+            for j in range(min(rare_count, n_rows)):
+                vals[j] = f"{col}_rare_singleton_{j}"
+            data[col] = vals
+        elif col in ("is_browser", "is_editor", "is_terminal"):
+            data[col] = [i % 2 == 0 for i in range(n_rows)]
+        else:
+            data[col] = [float(i) for i in range(n_rows)]
+    data["label"] = ["Build"] * n_rows
+    return pd.DataFrame(data)
+
+
+class TestUnknownCategoryHandling:
+    def test_unk001_rare_categories_become_unknown(self) -> None:
+        """UNK-001: categories with count < min_category_freq become __unknown__."""
+        df = _make_feature_df_with_rare(50, rare_count=2)
+        _, encoders = encode_categoricals(
+            df, min_category_freq=5, unknown_mask_rate=0, random_state=42
+        )
+        for col in CATEGORICAL_COLUMNS:
+            le = encoders[col]
+            assert "__unknown__" in set(le.classes_)
+
+    def test_unk002_mask_rate_applied(self) -> None:
+        """UNK-002: approximately unknown_mask_rate of known rows are masked."""
+        n = 200
+        df = _make_feature_df(n)
+        encoded_no_mask, encs_no_mask = encode_categoricals(
+            df.copy(), min_category_freq=1, unknown_mask_rate=0, random_state=0
+        )
+        encoded_with_mask, encs_mask = encode_categoricals(
+            df.copy(), min_category_freq=1, unknown_mask_rate=0.10, random_state=0
+        )
+
+        for col in CATEGORICAL_COLUMNS:
+            le = encs_mask[col]
+            unknown_code = int(le.transform(["__unknown__"])[0])
+            masked_count = (encoded_with_mask[col] == unknown_code).sum()
+            assert masked_count > 0, f"{col}: expected some masked rows"
+            mask_fraction = masked_count / n
+            assert 0.02 < mask_fraction < 0.25, (
+                f"{col}: mask fraction {mask_fraction:.2f} outside expected range"
+            )
+
+    def test_unk003_unknown_in_all_encoders(self) -> None:
+        """UNK-003: __unknown__ is in le.classes_ for every categorical encoder."""
+        df = _make_feature_df(50)
+        _, encoders = encode_categoricals(
+            df, min_category_freq=5, unknown_mask_rate=0.05, random_state=42
+        )
+        for col in CATEGORICAL_COLUMNS:
+            le = encoders[col]
+            assert "__unknown__" in set(le.classes_), (
+                f"{col}: __unknown__ missing from encoder classes"
+            )
+
+    def test_per001_user_id_in_feature_columns(self) -> None:
+        """PER-001: user_id is in FEATURE_COLUMNS for schema v1."""
+        assert "user_id" in FEATURE_COLUMNS

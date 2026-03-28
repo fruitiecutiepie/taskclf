@@ -1,9 +1,10 @@
 """Tests for features.build: generate_dummy_features, build_features_for_date,
-and _aggregate_input_for_bucket.
+build_features_from_aw_events, and _aggregate_input_for_bucket.
 
 Covers: TC-FEAT-BUILD-001 through TC-FEAT-BUILD-013,
         TC-FEAT-BUILD-AW-001 through TC-FEAT-BUILD-AW-005,
-        TC-FEAT-AGG-001 through TC-FEAT-AGG-006.
+        TC-FEAT-AGG-001 through TC-FEAT-AGG-006,
+        INP-002, INP-003.
 """
 
 from __future__ import annotations
@@ -18,9 +19,11 @@ import pytest
 from taskclf.adapters.activitywatch.types import AWInputEvent
 from taskclf.core.defaults import DEFAULT_BUCKET_SECONDS, DEFAULT_DUMMY_ROWS
 from taskclf.core.schema import FeatureSchemaV1
+from taskclf.adapters.activitywatch.types import AWEvent
 from taskclf.features.build import (
     _aggregate_input_for_bucket,
     build_features_for_date,
+    build_features_from_aw_events,
     generate_dummy_features,
 )
 
@@ -305,3 +308,81 @@ class TestAggregateInputForBucket:
         assert result["active_seconds_any"] is not None
         expected_density = round(2 / result["active_seconds_any"], 4)
         assert result["event_density"] == expected_density
+
+
+# ---------------------------------------------------------------------------
+# build_features_from_aw_events with/without input events
+# ---------------------------------------------------------------------------
+
+_INPUT_FIELDS = [
+    "keys_per_min",
+    "clicks_per_min",
+    "active_seconds_keyboard",
+    "active_seconds_mouse",
+    "active_seconds_any",
+    "max_idle_run_seconds",
+    "event_density",
+]
+
+
+def _window_ev(ts: dt.datetime, duration: float = 60.0) -> AWEvent:
+    return AWEvent(
+        timestamp=ts,
+        duration_seconds=duration,
+        app_id="org.mozilla.firefox",
+        window_title_hash="hash-abc",
+        is_browser=True,
+        is_editor=False,
+        is_terminal=False,
+        app_category="browser",
+    )
+
+
+class TestBuildFeaturesFromAWEventsInputEvents:
+    """INP-002, INP-003: input event propagation through build_features_from_aw_events."""
+
+    def test_inp002_with_input_events_produces_non_none_input_features(self) -> None:
+        """INP-002: when input_events are provided, input-derived features are populated."""
+        ts = dt.datetime(2025, 6, 15, 10, 0, 0)
+        window_events = [_window_ev(ts)]
+        input_events = [
+            AWInputEvent(
+                timestamp=ts,
+                duration_seconds=5.0,
+                presses=20,
+                clicks=5,
+                delta_x=200,
+                delta_y=100,
+                scroll_x=0,
+                scroll_y=10,
+            ),
+            AWInputEvent(
+                timestamp=ts + dt.timedelta(seconds=5),
+                duration_seconds=5.0,
+                presses=15,
+                clicks=3,
+                delta_x=150,
+                delta_y=80,
+                scroll_x=0,
+                scroll_y=5,
+            ),
+        ]
+
+        rows = build_features_from_aw_events(window_events, input_events=input_events)
+        assert len(rows) >= 1
+        row = rows[0]
+        for field_name in _INPUT_FIELDS:
+            val = getattr(row, field_name)
+            assert val is not None, f"{field_name} should not be None with input events"
+
+    def test_inp003_without_input_events_input_features_are_none(self) -> None:
+        """INP-003: when no input_events, input-derived features are None."""
+        ts = dt.datetime(2025, 6, 15, 10, 0, 0)
+        window_events = [_window_ev(ts)]
+
+        rows = build_features_from_aw_events(window_events)
+        assert len(rows) >= 1
+        row = rows[0]
+        for field_name in _INPUT_FIELDS:
+            val = getattr(row, field_name)
+            assert val is None, f"{field_name} should be None without input events"

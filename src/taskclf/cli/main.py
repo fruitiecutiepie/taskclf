@@ -910,6 +910,8 @@ def train_lgbm_cmd(
         params=params,
         dataset_hash=dataset_hash,
         data_provenance="synthetic" if synthetic else "real",
+        unknown_category_freq_threshold=params.get("unknown_category_freq_threshold"),
+        unknown_category_mask_rate=params.get("unknown_category_mask_rate"),
     )
 
     run_dir = save_model_bundle(

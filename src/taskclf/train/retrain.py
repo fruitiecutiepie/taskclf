@@ -571,6 +571,8 @@ def run_retrain_pipeline(
         dataset_hash=dataset_hash,
         reject_threshold=reject_threshold,
         data_provenance=data_provenance,
+        unknown_category_freq_threshold=params.get("unknown_category_freq_threshold"),
+        unknown_category_mask_rate=params.get("unknown_category_mask_rate"),
     )
 
     # Candidate-only hard gates (no champion needed)
