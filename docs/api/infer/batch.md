@@ -2,6 +2,9 @@
 
 Batch inference: predict, smooth, and segmentize over a feature DataFrame.
 
+See [Inference Contract](../../guide/inference_contract.md) for the
+canonical pipeline order and how this module fits the batch runtime path.
+
 ## Overview
 
 `run_batch_inference` executes the full post-training prediction

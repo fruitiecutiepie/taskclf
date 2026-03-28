@@ -869,7 +869,7 @@ To find the next step to work on, scan for the first unchecked `- [ ]` in this s
 
 This phase is documentation and decision-recording only. No production code changes.
 
-- [ ] **Step 0.1 — Document canonical inference order**
+- [x] **Step 0.1 — Document canonical inference order** ✅ 2026-03-28
 
 1. Create `docs/guide/inference_contract.md`.
 2. Write down the canonical pipeline order (this is already captured in the TODO above — formalize it):
@@ -881,7 +881,7 @@ This phase is documentation and decision-recording only. No production code chan
 4. Note any current deviations from the canonical order (these are the Phase 1 fixes).
 5. Update `docs/api/infer/online.md`, `docs/api/infer/batch.md` to cross-reference the contract.
 
-- [ ] **Step 0.2 — Record personalization migration boundary**
+- [x] **Step 0.2 — Record personalization migration boundary** ✅ 2026-03-28
 
 1. Add a section to `docs/guide/personalization.md` titled "Migration boundary":
    - Schema-v1 bundles: `user_id` in `FEATURE_COLUMNS`, must be passed correctly.

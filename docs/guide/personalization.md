@@ -190,3 +190,55 @@ Changes to any of the following require a version bump:
 - Calibration insertion point in the pipeline
 - Store serialization format
 - Default calibration method
+
+---
+
+# 10. Migration Boundary
+
+This section records the long-term direction for personalization and
+the compatibility gate that prevents mixing old and new contracts.
+
+## Schema-v1 bundles (current)
+
+`user_id` serves two roles at inference time:
+
+1. **Model feature** — `user_id` is in `FEATURE_COLUMNS` and
+   `CATEGORICAL_COLUMNS` (in `train/lgbm.py`). LightGBM learns
+   per-user splits directly. An incorrect or default `user_id`
+   produces wrong encoded values and degrades predictions.
+2. **Calibrator key** — `CalibratorStore.get_calibrator(user_id)`
+   selects the per-user calibrator (or falls back to global). A
+   wrong `user_id` routes to the wrong calibrator.
+
+Both roles must receive the correct `user_id` for predictions to be
+accurate.
+
+## Schema-v2 bundles (future)
+
+The planned direction is to remove `user_id` from the core model's
+feature vector. Personalization shifts entirely to:
+
+- Per-user calibrators (temperature scaling or isotonic regression).
+- User-specific post-processing (custom reject thresholds, taxonomy
+  overrides).
+
+The core model becomes user-agnostic, which simplifies training,
+reduces overfitting to high-volume users, and allows new users to
+receive calibrated predictions without retraining.
+
+## Gate
+
+The schema hash (computed from the column registry in
+`core/schema.py`) includes `user_id`. Removing `user_id` from a
+future `_COLUMNS_V2` produces a different hash. The existing
+schema-hash gate in inference refuses to run a model whose
+`metadata.schema_hash` does not match the feature set being served.
+
+This prevents accidentally loading a v1 model with v2 features (or
+vice versa). The migration path is:
+
+1. Define `_COLUMNS_V2` without `user_id`.
+2. Train a new model on the v2 schema.
+3. Bundle the model with the v2 hash.
+4. Old v1 bundles continue to work unchanged; the hash gate routes
+   each bundle to the correct feature contract.

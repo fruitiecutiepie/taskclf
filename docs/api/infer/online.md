@@ -1,6 +1,9 @@
 # infer.online
 
 Real-time prediction loop: poll ActivityWatch, predict, smooth, and report.
+
+See [Inference Contract](../../guide/inference_contract.md) for the
+canonical pipeline order and how this module fits the online runtime path.
 `OnlinePredictor` is implemented as a slotted dataclass while preserving
 its constructor shape (`model`, `metadata`, then keyword-only options).
 
