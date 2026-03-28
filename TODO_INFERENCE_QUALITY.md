@@ -1192,7 +1192,7 @@ Docs to update:
 
 **Prerequisites**: Phase 1 complete.
 
-- [ ] **Step 3.1 — Add persistent online feature state**
+- [x] **Step 3.1 — Add persistent online feature state** ✅ 2026-03-28
 
 _Problem_: The online loop reconstructs feature state from each narrow poll slice. Rolling features (5m switch counts, 15m switch counts, rolling keyboard/mouse stats, delta features) may be truncated.
 
