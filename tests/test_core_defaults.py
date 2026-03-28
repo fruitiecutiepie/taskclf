@@ -84,6 +84,7 @@ class TestDefaultsTypes:
             "MIXED_UNKNOWN",
             "DEFAULT_TELEMETRY_DIR",
             "DEFAULT_LOG_DIR",
+            "DEFAULT_INFERENCE_POLICY_FILE",
         ]
         for name in str_names:
             value = getattr(defaults, name)
@@ -164,6 +165,7 @@ class TestDefaultsTypes:
             "DEFAULT_GIT_TIMEOUT_SECONDS",
             "DEFAULT_DUMMY_ROWS",
             "DEFAULT_LOG_DIR",
+            "DEFAULT_INFERENCE_POLICY_FILE",
         }
         missing = public - covered
         assert not missing, f"Uncovered public names: {missing}"
