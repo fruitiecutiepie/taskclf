@@ -449,6 +449,8 @@ Implications:
 - The default automatic tray suggestion should remain bounded and recoverable; over-segmentation is acceptable because adjacent same-label blocks can be merged later.
 - Longer unlabeled intervals are still valuable, but they should be handled as an explicit workflow rather than silently overloading the automatic tray suggestion.
 
+UI surface architecture: decision #6 specifies how these three semantics map to separate UI surfaces, including copy conventions, gap-fill prompting rules, and confidence display policy.
+
 ### 5) Unknown-category handling in training
 
 Decision:
@@ -534,6 +536,67 @@ Artifacts and code paths:
 - `resolve_inference_config()` in `src/taskclf/infer/resolve.py` — resolves the threshold from policy, CLI override, or fallback. If per-surface thresholds are added, resolution must be extended to accept a surface identifier.
 - Suggestions-per-active-day tracking: should be recorded in the telemetry store (`src/taskclf/core/telemetry.py`) alongside existing session telemetry, not in the tray or predictor. The tray publishes suggestion events via `EventBus`; telemetry aggregates them.
 
+### 6) Tray/UI surface architecture (resolves open question #1)
+
+Decision:
+
+- The three suggestion semantics (decision #3) must be implemented as **clearly separate UI surfaces from the start**, not as a single unified widget that changes meaning contextually.
+- Ship in two stages: live status + transition suggestions first, gap-fill surface later. This reduces initial cognitive load while preserving the architectural separation.
+- Gap-fill should be offered through a **passive indicator** with **contextual prompting at natural moments**, not through fixed-schedule automatic notifications or purely manual access.
+- Confidence is **not exposed** to the user on live status or transition suggestion surfaces (per decision #4). In the gap-fill review surface, per-segment confidence may be represented as implicit visual weight (e.g., segment saturation/opacity) rather than as a numeric value.
+
+Rejected alternatives and rationale:
+
+- **Single unified surface with contextual mode switching** was rejected. The three surfaces have fundamentally different confidence profiles (single-bucket volatile, aggregated-block stable, long-interval heterogeneous), different interaction patterns (passive glance, notification accept/reject, explicit review workflow), and different evolution trajectories. A unified surface means the user can never develop calibrated expectations about what they are looking at. Mode confusion is the core risk: during a stable period the widget shows live status, after a transition it silently flips to a suggestion about the past, and the user may not notice the semantic shift. Splitting later forces a mental model migration on users who already formed habits, which is more costly than the upfront complexity of separate surfaces.
+- **Hybrid single surface with strong visual mode indicators** was rejected as a weaker version of the same problem. If the indicators are obvious enough to prevent confusion, the surface is effectively two separate surfaces crammed into one container. If the indicators are subtle, they get ignored and the mode confusion returns.
+- **Fully automatic gap-fill notifications at fixed triggers (end of day, after N minutes)** were rejected. Fixed triggers have bad timing (end-of-day prompts catch users leaving, mid-focus prompts interrupt deep work). If the model is uncertain about gap content — which is likely, since confident intervals would already be covered by transition suggestions — automatic gap-fill suggestions violate decision #4's precision-over-recall principle. The worst outcome is a notification the user dismisses reflexively, which spends the attention budget for zero signal.
+- **Purely manual gap-fill (user must open a backlog view)** was rejected as too passive. Users will forget, gaps accumulate, and the model's retraining signal degrades. The system has information about unlabeled time that the user does not — surfacing it at the right moment is strictly more useful than silence.
+
+Surface definitions:
+
+- **Live status surface**: always-visible, passive, glanceable. Shows the model's current-bucket prediction. No interaction required. No confidence displayed. Answers: "what am I doing right now?"
+- **Transition suggestion surface**: notification-style, triggered by `ActivityMonitor` transition detection. Shows an action-oriented prompt about the previous completed block with a concrete time range. Interaction: accept or reject. No confidence displayed. Answers: "was this [label]? [start]–[end]"
+- **Gap-fill surface**: user-initiated review workflow, surfaced through a persistent passive indicator (badge, counter, or subtle timeline marker showing total unlabeled time). Actively prompted only at natural low-cost moments: returning from idle (>5 min), session start, or immediately after the user accepts a transition suggestion (piggybacks on existing labeling attention). Answers: "you have [duration] unlabeled — review?"
+
+Copy and label conventions:
+
+- Transition suggestions use action-oriented framing with a concrete time range to disambiguate interval scope: "Was this Coding? 12:00–12:47" rather than "We think you were coding."
+- Live status uses a simple present-tense statement: "Now: Coding." No time range needed — it is always the current moment.
+- Gap-fill uses action-oriented labeling that makes it clear it is a review task: "Review unlabeled: 9:00–11:30" or "You have 2h 30m unlabeled. Review?"
+- Do not use hedging language ("We think you might have been..."). Decision #4 established that suggestions only surface when confidence is high enough for an unhedged statement. Copy should reflect that.
+- Avoid language that conflates the surfaces. "Just now" is ambiguous for a block that ended 2 hours ago. The concrete time range carries the meaning.
+
+Gap-fill prompting rules:
+
+- The passive indicator (unlabeled-time badge) is always visible when unlabeled time exists. It does not interrupt.
+- Active prompting occurs only at: (a) idle return (>5 min idle detected by `ActivityMonitor`), (b) session start, (c) immediately after the user accepts a transition suggestion ("You just labeled 12:00–12:47 as Coding. There's also 9:00–11:30 unlabeled. Review?").
+- If unlabeled time exceeds a configurable large threshold (default: one full active day with zero labels), the passive indicator escalates — e.g., the tray icon itself changes state. Not a popup. This handles the case where a user completely ignores the system without adding notification pressure during normal operation.
+- The escalation threshold is a user-facing config (unlike the reject threshold, which is not user-facing per decision #4), because it controls notification intensity, not quality.
+
+Confidence display rules:
+
+- Live status and transition suggestions: confidence is an internal gating signal only. The user sees an unhedged label or nothing (rejected by threshold). No percentages, no confidence bars, no uncertainty language.
+- Gap-fill review surface: per-segment confidence may be represented as implicit visual weight (segment saturation, opacity, or similar) to help the user prioritize which parts of a long interval to review carefully vs rubber-stamp. This is not a numeric display — it is a visual hint. Defer implementation to the gap-fill phase; it is not required for v1.
+
+Interaction with other decisions:
+
+- Decision #3 defined the three semantics. Decision #6 specifies how those semantics map to UI surfaces and interaction patterns.
+- Decision #4's precision-over-recall strategy applies to live status and transition suggestions. Gap-fill is a review workflow, not a notification, so its quality bar is different: the system should show its best guess for the interval and let the user correct, rather than suppressing uncertain segments entirely.
+- Per-user calibration (decision #1) may eventually allow the transition suggestion surface to fire more often for well-calibrated users, but the surface architecture remains the same.
+
+Implementation sequencing:
+
+- Phase 4 step 1 implements the transition suggestion surface with interval aggregation (replacing last-bucket-only prediction).
+- Phase 4 step 3 implements the live status surface as a separate read-only display.
+- Gap-fill surface (passive indicator + contextual prompting) is a separate implementation phase after Phase 4. It depends on the transition suggestion surface working correctly but does not block it.
+
+Artifacts and code paths:
+
+- `src/taskclf/ui/tray.py` — `_LabelSuggester` currently serves both live status and transition suggestions through a single code path. Needs refactoring to separate the two surfaces with distinct display and interaction logic.
+- `ActivityMonitor` in `src/taskclf/ui/tray.py` — already detects transitions and idle periods. Idle-return detection can be extended for gap-fill prompting triggers.
+- Gap-fill passive indicator — new UI element. Implementation deferred but the tray architecture should not preclude it.
+- Copy strings should be externalized or at minimum centralized in one module, not scattered across tray/UI code, to keep the labeling conventions consistent and changeable.
+
 ---
 
 ## Ordered Implementation Plan
@@ -578,15 +641,29 @@ Artifacts and code paths:
 
 3. Ensure live session tracking and feature-state transitions are consistent with the assumptions in `build_features_from_aw_events()`.
 
-### Phase 4) Fix tray suggestion quality
+### Phase 4) Fix tray suggestion quality and implement surface architecture
 
 1. Replace "predict only `rows[-1]`" for automatic tray suggestions with interval-aware aggregation over the previous completed block.
 
 2. Compare at least these aggregation strategies: majority vote over bucket predictions, confidence-weighted vote over bucket predictions, highest-total-probability label over the interval, and the most recent confident contiguous segment within the interval.
 
-3. Keep the UI semantic explicit: live status may show the current last-minute label, transition-triggered prompts should show an interval-aggregated label for the previous block, and manual gap-filling should target the unlabeled interval.
+3. Refactor `_LabelSuggester` and tray UI code to separate the transition suggestion surface from the live status surface (decision #6). The transition suggestion surface shows action-oriented prompts with concrete time ranges ("Was this Coding? 12:00–12:47"). The live status surface is a passive, always-visible, read-only display of the current-bucket prediction ("Now: Coding").
 
-4. Include input events and any required user-scoped post-processing inputs in tray suggestion features.
+4. Centralize copy strings for all surfaces in one module. Apply the copy conventions from decision #6: action-oriented framing, concrete time ranges, no hedging language, no confidence percentages on live or transition surfaces.
+
+5. Include input events and any required user-scoped post-processing inputs in tray suggestion features.
+
+### Phase 4b) Gap-fill surface
+
+Depends on Phase 4 (transition suggestions and live status must work correctly first). Can be implemented independently after Phase 4 lands.
+
+1. Implement the passive unlabeled-time indicator (badge, counter, or timeline marker) as a persistent, non-interrupting UI element.
+
+2. Implement contextual gap-fill prompting at the three trigger points defined in decision #6: idle return (>5 min idle detected by `ActivityMonitor`), session start, and immediately after the user accepts a transition suggestion.
+
+3. Implement the escalation threshold: if unlabeled time exceeds a configurable threshold (default: one full active day with zero labels), escalate the passive indicator (e.g., change tray icon state). Do not escalate to a popup.
+
+4. If per-segment confidence visualization is included, represent it as implicit visual weight (saturation, opacity) in the gap-fill review surface, not as numeric values. This is optional for v1.
 
 ### Phase 5) Align evaluation with deployed behavior
 
@@ -728,11 +805,9 @@ Goal:
 
 ## Open Questions
 
-1. How should the tray/UI expose the already-chosen complementary suggestion semantics without confusing users?
-   - should live status and automatic transition-triggered suggestions live in the same surface or in clearly separate surfaces?
-   - what copy or labels should distinguish "right now", "previous block", and "fill unlabeled gap" actions?
-   - when should the explicit gap-fill action be offered automatically versus only manually?
-   - confidence and explanation should remain scoped to the interval each surface actually represents
+No open questions at this time. All previously open questions have been resolved:
+
+1. ~~How should the tray/UI expose the already-chosen complementary suggestion semantics without confusing users?~~ — Resolved by decision #6 (tray/UI surface architecture). Separate surfaces from the start; action-oriented copy with concrete time ranges; gap-fill via passive indicator with contextual prompting; confidence hidden from live/transition surfaces.
 
 ---
 
@@ -744,11 +819,12 @@ If we want the highest expected quality gain with the lowest risk, do this first
 2. For current schema-v1 bundles, pass stable `user_id` through live feature construction so existing models remain correct.
 3. Add input-event support to `_LabelSuggester`.
 4. Replace automatic tray last-bucket suggestion with previous-block interval aggregation over bucket predictions.
-5. Re-run evaluation with calibrated reject tuning and compare before/after.
+5. Separate the transition suggestion surface from the live status surface in the tray UI code (decision #6). Transition suggestions use action-oriented copy with concrete time ranges; live status is a passive, always-visible current-bucket display.
+6. Re-run evaluation with calibrated reject tuning and compare before/after.
 
 This slice improves correctness and product behavior without changing the model family.
 It is also compatible with the chosen long-term direction: keep current bundles working now, then remove `user_id` from the core model in the next schema/model generation.
-It leaves room for a separate last-minute live-status surface and a separate unlabeled-gap workflow without overloading the default tray suggestion.
+The surface separation (step 5) establishes the UI architecture needed for decision #6. The gap-fill surface (passive indicator + contextual prompting) is a follow-on that depends on the transition suggestion surface working correctly but does not block the first slice.
 
 ---
 
@@ -760,7 +836,10 @@ It leaves room for a separate last-minute live-status surface and a separate unl
 - Suggestion-time inference uses the same feature families as training whenever the data source exists.
 - Reject threshold is tuned on calibrated scores to optimize suggestion precision and persisted in the inference policy artifact so it travels with the model+calibration pair.
 - Automatic tray suggestions default to the previous completed block rather than the last bucket, while last-minute live status and unlabeled-gap labeling remain explicit separate semantics.
+- Live status and transition suggestions are implemented as clearly separate UI surfaces with distinct display and interaction logic (decision #6).
+- Transition suggestion copy uses action-oriented framing with concrete time ranges. No confidence percentages are displayed to the user on live or transition surfaces.
 - Automatic suggestions prefer precision over recall; coverage gaps are handled by the explicit gap-fill workflow, not by lowering the automatic threshold.
+- Gap-fill surface provides a passive unlabeled-time indicator with contextual prompting at idle return, session start, and post-acceptance moments. Gap-fill is never a fixed-schedule automatic notification.
 - Suggestions per active day is tracked; a loaded model that produces zero suggestions for a user triggers a warning.
 - Evaluation includes operational metrics, not only bucket-level macro-F1.
 - Docs and tests cover the new behavior.
