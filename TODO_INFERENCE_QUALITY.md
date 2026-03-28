@@ -59,7 +59,7 @@ Current behavior:
   - `app_category`
   - `domain_category`
   - `user_id`
-- Categoricals are label-encoded with unknown values mapped to `-1` at inference time.
+- Categoricals are label-encoded with unknown values mapped to `-1` at inference time. Decision #5 changes this: unseen values will map to a trained `__unknown__` code instead, with frequency thresholding and random masking during training.
 - Numeric missing values are filled with `0` during training and batch inference.
 - Training uses chronological per-user splits via `split_by_time()` in `src/taskclf/train/dataset.py`.
 - Optional full-user holdout is supported for cold-start evaluation.
@@ -451,37 +451,6 @@ Implications:
 
 UI surface architecture: decision #6 specifies how these three semantics map to separate UI surfaces, including copy conventions, gap-fill prompting rules, and confidence display policy.
 
-### 5) Unknown-category handling in training
-
-Decision:
-
-- Unknown categoricals must be trained explicitly using a hybrid approach: frequency-thresholded tail collapsing followed by random categorical masking.
-- The rejected alternative — continuing to rely on inference-time `-1` for unseen values with no training exposure — was considered and rejected because it produces untrained confidence on novel inputs, which undermines the reject mechanism (decision #4) and risks feeding confidently-wrong labels into the training feedback loop.
-
-Procedure:
-
-- Step 1 (frequency thresholding): collapse all category values appearing fewer than a configurable threshold (default: 5 occurrences in training data) to a reserved `__unknown__` token. This gives the model natural training signal from the real tail distribution.
-- Step 2 (random masking): independently mask a small fraction (default: 5%) of remaining known-category values to `__unknown__` during training. This forces the model to learn predictions from non-categorical features when the category is absent, and produces appropriately lower, broader probability distributions for unknown inputs.
-- The `LabelEncoder` for each categorical column includes `__unknown__` as a first-class value. At inference time, unseen values map to the `__unknown__` code instead of `-1`.
-- The frequency threshold and masking rate are training hyperparameters recorded in the model bundle metadata, not inference-time settings.
-
-Rationale:
-
-- Confidence must be meaningful for novel inputs. The reject mechanism, per-user calibration, and the "fewer but higher-confidence" suggestion strategy (decisions #1, #4) all depend on confidence being a reliable signal. When the model encounters a category it never trained on, inference-time `-1` produces leaf probabilities that were never optimized for that input. The model can be confidently wrong, which is the worst outcome for a system that uses confidence to gate suggestions.
-- Calibration cannot fix what it has not seen. Calibrators are fitted on validation data containing only known categories. They correct systematic biases in the known distribution, not the behavior of a code absent from calibration data.
-- The category space grows monotonically. New apps, new browser extensions, OS updates renaming bundle identifiers, new users — the fraction of predictions hitting unseen values increases over the system's lifetime. A model trained to handle unknowns becomes more robust over time, not less.
-- The feedback loop is the decisive risk. If unknown categories produce confidently wrong suggestions that get rubber-stamped, those bad labels enter training data, degrade the next model, and produce worse suggestions. Explicit unknown training is a circuit breaker: it makes unknown-input confidence trustworthy, so the reject mechanism suppresses bad suggestions before they become bad labels.
-- The accuracy cost is bounded and measurable. A 5% masking rate preserves 95% of the categorical signal. Frequency thresholding loses only tail categories that already carry weak signal. Both costs are visible in standard evaluation and can be tuned.
-
-Implications:
-
-- `encode_categoricals()` in `src/taskclf/train/lgbm.py` must be extended to support threshold-based collapsing and random masking during training, and to map unseen values to the `__unknown__` code (instead of `-1`) at inference time.
-- `OnlinePredictor._encode_value()` in `src/taskclf/infer/online.py` must map unseen categoricals to the `__unknown__` code rather than `-1.0`.
-- The frequency threshold and masking rate must be recorded in model bundle metadata so they are reproducible and auditable.
-- Schema hash will change when `__unknown__` is added to the encoder vocabulary, requiring a new model generation. This aligns naturally with the schema-v2 migration (decision #1) and can be bundled with the `user_id` removal or done independently.
-- Evaluation must include a held-out-category test: withhold some known categories from training, verify that the model produces appropriately uncertain predictions for them, and confirm that the reject threshold catches them. Add this to Phase 5 evaluation.
-- Do not change the masking rate without re-evaluating both macro-F1 on known categories and reject-rate behavior on withheld categories. The two metrics are in tension: higher masking improves unknown robustness but reduces known-category accuracy.
-
 ### 4) Suggestion confidence strategy
 
 Decision:
@@ -535,6 +504,37 @@ Artifacts and code paths:
 - `run_batch_inference()` in `src/taskclf/infer/batch.py` — batch reject path. Shares the same threshold today.
 - `resolve_inference_config()` in `src/taskclf/infer/resolve.py` — resolves the threshold from policy, CLI override, or fallback. If per-surface thresholds are added, resolution must be extended to accept a surface identifier.
 - Suggestions-per-active-day tracking: should be recorded in the telemetry store (`src/taskclf/core/telemetry.py`) alongside existing session telemetry, not in the tray or predictor. The tray publishes suggestion events via `EventBus`; telemetry aggregates them.
+
+### 5) Unknown-category handling in training
+
+Decision:
+
+- Unknown categoricals must be trained explicitly using a hybrid approach: frequency-thresholded tail collapsing followed by random categorical masking.
+- The rejected alternative — continuing to rely on inference-time `-1` for unseen values with no training exposure — was considered and rejected because it produces untrained confidence on novel inputs, which undermines the reject mechanism (decision #4) and risks feeding confidently-wrong labels into the training feedback loop.
+
+Procedure:
+
+- Step 1 (frequency thresholding): collapse all category values appearing fewer than a configurable threshold (default: 5 occurrences in training data) to a reserved `__unknown__` token. This gives the model natural training signal from the real tail distribution.
+- Step 2 (random masking): independently mask a small fraction (default: 5%) of remaining known-category values to `__unknown__` during training. This forces the model to learn predictions from non-categorical features when the category is absent, and produces appropriately lower, broader probability distributions for unknown inputs.
+- The `LabelEncoder` for each categorical column includes `__unknown__` as a first-class value. At inference time, unseen values map to the `__unknown__` code instead of `-1`.
+- The frequency threshold and masking rate are training hyperparameters recorded in the model bundle metadata, not inference-time settings.
+
+Rationale:
+
+- Confidence must be meaningful for novel inputs. The reject mechanism, per-user calibration, and the "fewer but higher-confidence" suggestion strategy (decisions #1, #4) all depend on confidence being a reliable signal. When the model encounters a category it never trained on, inference-time `-1` produces leaf probabilities that were never optimized for that input. The model can be confidently wrong, which is the worst outcome for a system that uses confidence to gate suggestions.
+- Calibration cannot fix what it has not seen. Calibrators are fitted on validation data containing only known categories. They correct systematic biases in the known distribution, not the behavior of a code absent from calibration data.
+- The category space grows monotonically. New apps, new browser extensions, OS updates renaming bundle identifiers, new users — the fraction of predictions hitting unseen values increases over the system's lifetime. A model trained to handle unknowns becomes more robust over time, not less.
+- The feedback loop is the decisive risk. If unknown categories produce confidently wrong suggestions that get rubber-stamped, those bad labels enter training data, degrade the next model, and produce worse suggestions. Explicit unknown training is a circuit breaker: it makes unknown-input confidence trustworthy, so the reject mechanism suppresses bad suggestions before they become bad labels.
+- The accuracy cost is bounded and measurable. A 5% masking rate preserves 95% of the categorical signal. Frequency thresholding loses only tail categories that already carry weak signal. Both costs are visible in standard evaluation and can be tuned.
+
+Implications:
+
+- `encode_categoricals()` in `src/taskclf/train/lgbm.py` must be extended to support threshold-based collapsing and random masking during training, and to map unseen values to the `__unknown__` code (instead of `-1`) at inference time.
+- `OnlinePredictor._encode_value()` in `src/taskclf/infer/online.py` must map unseen categoricals to the `__unknown__` code rather than `-1.0`.
+- The frequency threshold and masking rate must be recorded in model bundle metadata so they are reproducible and auditable.
+- Schema hash will change when `__unknown__` is added to the encoder vocabulary, requiring a new model generation. This aligns naturally with the schema-v2 migration (decision #1) and can be bundled with the `user_id` removal or done independently.
+- Evaluation must include a held-out-category test: withhold some known categories from training, verify that the model produces appropriately uncertain predictions for them, and confirm that the reject threshold catches them. Add this to Phase 5 evaluation.
+- Do not change the masking rate without re-evaluating both macro-F1 on known categories and reject-rate behavior on withheld categories. The two metrics are in tension: higher masking improves unknown robustness but reduces known-category accuracy.
 
 ### 6) Tray/UI surface architecture (resolves open question #1)
 
@@ -625,7 +625,7 @@ Artifacts and code paths:
 
 ### Phase 2) Migrate personalization out of the core model
 
-1. Create the next schema/model contract that removes `user_id` from `FEATURE_COLUMNS` and categorical encoders.
+1. Create the next schema/model contract that removes `user_id` from `FEATURE_COLUMNS` and categorical encoders. This migration is a natural bundling point for the `__unknown__` encoding change (decision #5), since both require a schema hash bump and new model generation. They can also land independently if sequencing requires it.
 
 2. Retrain and evaluate side-by-side: the current hybrid model with `user_id` in the base model, a new base model without `user_id`, and a new base model plus calibrator/post-processing personalization.
 
@@ -724,6 +724,7 @@ Add explicit comparison tables for:
 - batch-style interval aggregation vs last-bucket-only suggestion
 - with-input-events vs without-input-events
 - stable-user-id vs default-user fallback
+- known-category vs withheld-category confidence and reject behavior (decision #5)
 
 ---
 
@@ -841,5 +842,6 @@ The surface separation (step 5) establishes the UI architecture needed for decis
 - Automatic suggestions prefer precision over recall; coverage gaps are handled by the explicit gap-fill workflow, not by lowering the automatic threshold.
 - Gap-fill surface provides a passive unlabeled-time indicator with contextual prompting at idle return, session start, and post-acceptance moments. Gap-fill is never a fixed-schedule automatic notification.
 - Suggestions per active day is tracked; a loaded model that produces zero suggestions for a user triggers a warning.
-- Evaluation includes operational metrics, not only bucket-level macro-F1.
+- Unknown categoricals are handled through trained `__unknown__` encoding (decision #5), not inference-time `-1`. Frequency thresholding and random masking are applied during training, and the model produces appropriately uncertain predictions for unseen categories.
+- Evaluation includes operational metrics, not only bucket-level macro-F1. Evaluation also includes held-out-category tests confirming that unknown-category confidence triggers the reject mechanism (decision #5).
 - Docs and tests cover the new behavior.
