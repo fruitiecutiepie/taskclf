@@ -369,6 +369,7 @@ def create_app(
     window_api: Any = None,
     on_label_saved: Callable[[], None] | None = None,
     on_model_trained: Callable[[str], None] | None = None,
+    on_suggestion_accepted: Callable[[], None] | None = None,
     pause_toggle: Callable[[], bool] | None = None,
     is_paused: Callable[[], bool] | None = None,
 ) -> FastAPI:
@@ -386,6 +387,11 @@ def create_app(
             ``POST /api/notification/accept``).
         on_model_trained: Optional callback invoked with the model run
             directory path after training completes successfully.
+        on_suggestion_accepted: Optional callback invoked after a
+            transition suggestion is accepted via
+            ``POST /api/notification/accept``.  Used by ``TrayLabeler``
+            to trigger gap-fill prompting when adjacent unlabeled time
+            exists.
         pause_toggle: Optional callback to toggle pause state; returns
             new paused boolean.
         is_paused: Optional callable returning current paused state.
@@ -902,6 +908,9 @@ def create_app(
             on_label_saved()
 
         await bus.publish({"type": "suggestion_cleared", "reason": "label_saved"})
+
+        if on_suggestion_accepted is not None:
+            on_suggestion_accepted()
 
         logger.info(
             "Accepted suggested label: %s (%s → %s)",

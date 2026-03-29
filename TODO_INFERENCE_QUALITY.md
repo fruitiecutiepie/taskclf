@@ -1345,7 +1345,7 @@ Docs to update:
 
 **Prerequisites**: Phase 4 complete (transition suggestions and live status working).
 
-- [ ] **Step 4b.1 — Passive unlabeled-time indicator**
+- [x] **Step 4b.1 — Passive unlabeled-time indicator** ✅ 2026-03-28
 
 Files to modify:
 - `src/taskclf/ui/tray.py`
@@ -1356,7 +1356,7 @@ Edit:
 3. Publish an `unlabeled_time` event via `EventBus` with the total duration.
 4. The frontend renders this as a badge/counter (frontend change, not covered here).
 
-- [ ] **Step 4b.2 — Contextual gap-fill prompting**
+- [x] **Step 4b.2 — Contextual gap-fill prompting** ✅ 2026-03-28
 
 Files to modify:
 - `src/taskclf/ui/tray.py`
@@ -1366,7 +1366,7 @@ Edit:
 2. On session start (first poll after `ActivityMonitor` starts), if unlabeled time exists, publish a `gap_fill_prompt` event.
 3. In `_handle_transition()`, immediately after the user accepts a transition suggestion (detected via EventBus feedback), if adjacent unlabeled time exists, publish a `gap_fill_prompt` event.
 
-- [ ] **Step 4b.3 — Escalation threshold**
+- [x] **Step 4b.3 — Escalation threshold** ✅ 2026-03-28
 
 Files to modify:
 - `src/taskclf/ui/tray.py`

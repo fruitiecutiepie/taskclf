@@ -628,6 +628,7 @@ class TrayLabeler:
     notifications_enabled: bool = True
     privacy_notifications: bool = True
     retrain_config: Path | None = None
+    gap_fill_escalation_minutes: int = 480
     _data_dir: Path = field(init=False)
     _model_dir: Path | None = field(init=False, default=None)
     _models_dir: Path | None = field(init=False, default=None)
@@ -657,6 +658,11 @@ class TrayLabeler:
     _suggester: _LabelSuggester | None = field(init=False, default=None)
     _monitor: ActivityMonitor = field(init=False)
     _icon: Any = field(init=False, default=None)
+    _unlabeled_minutes: float = field(init=False, default=0.0)
+    _last_label_end_cache: dt.datetime | None = field(init=False, default=None)
+    _last_label_cache_count: int = field(init=False, default=-1)
+    _escalated: bool = field(init=False, default=False)
+    _gap_fill_escalation_minutes: int = field(init=False, default=480)
 
     def __post_init__(self) -> None:
         self._data_dir = self.data_dir
@@ -732,6 +738,13 @@ class TrayLabeler:
         self._labels_saved_count: int = 0
         self._model_schema_hash: str | None = None
 
+        self._gap_fill_escalation_minutes = self._resolve(
+            saved,
+            "gap_fill_escalation_minutes",
+            self.gap_fill_escalation_minutes,
+            480,
+        )
+
         self._event_bus = self.event_bus if self.event_bus is not None else EventBus()
 
         self._suggester: _LabelSuggester | None = None
@@ -793,6 +806,144 @@ class TrayLabeler:
             return cli_val
         return saved.get(key, default)
 
+    def _get_last_label_end(self) -> dt.datetime | None:
+        """Return the latest label ``end_ts``, using a cache keyed on save count."""
+        if self._last_label_cache_count == self._labels_saved_count:
+            return self._last_label_end_cache
+
+        self._last_label_cache_count = self._labels_saved_count
+
+        if not self._labels_path.exists():
+            self._last_label_end_cache = None
+            return None
+
+        try:
+            from taskclf.labels.store import read_label_spans
+
+            spans = read_label_spans(self._labels_path)
+            if not spans:
+                self._last_label_end_cache = None
+                return None
+            latest = max(s.end_ts for s in spans)
+            if latest.tzinfo is None:
+                latest = latest.replace(tzinfo=dt.timezone.utc)
+            self._last_label_end_cache = latest
+            return latest
+        except Exception:
+            logger.debug("Could not read labels for gap-fill", exc_info=True)
+            self._last_label_end_cache = None
+            return None
+
+    @staticmethod
+    def _format_duration(minutes: float) -> str:
+        """Format a duration in minutes to a human-readable string like '2h 30m'."""
+        total = int(minutes)
+        if total < 1:
+            return "0m"
+        hours, mins = divmod(total, 60)
+        if hours and mins:
+            return f"{hours}h {mins}m"
+        if hours:
+            return f"{hours}h"
+        return f"{mins}m"
+
+    def _publish_unlabeled_time(self) -> None:
+        """Compute unlabeled time and publish an ``unlabeled_time`` event."""
+        if self._event_bus is None:
+            return
+
+        last_end = self._get_last_label_end()
+        now = dt.datetime.now(dt.timezone.utc)
+
+        if last_end is None:
+            self._unlabeled_minutes = 0.0
+            return
+
+        delta = (now - last_end).total_seconds() / 60.0
+        self._unlabeled_minutes = max(0.0, delta)
+
+        if self._unlabeled_minutes <= 0:
+            return
+
+        from taskclf.ui.copy import gap_fill_prompt
+
+        duration_str = self._format_duration(self._unlabeled_minutes)
+        self._event_bus.publish_threadsafe(
+            {
+                "type": "unlabeled_time",
+                "unlabeled_minutes": round(self._unlabeled_minutes, 1),
+                "text": gap_fill_prompt(duration_str),
+                "last_label_end": last_end.isoformat(),
+                "ts": now.isoformat(),
+            }
+        )
+
+        self._check_escalation()
+
+    def _check_escalation(self) -> None:
+        """Publish ``gap_fill_escalated`` and update icon when threshold is exceeded."""
+        should_escalate = self._unlabeled_minutes >= self._gap_fill_escalation_minutes
+        if should_escalate and not self._escalated:
+            self._escalated = True
+            if self._event_bus is not None:
+                self._event_bus.publish_threadsafe(
+                    {
+                        "type": "gap_fill_escalated",
+                        "unlabeled_minutes": round(self._unlabeled_minutes, 1),
+                        "threshold_minutes": self._gap_fill_escalation_minutes,
+                    }
+                )
+            if self._icon is not None:
+                self._icon.icon = _make_icon_image(color="#FF9800")
+        elif not should_escalate and self._escalated:
+            self._escalated = False
+            if self._icon is not None:
+                self._icon.icon = _make_icon_image()
+
+    def _publish_gap_fill_prompt(self, trigger: str) -> None:
+        """Publish a ``gap_fill_prompt`` event if unlabeled time exists.
+
+        Args:
+            trigger: One of ``"idle_return"``, ``"session_start"``,
+                or ``"post_acceptance"``.
+        """
+        if self._event_bus is None:
+            return
+
+        last_end = self._get_last_label_end()
+        now = dt.datetime.now(dt.timezone.utc)
+        if last_end is None:
+            return
+
+        minutes = max(0.0, (now - last_end).total_seconds() / 60.0)
+        if minutes <= 0:
+            return
+
+        self._unlabeled_minutes = minutes
+
+        from taskclf.ui.copy import gap_fill_prompt
+
+        duration_str = self._format_duration(minutes)
+        self._event_bus.publish_threadsafe(
+            {
+                "type": "gap_fill_prompt",
+                "trigger": trigger,
+                "unlabeled_minutes": round(minutes, 1),
+                "text": gap_fill_prompt(duration_str),
+                "last_label_end": last_end.isoformat(),
+                "ts": now.isoformat(),
+            }
+        )
+
+    def _on_suggestion_accepted(self) -> None:
+        """Called when the user accepts a transition suggestion.
+
+        Publishes a ``gap_fill_prompt`` event if adjacent unlabeled time
+        exists, piggybacking on the user's labeling attention.
+        """
+        self._last_label_cache_count = -1
+        self._publish_gap_fill_prompt("post_acceptance")
+
     def _handle_initial_app(self, app: str, ts: dt.datetime) -> None:
         """Publish an initial_app event so the UI can prompt for the pre-start period."""
         if self._event_bus is not None:
@@ -803,6 +954,7 @@ class TrayLabeler:
                     "ts": ts.isoformat(),
                 }
             )
+        self._publish_gap_fill_prompt("session_start")
 
     def _on_label_saved(self) -> None:
         """Increment the saved-label counter (called by the embedded server)."""
@@ -874,6 +1026,7 @@ class TrayLabeler:
                 }
             )
         self._publish_live_status()
+        self._publish_unlabeled_time()
 
     def _publish_live_status(self) -> None:
         """Predict the current bucket and publish a ``live_status`` event.
@@ -1005,6 +1158,10 @@ class TrayLabeler:
         )
         if is_breakidle:
             self._auto_save_breakidle(block_start, block_end)
+            idle_duration_min = (block_end - block_start).total_seconds() / 60.0
+            if is_lockscreen and idle_duration_min > 5:
+                self._last_label_cache_count = -1
+                self._publish_gap_fill_prompt("idle_return")
             return
 
         if self._event_bus is None or not self._event_bus.has_subscribers:
@@ -1732,6 +1889,7 @@ class TrayLabeler:
             event_bus=self._event_bus,
             on_label_saved=self._on_label_saved,
             on_model_trained=self._on_model_trained,
+            on_suggestion_accepted=self._on_suggestion_accepted,
             pause_toggle=self._toggle_pause,
             is_paused=lambda: self._monitor.is_paused,
         )

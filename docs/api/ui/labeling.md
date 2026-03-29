@@ -85,6 +85,9 @@ The UI is a SolidJS single-page application served by a FastAPI backend:
   - `train_progress` -- during training: `job_id`, `step`, `progress_pct`, `message`.
   - `train_complete` -- on training success: `job_id`, `metrics` (`macro_f1`, `weighted_f1`), `model_dir`.
   - `train_failed` -- on training failure: `job_id`, `error`.
+  - `unlabeled_time` -- every poll cycle when unlabeled time exists: `unlabeled_minutes`, `text`, `last_label_end`, `ts`.
+  - `gap_fill_prompt` -- at idle return (>5 min), session start, or post-acceptance: `trigger`, `unlabeled_minutes`, `text`, `last_label_end`, `ts`.
+  - `gap_fill_escalated` -- when unlabeled time exceeds threshold: `unlabeled_minutes`, `threshold_minutes`.
 
   **Backpressure policy:** Each WebSocket subscriber has a 256-event queue. When the queue is full, the oldest event is evicted to make room for the new one. The subscriber is never silently dropped; it continues receiving events at the cost of missing stale ones.
 
@@ -135,7 +138,8 @@ taskclf tray --dev
 - **Model submenu** -- a "Model" submenu listing all valid model bundles found in `--models-dir` (default `models/`). The submenu auto-refreshes on every menu open by re-scanning the models directory, so new bundles created by retraining appear immediately without restarting the tray. The currently loaded model shows a check mark (radio-button effect). Clicking a different bundle hot-swaps the in-memory suggester without restarting. A "(No Model)" entry unloads the model entirely. The submenu also contains "Reload Model" to re-read the current bundle from disk and "Check Retrain" to run the retrain eligibility check. When `--models-dir` is missing or empty, a disabled "(no models found)" placeholder is shown.
 - **Check Retrain** -- tray menu action (inside the Model submenu) that checks whether retraining is due based on the latest model's age and the configured cadence. Shows a notification with "Retrain recommended" (with model name and creation date) or "Model is current". Uses `--retrain-config` to load a custom retrain YAML config; falls back to defaults when not provided. Disabled when `--models-dir` is not set.
 - **Open Web UI** -- menu option to open the labeling web UI in the browser.
-- **Event broadcasting** -- publishes `status`, `tray_state`, `initial_app`, `prediction`, `label_created`, and `suggest_label` events to the shared EventBus for connected WebSocket clients.
+- **Gap-fill surface** -- tracks unlabeled time since the last confirmed label and publishes `unlabeled_time` events every poll cycle (passive badge). Active `gap_fill_prompt` events are published only at idle return (>5 min), session start, or immediately after accepting a transition suggestion. When unlabeled time exceeds `gap_fill_escalation_minutes` (default 480), the tray icon changes to orange (`gap_fill_escalated` event). No popup or notification is sent on escalation.
+- **Event broadcasting** -- publishes `status`, `tray_state`, `initial_app`, `prediction`, `label_created`, `suggest_label`, `unlabeled_time`, `gap_fill_prompt`, and `gap_fill_escalated` events to the shared EventBus for connected WebSocket clients.
 - **Frontend log channel** -- in frontend dev mode (`--dev`), debug/error messages emitted in the SolidJS app can be forwarded through `window.pywebview.api.frontend_debug_log(...)` and `window.pywebview.api.frontend_error_log(...)`. Debug lines are written at DEBUG level (requires DEBUG logging enabled, e.g. global `--verbose`), while error lines are written at ERROR level.
   The app also installs global `window.onerror` and `unhandledrejection` handlers in dev mode so uncaught frontend failures are captured and forwarded via the same error channel.
 - **Crash handler** -- `TrayLabeler.run()` wraps the main loop in a top-level `try/except`. On unhandled exceptions, a crash report is written to `<TASKCLF_HOME>/logs/crash_<YYYYMMDD_HHMMSS>.txt` and a desktop notification is attempted with the crash file path. See [core.crash](../core/crash.md) for details.
@@ -149,16 +153,42 @@ interaction patterns, and confidence profiles (Decision 6):
 |---|---|---|---|---|
 | Transition suggestion | `_handle_transition` | `prompt_label` | `transition_suggestion_text` | App transition |
 | Live status | `_publish_live_status` | `live_status` | `live_status_text` | Every poll cycle |
-| Gap-fill | *(Phase 4b)* | *(planned)* | `gap_fill_prompt` | Idle return / session start |
+| Gap-fill indicator | `_publish_unlabeled_time` | `unlabeled_time` | `gap_fill_prompt` | Every poll cycle (passive) |
+| Gap-fill prompt | `_publish_gap_fill_prompt` | `gap_fill_prompt` | `gap_fill_prompt` | Idle return / session start / post-acceptance |
+| Gap-fill escalation | `_check_escalation` | `gap_fill_escalated` | — | Unlabeled time exceeds threshold |
 
 - **Transition suggestions** aggregate all buckets in the completed interval
   via `infer.aggregation.aggregate_interval` and display an action-oriented
   prompt with a concrete time range (e.g. "Was this Coding? 12:00–12:47").
 - **Live status** predicts only the current single bucket and publishes a
   passive present-tense label ("Now: Coding").
-- Numeric confidence is never shown to the user on either surface.
+- **Gap-fill indicator** is a passive badge showing total unlabeled time
+  since the last confirmed label. Published every poll cycle as an
+  `unlabeled_time` event. Does not interrupt the user.
+- **Gap-fill prompt** is an active prompt published only at three defined
+  trigger points: idle return (>5 min idle), session start, or immediately
+  after the user accepts a transition suggestion.
+- **Gap-fill escalation** fires when unlabeled time exceeds a configurable
+  threshold (`gap_fill_escalation_minutes`, default 480 = one active day).
+  Changes the tray icon color to orange. No popup or notification is sent.
+- Numeric confidence is never shown to the user on transition or live status surfaces.
 - All user-facing copy strings are centralized in
   [`ui.copy`](copy.md).
+
+## Gap-fill events
+
+Three new WebSocket event types support the gap-fill surface:
+
+- `unlabeled_time` — published every poll cycle when unlabeled time exists:
+  `unlabeled_minutes`, `text` (human-readable badge text), `last_label_end`, `ts`.
+- `gap_fill_prompt` — published at idle return, session start, or post-acceptance:
+  `trigger` (`"idle_return"`, `"session_start"`, or `"post_acceptance"`),
+  `unlabeled_minutes`, `text`, `last_label_end`, `ts`.
+- `gap_fill_escalated` — published when unlabeled time exceeds the escalation
+  threshold: `unlabeled_minutes`, `threshold_minutes`.
+
+The `gap_fill_escalation_minutes` setting (default 480) controls when
+escalation fires. It is a user-facing config unlike the reject threshold.
 
 ## Privacy
 
