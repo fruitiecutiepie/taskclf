@@ -5,8 +5,10 @@ Stores only aggregate statistics -- never raw content.
 
 from __future__ import annotations
 
+import logging
 import os
 import tempfile
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -17,6 +19,8 @@ import pandas as pd
 from pydantic import BaseModel, Field
 
 from taskclf.core.defaults import DEFAULT_TELEMETRY_DIR, MIXED_UNKNOWN
+
+logger = logging.getLogger(__name__)
 
 _EPS = 1e-8
 
@@ -69,6 +73,7 @@ class TelemetrySnapshot(BaseModel):
     mean_entropy: float = 0.0
     class_distribution: dict[str, float] = Field(default_factory=dict)
     schema_version: str = "features_v1"
+    suggestions_per_day: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -242,3 +247,45 @@ class TelemetryStore:
         """
         all_snaps = self.read_recent(n=10_000, user_id=user_id)
         return [s for s in all_snaps if start <= s.timestamp <= end]
+
+
+# ---------------------------------------------------------------------------
+# Suggestion tracking (decision #4 guardrail)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class SuggestionTracker:
+    """In-memory counter of suggestion events grouped by calendar date.
+
+    Used to enforce the decision-#4 guardrail: a loaded model must
+    produce at least one suggestion per active day.  The tray or
+    online loop calls :meth:`record` for each non-rejected prediction
+    surfaced to the user.  At end-of-day (or on shutdown),
+    :meth:`check_zero_suggestions` logs a warning if the count is zero.
+    """
+
+    _counts: dict[str, int] = field(default_factory=lambda: defaultdict(int))
+
+    def record(self, ts: datetime) -> None:
+        """Record a suggestion event at *ts*."""
+        date_key = ts.strftime("%Y-%m-%d")
+        self._counts[date_key] += 1
+
+    def count_for_date(self, date_str: str) -> int:
+        """Return the suggestion count for a given date string (``YYYY-MM-DD``)."""
+        return self._counts.get(date_str, 0)
+
+    def check_zero_suggestions(self, date_str: str, *, model_loaded: bool) -> None:
+        """Log a warning if *model_loaded* and zero suggestions were recorded.
+
+        Args:
+            date_str: Calendar date to check (``YYYY-MM-DD``).
+            model_loaded: Whether a model was loaded during the day.
+        """
+        if model_loaded and self.count_for_date(date_str) == 0:
+            logger.warning(
+                "Zero suggestions on %s with a loaded model — "
+                "reject threshold may be too high",
+                date_str,
+            )

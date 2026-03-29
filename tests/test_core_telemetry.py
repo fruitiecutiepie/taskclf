@@ -1,7 +1,12 @@
-"""Tests for taskclf.core.telemetry — snapshot computation and persistence."""
+"""Tests for taskclf.core.telemetry — snapshot computation and persistence.
+
+Also covers Phase 5 Step 5.3: CNF-002, CNF-003, P5-003
+(suggestions-per-active-day tracking).
+"""
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -11,6 +16,7 @@ import pytest
 
 from taskclf.core.defaults import MIXED_UNKNOWN
 from taskclf.core.telemetry import (
+    SuggestionTracker,
     TelemetrySnapshot,
     TelemetryStore,
     compute_telemetry,
@@ -198,3 +204,89 @@ class TestTelemetryStore:
         store.append(snap)
         tmp_files = list((tmp_path / "telemetry").glob("*.tmp"))
         assert tmp_files == []
+
+
+# ---------------------------------------------------------------------------
+# CNF-002, CNF-003, P5-003: Suggestion tracking (Phase 5, Step 5.3)
+# ---------------------------------------------------------------------------
+
+
+class TestSuggestionTracking:
+    """Tests for SuggestionTracker and suggestions_per_day metric."""
+
+    def test_cnf002_records_accepted_suggestions(self) -> None:
+        """CNF-002: After N predictions with K accepted, telemetry shows
+        K suggestions."""
+        tracker = SuggestionTracker()
+        date_str = "2026-03-28"
+        base = datetime(2026, 3, 28, 9, 0, tzinfo=timezone.utc)
+
+        n_accepted = 7
+        for i in range(n_accepted):
+            tracker.record(base + timedelta(minutes=i))
+
+        assert tracker.count_for_date(date_str) == n_accepted
+
+    def test_cnf003_zero_suggestions_triggers_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """CNF-003: Loaded model + full active day + zero suggestions
+        triggers a warning."""
+        tracker = SuggestionTracker()
+        date_str = "2026-03-28"
+
+        with caplog.at_level(logging.WARNING, logger="taskclf.core.telemetry"):
+            tracker.check_zero_suggestions(date_str, model_loaded=True)
+
+        assert any("Zero suggestions" in r.message for r in caplog.records)
+        assert any("2026-03-28" in r.message for r in caplog.records)
+
+    def test_cnf003_no_warning_when_model_not_loaded(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """No warning when model is not loaded."""
+        tracker = SuggestionTracker()
+        with caplog.at_level(logging.WARNING, logger="taskclf.core.telemetry"):
+            tracker.check_zero_suggestions("2026-03-28", model_loaded=False)
+
+        assert not any("Zero suggestions" in r.message for r in caplog.records)
+
+    def test_cnf003_no_warning_when_suggestions_exist(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """No warning when suggestions were recorded."""
+        tracker = SuggestionTracker()
+        tracker.record(datetime(2026, 3, 28, 10, 0, tzinfo=timezone.utc))
+
+        with caplog.at_level(logging.WARNING, logger="taskclf.core.telemetry"):
+            tracker.check_zero_suggestions("2026-03-28", model_loaded=True)
+
+        assert not any("Zero suggestions" in r.message for r in caplog.records)
+
+    def test_p5003_simulated_active_day_produces_suggestions(self) -> None:
+        """P5-003: Simulated active day produces > 0 suggestions."""
+        tracker = SuggestionTracker()
+        date_str = "2026-03-28"
+        base = datetime(2026, 3, 28, 8, 0, tzinfo=timezone.utc)
+
+        for i in range(480):
+            tracker.record(base + timedelta(minutes=i))
+
+        assert tracker.count_for_date(date_str) > 0
+
+    def test_suggestions_per_day_in_snapshot(self) -> None:
+        """TelemetrySnapshot includes suggestions_per_day field."""
+        snap = TelemetrySnapshot(
+            timestamp=datetime.now(tz=timezone.utc),
+            total_windows=10,
+            suggestions_per_day=5,
+        )
+        assert snap.suggestions_per_day == 5
+
+    def test_suggestions_per_day_default_zero(self) -> None:
+        """Default value for suggestions_per_day is 0."""
+        snap = TelemetrySnapshot(
+            timestamp=datetime.now(tz=timezone.utc),
+            total_windows=10,
+        )
+        assert snap.suggestions_per_day == 0

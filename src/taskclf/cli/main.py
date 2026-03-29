@@ -1214,7 +1214,19 @@ def train_tune_reject_cmd(
 
     typer.echo(f"Tuning reject threshold on {len(val_df)} validation rows")
 
-    result = tune_reject_threshold(model, val_df, cat_encoders=cat_encoders)
+    cal = None
+    if calibrator_store is not None:
+        from taskclf.infer.calibration import load_calibrator_store
+
+        cal_store_obj = load_calibrator_store(Path(calibrator_store))
+        cal = cal_store_obj.global_calibrator
+        typer.echo(
+            f"Calibrating scores with {type(cal).__name__} from {calibrator_store}"
+        )
+
+    result = tune_reject_threshold(
+        model, val_df, cat_encoders=cat_encoders, calibrator=cal
+    )
 
     sweep_table = Table(title="Reject Threshold Sweep")
     sweep_table.add_column("Threshold", justify="right")

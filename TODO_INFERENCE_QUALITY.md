@@ -1393,7 +1393,7 @@ Tests:
 
 **Prerequisites**: Phase 1 complete.
 
-- [ ] **Step 5.1 — Add operational evaluation modes**
+- [x] **Step 5.1 — Add operational evaluation modes** ✅ 2026-03-28
 
 Files to modify:
 - `src/taskclf/train/evaluate.py`
@@ -1416,7 +1416,7 @@ Tests:
   - MSR-003: Two evaluation runs produce comparable metric dicts.
   - MSR-006: Withhold one category; measure reject rate difference.
 
-- [ ] **Step 5.2 — Tune reject threshold on calibrated scores**
+- [x] **Step 5.2 — Tune reject threshold on calibrated scores** ✅ 2026-03-28
 
 Files to modify:
 - `src/taskclf/train/evaluate.py`
@@ -1439,7 +1439,7 @@ Tests:
   - P5-001: `--write-policy` persists threshold in inference policy.
   - EXP-C: Raw and calibrated tuning produce different `best_threshold` values.
 
-- [ ] **Step 5.3 — Track suggestions per active day**
+- [x] **Step 5.3 — Track suggestions per active day** ✅ 2026-03-28
 
 Files to modify:
 - `src/taskclf/core/telemetry.py`

@@ -25,6 +25,7 @@ same constructor argument (`store_dir`).
 | `mean_entropy` | `float` | Mean prediction entropy |
 | `class_distribution` | `dict[str, float]` | Fraction per class |
 | `schema_version` | `str` | Feature schema version |
+| `suggestions_per_day` | `int` | Number of suggestions surfaced on the snapshot's day (default 0) |
 
 ## compute_telemetry
 
@@ -61,5 +62,33 @@ artifacts/telemetry/
   telemetry_user-1.jsonl
   telemetry_user-2.jsonl
 ```
+
+## SuggestionTracker
+
+In-memory counter of suggestion events grouped by calendar date.
+Implements the decision-#4 guardrail: a loaded model must produce
+at least one suggestion per active day.
+
+```python
+from datetime import datetime, timezone
+from taskclf.core.telemetry import SuggestionTracker
+
+tracker = SuggestionTracker()
+
+# Record a suggestion event
+tracker.record(datetime.now(tz=timezone.utc))
+
+# Query the count
+count = tracker.count_for_date("2026-03-28")
+
+# End-of-day check (logs a warning if zero suggestions with a loaded model)
+tracker.check_zero_suggestions("2026-03-28", model_loaded=True)
+```
+
+| Method | Description |
+|--------|-------------|
+| `record(ts)` | Increment the suggestion count for the date derived from `ts` |
+| `count_for_date(date_str)` | Return the count for a `YYYY-MM-DD` date string |
+| `check_zero_suggestions(date_str, *, model_loaded)` | Log a warning if `model_loaded` is True and count is 0 |
 
 ::: taskclf.core.telemetry

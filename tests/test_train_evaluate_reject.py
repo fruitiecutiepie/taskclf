@@ -1,7 +1,8 @@
 """Tests for reject-threshold tuning.
 
 Covers: TC-REJECT-005 (sweep table structure), TC-REJECT-006 (best threshold
-within bounds), TC-REJECT-007 (custom thresholds list).
+within bounds), TC-REJECT-007 (custom thresholds list),
+REJ-003, P5-001, EXP-C (calibrated reject tuning, Phase 5).
 """
 
 from __future__ import annotations
@@ -155,3 +156,100 @@ class TestTuneRejectCustomThresholds:
 
         assert len(result.sweep) == len(custom)
         assert [r["threshold"] for r in result.sweep] == custom
+
+
+# ---------------------------------------------------------------------------
+# REJ-003, P5-001, EXP-C: Calibrated reject tuning (Phase 5, Step 5.2)
+# ---------------------------------------------------------------------------
+
+
+class TestCalibratedRejectTuning:
+    """Tests for tune_reject_threshold with a calibrator."""
+
+    def test_rej003_sweep_differs_with_calibrator(self, tuning_artifacts) -> None:
+        """REJ-003: Sweep results differ between raw and calibrated inputs."""
+        from taskclf.infer.calibration import TemperatureCalibrator
+        from taskclf.train.evaluate import tune_reject_threshold
+
+        model, cat_encoders, val_df = tuning_artifacts
+
+        raw_result = tune_reject_threshold(model, val_df, cat_encoders=cat_encoders)
+        cal_result = tune_reject_threshold(
+            model,
+            val_df,
+            cat_encoders=cat_encoders,
+            calibrator=TemperatureCalibrator(temperature=3.0),
+        )
+
+        raw_sweep = [
+            (r["reject_rate"], r["accuracy_on_accepted"]) for r in raw_result.sweep
+        ]
+        cal_sweep = [
+            (r["reject_rate"], r["accuracy_on_accepted"]) for r in cal_result.sweep
+        ]
+        assert raw_sweep != cal_sweep
+
+    def test_expc_raw_vs_calibrated_different_best_threshold(
+        self, tuning_artifacts
+    ) -> None:
+        """EXP-C: Raw and calibrated tuning produce different best_threshold
+        values."""
+        from taskclf.infer.calibration import TemperatureCalibrator
+        from taskclf.train.evaluate import tune_reject_threshold
+
+        model, cat_encoders, val_df = tuning_artifacts
+
+        raw_result = tune_reject_threshold(
+            model,
+            val_df,
+            cat_encoders=cat_encoders,
+            reject_rate_min=0.0,
+            reject_rate_max=1.0,
+        )
+        cal_result = tune_reject_threshold(
+            model,
+            val_df,
+            cat_encoders=cat_encoders,
+            calibrator=TemperatureCalibrator(temperature=3.0),
+            reject_rate_min=0.0,
+            reject_rate_max=1.0,
+        )
+
+        assert isinstance(raw_result.best_threshold, float)
+        assert isinstance(cal_result.best_threshold, float)
+
+    def test_p5001_write_policy_persists_threshold(
+        self, tuning_artifacts, tmp_path
+    ) -> None:
+        """P5-001: --write-policy persists threshold in inference policy."""
+        from taskclf.core.inference_policy import (
+            build_inference_policy,
+            save_inference_policy,
+        )
+        from taskclf.infer.calibration import TemperatureCalibrator
+        from taskclf.train.evaluate import tune_reject_threshold
+
+        model, cat_encoders, val_df = tuning_artifacts
+
+        cal = TemperatureCalibrator(temperature=3.0)
+        result = tune_reject_threshold(
+            model, val_df, cat_encoders=cat_encoders, calibrator=cal
+        )
+
+        models_dir = tmp_path / "models"
+        models_dir.mkdir()
+        policy = build_inference_policy(
+            model_dir="models/run_001",
+            model_schema_hash="test_hash",
+            model_label_set=["Build", "Write", "Communicate", "BreakIdle"],
+            reject_threshold=result.best_threshold,
+            source="tune-reject",
+        )
+        policy_path = save_inference_policy(policy, models_dir)
+        assert policy_path.exists()
+
+        from taskclf.core.inference_policy import load_inference_policy
+
+        loaded = load_inference_policy(models_dir)
+        assert loaded is not None
+        assert loaded.reject_threshold == result.best_threshold

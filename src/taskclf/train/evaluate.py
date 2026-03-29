@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Literal, Sequence
 
 import lightgbm as lgb
 import numpy as np
@@ -14,7 +15,12 @@ from pydantic import BaseModel
 from sklearn.metrics import accuracy_score, f1_score
 from sklearn.preprocessing import LabelEncoder
 
-from taskclf.core.defaults import DEFAULT_REJECT_THRESHOLD, MIXED_UNKNOWN
+from taskclf.core.defaults import (
+    DEFAULT_BUCKET_SECONDS,
+    DEFAULT_REJECT_THRESHOLD,
+    DEFAULT_SMOOTH_WINDOW,
+    MIXED_UNKNOWN,
+)
 from taskclf.core.metrics import (
     calibration_curve_data,
     compute_metrics,
@@ -26,6 +32,8 @@ from taskclf.core.metrics import (
 )
 from taskclf.core.types import LABEL_SET_V1
 from taskclf.infer.batch import predict_proba
+from taskclf.infer.calibration import Calibrator
+from taskclf.infer.smooth import flap_rate, rolling_majority, segmentize
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +68,9 @@ class EvaluationReport(BaseModel, frozen=True):
     reject_rate: float
     acceptance_checks: dict[str, bool]
     acceptance_details: dict[str, str]
+    flip_rate: float | None = None
+    segment_duration_distribution: dict[str, int] | None = None
+    eval_mode: str = "raw"
 
 
 class RejectTuningResult(BaseModel, frozen=True):
@@ -151,6 +162,41 @@ def _check_acceptance(
     return checks, details
 
 
+def _segment_duration_distribution(
+    labels: Sequence[str],
+    bucket_seconds: int = DEFAULT_BUCKET_SECONDS,
+) -> dict[str, int]:
+    """Build a histogram of segment durations from a label sequence.
+
+    Duration buckets: ``"60s"``, ``"120s"``, ``"180s"``, ``"300s"``,
+    ``"300s+"``.  Each segment's duration is
+    ``bucket_count * bucket_seconds``.
+    """
+    if not labels:
+        return {}
+
+    timestamps = [
+        datetime(2000, 1, 1) + timedelta(seconds=i * bucket_seconds)
+        for i in range(len(labels))
+    ]
+    segments = segmentize(timestamps, list(labels), bucket_seconds)
+
+    bins = [60, 120, 180, 300]
+    hist: dict[str, int] = {}
+    for seg in segments:
+        dur = seg.bucket_count * bucket_seconds
+        placed = False
+        for b in bins:
+            if dur <= b:
+                key = f"{b}s"
+                hist[key] = hist.get(key, 0) + 1
+                placed = True
+                break
+        if not placed:
+            hist["300s+"] = hist.get("300s+", 0) + 1
+    return hist
+
+
 def evaluate_model(
     model: lgb.Booster,
     test_df: pd.DataFrame,
@@ -158,6 +204,11 @@ def evaluate_model(
     cat_encoders: dict[str, LabelEncoder] | None = None,
     holdout_users: Sequence[str] = (),
     reject_threshold: float = DEFAULT_REJECT_THRESHOLD,
+    eval_mode: Literal[
+        "raw", "calibrated", "calibrated_reject", "smoothed", "interval"
+    ] = "raw",
+    calibrator: Calibrator | None = None,
+    smooth_window: int = DEFAULT_SMOOTH_WINDOW,
 ) -> EvaluationReport:
     """Run comprehensive evaluation of a trained model on a test set.
 
@@ -174,6 +225,15 @@ def evaluate_model(
             split seen-vs-unseen evaluation.
         reject_threshold: Max-probability below which a prediction is
             treated as rejected (``Mixed/Unknown``).
+        eval_mode: Evaluation pipeline to use.  ``"raw"`` uses model
+            probabilities directly.  ``"calibrated"`` applies a calibrator
+            before metrics (no reject).  ``"calibrated_reject"`` applies
+            calibrator + reject.  ``"smoothed"`` adds rolling-majority
+            smoothing after reject.  ``"interval"`` aggregates smoothed
+            predictions into segments and evaluates per-interval accuracy.
+        calibrator: Probability calibrator to apply in non-raw modes.
+            Required when *eval_mode* is not ``"raw"``.
+        smooth_window: Window size for rolling-majority smoothing.
 
     Returns:
         A frozen :class:`EvaluationReport` with all evaluation artifacts.
@@ -183,26 +243,68 @@ def evaluate_model(
     label_names = list(le.classes_)
 
     y_proba = predict_proba(model, test_df, cat_encoders)
+
+    if eval_mode != "raw" and calibrator is not None:
+        y_proba = calibrator.calibrate(y_proba)
+
     y_pred_indices = y_proba.argmax(axis=1)
     y_pred_labels = list(le.inverse_transform(y_pred_indices))
 
-    confidences = y_proba.max(axis=1)
-    rejected = confidences < reject_threshold
-    labels_with_reject = [
-        MIXED_UNKNOWN if rej else lbl for lbl, rej in zip(y_pred_labels, rejected)
-    ]
+    apply_reject = eval_mode in ("raw", "calibrated_reject", "smoothed", "interval")
+    if apply_reject:
+        confidences = y_proba.max(axis=1)
+        rejected = confidences < reject_threshold
+        labels_for_metrics = [
+            MIXED_UNKNOWN if rej else lbl for lbl, rej in zip(y_pred_labels, rejected)
+        ]
+    else:
+        labels_for_metrics = list(y_pred_labels)
+
+    if eval_mode in ("smoothed", "interval"):
+        labels_for_metrics = rolling_majority(labels_for_metrics, smooth_window)
 
     y_true = list(test_df["label"].values)
     user_ids = list(test_df["user_id"].values)
     y_true_indices = le.transform(y_true)
 
-    metrics = compute_metrics(y_true, y_pred_labels, label_names)
-    pc = per_class_metrics(y_true, y_pred_labels, label_names)
-    cm_df = confusion_matrix_df(y_true, y_pred_labels, label_names)
-    pu = per_user_metrics(y_true, y_pred_labels, user_ids, label_names)
+    if eval_mode == "interval":
+        bucket_starts = [
+            datetime(2000, 1, 1) + timedelta(seconds=i * DEFAULT_BUCKET_SECONDS)
+            for i in range(len(labels_for_metrics))
+        ]
+        pred_segments = segmentize(
+            bucket_starts, labels_for_metrics, DEFAULT_BUCKET_SECONDS
+        )
+        true_segments = segmentize(bucket_starts, y_true, DEFAULT_BUCKET_SECONDS)
+
+        interval_correct = 0
+        interval_total = len(pred_segments)
+        true_map = {s.start_ts: s.label for s in true_segments}
+        for seg in pred_segments:
+            gold = true_map.get(seg.start_ts)
+            if gold is not None and gold == seg.label:
+                interval_correct += 1
+        interval_accuracy = (
+            interval_correct / interval_total if interval_total > 0 else 0.0
+        )
+
+        metrics = {
+            "macro_f1": round(interval_accuracy, 4),
+            "weighted_f1": round(interval_accuracy, 4),
+        }
+        pc = per_class_metrics(y_true, labels_for_metrics, label_names)
+    else:
+        metrics = compute_metrics(y_true, labels_for_metrics, label_names)
+        pc = per_class_metrics(y_true, labels_for_metrics, label_names)
+
+    cm_df = confusion_matrix_df(y_true, labels_for_metrics, label_names)
+    pu = per_user_metrics(y_true, labels_for_metrics, user_ids, label_names)
     cal = calibration_curve_data(y_true_indices, y_proba, label_names)
     strat = user_stratification_report(user_ids, y_true, label_names)
-    rr = reject_rate(labels_with_reject, MIXED_UNKNOWN)
+    rr = reject_rate(labels_for_metrics, MIXED_UNKNOWN)
+
+    fr = round(flap_rate(labels_for_metrics), 4)
+    seg_dist = _segment_duration_distribution(labels_for_metrics)
 
     seen_f1: float | None = None
     unseen_f1: float | None = None
@@ -214,7 +316,7 @@ def evaluate_model(
 
         if any(seen_mask):
             seen_true = [y for y, m in zip(y_true, seen_mask) if m]
-            seen_pred = [y for y, m in zip(y_pred_labels, seen_mask) if m]
+            seen_pred = [y for y, m in zip(labels_for_metrics, seen_mask) if m]
             seen_f1 = round(
                 float(
                     f1_score(
@@ -230,7 +332,7 @@ def evaluate_model(
 
         if any(unseen_mask):
             unseen_true = [y for y, m in zip(y_true, unseen_mask) if m]
-            unseen_pred = [y for y, m in zip(y_pred_labels, unseen_mask) if m]
+            unseen_pred = [y for y, m in zip(labels_for_metrics, unseen_mask) if m]
             unseen_f1 = round(
                 float(
                     f1_score(
@@ -267,6 +369,9 @@ def evaluate_model(
         reject_rate=round(rr, 4),
         acceptance_checks=checks,
         acceptance_details=check_details,
+        flip_rate=fr,
+        segment_duration_distribution=seg_dist,
+        eval_mode=eval_mode,
     )
 
 
@@ -278,6 +383,7 @@ def tune_reject_threshold(
     thresholds: Sequence[float] | None = None,
     reject_rate_min: float = _ACCEPT_REJECT_RATE_MIN,
     reject_rate_max: float = _ACCEPT_REJECT_RATE_MAX,
+    calibrator: Calibrator | None = None,
 ) -> RejectTuningResult:
     """Sweep reject thresholds and pick the best one.
 
@@ -296,6 +402,10 @@ def tune_reject_threshold(
             ``np.arange(0.10, 1.00, 0.05)``.
         reject_rate_min: Lower bound for acceptable reject rate.
         reject_rate_max: Upper bound for acceptable reject rate.
+        calibrator: When provided, raw probabilities are calibrated
+            before extracting confidences for the threshold sweep.
+            This ensures the threshold is tuned on the same probability
+            space used at inference time.
 
     Returns:
         A :class:`RejectTuningResult` with the optimal threshold and
@@ -309,6 +419,8 @@ def tune_reject_threshold(
     label_names = list(le.classes_)
 
     y_proba = predict_proba(model, val_df, cat_encoders)
+    if calibrator is not None:
+        y_proba = calibrator.calibrate(y_proba)
     y_pred_indices = y_proba.argmax(axis=1)
     y_pred_labels = np.array(le.inverse_transform(y_pred_indices))
     y_true = np.array(val_df["label"].values)

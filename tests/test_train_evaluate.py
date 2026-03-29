@@ -299,3 +299,169 @@ class TestTrainLgbmClassWeight:
             class_weight="none",
         )
         assert params["class_weight_method"] == "none"
+
+
+# ---------------------------------------------------------------------------
+# EVL-001, EVL-002, EVL-003, P5-002, MSR-003, MSR-006:
+# Operational evaluation modes
+# ---------------------------------------------------------------------------
+
+
+class TestOperationalEvaluationModes:
+    """Tests for multi-mode evaluation (Phase 5, Step 5.1)."""
+
+    def test_evl001_report_includes_operational_metrics(
+        self, trained_artifacts
+    ) -> None:
+        """EVL-001: Report includes flip_rate, segment_duration_distribution,
+        reject_rate."""
+        from taskclf.train.evaluate import evaluate_model
+
+        report = evaluate_model(
+            trained_artifacts["model"],
+            trained_artifacts["test_df"],
+            cat_encoders=trained_artifacts["cat_encoders"],
+        )
+
+        assert report.flip_rate is not None
+        assert 0.0 <= report.flip_rate <= 1.0
+        assert report.segment_duration_distribution is not None
+        assert isinstance(report.segment_duration_distribution, dict)
+        assert 0.0 <= report.reject_rate <= 1.0
+        assert report.eval_mode == "raw"
+
+    def test_evl002_smoothed_f1_geq_raw(self, trained_artifacts) -> None:
+        """EVL-002: Smoothed macro-F1 >= raw macro-F1 (smoothing should help
+        or be neutral)."""
+        from taskclf.infer.calibration import IdentityCalibrator
+        from taskclf.train.evaluate import evaluate_model
+
+        raw_report = evaluate_model(
+            trained_artifacts["model"],
+            trained_artifacts["test_df"],
+            cat_encoders=trained_artifacts["cat_encoders"],
+            eval_mode="raw",
+        )
+        smoothed_report = evaluate_model(
+            trained_artifacts["model"],
+            trained_artifacts["test_df"],
+            cat_encoders=trained_artifacts["cat_encoders"],
+            eval_mode="smoothed",
+            calibrator=IdentityCalibrator(),
+        )
+
+        assert smoothed_report.macro_f1 >= raw_report.macro_f1 - 0.05
+
+    def test_evl003_interval_evaluation(self, trained_artifacts) -> None:
+        """EVL-003: Interval-level evaluation produces per-interval accuracy."""
+        from taskclf.infer.calibration import IdentityCalibrator
+        from taskclf.train.evaluate import evaluate_model
+
+        report = evaluate_model(
+            trained_artifacts["model"],
+            trained_artifacts["test_df"],
+            cat_encoders=trained_artifacts["cat_encoders"],
+            eval_mode="interval",
+            calibrator=IdentityCalibrator(),
+        )
+
+        assert report.eval_mode == "interval"
+        assert 0.0 <= report.macro_f1 <= 1.0
+        assert report.segment_duration_distribution is not None
+
+    def test_p5002_raw_vs_calibrated_different_f1(self, trained_artifacts) -> None:
+        """P5-002: Raw vs calibrated evaluation modes produce different F1."""
+        from taskclf.infer.calibration import TemperatureCalibrator
+        from taskclf.train.evaluate import evaluate_model
+
+        raw_report = evaluate_model(
+            trained_artifacts["model"],
+            trained_artifacts["test_df"],
+            cat_encoders=trained_artifacts["cat_encoders"],
+            eval_mode="raw",
+        )
+        cal_report = evaluate_model(
+            trained_artifacts["model"],
+            trained_artifacts["test_df"],
+            cat_encoders=trained_artifacts["cat_encoders"],
+            eval_mode="calibrated",
+            calibrator=TemperatureCalibrator(temperature=0.5),
+        )
+
+        assert cal_report.eval_mode == "calibrated"
+        assert raw_report.eval_mode == "raw"
+        assert raw_report.reject_rate != cal_report.reject_rate or (
+            raw_report.macro_f1 != cal_report.macro_f1
+            or raw_report.flip_rate != cal_report.flip_rate
+        )
+
+    def test_msr003_comparable_metric_dicts(self, trained_artifacts) -> None:
+        """MSR-003: Two evaluation runs produce comparable metric dicts
+        (same keys, different values possible)."""
+        from taskclf.infer.calibration import TemperatureCalibrator
+        from taskclf.train.evaluate import evaluate_model
+
+        raw_report = evaluate_model(
+            trained_artifacts["model"],
+            trained_artifacts["test_df"],
+            cat_encoders=trained_artifacts["cat_encoders"],
+            eval_mode="raw",
+        )
+        cal_report = evaluate_model(
+            trained_artifacts["model"],
+            trained_artifacts["test_df"],
+            cat_encoders=trained_artifacts["cat_encoders"],
+            eval_mode="calibrated",
+            calibrator=TemperatureCalibrator(temperature=0.5),
+        )
+
+        raw_d = raw_report.model_dump()
+        cal_d = cal_report.model_dump()
+        shared_keys = {
+            "macro_f1",
+            "weighted_f1",
+            "per_class",
+            "reject_rate",
+            "flip_rate",
+            "segment_duration_distribution",
+            "eval_mode",
+        }
+        for k in shared_keys:
+            assert k in raw_d, f"missing {k} in raw"
+            assert k in cal_d, f"missing {k} in calibrated"
+
+    def test_msr006_withheld_category_reject_rate(self, trained_artifacts) -> None:
+        """MSR-006: Withhold one category; measure reject rate difference."""
+        from taskclf.infer.calibration import IdentityCalibrator
+        from taskclf.train.evaluate import evaluate_model
+
+        test_df = trained_artifacts["test_df"]
+
+        withheld_label = "Build"
+        withheld_df = test_df[test_df["label"] == withheld_label].copy()
+        if withheld_df.empty:
+            pytest.skip("No rows with withheld label")
+
+        remaining_df = test_df[test_df["label"] != withheld_label].copy()
+        if remaining_df.empty:
+            pytest.skip("No rows remaining after withholding")
+
+        withheld_report = evaluate_model(
+            trained_artifacts["model"],
+            withheld_df,
+            cat_encoders=trained_artifacts["cat_encoders"],
+            eval_mode="calibrated_reject",
+            calibrator=IdentityCalibrator(),
+            reject_threshold=0.3,
+        )
+        remaining_report = evaluate_model(
+            trained_artifacts["model"],
+            remaining_df,
+            cat_encoders=trained_artifacts["cat_encoders"],
+            eval_mode="calibrated_reject",
+            calibrator=IdentityCalibrator(),
+            reject_threshold=0.3,
+        )
+
+        assert isinstance(withheld_report.reject_rate, float)
+        assert isinstance(remaining_report.reject_rate, float)

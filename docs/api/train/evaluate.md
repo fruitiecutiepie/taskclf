@@ -5,7 +5,9 @@ Full model evaluation pipeline: metrics, calibration, acceptance checks.
 ## Overview
 
 Evaluates a trained LightGBM model against labeled test data and
-produces a comprehensive report with acceptance-gate verdicts:
+produces a comprehensive report with acceptance-gate verdicts.
+Supports multiple evaluation modes so offline metrics align with
+deployed inference behavior:
 
 ```
 model + test_df → evaluate_model → EvaluationReport
@@ -15,6 +17,8 @@ model + test_df → evaluate_model → EvaluationReport
                                        ├── calibration curves
                                        ├── user stratification
                                        ├── reject rate
+                                       ├── flip rate
+                                       ├── segment duration distribution
                                        └── acceptance checks (pass/fail)
 ```
 
@@ -42,6 +46,9 @@ Frozen Pydantic model containing all evaluation artifacts.
 | `reject_rate` | `float` | Fraction of predictions below the reject threshold |
 | `acceptance_checks` | `dict[str, bool]` | Named acceptance gates (pass/fail) |
 | `acceptance_details` | `dict[str, str]` | Human-readable detail string per check |
+| `flip_rate` | `float \| None` | Label-change rate (transitions / total windows) |
+| `segment_duration_distribution` | `dict[str, int] \| None` | Histogram of segment durations by bucket (`"60s"`, `"120s"`, `"180s"`, `"300s"`, `"300s+"`) |
+| `eval_mode` | `str` | Which evaluation pipeline was used (`"raw"`, `"calibrated"`, `"calibrated_reject"`, `"smoothed"`, `"interval"`) |
 
 ### RejectTuningResult
 
@@ -51,6 +58,21 @@ Result of sweeping reject thresholds on a validation set.
 |-------|------|-------------|
 | `best_threshold` | `float` | Threshold maximizing accuracy on accepted windows within reject-rate bounds |
 | `sweep` | `list[dict[str, float]]` | Per-threshold row with `threshold`, `accuracy_on_accepted`, `reject_rate`, `coverage`, `macro_f1` |
+
+## Evaluation modes
+
+The `eval_mode` parameter controls the evaluation pipeline:
+
+| Mode | Calibrator | Reject | Smoothing | Description |
+|------|-----------|--------|-----------|-------------|
+| `"raw"` | No | Yes | No | Default; raw model probabilities with reject threshold |
+| `"calibrated"` | Yes | No | No | Calibrated probabilities, no reject |
+| `"calibrated_reject"` | Yes | Yes | No | Calibrated probabilities with reject threshold |
+| `"smoothed"` | Yes | Yes | Yes | Calibrated + reject + rolling-majority smoothing |
+| `"interval"` | Yes | Yes | Yes | Smoothed predictions aggregated into segments; interval-level accuracy |
+
+Non-raw modes require a `calibrator` implementing the
+[`Calibrator`](../infer/calibration.md) protocol.
 
 ## Acceptance checks
 
@@ -81,6 +103,9 @@ evaluate_model(
     cat_encoders: dict[str, LabelEncoder] | None = None,
     holdout_users: Sequence[str] = (),
     reject_threshold: float = DEFAULT_REJECT_THRESHOLD,
+    eval_mode: Literal["raw", "calibrated", "calibrated_reject", "smoothed", "interval"] = "raw",
+    calibrator: Calibrator | None = None,
+    smooth_window: int = DEFAULT_SMOOTH_WINDOW,
 ) -> EvaluationReport
 ```
 
@@ -88,6 +113,9 @@ Runs comprehensive evaluation: overall metrics, per-class and per-user
 breakdowns, calibration curves, user stratification, and acceptance
 checks.  When `holdout_users` is non-empty, computes separate
 seen/unseen-user F1 scores.
+
+The `eval_mode` parameter selects the evaluation pipeline (see table
+above).  Non-raw modes require a `calibrator`.
 
 ### tune_reject_threshold
 
@@ -100,6 +128,7 @@ tune_reject_threshold(
     thresholds: Sequence[float] | None = None,
     reject_rate_min: float = 0.05,
     reject_rate_max: float = 0.30,
+    calibrator: Calibrator | None = None,
 ) -> RejectTuningResult
 ```
 
@@ -108,6 +137,10 @@ and picks the one that maximizes accuracy on accepted windows while
 keeping the reject rate within `[reject_rate_min, reject_rate_max]`.
 Falls back to `DEFAULT_REJECT_THRESHOLD` (0.55) if no candidate
 satisfies the bounds.
+
+When `calibrator` is provided, raw probabilities are calibrated before
+extracting confidences for the threshold sweep.  This ensures the
+threshold is tuned on the same probability space used at inference time.
 
 ### write_evaluation_artifacts
 
@@ -138,24 +171,39 @@ from taskclf.train.evaluate import (
     write_evaluation_artifacts,
 )
 from taskclf.core.model_io import load_model_bundle
+from taskclf.infer.calibration import TemperatureCalibrator
 
 model, metadata, cat_encoders = load_model_bundle(Path("models/run_001"))
 
-# Evaluate
-report = evaluate_model(
+# Raw evaluation (default)
+raw_report = evaluate_model(
     model, test_df,
     cat_encoders=cat_encoders,
     holdout_users=["user-X"],
 )
-print(f"Macro F1: {report.macro_f1:.4f}")
-print(f"All checks pass: {all(report.acceptance_checks.values())}")
+print(f"Macro F1: {raw_report.macro_f1:.4f}")
+print(f"Flip rate: {raw_report.flip_rate:.4f}")
 
-# Tune reject threshold
-result = tune_reject_threshold(model, val_df, cat_encoders=cat_encoders)
+# Calibrated evaluation
+cal = TemperatureCalibrator(temperature=1.2)
+cal_report = evaluate_model(
+    model, test_df,
+    cat_encoders=cat_encoders,
+    eval_mode="calibrated",
+    calibrator=cal,
+)
+print(f"Calibrated F1: {cal_report.macro_f1:.4f}")
+
+# Tune reject threshold on calibrated scores
+result = tune_reject_threshold(
+    model, val_df,
+    cat_encoders=cat_encoders,
+    calibrator=cal,
+)
 print(f"Best threshold: {result.best_threshold}")
 
 # Write artifacts
-paths = write_evaluation_artifacts(report, Path("artifacts/eval"))
+paths = write_evaluation_artifacts(raw_report, Path("artifacts/eval"))
 ```
 
 ::: taskclf.train.evaluate
