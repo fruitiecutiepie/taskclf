@@ -37,6 +37,8 @@ def valid_feature_row_data() -> dict[str, Any]:
         "app_foreground_time_ratio": 0.85,
         "app_change_count": 1,
         "app_dwell_time_seconds": 60.0,
+        "app_entropy_5m": 1.5,
+        "app_entropy_15m": 2.0,
         "keys_per_min": 60.0,
         "backspace_ratio": 0.05,
         "shortcut_rate": 0.1,

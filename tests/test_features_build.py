@@ -451,3 +451,36 @@ class TestAppDwellTimeSeconds:
         rows = generate_dummy_features(_DATE, n_rows=10)
         for row in rows:
             assert row.app_dwell_time_seconds >= 0.0
+
+
+# ---------------------------------------------------------------------------
+# P6-001: app_entropy_5m, app_entropy_15m features
+# ---------------------------------------------------------------------------
+
+
+class TestAppEntropy:
+    """P6-001: app_entropy_5m / app_entropy_15m feature computation."""
+
+    def test_entropy_populated_in_build(self) -> None:
+        """build_features_from_aw_events populates entropy fields."""
+        base = dt.datetime(2025, 6, 15, 10, 0, 0)
+        events = [
+            _window_ev_app(base, "com.app.A", duration=30.0),
+            _window_ev_app(base + dt.timedelta(seconds=30), "com.app.B", duration=30.0),
+        ]
+        rows = build_features_from_aw_events(events)
+        assert len(rows) >= 1
+        row = rows[0]
+        assert row.app_entropy_5m is not None
+        assert row.app_entropy_5m >= 0.0
+        assert row.app_entropy_15m is not None
+        assert row.app_entropy_15m >= 0.0
+
+    def test_entropy_in_dummy_features(self) -> None:
+        """Dummy features produce non-negative entropy values."""
+        rows = generate_dummy_features(_DATE, n_rows=10)
+        for row in rows:
+            assert row.app_entropy_5m is not None
+            assert row.app_entropy_5m >= 0.0
+            assert row.app_entropy_15m is not None
+            assert row.app_entropy_15m >= 0.0

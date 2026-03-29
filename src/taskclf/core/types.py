@@ -96,7 +96,8 @@ class FeatureRow(BaseModel, frozen=True):
     - **context** — ``app_id``, ``app_category``, ``window_title_hash``,
       ``is_browser``, ``is_editor``, ``is_terminal``,
       ``app_switch_count_last_5m``, ``app_foreground_time_ratio``,
-      ``app_change_count``, ``app_dwell_time_seconds``.
+      ``app_change_count``, ``app_dwell_time_seconds``,
+      ``app_entropy_5m``, ``app_entropy_15m``.
     - **keyboard / mouse** — nullable until the corresponding collector is
       wired (``keys_per_min``, ``backspace_ratio``, ``shortcut_rate``,
       ``clicks_per_min``, ``scroll_events_per_min``, ``mouse_distance``).
@@ -160,6 +161,16 @@ class FeatureRow(BaseModel, frozen=True):
     app_dwell_time_seconds: float = Field(
         ge=0.0,
         description="Seconds the dominant app has been foreground continuously across consecutive buckets.",
+    )
+    app_entropy_5m: float | None = Field(
+        default=None,
+        ge=0.0,
+        description="Shannon entropy of app duration distribution over the last 5 minutes.",
+    )
+    app_entropy_15m: float | None = Field(
+        default=None,
+        ge=0.0,
+        description="Shannon entropy of app duration distribution over the last 15 minutes.",
     )
 
     # -- keyboard (nullable until collector is wired) --

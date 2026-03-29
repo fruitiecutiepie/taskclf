@@ -23,6 +23,8 @@ FEATURE_COLUMNS: Final[list[str]] = [
     "app_foreground_time_ratio",
     "app_change_count",
     "app_dwell_time_seconds",
+    "app_entropy_5m",
+    "app_entropy_15m",
     "keys_per_min",
     "backspace_ratio",
     "shortcut_rate",

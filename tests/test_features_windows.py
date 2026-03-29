@@ -16,6 +16,7 @@ import datetime as dt
 
 from taskclf.adapters.activitywatch.types import AWEvent
 from taskclf.features.windows import (
+    app_entropy_in_window,
     app_switch_count_in_window,
     compute_rolling_app_switches,
 )
@@ -245,3 +246,94 @@ class TestAppSwitchCountAwareUtc:
         ]
         result = compute_rolling_app_switches(events, [base])
         assert result == [1]
+
+
+# ---------------------------------------------------------------------------
+# P6-001: app_entropy_5m / app_entropy_15m (Shannon entropy)
+# ---------------------------------------------------------------------------
+
+
+def _ev_dur(ts: dt.datetime, app: str, duration: float = 30.0) -> AWEvent:
+    """Helper creating an event with a specific duration."""
+    return AWEvent(
+        timestamp=ts,
+        duration_seconds=duration,
+        app_id=app,
+        window_title_hash="aabbccddee00",
+        is_browser=False,
+        is_editor=False,
+        is_terminal=False,
+        app_category="other",
+    )
+
+
+class TestAppEntropyInWindow:
+    """P6-001: Shannon entropy of app distribution in a look-back window."""
+
+    def test_single_app_zero_entropy(self) -> None:
+        """One app in the window yields entropy 0.0."""
+        base = dt.datetime(2026, 2, 23, 10, 0, 0)
+        events = [
+            _ev_dur(base, "app.one", 30.0),
+            _ev_dur(base + dt.timedelta(seconds=30), "app.one", 30.0),
+        ]
+        result = app_entropy_in_window(events, base)
+        assert result == 0.0
+
+    def test_two_equal_apps_one_bit(self) -> None:
+        """Two apps with equal duration yields entropy 1.0 bit."""
+        base = dt.datetime(2026, 2, 23, 10, 0, 0)
+        events = [
+            _ev_dur(base, "app.one", 30.0),
+            _ev_dur(base + dt.timedelta(seconds=30), "app.two", 30.0),
+        ]
+        result = app_entropy_in_window(events, base)
+        assert result == 1.0
+
+    def test_three_unequal_apps(self) -> None:
+        """Three apps with unequal durations produce expected entropy."""
+        import math
+
+        base = dt.datetime(2026, 2, 23, 10, 0, 0)
+        events = [
+            _ev_dur(base, "app.one", 30.0),
+            _ev_dur(base + dt.timedelta(seconds=30), "app.two", 20.0),
+            _ev_dur(base + dt.timedelta(seconds=50), "app.three", 10.0),
+        ]
+        result = app_entropy_in_window(events, base)
+        assert result is not None
+
+        total = 60.0
+        p1, p2, p3 = 30 / total, 20 / total, 10 / total
+        expected = -(p1 * math.log2(p1) + p2 * math.log2(p2) + p3 * math.log2(p3))
+        assert result == round(expected, 4)
+
+    def test_no_events_returns_none(self) -> None:
+        """Empty event list yields None."""
+        base = dt.datetime(2026, 2, 23, 10, 0, 0)
+        result = app_entropy_in_window([], base)
+        assert result is None
+
+    def test_events_outside_window_returns_none(self) -> None:
+        """Events entirely outside the window yield None."""
+        base = dt.datetime(2026, 2, 23, 10, 0, 0)
+        events = [
+            _ev_dur(base - dt.timedelta(minutes=20), "app.one", 30.0),
+        ]
+        result = app_entropy_in_window(events, base)
+        assert result is None
+
+    def test_custom_window_minutes(self) -> None:
+        """Wider window captures more events, potentially changing entropy."""
+        base = dt.datetime(2026, 2, 23, 10, 0, 0)
+        events = [
+            _ev_dur(base - dt.timedelta(minutes=10), "app.one", 30.0),
+            _ev_dur(base, "app.two", 30.0),
+        ]
+        narrow = app_entropy_in_window(events, base, window_minutes=5)
+        wide = app_entropy_in_window(events, base, window_minutes=15)
+
+        assert narrow is not None
+        assert narrow == 0.0
+        assert wide is not None
+        assert wide == 1.0

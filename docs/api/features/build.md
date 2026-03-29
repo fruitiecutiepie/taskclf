@@ -59,7 +59,7 @@ Sub-modules invoked per bucket:
 
 | Sub-module | Columns produced |
 |------------|------------------|
-| [`features.windows`](windows.md) | `app_switch_count_last_5m`, `app_switch_count_last_15m` |
+| [`features.windows`](windows.md) | `app_switch_count_last_5m`, `app_switch_count_last_15m`, `app_entropy_5m`, `app_entropy_15m` |
 | [`features.sessions`](sessions.md) | `session_id`, `session_length_so_far` |
 | [`features.domain`](domain.md) | `domain_category` |
 | [`features.text`](text.md) | `window_title_bucket`, `title_repeat_count_session` |
@@ -71,6 +71,13 @@ Sub-modules invoked per bucket:
 long the current dominant app has been foreground continuously across
 consecutive buckets.  When the dominant app changes the counter resets;
 when it stays the same the previous dwell is accumulated.
+
+`app_entropy_5m` and `app_entropy_15m` are Shannon entropy values of the
+app duration distribution over the last 5 and 15 minutes respectively.
+They are computed by `features.windows.app_entropy_in_window`.  A single
+focused app yields entropy 0; uniform usage across N apps yields
+log2(N).  These features capture how "scattered" the user's app usage
+is within a time window.
 
 ```python
 from taskclf.features.build import build_features_from_aw_events

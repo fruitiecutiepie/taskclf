@@ -32,7 +32,7 @@ from taskclf.features.sessions import (
     session_start_for_bucket,
 )
 from taskclf.features.text import title_hash_bucket
-from taskclf.features.windows import app_switch_count_in_window
+from taskclf.features.windows import app_entropy_in_window, app_switch_count_in_window
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +120,8 @@ def generate_dummy_features(
                 app_dwell_time_seconds=round(
                     DEFAULT_BUCKET_SECONDS * (0.5 + (i % 5) * 0.1), 2
                 ),
+                app_entropy_5m=round(0.5 + (i % 5) * 0.3, 2),
+                app_entropy_15m=round(0.8 + (i % 5) * 0.25, 2),
                 keys_per_min=keys,
                 backspace_ratio=round(0.05 + (i % 5) * 0.02, 2),
                 shortcut_rate=round(0.1 + (i % 3) * 0.05, 2),
@@ -369,6 +371,19 @@ def build_features_from_aw_events(
             bucket_seconds=bucket_seconds,
         )
 
+        entropy_5m = app_entropy_in_window(
+            all_events_sorted,
+            bucket_ts,
+            window_minutes=DEFAULT_ROLLING_WINDOW_5,
+            bucket_seconds=bucket_seconds,
+        )
+        entropy_15m = app_entropy_in_window(
+            all_events_sorted,
+            bucket_ts,
+            window_minutes=DEFAULT_APP_SWITCH_WINDOW_15M,
+            bucket_seconds=bucket_seconds,
+        )
+
         cur_session = session_start_for_bucket(bucket_ts, session_starts)
         elapsed_minutes = (bucket_ts - cur_session).total_seconds() / 60.0
         sid = session_id_map[cur_session]
@@ -418,6 +433,8 @@ def build_features_from_aw_events(
                 app_foreground_time_ratio=round(foreground_ratio, 4),
                 app_change_count=change_count,
                 app_dwell_time_seconds=round(current_dwell, 2),
+                app_entropy_5m=entropy_5m,
+                app_entropy_15m=entropy_15m,
                 keys_per_min=input_agg["keys_per_min"],
                 backspace_ratio=None,
                 shortcut_rate=None,
