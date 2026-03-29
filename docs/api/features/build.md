@@ -64,6 +64,13 @@ Sub-modules invoked per bucket:
 | [`features.domain`](domain.md) | `domain_category` |
 | [`features.text`](text.md) | `window_title_bucket`, `title_repeat_count_session` |
 | [`features.dynamics`](dynamics.md) | Rolling means and deltas (7 columns) |
+| *(inline)* | `app_dwell_time_seconds` |
+
+`app_dwell_time_seconds` is computed directly in
+`build_features_from_aw_events` (not via a sub-module).  It tracks how
+long the current dominant app has been foreground continuously across
+consecutive buckets.  When the dominant app changes the counter resets;
+when it stays the same the previous dwell is accumulated.
 
 ```python
 from taskclf.features.build import build_features_from_aw_events

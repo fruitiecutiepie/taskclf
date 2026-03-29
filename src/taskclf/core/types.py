@@ -96,7 +96,7 @@ class FeatureRow(BaseModel, frozen=True):
     - **context** — ``app_id``, ``app_category``, ``window_title_hash``,
       ``is_browser``, ``is_editor``, ``is_terminal``,
       ``app_switch_count_last_5m``, ``app_foreground_time_ratio``,
-      ``app_change_count``.
+      ``app_change_count``, ``app_dwell_time_seconds``.
     - **keyboard / mouse** — nullable until the corresponding collector is
       wired (``keys_per_min``, ``backspace_ratio``, ``shortcut_rate``,
       ``clicks_per_min``, ``scroll_events_per_min``, ``mouse_distance``).
@@ -156,6 +156,10 @@ class FeatureRow(BaseModel, frozen=True):
     )
     app_change_count: int = Field(
         ge=0, description="Number of app transitions within this bucket."
+    )
+    app_dwell_time_seconds: float = Field(
+        ge=0.0,
+        description="Seconds the dominant app has been foreground continuously across consecutive buckets.",
     )
 
     # -- keyboard (nullable until collector is wired) --

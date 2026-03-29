@@ -32,6 +32,7 @@ _COLUMNS_V1: Final[dict[str, type]] = {
     "app_switch_count_last_5m": int,
     "app_foreground_time_ratio": float,
     "app_change_count": int,
+    "app_dwell_time_seconds": float,
     "keys_per_min": float,
     "backspace_ratio": float,
     "shortcut_rate": float,

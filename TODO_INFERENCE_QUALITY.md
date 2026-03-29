@@ -1482,6 +1482,8 @@ For each candidate feature group:
 7. Verify privacy safety (`tests/test_security_privacy.py`).
 8. Run the full evaluation to measure impact. Only keep the feature if it improves or maintains quality.
 
+  - [x] app_dwell_time_seconds ✅ 2026-03-29
+
 Candidate feature priority order (add one group, evaluate, then decide on the next):
 1. `app_dwell_time_seconds` — how long the dominant app has been foreground continuously.
 2. `app_entropy_5m`, `app_entropy_15m` — Shannon entropy of app distribution over 5/15 minute windows.

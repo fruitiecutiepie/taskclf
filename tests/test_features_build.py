@@ -386,3 +386,68 @@ class TestBuildFeaturesFromAWEventsInputEvents:
         for field_name in _INPUT_FIELDS:
             val = getattr(row, field_name)
             assert val is None, f"{field_name} should be None without input events"
+
+
+# ---------------------------------------------------------------------------
+# P6-001: app_dwell_time_seconds feature
+# ---------------------------------------------------------------------------
+
+
+def _window_ev_app(ts: dt.datetime, app_id: str, duration: float = 60.0) -> AWEvent:
+    """Helper to create a window event with a specific app_id."""
+    return AWEvent(
+        timestamp=ts,
+        duration_seconds=duration,
+        app_id=app_id,
+        window_title_hash="hash-test",
+        is_browser=False,
+        is_editor=False,
+        is_terminal=False,
+        app_category="test",
+    )
+
+
+class TestAppDwellTimeSeconds:
+    """P6-001: app_dwell_time_seconds feature computation correctness."""
+
+    def test_dwell_accumulates_across_same_app_buckets(self) -> None:
+        """Consecutive buckets with the same dominant app accumulate dwell."""
+        base = dt.datetime(2025, 6, 15, 10, 0, 0)
+        events = [
+            _window_ev_app(base, "com.app.A", duration=60.0),
+            _window_ev_app(base + dt.timedelta(seconds=60), "com.app.A", duration=60.0),
+            _window_ev_app(
+                base + dt.timedelta(seconds=120), "com.app.A", duration=60.0
+            ),
+        ]
+
+        rows = build_features_from_aw_events(events)
+        assert len(rows) == 3
+
+        assert rows[0].app_dwell_time_seconds == 60.0
+        assert rows[1].app_dwell_time_seconds == 120.0
+        assert rows[2].app_dwell_time_seconds == 180.0
+
+    def test_dwell_resets_on_app_change(self) -> None:
+        """Dwell resets when the dominant app changes between buckets."""
+        base = dt.datetime(2025, 6, 15, 10, 0, 0)
+        events = [
+            _window_ev_app(base, "com.app.A", duration=60.0),
+            _window_ev_app(base + dt.timedelta(seconds=60), "com.app.A", duration=60.0),
+            _window_ev_app(
+                base + dt.timedelta(seconds=120), "com.app.B", duration=60.0
+            ),
+        ]
+
+        rows = build_features_from_aw_events(events)
+        assert len(rows) == 3
+
+        assert rows[0].app_dwell_time_seconds == 60.0
+        assert rows[1].app_dwell_time_seconds == 120.0
+        assert rows[2].app_dwell_time_seconds == 60.0
+
+    def test_dwell_in_dummy_features(self) -> None:
+        """Dummy features produce non-negative app_dwell_time_seconds."""
+        rows = generate_dummy_features(_DATE, n_rows=10)
+        for row in rows:
+            assert row.app_dwell_time_seconds >= 0.0

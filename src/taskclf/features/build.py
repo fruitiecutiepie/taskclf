@@ -117,6 +117,9 @@ def generate_dummy_features(
                 app_switch_count_last_5m=i % 5,
                 app_foreground_time_ratio=round(0.5 + (i % 5) * 0.1, 2),
                 app_change_count=i % 4,
+                app_dwell_time_seconds=round(
+                    DEFAULT_BUCKET_SECONDS * (0.5 + (i % 5) * 0.1), 2
+                ),
                 keys_per_min=keys,
                 backspace_ratio=round(0.05 + (i % 5) * 0.02, 2),
                 shortcut_rate=round(0.1 + (i % 3) * 0.05, 2),
@@ -326,6 +329,9 @@ def build_features_from_aw_events(
         lambda: defaultdict(int)
     )
 
+    prev_dominant_app: str | None = None
+    current_dwell: float = 0.0
+
     rows: list[FeatureRow] = []
     for bucket_ts in sorted_buckets:
         evs = bucket_events[bucket_ts]
@@ -338,6 +344,13 @@ def build_features_from_aw_events(
         dominant_ev = next(ev for ev in evs if ev.app_id == dominant_app_id)
 
         foreground_ratio = min(app_durations[dominant_app_id] / bucket_seconds, 1.0)
+
+        dominant_foreground_secs = app_durations[dominant_app_id]
+        if dominant_app_id == prev_dominant_app:
+            current_dwell += dominant_foreground_secs
+        else:
+            current_dwell = dominant_foreground_secs
+        prev_dominant_app = dominant_app_id
 
         sorted_evs = sorted(evs, key=lambda e: e.timestamp)
         change_count = sum(
@@ -404,6 +417,7 @@ def build_features_from_aw_events(
                 app_switch_count_last_5m=switch_count,
                 app_foreground_time_ratio=round(foreground_ratio, 4),
                 app_change_count=change_count,
+                app_dwell_time_seconds=round(current_dwell, 2),
                 keys_per_min=input_agg["keys_per_min"],
                 backspace_ratio=None,
                 shortcut_rate=None,

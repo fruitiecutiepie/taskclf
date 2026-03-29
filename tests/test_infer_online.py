@@ -243,6 +243,7 @@ class TestOnlineFeatureState:
             app_switch_count_last_5m=0,
             app_foreground_time_ratio=1.0,
             app_change_count=0,
+            app_dwell_time_seconds=60.0,
             keys_per_min=keys_per_min,
             clicks_per_min=clicks_per_min,
             mouse_distance=mouse_distance,
