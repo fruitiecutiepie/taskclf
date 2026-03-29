@@ -11,6 +11,7 @@ Covers:
 from __future__ import annotations
 
 import json
+import urllib.error
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
@@ -18,6 +19,9 @@ from unittest.mock import patch
 import pytest
 
 from taskclf.adapters.activitywatch.client import (
+    AWConnectionError,
+    AWTimeoutError,
+    _api_get,
     _raw_event_to_aw_event,
     fetch_aw_events,
     fetch_aw_input_events,
@@ -768,3 +772,57 @@ class TestFetchAwInputEvents:
         assert "/api/0/buckets/aw-watcher-input_myhost/events" in url
         assert "start=" in url
         assert "end=" in url
+
+
+# ---------------------------------------------------------------------------
+# Typed exception wrapping in _api_get
+# ---------------------------------------------------------------------------
+
+_MOCK_URLOPEN = "taskclf.adapters.activitywatch.client.urllib.request.urlopen"
+
+
+class TestApiGetExceptions:
+    """_api_get wraps low-level errors into AWConnectionError / AWTimeoutError."""
+
+    @patch(_MOCK_URLOPEN, side_effect=ConnectionRefusedError("refused"))
+    def test_connection_refused_raises_aw_connection_error(self, _mock) -> None:
+        with pytest.raises(AWConnectionError):
+            _api_get("http://localhost:5600/api/0/buckets/")
+
+    @patch(
+        _MOCK_URLOPEN,
+        side_effect=urllib.error.URLError("connection refused"),
+    )
+    def test_url_error_raises_aw_connection_error(self, _mock) -> None:
+        with pytest.raises(AWConnectionError):
+            _api_get("http://localhost:5600/api/0/buckets/")
+
+    @patch(_MOCK_URLOPEN, side_effect=TimeoutError("timed out"))
+    def test_timeout_raises_aw_timeout_error(self, _mock) -> None:
+        with pytest.raises(AWTimeoutError):
+            _api_get("http://localhost:5600/api/0/buckets/")
+
+    @patch(_MOCK_URLOPEN, side_effect=ConnectionResetError("reset"))
+    def test_connection_reset_raises_aw_connection_error(self, _mock) -> None:
+        with pytest.raises(AWConnectionError):
+            _api_get("http://localhost:5600/api/0/buckets/")
+
+    @patch(_MOCK_URLOPEN, side_effect=TimeoutError("timed out"))
+    def test_timeout_error_preserves_url_and_timeout(self, _mock) -> None:
+        with pytest.raises(AWTimeoutError) as exc_info:
+            _api_get("http://localhost:5600/api/0/buckets/", timeout=5)
+        assert exc_info.value.url == "http://localhost:5600/api/0/buckets/"
+        assert exc_info.value.timeout == 5
+
+    @patch(_MOCK_URLOPEN, side_effect=ConnectionRefusedError("refused"))
+    def test_connection_error_preserves_url(self, _mock) -> None:
+        with pytest.raises(AWConnectionError) as exc_info:
+            _api_get("http://localhost:5600/api/0/buckets/")
+        assert exc_info.value.url == "http://localhost:5600/api/0/buckets/"
+
+    @patch(_MOCK_API, return_value=_SAMPLE_BUCKETS)
+    def test_timeout_kwarg_forwarded(self, mock_get) -> None:
+        """The timeout kwarg reaches urlopen via _api_get."""
+        list_aw_buckets("http://localhost:5600", timeout=42)
+        _, kwargs = mock_get.call_args
+        assert kwargs.get("timeout") == 42

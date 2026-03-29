@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import json
 import logging
+import socket
+import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
@@ -28,6 +30,29 @@ from taskclf.adapters.activitywatch.mapping import normalize_app
 from taskclf.adapters.activitywatch.types import AWEvent, AWInputEvent
 from taskclf.core.defaults import DEFAULT_AW_TIMEOUT_SECONDS
 from taskclf.core.hashing import salted_hash
+
+
+# ---------------------------------------------------------------------------
+# Typed exceptions for callers to distinguish failure modes
+# ---------------------------------------------------------------------------
+
+
+class AWConnectionError(OSError):
+    """The ActivityWatch server refused the connection or is unreachable."""
+
+    def __init__(self, url: str) -> None:
+        self.url = url
+        super().__init__(f"Cannot connect to ActivityWatch at {url}")
+
+
+class AWTimeoutError(OSError):
+    """The ActivityWatch server did not respond within the timeout."""
+
+    def __init__(self, url: str, timeout: int) -> None:
+        self.url = url
+        self.timeout = timeout
+        super().__init__(f"ActivityWatch request to {url} timed out after {timeout}s")
+
 
 logger = logging.getLogger(__name__)
 
@@ -167,31 +192,53 @@ def parse_aw_input_export(path: Path) -> list[AWInputEvent]:
 # ---------------------------------------------------------------------------
 
 
-def _api_get(url: str) -> Any:
-    """Issue a GET request and return the parsed JSON body."""
+def _api_get(url: str, *, timeout: int = DEFAULT_AW_TIMEOUT_SECONDS) -> Any:
+    """Issue a GET request and return the parsed JSON body.
+
+    Raises:
+        AWConnectionError: Server is unreachable or refused the connection.
+        AWTimeoutError: Server did not respond within *timeout* seconds.
+    """
     req = urllib.request.Request(url, headers={"Accept": "application/json"})
-    with urllib.request.urlopen(req, timeout=DEFAULT_AW_TIMEOUT_SECONDS) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except (TimeoutError, socket.timeout) as exc:
+        raise AWTimeoutError(url, timeout) from exc
+    except (ConnectionRefusedError, ConnectionResetError) as exc:
+        raise AWConnectionError(url) from exc
+    except urllib.error.URLError as exc:
+        raise AWConnectionError(url) from exc
 
 
-def list_aw_buckets(host: str) -> dict[str, dict]:
+def list_aw_buckets(
+    host: str,
+    *,
+    timeout: int = DEFAULT_AW_TIMEOUT_SECONDS,
+) -> dict[str, dict]:
     """List all buckets from a running AW server.
 
     Args:
         host: Base URL of the AW server (e.g. ``"http://localhost:5600"``).
+        timeout: Seconds to wait for a response.
 
     Returns:
         Dict mapping bucket IDs to their metadata.
     """
     url = f"{host.rstrip('/')}/api/0/buckets/"
-    return _api_get(url)
+    return _api_get(url, timeout=timeout)
 
 
-def find_window_bucket_id(host: str) -> str:
+def find_window_bucket_id(
+    host: str,
+    *,
+    timeout: int = DEFAULT_AW_TIMEOUT_SECONDS,
+) -> str:
     """Auto-discover the ``aw-watcher-window`` bucket on *host*.
 
     Args:
         host: Base URL of the AW server.
+        timeout: Seconds to wait for a response.
 
     Returns:
         The bucket ID whose ``type`` is ``currentwindow``.
@@ -199,7 +246,7 @@ def find_window_bucket_id(host: str) -> str:
     Raises:
         ValueError: If no ``currentwindow`` bucket exists on the server.
     """
-    buckets = list_aw_buckets(host)
+    buckets = list_aw_buckets(host, timeout=timeout)
     for bucket_id, meta in buckets.items():
         if meta.get("type") == _CURRENTWINDOW_TYPE:
             return bucket_id
@@ -209,7 +256,11 @@ def find_window_bucket_id(host: str) -> str:
     )
 
 
-def find_input_bucket_id(host: str) -> str | None:
+def find_input_bucket_id(
+    host: str,
+    *,
+    timeout: int = DEFAULT_AW_TIMEOUT_SECONDS,
+) -> str | None:
     """Auto-discover the ``aw-watcher-input`` bucket on *host*.
 
     Unlike :func:`find_window_bucket_id`, this returns ``None`` when no
@@ -218,11 +269,12 @@ def find_input_bucket_id(host: str) -> str | None:
 
     Args:
         host: Base URL of the AW server.
+        timeout: Seconds to wait for a response.
 
     Returns:
         The bucket ID whose ``type`` is ``os.hid.input``, or ``None``.
     """
-    buckets = list_aw_buckets(host)
+    buckets = list_aw_buckets(host, timeout=timeout)
     for bucket_id, meta in buckets.items():
         if meta.get("type") == _INPUT_TYPE:
             return bucket_id
@@ -236,6 +288,7 @@ def fetch_aw_events(
     end: datetime,
     *,
     title_salt: str,
+    timeout: int = DEFAULT_AW_TIMEOUT_SECONDS,
 ) -> list[AWEvent]:
     """Fetch events from the AW REST API for a time range.
 
@@ -245,6 +298,7 @@ def fetch_aw_events(
         start: Inclusive start of the query window (UTC).
         end: Exclusive end of the query window (UTC).
         title_salt: Salt used for hashing window titles.
+        timeout: Seconds to wait for a response.
 
     Returns:
         Sorted list of :class:`AWEvent` instances.
@@ -259,7 +313,7 @@ def fetch_aw_events(
         quote_via=urllib.parse.quote,
     )
     url = f"{base}/api/0/buckets/{bucket_id}/events?{qs}"
-    raw_events: list[dict] = _api_get(url)
+    raw_events: list[dict] = _api_get(url, timeout=timeout)
 
     events = [_raw_event_to_aw_event(e, title_salt=title_salt) for e in raw_events]
     events.sort(key=lambda e: e.timestamp)
@@ -271,6 +325,8 @@ def fetch_aw_input_events(
     bucket_id: str,
     start: datetime,
     end: datetime,
+    *,
+    timeout: int = DEFAULT_AW_TIMEOUT_SECONDS,
 ) -> list[AWInputEvent]:
     """Fetch input events from the AW REST API for a time range.
 
@@ -280,6 +336,7 @@ def fetch_aw_input_events(
             ``"aw-watcher-input_myhostname"``).
         start: Inclusive start of the query window (UTC).
         end: Exclusive end of the query window (UTC).
+        timeout: Seconds to wait for a response.
 
     Returns:
         Sorted list of :class:`AWInputEvent` instances.
@@ -294,7 +351,7 @@ def fetch_aw_input_events(
         quote_via=urllib.parse.quote,
     )
     url = f"{base}/api/0/buckets/{bucket_id}/events?{qs}"
-    raw_events: list[dict] = _api_get(url)
+    raw_events: list[dict] = _api_get(url, timeout=timeout)
 
     events = [_raw_to_input_event(e) for e in raw_events]
     events.sort(key=lambda e: e.timestamp)

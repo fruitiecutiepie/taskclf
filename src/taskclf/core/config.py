@@ -46,6 +46,7 @@ _SETTING_COMMENTS: dict[str, str] = {
     "notifications_enabled": "Set to false to suppress all desktop notifications.",
     "privacy_notifications": "When true, app names are redacted from notifications.",
     "poll_seconds": "Seconds between ActivityWatch polling cycles.",
+    "aw_timeout_seconds": "Seconds to wait for ActivityWatch API responses before timing out.",
     "transition_minutes": "Minutes a new app must persist before a transition fires.",
     "aw_host": "ActivityWatch server URL.",
     "title_salt": "Salt used for hashing window titles (privacy).",

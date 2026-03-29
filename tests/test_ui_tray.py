@@ -3965,3 +3965,158 @@ class TestMenuStructureSnapshot:
         (tmp_path / "models").mkdir(exist_ok=True)
         items = labeler._build_menu_items()
         assert len(items) == 14
+
+
+# ---------------------------------------------------------------------------
+# Backoff + typed error handling in _poll_dominant_app
+# ---------------------------------------------------------------------------
+
+_MOCK_FETCH = "taskclf.adapters.activitywatch.client.fetch_aw_events"
+_MOCK_FIND = "taskclf.adapters.activitywatch.client.find_window_bucket_id"
+
+
+class TestPollDominantAppBackoff:
+    """Backoff state management after AW connection failures."""
+
+    def _make_monitor(self, poll_seconds: int = 60) -> ActivityMonitor:
+        return ActivityMonitor(
+            poll_seconds=poll_seconds,
+            aw_timeout_seconds=5,
+        )
+
+    def test_consecutive_failures_increments_on_connection_error(self) -> None:
+        from taskclf.adapters.activitywatch.client import AWConnectionError
+
+        monitor = self._make_monitor()
+        monitor._bucket_id = "test-bucket"
+
+        with patch(_MOCK_FETCH, side_effect=AWConnectionError("http://localhost:5600")):
+            monitor._poll_dominant_app()
+            assert monitor._consecutive_failures == 1
+            monitor._poll_dominant_app()
+            assert monitor._consecutive_failures == 2
+
+    def test_consecutive_failures_increments_on_timeout_error(self) -> None:
+        from taskclf.adapters.activitywatch.client import AWTimeoutError
+
+        monitor = self._make_monitor()
+        monitor._bucket_id = "test-bucket"
+
+        with patch(_MOCK_FETCH, side_effect=AWTimeoutError("http://localhost:5600", 5)):
+            monitor._poll_dominant_app()
+            assert monitor._consecutive_failures == 1
+
+    def test_backoff_set_on_connection_error(self) -> None:
+        from taskclf.adapters.activitywatch.client import AWConnectionError
+
+        monitor = self._make_monitor(poll_seconds=60)
+        monitor._bucket_id = "test-bucket"
+
+        with patch(_MOCK_FETCH, side_effect=AWConnectionError("http://localhost:5600")):
+            monitor._poll_dominant_app()
+            assert monitor._backoff_seconds == min(60 * 2, 300)
+
+            monitor._poll_dominant_app()
+            assert monitor._backoff_seconds == min(60 * 4, 300)
+
+    def test_no_backoff_on_timeout_error(self) -> None:
+        from taskclf.adapters.activitywatch.client import AWTimeoutError
+
+        monitor = self._make_monitor()
+        monitor._bucket_id = "test-bucket"
+
+        with patch(_MOCK_FETCH, side_effect=AWTimeoutError("http://localhost:5600", 5)):
+            monitor._poll_dominant_app()
+            assert monitor._backoff_seconds == 0
+
+    def test_backoff_capped_at_max(self) -> None:
+        from taskclf.adapters.activitywatch.client import AWConnectionError
+
+        monitor = self._make_monitor(poll_seconds=60)
+        monitor._bucket_id = "test-bucket"
+
+        with patch(_MOCK_FETCH, side_effect=AWConnectionError("http://localhost:5600")):
+            for _ in range(10):
+                monitor._poll_dominant_app()
+            assert monitor._backoff_seconds <= 300
+
+    def test_counters_reset_on_success(self) -> None:
+        from taskclf.adapters.activitywatch.client import AWConnectionError
+
+        monitor = self._make_monitor()
+        monitor._bucket_id = "test-bucket"
+
+        with patch(_MOCK_FETCH, side_effect=AWConnectionError("http://localhost:5600")):
+            for _ in range(3):
+                monitor._poll_dominant_app()
+
+        assert monitor._consecutive_failures == 3
+        assert monitor._backoff_seconds > 0
+
+        with patch(
+            _MOCK_FETCH,
+            return_value=[
+                MagicMock(app_id="org.mozilla.firefox"),
+            ],
+        ):
+            result = monitor._poll_dominant_app()
+
+        assert result == "org.mozilla.firefox"
+        assert monitor._consecutive_failures == 0
+        assert monitor._backoff_seconds == 0
+
+    def test_warning_logged_after_threshold(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        from taskclf.adapters.activitywatch.client import AWConnectionError
+
+        monitor = self._make_monitor()
+        monitor._bucket_id = "test-bucket"
+
+        import logging
+
+        with (
+            caplog.at_level(logging.WARNING, logger="taskclf.ui.tray"),
+            patch(_MOCK_FETCH, side_effect=AWConnectionError("http://localhost:5600")),
+        ):
+            for _ in range(3):
+                monitor._poll_dominant_app()
+
+        warning_msgs = [
+            r.message for r in caplog.records if r.levelno >= logging.WARNING
+        ]
+        assert any("unreachable" in m.lower() for m in warning_msgs)
+
+    def test_recovery_logged_after_failures(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        from taskclf.adapters.activitywatch.client import AWConnectionError
+
+        monitor = self._make_monitor()
+        monitor._bucket_id = "test-bucket"
+
+        import logging
+
+        with patch(_MOCK_FETCH, side_effect=AWConnectionError("http://localhost:5600")):
+            for _ in range(3):
+                monitor._poll_dominant_app()
+
+        with (
+            caplog.at_level(logging.INFO, logger="taskclf.ui.tray"),
+            patch(_MOCK_FETCH, return_value=[MagicMock(app_id="firefox")]),
+        ):
+            monitor._poll_dominant_app()
+
+        info_msgs = [r.message for r in caplog.records if r.levelno >= logging.INFO]
+        assert any("restored" in m.lower() for m in info_msgs)
+
+    def test_discover_bucket_failure_triggers_backoff(self) -> None:
+        from taskclf.adapters.activitywatch.client import AWConnectionError
+
+        monitor = self._make_monitor()
+        assert monitor._bucket_id is None
+
+        with patch(_MOCK_FIND, side_effect=AWConnectionError("http://localhost:5600")):
+            monitor._poll_dominant_app()
+            assert monitor._consecutive_failures == 1
+            assert monitor._backoff_seconds > 0

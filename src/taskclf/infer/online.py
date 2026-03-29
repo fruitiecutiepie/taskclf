@@ -297,6 +297,8 @@ def run_online_loop(
             this value are enqueued when *label_queue_path* is set.
     """
     from taskclf.adapters.activitywatch.client import (
+        AWConnectionError,
+        AWTimeoutError,
         fetch_aw_events,
         fetch_aw_input_events,
         find_input_bucket_id,
@@ -450,6 +452,18 @@ def run_online_loop(
                     now,
                     title_salt=title_salt,
                 )
+            except AWConnectionError:
+                logger.warning(
+                    "ActivityWatch unreachable, will retry in %ds", poll_seconds
+                )
+                time.sleep(poll_seconds)
+                continue
+            except AWTimeoutError:
+                logger.warning(
+                    "ActivityWatch request timed out, will retry in %ds", poll_seconds
+                )
+                time.sleep(poll_seconds)
+                continue
             except Exception:
                 logger.warning("Failed to fetch AW events, will retry", exc_info=True)
                 time.sleep(poll_seconds)

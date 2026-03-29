@@ -35,6 +35,7 @@ if TYPE_CHECKING:
 from taskclf.core.config import UserConfig
 from taskclf.core.defaults import (
     DEFAULT_AW_HOST,
+    DEFAULT_AW_TIMEOUT_SECONDS,
     DEFAULT_DATA_DIR,
     DEFAULT_IDLE_TRANSITION_MINUTES,
     DEFAULT_POLL_SECONDS,
@@ -42,6 +43,9 @@ from taskclf.core.defaults import (
     DEFAULT_TRANSITION_MINUTES,
 )
 from taskclf.ui.events import EventBus
+
+_MAX_BACKOFF_SECONDS = 300
+_WARN_AFTER_FAILURES = 3
 
 logger = logging.getLogger(__name__)
 
@@ -139,6 +143,7 @@ class ActivityMonitor:
     aw_host: str = DEFAULT_AW_HOST
     title_salt: str = DEFAULT_TITLE_SALT
     poll_seconds: int = DEFAULT_POLL_SECONDS
+    aw_timeout_seconds: int = DEFAULT_AW_TIMEOUT_SECONDS
     transition_minutes: int = DEFAULT_TRANSITION_MINUTES
     idle_transition_minutes: int = DEFAULT_IDLE_TRANSITION_MINUTES
     on_transition: Callable[[str, str, dt.datetime, dt.datetime], Any] | None = None
@@ -148,6 +153,7 @@ class ActivityMonitor:
     _aw_host: str = field(init=False)
     _title_salt: str = field(init=False)
     _poll_seconds: int = field(init=False)
+    _aw_timeout_seconds: int = field(init=False)
     _transition_threshold: int = field(init=False)
     _idle_transition_threshold: int = field(init=False)
     _on_transition: Callable[[str, str, dt.datetime, dt.datetime], Any] | None = field(
@@ -173,11 +179,14 @@ class ActivityMonitor:
     _last_app_counts: dict[str, int] = field(init=False, default_factory=dict)
     _last_poll_ts: dt.datetime | None = field(init=False, default=None)
     _started_at: dt.datetime | None = field(init=False, default=None)
+    _consecutive_failures: int = field(init=False, default=0)
+    _backoff_seconds: int = field(init=False, default=0)
 
     def __post_init__(self) -> None:
         self._aw_host = self.aw_host
         self._title_salt = self.title_salt
         self._poll_seconds = self.poll_seconds
+        self._aw_timeout_seconds = self.aw_timeout_seconds
         self._transition_threshold = self.transition_minutes * 60
         self._idle_transition_threshold = self.idle_transition_minutes * 60
         self._on_transition = self.on_transition
@@ -188,11 +197,51 @@ class ActivityMonitor:
     def _discover_bucket(self) -> str:
         from taskclf.adapters.activitywatch.client import find_window_bucket_id
 
-        return find_window_bucket_id(self._aw_host)
+        return find_window_bucket_id(self._aw_host, timeout=self._aw_timeout_seconds)
+
+    def _handle_fetch_failure(self, exc: Exception) -> None:
+        """Update backoff state after a failed AW request."""
+        from taskclf.adapters.activitywatch.client import AWConnectionError
+
+        self._consecutive_failures += 1
+        if isinstance(exc, AWConnectionError):
+            self._backoff_seconds = min(
+                self._poll_seconds * (2**self._consecutive_failures),
+                _MAX_BACKOFF_SECONDS,
+            )
+        else:
+            self._backoff_seconds = 0
+
+        if self._consecutive_failures == _WARN_AFTER_FAILURES:
+            logger.warning(
+                "ActivityWatch unreachable (%d consecutive failures): %s",
+                self._consecutive_failures,
+                exc,
+            )
+            self._publish_status(self._current_app or "unknown", state="aw_unreachable")
+        elif self._consecutive_failures > _WARN_AFTER_FAILURES:
+            logger.debug(
+                "ActivityWatch still unreachable (%d failures)",
+                self._consecutive_failures,
+            )
+
+    def _handle_fetch_success(self) -> None:
+        """Reset backoff state after a successful AW request."""
+        if self._consecutive_failures >= _WARN_AFTER_FAILURES:
+            logger.info(
+                "ActivityWatch connection restored after %d failures",
+                self._consecutive_failures,
+            )
+        self._consecutive_failures = 0
+        self._backoff_seconds = 0
 
     def _poll_dominant_app(self) -> str | None:
         """Fetch recent AW events and return the most common app_id."""
-        from taskclf.adapters.activitywatch.client import fetch_aw_events
+        from taskclf.adapters.activitywatch.client import (
+            AWConnectionError,
+            AWTimeoutError,
+            fetch_aw_events,
+        )
 
         if self._bucket_id is None:
             try:
@@ -200,6 +249,18 @@ class ActivityMonitor:
                 if self._aw_warned:
                     print(f"Connected to ActivityWatch at {self._aw_host}")
                     self._aw_warned = False
+                self._handle_fetch_success()
+            except (AWConnectionError, AWTimeoutError) as exc:
+                self._handle_fetch_failure(exc)
+                if not self._aw_warned:
+                    print(
+                        f"Waiting for ActivityWatch at {self._aw_host} "
+                        f"(retrying every {self._poll_seconds}s)..."
+                    )
+                    self._aw_warned = True
+                self._last_event_count = 0
+                self._last_app_counts = {}
+                return None
             except Exception:
                 if not self._aw_warned:
                     print(
@@ -220,12 +281,22 @@ class ActivityMonitor:
                 start,
                 now,
                 title_salt=self._title_salt,
+                timeout=self._aw_timeout_seconds,
             )
+        except (AWConnectionError, AWTimeoutError) as exc:
+            self._handle_fetch_failure(exc)
+            logger.debug("Failed to fetch AW events: %s", exc)
+            self._last_event_count = 0
+            self._last_app_counts = {}
+            return None
         except Exception:
+            self._consecutive_failures += 1
             logger.debug("Failed to fetch AW events", exc_info=True)
             self._last_event_count = 0
             self._last_app_counts = {}
             return None
+
+        self._handle_fetch_success()
 
         if not events:
             self._last_event_count = 0
@@ -412,7 +483,7 @@ class ActivityMonitor:
                 self._publish_status(app)
                 if dominant is not None:
                     self.check_transition(dominant)
-            self._stop.wait(timeout=self._poll_seconds)
+            self._stop.wait(timeout=self._poll_seconds + self._backoff_seconds)
 
     def stop(self) -> None:
         """Signal the poll loop to stop."""
@@ -617,6 +688,7 @@ class TrayLabeler:
     aw_host: str = DEFAULT_AW_HOST
     title_salt: str = DEFAULT_TITLE_SALT
     poll_seconds: int = DEFAULT_POLL_SECONDS
+    aw_timeout_seconds: int = DEFAULT_AW_TIMEOUT_SECONDS
     transition_minutes: int = DEFAULT_TRANSITION_MINUTES
     event_bus: EventBus | None = None
     ui_port: int = 8741
@@ -693,6 +765,12 @@ class TrayLabeler:
             self.poll_seconds,
             DEFAULT_POLL_SECONDS,
         )
+        aw_timeout_seconds = self._resolve(
+            saved,
+            "aw_timeout_seconds",
+            self.aw_timeout_seconds,
+            DEFAULT_AW_TIMEOUT_SECONDS,
+        )
         transition_minutes = self._resolve(
             saved,
             "transition_minutes",
@@ -710,6 +788,7 @@ class TrayLabeler:
                 "notifications_enabled": notifications_enabled,
                 "privacy_notifications": privacy_notifications,
                 "poll_seconds": poll_seconds,
+                "aw_timeout_seconds": aw_timeout_seconds,
                 "transition_minutes": transition_minutes,
                 "aw_host": aw_host,
                 "title_salt": title_salt,
@@ -791,6 +870,7 @@ class TrayLabeler:
             aw_host=aw_host,
             title_salt=title_salt,
             poll_seconds=poll_seconds,
+            aw_timeout_seconds=aw_timeout_seconds,
             transition_minutes=transition_minutes,
             idle_transition_minutes=idle_transition_minutes,
             on_transition=self._handle_transition,
@@ -2111,6 +2191,7 @@ def run_tray(
     models_dir: Path | None = None,
     aw_host: str = DEFAULT_AW_HOST,
     poll_seconds: int = DEFAULT_POLL_SECONDS,
+    aw_timeout_seconds: int = DEFAULT_AW_TIMEOUT_SECONDS,
     title_salt: str = DEFAULT_TITLE_SALT,
     data_dir: Path = Path(DEFAULT_DATA_DIR),
     transition_minutes: int = DEFAULT_TRANSITION_MINUTES,
@@ -2139,6 +2220,7 @@ def run_tray(
             bundles.  Enables the "Model" submenu for hot-swapping.
         aw_host: ActivityWatch server URL.
         poll_seconds: Seconds between AW polling cycles.
+        aw_timeout_seconds: Seconds to wait for AW API responses.
         title_salt: Salt for hashing window titles.
         data_dir: Processed data directory (labels stored here).
         transition_minutes: Minutes a new dominant app must persist
@@ -2174,6 +2256,7 @@ def run_tray(
         aw_host=aw_host,
         title_salt=title_salt,
         poll_seconds=poll_seconds,
+        aw_timeout_seconds=aw_timeout_seconds,
         transition_minutes=transition_minutes,
         event_bus=event_bus,
         ui_port=ui_port,

@@ -648,6 +648,7 @@ taskclf tray --dev --browser --no-tray
 | `--model-dir` | *(none)* | Model bundle for label suggestions |
 | `--aw-host` | `http://localhost:5600` | ActivityWatch server URL |
 | `--poll-seconds` | `60` | Seconds between AW polls |
+| `--aw-timeout` | `10` | Seconds to wait for AW API responses |
 | `--transition-minutes` | `3` | Minutes a new app must persist before prompting |
 | `--data-dir` | `data/processed` (ephemeral in `--dev`) | Processed data directory; omit with `--dev` for an auto-cleaned temp dir |
 | `--port` | `8741` | Port for the embedded web UI server |

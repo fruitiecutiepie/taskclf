@@ -39,6 +39,9 @@ privacy_notifications = true
 # Seconds between ActivityWatch polling cycles.
 poll_seconds = 60
 
+# Seconds to wait for ActivityWatch API responses before timing out.
+aw_timeout_seconds = 10
+
 # Minutes a new app must persist before a transition fires.
 transition_minutes = 3
 

@@ -27,6 +27,7 @@ from taskclf.core.defaults import (
     DEFAULT_POLL_SECONDS,
     DEFAULT_PSI_THRESHOLD,
     DEFAULT_RAW_AW_DIR,
+    DEFAULT_AW_TIMEOUT_SECONDS,
     DEFAULT_REJECT_RATE_INCREASE_THRESHOLD,
     DEFAULT_REJECT_THRESHOLD,
     DEFAULT_SMOOTH_WINDOW,
@@ -3209,6 +3210,11 @@ def tray_cmd(
         "--poll-seconds",
         help="Seconds between polling iterations",
     ),
+    aw_timeout: int = typer.Option(
+        DEFAULT_AW_TIMEOUT_SECONDS,
+        "--aw-timeout",
+        help="Seconds to wait for ActivityWatch API responses",
+    ),
     title_salt: str = typer.Option(
         DEFAULT_TITLE_SALT, "--title-salt", help="Salt for hashing window titles"
     ),
@@ -3281,6 +3287,7 @@ def tray_cmd(
             models_dir=Path(models_dir),
             aw_host=aw_host,
             poll_seconds=poll_seconds,
+            aw_timeout_seconds=aw_timeout,
             title_salt=title_salt,
             data_dir=Path(resolved_data_dir),
             transition_minutes=transition_minutes,
