@@ -19,15 +19,6 @@
       "dist/**/*",
       "package.json"
     ],
-    "extraResources": [
-      {
-        "from": "../build/nuitka/entry.app/Contents/MacOS/",
-        "to": "backend",
-        "filter": [
-          "**/*"
-        ]
-      }
-    ],
     "directories": {
       "output": "release"
     },
@@ -36,17 +27,44 @@
         "dmg",
         "zip"
       ],
-      "category": "public.app-category.productivity"
+      "category": "public.app-category.productivity",
+      "extraResources": [
+        {
+          "from": "../build/nuitka/entry.app/Contents/MacOS/",
+          "to": "backend",
+          "filter": [
+            "**/*"
+          ]
+        }
+      ]
     },
     "linux": {
       "target": [
         "AppImage"
       ],
-      "category": "Utility"
+      "category": "Utility",
+      "extraResources": [
+        {
+          "from": "../build/nuitka/entry.dist/",
+          "to": "backend",
+          "filter": [
+            "**/*"
+          ]
+        }
+      ]
     },
     "win": {
       "target": [
         "nsis"
+      ],
+      "extraResources": [
+        {
+          "from": "../build/nuitka/entry.dist/",
+          "to": "backend",
+          "filter": [
+            "**/*"
+          ]
+        }
       ]
     }
   },

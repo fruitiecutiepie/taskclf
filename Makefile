@@ -56,6 +56,12 @@ ui-dev:
 
 # --- nuitka ---
 
+UNAME_S := $(shell uname -s)
+NUITKA_EXTRA_ARGS ?=
+ifeq ($(UNAME_S),Darwin)
+	NUITKA_EXTRA_ARGS += --macos-create-app-bundle
+endif
+
 nuitka-build: ui-build
 	uv run --group bundle python -m nuitka \
 		--standalone \
@@ -77,7 +83,7 @@ nuitka-build: ui-build
 		--include-package=pystray \
 		--include-data-dir=src/taskclf/ui/static=taskclf/ui/static \
 		--python-flag=no_site \
-		--macos-create-app-bundle \
+		$(NUITKA_EXTRA_ARGS) \
 		src/taskclf/cli/entry.py
 
 # --- aggregates ---
