@@ -44,6 +44,30 @@ counts = compute_rolling_app_switches(sorted_events, sorted_buckets)
 # len(counts) == len(sorted_buckets)
 ```
 
+## top2_app_concentration_in_window
+
+Combined time share of the two most-used apps in a look-back window.
+The window spans
+`[bucket_ts - window_minutes, bucket_ts + bucket_seconds)`.
+Duration per app is summed; the two largest shares are added and
+returned as a value in `[0, 1]`.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `events` | `Sequence[Event]` | -- | Chronologically sorted events |
+| `bucket_ts` | `datetime` | -- | Aligned start of the current time bucket |
+| `window_minutes` | `int` | `DEFAULT_APP_SWITCH_WINDOW_MINUTES` (5) | How many minutes to look back |
+| `bucket_seconds` | `int` | `DEFAULT_BUCKET_SECONDS` (60) | Width of the current bucket |
+
+```python
+from taskclf.features.windows import top2_app_concentration_in_window
+
+conc = top2_app_concentration_in_window(sorted_events, bucket_ts, window_minutes=15)
+# 1.0 if one or two apps used; lower for fragmented usage
+```
+
+Returns `None` when no events fall within the window.
+
 ## See also
 
 - [`features.build`](build.md) -- main pipeline that calls these functions

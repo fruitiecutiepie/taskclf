@@ -19,6 +19,7 @@ from taskclf.features.windows import (
     app_entropy_in_window,
     app_switch_count_in_window,
     compute_rolling_app_switches,
+    top2_app_concentration_in_window,
 )
 
 
@@ -335,5 +336,88 @@ class TestAppEntropyInWindow:
 
         assert narrow is not None
         assert narrow == 0.0
+        assert wide is not None
+        assert wide == 1.0
+
+
+# ---------------------------------------------------------------------------
+# P6-001: top2_app_concentration_15m helper
+# ---------------------------------------------------------------------------
+
+
+class TestTop2AppConcentrationInWindow:
+    """P6-001: Helper for the `top2_app_concentration_15m` feature."""
+
+    def test_single_app_returns_one(self) -> None:
+        """One app in the window yields concentration 1.0."""
+        base = dt.datetime(2026, 2, 23, 10, 0, 0)
+        events = [
+            _ev_dur(base, "app.one", 30.0),
+            _ev_dur(base + dt.timedelta(seconds=30), "app.one", 30.0),
+        ]
+        result = top2_app_concentration_in_window(events, base)
+        assert result == 1.0
+
+    def test_two_equal_apps_returns_one(self) -> None:
+        """Two apps with equal duration yields concentration 1.0."""
+        base = dt.datetime(2026, 2, 23, 10, 0, 0)
+        events = [
+            _ev_dur(base, "app.one", 30.0),
+            _ev_dur(base + dt.timedelta(seconds=30), "app.two", 30.0),
+        ]
+        result = top2_app_concentration_in_window(events, base)
+        assert result == 1.0
+
+    def test_three_equal_apps(self) -> None:
+        """Three equal apps: top 2 get 2/3 of total time."""
+        base = dt.datetime(2026, 2, 23, 10, 0, 0)
+        events = [
+            _ev_dur(base, "app.one", 20.0),
+            _ev_dur(base + dt.timedelta(seconds=20), "app.two", 20.0),
+            _ev_dur(base + dt.timedelta(seconds=40), "app.three", 20.0),
+        ]
+        result = top2_app_concentration_in_window(events, base)
+        assert result is not None
+        assert result == round(40.0 / 60.0, 4)
+
+    def test_three_unequal_apps(self) -> None:
+        """Three unequal apps: top 2 share is (30+20)/60."""
+        base = dt.datetime(2026, 2, 23, 10, 0, 0)
+        events = [
+            _ev_dur(base, "app.one", 30.0),
+            _ev_dur(base + dt.timedelta(seconds=30), "app.two", 20.0),
+            _ev_dur(base + dt.timedelta(seconds=50), "app.three", 10.0),
+        ]
+        result = top2_app_concentration_in_window(events, base)
+        assert result is not None
+        assert result == round(50.0 / 60.0, 4)
+
+    def test_no_events_returns_none(self) -> None:
+        """Empty event list yields None."""
+        base = dt.datetime(2026, 2, 23, 10, 0, 0)
+        result = top2_app_concentration_in_window([], base)
+        assert result is None
+
+    def test_events_outside_window_returns_none(self) -> None:
+        """Events entirely outside the window yield None."""
+        base = dt.datetime(2026, 2, 23, 10, 0, 0)
+        events = [
+            _ev_dur(base - dt.timedelta(minutes=20), "app.one", 30.0),
+        ]
+        result = top2_app_concentration_in_window(events, base)
+        assert result is None
+
+    def test_custom_window_minutes(self) -> None:
+        """Wider window captures more events, changing concentration."""
+        base = dt.datetime(2026, 2, 23, 10, 0, 0)
+        events = [
+            _ev_dur(base - dt.timedelta(minutes=10), "app.one", 30.0),
+            _ev_dur(base, "app.two", 30.0),
+        ]
+        narrow = top2_app_concentration_in_window(events, base, window_minutes=5)
+        wide = top2_app_concentration_in_window(events, base, window_minutes=15)
+
+        assert narrow is not None
+        assert narrow == 1.0
         assert wide is not None
         assert wide == 1.0

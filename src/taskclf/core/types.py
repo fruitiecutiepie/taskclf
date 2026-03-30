@@ -97,7 +97,8 @@ class FeatureRow(BaseModel, frozen=True):
       ``is_browser``, ``is_editor``, ``is_terminal``,
       ``app_switch_count_last_5m``, ``app_foreground_time_ratio``,
       ``app_change_count``, ``app_dwell_time_seconds``,
-      ``app_entropy_5m``, ``app_entropy_15m``.
+      ``app_entropy_5m``, ``app_entropy_15m``,
+      ``top2_app_concentration_15m``.
     - **keyboard / mouse** — nullable until the corresponding collector is
       wired (``keys_per_min``, ``backspace_ratio``, ``shortcut_rate``,
       ``clicks_per_min``, ``scroll_events_per_min``, ``mouse_distance``).
@@ -171,6 +172,12 @@ class FeatureRow(BaseModel, frozen=True):
         default=None,
         ge=0.0,
         description="Shannon entropy of app duration distribution over the last 15 minutes.",
+    )
+    top2_app_concentration_15m: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Combined time share of the two most-used apps over the last 15 minutes.",
     )
 
     # -- keyboard (nullable until collector is wired) --

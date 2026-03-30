@@ -35,6 +35,7 @@ _COLUMNS_V1: Final[dict[str, type]] = {
     "app_dwell_time_seconds": float,
     "app_entropy_5m": float,
     "app_entropy_15m": float,
+    "top2_app_concentration_15m": float,
     "keys_per_min": float,
     "backspace_ratio": float,
     "shortcut_rate": float,

@@ -39,6 +39,7 @@ def valid_feature_row_data() -> dict[str, Any]:
         "app_dwell_time_seconds": 60.0,
         "app_entropy_5m": 1.5,
         "app_entropy_15m": 2.0,
+        "top2_app_concentration_15m": 0.85,
         "keys_per_min": 60.0,
         "backspace_ratio": 0.05,
         "shortcut_rate": 0.1,

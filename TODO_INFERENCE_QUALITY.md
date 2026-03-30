@@ -1484,11 +1484,12 @@ For each candidate feature group:
 
   - [x] app_dwell_time_seconds ✅ 2026-03-29
   - [x] app_entropy_5m, app_entropy_15m ✅ 2026-03-29
+  - [x] top2_app_concentration_15m ✅ 2026-03-29
 
 Candidate feature priority order (add one group, evaluate, then decide on the next):
 1. `app_dwell_time_seconds` — how long the dominant app has been foreground continuously.
 2. `app_entropy_5m`, `app_entropy_15m` — Shannon entropy of app distribution over 5/15 minute windows.
-3. `top2_app_concentration` — combined time share of the two most-used apps in the interval.
+3. `top2_app_concentration_15m` — combined time share of the two most-used apps in the interval.
 4. `idle_return_indicator` — boolean, True if this bucket immediately follows an idle gap.
 5. `browser_time_share`, `editor_time_share`, `terminal_time_share`, `meeting_time_share` — category shares over the interval.
 6. `stability_score` — fraction of recent buckets with the same dominant app.

@@ -17,7 +17,7 @@ class-level constants (`VERSION`, `COLUMNS`, `SCHEMA_HASH`).
 | Attribute | Type | Description |
 |-----------|------|-------------|
 | `VERSION` | `str` | `"v1"` -- schema generation tag |
-| `COLUMNS` | `dict[str, type]` | Ordered column-name to Python-type mapping (40 columns) |
+| `COLUMNS` | `dict[str, type]` | Ordered column-name to Python-type mapping (41 columns) |
 | `SCHEMA_HASH` | `str` | Deterministic hex digest derived from column names + types |
 
 The hash is computed at import time by JSON-serialising the ordered
@@ -71,6 +71,7 @@ typed `float` but may contain `None` at the Pydantic model level.
 | `app_switch_count_last_15m` | `int` | Same metric over 15 minutes |
 | `app_foreground_time_ratio` | `float` | Fraction of the bucket the dominant app was foreground |
 | `app_change_count` | `int` | App changes within the bucket itself |
+| `top2_app_concentration_15m` | `float` | Combined time share of the two most-used apps over the last 15 minutes |
 
 ### Input activity
 

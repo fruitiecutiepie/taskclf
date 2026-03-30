@@ -143,3 +143,55 @@ def app_entropy_in_window(
             entropy -= p * math.log2(p)
 
     return round(entropy, 4)
+
+
+def top2_app_concentration_in_window(
+    events: Sequence[Event],
+    bucket_ts: dt.datetime,
+    window_minutes: int = DEFAULT_APP_SWITCH_WINDOW_MINUTES,
+    bucket_seconds: int = DEFAULT_BUCKET_SECONDS,
+) -> float | None:
+    """Combined time share of the two most-used apps in a look-back window.
+
+    The window spans ``[bucket_ts - window_minutes, bucket_ts + bucket_seconds)``.
+    Duration per app is summed; the two largest shares are added together
+    and returned as a value in ``[0, 1]``.
+
+    Args:
+        events: Chronologically sorted events satisfying the
+            :class:`~taskclf.core.types.Event` protocol.
+        bucket_ts: The aligned start of the current time bucket.
+        window_minutes: How many minutes to look back from *bucket_ts*.
+        bucket_seconds: Width of the current bucket in seconds.
+
+    Returns:
+        Concentration ratio in ``[0, 1]``, or ``None`` when no events
+        fall within the window.
+    """
+    window_start = bucket_ts - dt.timedelta(minutes=window_minutes)
+    window_end = bucket_ts + dt.timedelta(seconds=bucket_seconds)
+
+    def _epoch(ts: dt.datetime) -> float:
+        return ts_utc_aware_get(ts).timestamp()
+
+    ws_epoch = _epoch(window_start)
+    we_epoch = _epoch(window_end)
+
+    app_durations: dict[str, float] = defaultdict(float)
+    for ev in events:
+        ev_epoch = _epoch(ev.timestamp)
+        if ev_epoch < ws_epoch:
+            continue
+        if ev_epoch >= we_epoch:
+            break
+        app_durations[ev.app_id] += ev.duration_seconds
+
+    if not app_durations:
+        return None
+
+    total = sum(app_durations.values())
+    if total <= 0:
+        return None
+
+    top2 = sorted(app_durations.values(), reverse=True)[:2]
+    return round(sum(top2) / total, 4)

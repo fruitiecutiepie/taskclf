@@ -484,3 +484,32 @@ class TestAppEntropy:
             assert row.app_entropy_5m >= 0.0
             assert row.app_entropy_15m is not None
             assert row.app_entropy_15m >= 0.0
+
+
+# ---------------------------------------------------------------------------
+# P6-001: top2_app_concentration_15m feature
+# ---------------------------------------------------------------------------
+
+
+class TestTop2AppConcentration:
+    """P6-001: top2_app_concentration_15m feature computation."""
+
+    def test_concentration_populated_in_build(self) -> None:
+        """build_features_from_aw_events populates top2_app_concentration_15m."""
+        base = dt.datetime(2025, 6, 15, 10, 0, 0)
+        events = [
+            _window_ev_app(base, "com.app.A", duration=30.0),
+            _window_ev_app(base + dt.timedelta(seconds=30), "com.app.B", duration=30.0),
+        ]
+        rows = build_features_from_aw_events(events)
+        assert len(rows) >= 1
+        row = rows[0]
+        assert row.top2_app_concentration_15m is not None
+        assert 0.0 <= row.top2_app_concentration_15m <= 1.0
+
+    def test_concentration_in_dummy_features(self) -> None:
+        """Dummy features produce bounded top2_app_concentration_15m values."""
+        rows = generate_dummy_features(_DATE, n_rows=10)
+        for row in rows:
+            assert row.top2_app_concentration_15m is not None
+            assert 0.0 <= row.top2_app_concentration_15m <= 1.0

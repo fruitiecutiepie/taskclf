@@ -59,7 +59,7 @@ Sub-modules invoked per bucket:
 
 | Sub-module | Columns produced |
 |------------|------------------|
-| [`features.windows`](windows.md) | `app_switch_count_last_5m`, `app_switch_count_last_15m`, `app_entropy_5m`, `app_entropy_15m` |
+| [`features.windows`](windows.md) | `app_switch_count_last_5m`, `app_switch_count_last_15m`, `app_entropy_5m`, `app_entropy_15m`, `top2_app_concentration_15m` |
 | [`features.sessions`](sessions.md) | `session_id`, `session_length_so_far` |
 | [`features.domain`](domain.md) | `domain_category` |
 | [`features.text`](text.md) | `window_title_bucket`, `title_repeat_count_session` |
@@ -78,6 +78,12 @@ They are computed by `features.windows.app_entropy_in_window`.  A single
 focused app yields entropy 0; uniform usage across N apps yields
 log2(N).  These features capture how "scattered" the user's app usage
 is within a time window.
+
+`top2_app_concentration_15m` is the combined time share of the two
+most-used apps over the last 15 minutes.  It is computed by
+`features.windows.top2_app_concentration_in_window`.  A value of 1.0
+means at most two apps were used; lower values indicate more fragmented
+usage across three or more apps.
 
 ```python
 from taskclf.features.build import build_features_from_aw_events
