@@ -26,6 +26,7 @@ FEATURE_COLUMNS: Final[list[str]] = [
     "app_entropy_5m",
     "app_entropy_15m",
     "top2_app_concentration_15m",
+    "idle_return_indicator",
     "keys_per_min",
     "backspace_ratio",
     "shortcut_rate",

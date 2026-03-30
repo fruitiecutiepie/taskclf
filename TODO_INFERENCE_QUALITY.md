@@ -1485,6 +1485,7 @@ For each candidate feature group:
   - [x] app_dwell_time_seconds ✅ 2026-03-29
   - [x] app_entropy_5m, app_entropy_15m ✅ 2026-03-29
   - [x] top2_app_concentration_15m ✅ 2026-03-29
+  - [x] idle_return_indicator ✅ 2026-03-30
 
 Candidate feature priority order (add one group, evaluate, then decide on the next):
 1. `app_dwell_time_seconds` — how long the dominant app has been foreground continuously.

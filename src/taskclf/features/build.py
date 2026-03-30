@@ -124,6 +124,7 @@ def generate_dummy_features(
                 app_dwell_time_seconds=round(
                     DEFAULT_BUCKET_SECONDS * (0.5 + (i % 5) * 0.1), 2
                 ),
+                idle_return_indicator=(i == 0),
                 app_entropy_5m=round(0.5 + (i % 5) * 0.3, 2),
                 app_entropy_15m=round(0.8 + (i % 5) * 0.25, 2),
                 top2_app_concentration_15m=round(0.6 + (i % 5) * 0.08, 4),
@@ -445,6 +446,7 @@ def build_features_from_aw_events(
                 app_foreground_time_ratio=round(foreground_ratio, 4),
                 app_change_count=change_count,
                 app_dwell_time_seconds=round(current_dwell, 2),
+                idle_return_indicator=(bucket_ts == cur_session),
                 app_entropy_5m=entropy_5m,
                 app_entropy_15m=entropy_15m,
                 top2_app_concentration_15m=top2_conc_15m,

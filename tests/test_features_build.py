@@ -513,3 +513,65 @@ class TestTop2AppConcentration:
         for row in rows:
             assert row.top2_app_concentration_15m is not None
             assert 0.0 <= row.top2_app_concentration_15m <= 1.0
+
+
+# ---------------------------------------------------------------------------
+# P6-001: idle_return_indicator feature
+# ---------------------------------------------------------------------------
+
+
+class TestIdleReturnIndicator:
+    """P6-001: idle_return_indicator feature computation correctness."""
+
+    def test_first_bucket_is_idle_return(self) -> None:
+        """The very first bucket starts a session, so idle_return_indicator is True."""
+        base = dt.datetime(2025, 6, 15, 10, 0, 0)
+        events = [_window_ev_app(base, "com.app.A", duration=60.0)]
+
+        rows = build_features_from_aw_events(events)
+        assert len(rows) == 1
+        assert rows[0].idle_return_indicator is True
+
+    def test_consecutive_buckets_are_not_idle_return(self) -> None:
+        """Consecutive buckets within the same session are not idle returns."""
+        base = dt.datetime(2025, 6, 15, 10, 0, 0)
+        events = [
+            _window_ev_app(base, "com.app.A", duration=60.0),
+            _window_ev_app(base + dt.timedelta(seconds=60), "com.app.A", duration=60.0),
+            _window_ev_app(
+                base + dt.timedelta(seconds=120), "com.app.A", duration=60.0
+            ),
+        ]
+
+        rows = build_features_from_aw_events(events)
+        assert len(rows) == 3
+        assert rows[0].idle_return_indicator is True
+        assert rows[1].idle_return_indicator is False
+        assert rows[2].idle_return_indicator is False
+
+    def test_idle_gap_triggers_new_session_indicator(self) -> None:
+        """A gap > DEFAULT_IDLE_GAP_SECONDS starts a new session, setting the indicator."""
+        from taskclf.core.defaults import DEFAULT_IDLE_GAP_SECONDS
+
+        base = dt.datetime(2025, 6, 15, 10, 0, 0)
+        gap = DEFAULT_IDLE_GAP_SECONDS + 60
+        events = [
+            _window_ev_app(base, "com.app.A", duration=60.0),
+            _window_ev_app(base + dt.timedelta(seconds=60), "com.app.A", duration=60.0),
+            _window_ev_app(
+                base + dt.timedelta(seconds=60 + gap), "com.app.A", duration=60.0
+            ),
+        ]
+
+        rows = build_features_from_aw_events(events)
+        assert len(rows) == 3
+        assert rows[0].idle_return_indicator is True
+        assert rows[1].idle_return_indicator is False
+        assert rows[2].idle_return_indicator is True
+
+    def test_idle_return_in_dummy_features(self) -> None:
+        """Dummy features produce valid boolean idle_return_indicator values."""
+        rows = generate_dummy_features(_DATE, n_rows=10)
+        for row in rows:
+            assert isinstance(row.idle_return_indicator, bool)
+        assert rows[0].idle_return_indicator is True

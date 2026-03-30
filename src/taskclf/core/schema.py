@@ -36,6 +36,7 @@ _COLUMNS_V1: Final[dict[str, type]] = {
     "app_entropy_5m": float,
     "app_entropy_15m": float,
     "top2_app_concentration_15m": float,
+    "idle_return_indicator": bool,
     "keys_per_min": float,
     "backspace_ratio": float,
     "shortcut_rate": float,
