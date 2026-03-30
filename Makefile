@@ -83,6 +83,7 @@ nuitka-build: ui-build
 		--include-package=pystray \
 		--include-data-dir=src/taskclf/ui/static=taskclf/ui/static \
 		--python-flag=no_site \
+		--assume-yes-for-downloads \
 		$(NUITKA_EXTRA_ARGS) \
 		src/taskclf/cli/entry.py
 

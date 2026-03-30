@@ -6,7 +6,7 @@
   "private": true,
   "main": "dist/main.js",
   "scripts": {
-    "build:icon": "mkdir -p build && uv run rsvg-convert -h 1024 ../assets/taskclf-icon.svg -o build/icon.png",
+    "build:icon": "mkdir -p build && cp ../assets/icon.png build/icon.png",
     "build": "pnpm run build:icon && tsc -p tsconfig.json",
     "start": "pnpm run build && electron .",
     "typecheck": "tsc -p tsconfig.json --noEmit",
