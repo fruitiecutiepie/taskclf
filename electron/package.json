@@ -6,7 +6,7 @@
   "private": true,
   "main": "dist/main.js",
   "scripts": {
-    "build:icon": "mkdir -p build && cp ../assets/icon.png build/icon.png",
+    "build:icon": "node scripts/build-icon.js",
     "build": "pnpm run build:icon && tsc -p tsconfig.json",
     "start": "pnpm run build && electron .",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -31,54 +31,31 @@
         "dmg",
         "zip"
       ],
-      "category": "public.app-category.productivity",
-      "extraResources": [
-        {
-          "from": "../build/nuitka/entry.app/Contents/MacOS/",
-          "to": "backend",
-          "filter": [
-            "**/*"
-          ]
-        }
-      ]
+      "category": "public.app-category.productivity"
     },
     "linux": {
       "icon": "build/icon.png",
       "target": [
         "AppImage"
       ],
-      "category": "Utility",
-      "extraResources": [
-        {
-          "from": "../build/nuitka/entry.dist/",
-          "to": "backend",
-          "filter": [
-            "**/*"
-          ]
-        }
-      ]
+      "category": "Utility"
     },
     "win": {
       "icon": "build/icon.png",
       "target": [
         "nsis"
-      ],
-      "extraResources": [
-        {
-          "from": "../build/nuitka/entry.dist/",
-          "to": "backend",
-          "filter": [
-            "**/*"
-          ]
-        }
       ]
     }
   },
   "devDependencies": {
+    "@types/adm-zip": "0.5.8",
     "@types/node": "^25.5.0",
     "electron": "^41.0.3",
     "electron-builder": "^26.8.1",
     "typescript": "^6.0.2"
+  },
+  "dependencies": {
+    "adm-zip": "0.5.16"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
