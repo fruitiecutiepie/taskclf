@@ -3,6 +3,23 @@
 This document tracks the current Electron-based desktop shell that now
 coexists with the legacy pywebview shell.
 
+## Agent Guide for Implementing TODOs
+
+When an AI agent is tasked with implementing TODOs listed in this document, the agent MUST follow these steps:
+
+1. **Read the Context**: Review the "Runtime architecture" and "Key implementation points" sections to understand how the Electron shell interacts with the Python sidecar.
+2. **Analyze the Task**: Understand the requirements of the specific TODO item. Identify whether it requires changes in the Electron main process (`electron/main.ts`), the React frontend (`src/taskclf/ui/frontend/`), or the Python backend.
+3. **Execute**: Make the necessary code changes, adhering to the architecture described below.
+4. **Validate**: Run the relevant tests from the "Validation checklist" to ensure both automated and manual checks pass. Ensure no existing functionality is broken.
+5. **Mark as Complete**: When a TODO item is fully implemented and validated, change its markdown checkbox from `[ ]` to `[x]`. **Do not delete** the item or use strikethroughs, as checkboxes provide a clean historical record of completed work.
+
+## TODOs
+
+- [ ] Verify packaging/signing for the Electron app is possible and automate it
+- [ ] Mirror all necessary pystray menu actions to the Electron tray menu
+- [ ] Integrate full desktop icon instead of defaulting to a generic Electron icon
+- [ ] Remove legacy pywebview shell when full migration to Electron is stable and complete
+
 ## Current status
 
 The repo now has an **opt-in Electron shell** launched with:
