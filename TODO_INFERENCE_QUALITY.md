@@ -1467,6 +1467,7 @@ Docs to update:
 **Prerequisites**: Phases 1 and 5 complete (correct pipeline, proper evaluation).
 
 - [ ] **Step 6.1 — Add candidate features one group at a time**
+  - [ ] paused remaining feature groups
 
 For each candidate feature group:
 
@@ -1509,7 +1510,7 @@ Docs:
 
 **Prerequisites**: All prior phases complete.
 
-- [ ] **Step 7.1 — Hyperparameter tuning**
+- [x] **Step 7.1 — Hyperparameter tuning** ✅ 2026-03-30
 
 This is an experiment step, not a production code change.
 
