@@ -192,8 +192,9 @@ function envFlag(name: string): boolean {
   return process.env[name] === "1";
 }
 
-function pythonExecutable(): string {
-  return envString("TASKCLF_ELECTRON_PYTHON_EXECUTABLE", "python3");
+function sidecarExecutable(): string {
+  const fallback = app.isPackaged ? "taskclf" : "python3";
+  return envString("TASKCLF_ELECTRON_PYTHON_EXECUTABLE", fallback);
 }
 
 function uiPort(): number {
@@ -212,9 +213,11 @@ function shellUrl(): string {
 }
 
 function sidecarArgs(): string[] {
-  const args = [
-    "-m",
-    "taskclf.cli.main",
+  const args: string[] = [];
+  if (!app.isPackaged) {
+    args.push("-m", "taskclf.cli.main");
+  }
+  args.push(
     "tray",
     "--browser",
     "--no-tray",
@@ -231,7 +234,7 @@ function sidecarArgs(): string[] {
     String(envInt("TASKCLF_ELECTRON_TRANSITION_MINUTES", 3)),
     "--models-dir",
     envString("TASKCLF_ELECTRON_MODELS_DIR", "models"),
-  ];
+  );
 
   const dataDir = process.env.TASKCLF_ELECTRON_DATA_DIR;
   if (dataDir) {
@@ -379,7 +382,7 @@ function toggleWindow(): void {
 // ── Sidecar ─────────────────────────────────────────────────────────────
 
 function spawnSidecar(): void {
-  sidecar = spawn(pythonExecutable(), sidecarArgs(), {
+  sidecar = spawn(sidecarExecutable(), sidecarArgs(), {
     stdio: "inherit",
     env: process.env,
   });

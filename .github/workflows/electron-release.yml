@@ -1,0 +1,77 @@
+name: Electron Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  electron-build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            artifact_glob: "*.dmg\n*.zip"
+          - os: ubuntu-latest
+            artifact_glob: "*.AppImage"
+          - os: windows-latest
+            artifact_glob: "*.exe"
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Build frontend
+        run: make ui-build
+
+      - name: Install Electron dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: electron
+
+      - name: Compile TypeScript
+        run: pnpm run build
+        working-directory: electron
+
+      - name: Package Electron app
+        run: pnpm run dist
+        working-directory: electron
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: electron-${{ matrix.os }}
+          path: |
+            electron/release/*.dmg
+            electron/release/*.zip
+            electron/release/*.AppImage
+            electron/release/*.exe
+
+      - name: Upload to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            electron/release/*.dmg
+            electron/release/*.zip
+            electron/release/*.AppImage
+            electron/release/*.exe

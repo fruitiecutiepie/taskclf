@@ -15,7 +15,7 @@ When an AI agent is tasked with implementing TODOs listed in this document, the 
 
 ## TODOs
 
-- [ ] Verify packaging/signing for the Electron app is possible and automate it
+- [x] Verify packaging/signing for the Electron app is possible and automate it
 - [ ] Mirror all necessary pystray menu actions to the Electron tray menu
 - [ ] Integrate full desktop icon instead of defaulting to a generic Electron icon
 - [ ] Remove legacy pywebview shell when full migration to Electron is stable and complete
@@ -107,8 +107,8 @@ The pywebview shell still exists as a fallback path:
 
 ### Automated checks
 
-- `uv run ruff check src/taskclf/cli/main.py src/taskclf/ui/tray.py src/taskclf/ui/electron_shell.py tests/test_cli_commands.py tests/test_tray.py tests/test_ui_electron_shell.py`
-- `uv run pytest tests/test_ui_electron_shell.py tests/test_tray.py tests/test_cli_commands.py -k "ui_electron_shell or embedded_mode_can_skip_browser_launch or DesktopShellCommands"`
+- `uv run ruff check src/taskclf/cli/main.py src/taskclf/ui/tray.py src/taskclf/ui/electron_shell.py tests/test_cli_commands.py tests/test_ui_tray.py tests/test_ui_electron_shell.py`
+- `uv run pytest tests/test_ui_electron_shell.py tests/test_ui_tray.py tests/test_cli_commands.py -k "ui_electron_shell or embedded_mode_can_skip_browser_launch or DesktopShellCommands"`
 - `pnpm exec vitest run src/App.test.tsx src/lib/host.test.ts` from `src/taskclf/ui/frontend/`
 - `pnpm run typecheck` from `src/taskclf/ui/frontend/`
 - `pnpm run typecheck` and `pnpm run build` from `electron/`
