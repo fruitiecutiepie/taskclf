@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">taskclf icon</title>
+  <desc id="desc">A shielded clock and bar chart icon representing private, time-aware task classification.</desc>
+  <defs>
+    <linearGradient id="bg" x1="24" y1="24" x2="232" y2="232" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0F172A"/>
+      <stop offset="1" stop-color="#1E3A8A"/>
+    </linearGradient>
+    <linearGradient id="shield" x1="76" y1="62" x2="180" y2="194" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#14B8A6"/>
+      <stop offset="1" stop-color="#22D3EE"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="24" y="24" width="208" height="208" rx="52" fill="url(#bg)"/>
+
+  <path fill="url(#shield)" d="M128 58c-20 15-44 16-58 17v54c0 33 22 57 58 69 36-12 58-36 58-69V75c-14-1-38-2-58-17Z"/>
+
+  <circle cx="128" cy="120" r="34" fill="#0B1220" opacity="0.88"/>
+  <path d="M128 99v21l14 9" stroke="#E2E8F0" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+
+  <rect x="96" y="151" width="14" height="28" rx="3" fill="#E2E8F0"/>
+  <rect x="121" y="143" width="14" height="36" rx="3" fill="#E2E8F0"/>
+  <rect x="146" y="134" width="14" height="45" rx="3" fill="#E2E8F0"/>
+</svg>

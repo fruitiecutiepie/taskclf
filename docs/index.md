@@ -1,5 +1,7 @@
 # taskclf
 
+![taskclf icon](../assets/taskclf-icon.svg){ width="160" }
+
 A local-first, privacy-preserving classifier that infers your task type
 (coding, writing, meetings, etc.) from computer activity signals.
 

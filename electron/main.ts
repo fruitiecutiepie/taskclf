@@ -285,6 +285,10 @@ function initialPillBounds(): Electron.Rectangle {
   };
 }
 
+function getAppIconPath(): string {
+  return path.join(__dirname, "..", "build", "icon.png");
+}
+
 function preloadScriptPath(): string {
   return path.join(__dirname, "preload.js");
 }
@@ -301,6 +305,7 @@ function createPillWindow(): BrowserWindow {
     resizable: false,
     hasShadow: true,
     backgroundColor: "#00000000",
+    icon: getAppIconPath(),
     webPreferences: {
       preload,
       contextIsolation: true,
@@ -339,6 +344,7 @@ function createPopupWindow(size: { width: number; height: number }): BrowserWind
     resizable: false,
     hasShadow: true,
     backgroundColor: "#00000000",
+    icon: getAppIconPath(),
     webPreferences: {
       preload,
       contextIsolation: true,
@@ -696,6 +702,7 @@ ipcMain.handle("taskclf-host", async (_event, command: HostCommand) => {
 async function start(): Promise<void> {
   app.setName("taskclf");
   if (process.platform === "darwin") {
+    app.dock?.setIcon(getAppIconPath());
     app.dock?.hide();
   }
 

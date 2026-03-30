@@ -17,7 +17,7 @@ When an AI agent is tasked with implementing TODOs listed in this document, the 
 
 - [x] Verify packaging/signing for the Electron app is possible and automate it
 - [x] Mirror all necessary pystray menu actions to the Electron tray menu
-- [ ] Integrate full desktop icon instead of defaulting to a generic Electron icon
+- [x] Integrate full desktop icon instead of defaulting to a generic Electron icon
 - [ ] Remove legacy pywebview shell when full migration to Electron is stable and complete
 
 ## Current status
