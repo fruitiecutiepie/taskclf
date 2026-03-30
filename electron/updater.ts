@@ -57,11 +57,7 @@ export function getActivePayloadBackendPath(): string | null {
 }
 
 export async function checkForUpdate(): Promise<Manifest | null> {
-  const manifestUrl = process.env.TASKCLF_MANIFEST_URL;
-  if (!manifestUrl) {
-    console.log("[updater] TASKCLF_MANIFEST_URL not set, skipping update check.");
-    return null;
-  }
+  const manifestUrl = process.env.TASKCLF_MANIFEST_URL || "https://github.com/fruitiecutiepie/taskclf/releases/latest/download/manifest.json";
 
   try {
     console.log(`[updater] Checking for updates at ${manifestUrl}`);
