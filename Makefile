@@ -1,6 +1,6 @@
 .PHONY: install \
        py-lint py-test py-typecheck \
-       ui-lint ui-test ui-typecheck ui-build ui-dev \
+       ui-lint ui-test ui-typecheck ui-build ui-dev electron-typecheck \
        lint test typecheck ci check \
        nuitka-build \
        docs-serve docs-build \
@@ -14,7 +14,7 @@ PNPM := pnpm --dir src/taskclf/ui/frontend
 # --- setup ---
 
 install:
-	uv sync & $(PNPM) install --frozen-lockfile & wait
+	uv sync & $(PNPM) install --frozen-lockfile & pnpm --dir electron install --frozen-lockfile & wait
 
 # --- python ---
 
@@ -55,6 +55,11 @@ ui-build:
 
 ui-dev:
 	$(PNPM) run dev
+
+# --- electron ---
+
+electron-typecheck:
+	pnpm --dir electron run typecheck
 
 # --- nuitka ---
 
@@ -97,7 +102,7 @@ lint: py-lint ui-lint
 
 test: py-test ui-test
 
-typecheck: py-typecheck ui-typecheck
+typecheck: py-typecheck ui-typecheck electron-typecheck
 
 format: py-format ui-format
 

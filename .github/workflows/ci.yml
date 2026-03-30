@@ -50,3 +50,6 @@ jobs:
 
       - name: Typecheck frontend
         run: make ui-typecheck
+
+      - name: Typecheck electron
+        run: make electron-typecheck
