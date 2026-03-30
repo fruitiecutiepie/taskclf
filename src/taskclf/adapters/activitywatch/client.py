@@ -54,6 +54,14 @@ class AWTimeoutError(OSError):
         super().__init__(f"ActivityWatch request to {url} timed out after {timeout}s")
 
 
+class AWNotFoundError(OSError):
+    """The ActivityWatch resource was not found (HTTP 404)."""
+
+    def __init__(self, url: str) -> None:
+        self.url = url
+        super().__init__(f"ActivityWatch resource not found at {url}")
+
+
 logger = logging.getLogger(__name__)
 
 _CURRENTWINDOW_TYPE = "currentwindow"
@@ -206,6 +214,10 @@ def _api_get(url: str, *, timeout: int = DEFAULT_AW_TIMEOUT_SECONDS) -> Any:
     except (TimeoutError, socket.timeout) as exc:
         raise AWTimeoutError(url, timeout) from exc
     except (ConnectionRefusedError, ConnectionResetError) as exc:
+        raise AWConnectionError(url) from exc
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            raise AWNotFoundError(url) from exc
         raise AWConnectionError(url) from exc
     except urllib.error.URLError as exc:
         raise AWConnectionError(url) from exc

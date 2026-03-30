@@ -239,6 +239,7 @@ class ActivityMonitor:
         """Fetch recent AW events and return the most common app_id."""
         from taskclf.adapters.activitywatch.client import (
             AWConnectionError,
+            AWNotFoundError,
             AWTimeoutError,
             fetch_aw_events,
         )
@@ -283,6 +284,12 @@ class ActivityMonitor:
                 title_salt=self._title_salt,
                 timeout=self._aw_timeout_seconds,
             )
+        except AWNotFoundError as exc:
+            logger.warning("ActivityWatch bucket not found, will rediscover: %s", exc)
+            self._bucket_id = None
+            self._last_event_count = 0
+            self._last_app_counts = {}
+            return None
         except (AWConnectionError, AWTimeoutError) as exc:
             self._handle_fetch_failure(exc)
             logger.debug("Failed to fetch AW events: %s", exc)
