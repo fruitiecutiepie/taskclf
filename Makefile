@@ -2,6 +2,7 @@
        py-lint py-test py-typecheck \
        ui-lint ui-test ui-typecheck ui-build ui-dev \
        lint test typecheck ci check \
+       nuitka-build \
        docs-serve docs-build \
        version bump-patch bump-minor bump-major \
        retag
@@ -52,6 +53,32 @@ ui-build:
 
 ui-dev:
 	$(PNPM) run dev
+
+# --- nuitka ---
+
+nuitka-build: ui-build
+	uv run --group bundle python -m nuitka \
+		--standalone \
+		--output-dir=build/nuitka \
+		--include-package=taskclf \
+		--include-package=lightgbm \
+		--include-package=pandas \
+		--include-package=duckdb \
+		--include-package=sklearn \
+		--include-package=scipy \
+		--include-package=pydantic \
+		--include-package=uvicorn \
+		--include-package=fastapi \
+		--include-package=typer \
+		--include-package=rich \
+		--include-package=yaml \
+		--include-package=pyarrow \
+		--include-package=PIL \
+		--include-package=pystray \
+		--include-data-dir=src/taskclf/ui/static=taskclf/ui/static \
+		--python-flag=no_site \
+		--macos-create-app-bundle \
+		src/taskclf/cli/entry.py
 
 # --- aggregates ---
 

@@ -192,9 +192,16 @@ function envFlag(name: string): boolean {
   return process.env[name] === "1";
 }
 
+function bundledBackendPath(): string {
+  const name = process.platform === "win32" ? "entry.exe" : "entry";
+  return path.join(process.resourcesPath, "backend", name);
+}
+
 function sidecarExecutable(): string {
-  const fallback = app.isPackaged ? "taskclf" : "python3";
-  return envString("TASKCLF_ELECTRON_PYTHON_EXECUTABLE", fallback);
+  if (app.isPackaged) {
+    return bundledBackendPath();
+  }
+  return envString("TASKCLF_ELECTRON_PYTHON_EXECUTABLE", "python3");
 }
 
 function uiPort(): number {

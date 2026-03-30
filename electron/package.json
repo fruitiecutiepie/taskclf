@@ -1,5 +1,8 @@
 {
   "name": "taskclf-electron",
+  "version": "0.3.12",
+  "description": "Local-first task classifier",
+  "author": "fruitiecutiepie",
   "private": true,
   "main": "dist/main.js",
   "scripts": {
@@ -15,6 +18,15 @@
     "files": [
       "dist/**/*",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../build/nuitka/entry.app/Contents/MacOS/",
+        "to": "backend",
+        "filter": [
+          "**/*"
+        ]
+      }
     ],
     "directories": {
       "output": "release"

@@ -66,6 +66,10 @@ docs = [
     "zensical",
     "mkdocstrings-python",
 ]
+bundle = [
+    "nuitka",
+    "ordered-set",
+]
 
 [tool.mypy]
 python_version = "3.14"

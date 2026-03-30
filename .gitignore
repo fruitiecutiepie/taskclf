@@ -64,6 +64,7 @@ logs/
 src/taskclf/ui/frontend/node_modules/
 src/taskclf/ui/static/
 electron/node_modules/
+electron/release/
 
 # Docs (MkDocs build output)
 site/

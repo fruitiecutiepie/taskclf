@@ -40,8 +40,14 @@ jobs:
       - name: Install uv
         run: pip install uv
 
+      - name: Install Python dependencies
+        run: uv sync --group bundle
+
       - name: Build frontend
         run: make ui-build
+
+      - name: Build Python backend (Nuitka standalone)
+        run: make nuitka-build
 
       - name: Install Electron dependencies
         run: pnpm install --frozen-lockfile
