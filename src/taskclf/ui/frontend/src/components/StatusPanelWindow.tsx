@@ -50,7 +50,7 @@ export const StatusPanelWindow: Component = () => {
         >
           <Show when={!in_browser}>
             <div
-              class="pywebview-drag-region"
+              class={host.kind === "pywebview" ? "pywebview-drag-region" : undefined}
               style={{
                 height: "10px",
                 cursor: "grab",
@@ -58,6 +58,9 @@ export const StatusPanelWindow: Component = () => {
                 display: "flex",
                 "justify-content": "center",
                 "align-items": "center",
+                ...(host.kind === "electron"
+                  ? { "-webkit-app-region": "drag", "app-region": "drag" }
+                  : {}),
               }}
             >
               <div

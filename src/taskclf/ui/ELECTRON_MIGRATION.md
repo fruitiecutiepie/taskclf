@@ -29,7 +29,9 @@ and window management into Electron.
 taskclf electron
 ├── Electron main process
 │   ├── Tray icon + menu
-│   ├── Single frameless BrowserWindow
+│   ├── Compact pill BrowserWindow (150×30)
+│   ├── Label popup BrowserWindow (280×330, hidden by default)
+│   ├── Panel popup BrowserWindow (280×520, hidden by default)
 │   └── IPC bridge (preload.ts)
 └── Python sidecar
     └── taskclf tray --browser --no-tray --no-open-browser
@@ -40,17 +42,18 @@ taskclf electron
 
 ## Key implementation points
 
-- `electron/main.ts` owns the tray icon, BrowserWindow lifecycle, and
-  Python sidecar startup.
+- `electron/main.ts` owns the tray icon, BrowserWindow lifecycle, child
+  window state machine, and Python sidecar startup.
 - `electron/preload.ts` exposes `window.electronHost.invoke(...)` to the
   renderer.
 - `src/taskclf/ui/frontend/src/lib/host.ts` now detects
   `window.electronHost` and routes host commands through Electron IPC.
-- The Electron renderer uses a **single-window layout** instead of the
-  pywebview shell's three native windows.
-- The renderer reports semantic window states (`compact`, `label`,
-  `panel`, `dashboard`) so Electron can resize the BrowserWindow without
-  snapping back to the primary display.
+- The Electron shell uses **three native windows** matching the pywebview
+  shell: a compact pill, a label popup (`?view=label`), and a state
+  panel popup (`?view=panel`).
+- Child windows are anchored below the pill, right-aligned, with
+  hover-show, click-to-pin, delayed hide (300 ms), and drag detection
+  mirroring the `WindowChild` state machine in `window.py`.
 
 ## Why the sidecar uses `tray`
 
@@ -99,6 +102,6 @@ The pywebview shell still exists as a fallback path:
 1. Run `taskclf electron`.
 2. Drag the compact pill horizontally across displays and verify it does not snap back to the primary display.
 3. Repeat with vertically stacked displays and verify the top edge stays stable near the menu bar boundary.
-4. Hover the label badge and status dot so the window resizes through `compact`, `label`, `panel`, and `dashboard` modes while preserving the window's current display and right edge.
+4. Hover the label badge to open the label popup window; hover the status dot to open the panel popup window. Verify both appear anchored below the pill and follow when the pill is dragged.
 5. Use the Electron tray menu to toggle the dashboard, open the browser fallback, and toggle pause.
 6. Quit from the Electron tray and verify the Python sidecar exits with it.

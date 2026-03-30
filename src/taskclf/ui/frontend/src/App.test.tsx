@@ -102,7 +102,7 @@ describe("App native pill", () => {
     expect(drag_region).not.toContainElement(badge_button);
   });
 
-  it("syncs Electron window mode as single-window panels open", async () => {
+  it("uses popup host commands in Electron multi-window mode", async () => {
     vi.resetModules();
     window.history.replaceState({}, "", "/");
 
@@ -189,17 +189,17 @@ describe("App native pill", () => {
     const { default: App } = await import("./App");
     render(() => <App />);
 
-    expect(host_invoke).toHaveBeenCalledWith({
-      cmd: "setWindowMode",
-      mode: "compact",
-    });
+    expect(host_invoke).not.toHaveBeenCalledWith(
+      expect.objectContaining({ cmd: "setWindowMode" }),
+    );
 
     const badge_button = screen.getByRole("button", { name: "No Model" });
     fireEvent.mouseEnter(badge_button);
 
-    expect(host_invoke).toHaveBeenCalledWith({
-      cmd: "setWindowMode",
-      mode: "label",
-    });
+    expect(host_invoke).toHaveBeenCalledWith({ cmd: "showLabelGrid" });
+
+    fireEvent.click(badge_button);
+
+    expect(host_invoke).toHaveBeenCalledWith({ cmd: "toggleLabelGrid" });
   });
 });

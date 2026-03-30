@@ -11,7 +11,6 @@ import { LabelRecorderWindow } from "./components/LabelRecorderWindow";
 import { PredictionBadge } from "./components/PredictionBadge";
 import { StatusPanel } from "./components/StatusPanel";
 import { StatusPanelWindow } from "./components/StatusPanelWindow";
-import type { WindowMode } from "./lib/host";
 import { host } from "./lib/host";
 import { frontend_error_handlers_install } from "./lib/log";
 import {
@@ -30,7 +29,7 @@ const LABEL_MAX_H = 330;
 const PANEL_MAX_H = 520;
 
 const is_browser_mode = () => host.kind === "browser";
-const is_single_window_mode = () => host.kind !== "pywebview";
+const is_single_window_mode = () => host.kind === "browser";
 
 if (!is_browser_mode()) {
   document.documentElement.style.background = "transparent";
@@ -72,26 +71,6 @@ const App: Component = () => {
     notification_permission_ensure();
     const cleanup_error_handlers = frontend_error_handlers_install();
     onCleanup(cleanup_error_handlers);
-  });
-
-  const window_mode = (): WindowMode => {
-    if (label_visible() && panel_visible()) {
-      return "dashboard";
-    }
-    if (label_visible()) {
-      return "label";
-    }
-    if (panel_visible()) {
-      return "panel";
-    }
-    return "compact";
-  };
-
-  createEffect(() => {
-    if (!electron_shell) {
-      return;
-    }
-    void host.invoke({ cmd: "setWindowMode", mode: window_mode() });
   });
 
   createEffect(() => {
@@ -147,12 +126,8 @@ const App: Component = () => {
             background: "rgba(15, 17, 23, 0.5)",
             "backdrop-filter": "blur(20px)",
             "-webkit-backdrop-filter": "blur(20px)",
-            width: in_browser
-              ? `${COMPACT_W}px`
-              : electron_shell
-                ? `${window_mode() === "compact" ? COMPACT_W : CONTENT_W}px`
-                : "100%",
-            ...(in_browser || electron_shell
+            width: in_browser ? `${COMPACT_W}px` : "100%",
+            ...(in_browser
               ? { "box-shadow": "0 4px 24px rgba(0, 0, 0, 0.5)" }
               : { height: "100vh" }),
             overflow: "hidden",
@@ -160,9 +135,6 @@ const App: Component = () => {
             display: "flex",
             "flex-direction": "column",
             "min-height": "0",
-            transition: electron_shell
-              ? undefined
-              : "width 0.32s cubic-bezier(0.32, 0.72, 0, 1)",
           }}
         >
           {/* biome-ignore lint/a11y/noStaticElementInteractions: single hover zone for badge + label (avoids gap flicker) */}

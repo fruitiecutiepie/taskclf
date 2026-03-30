@@ -17,21 +17,162 @@ type HostCommand = {
   message?: string;
 };
 
-type WindowMode = "compact" | "label" | "panel" | "dashboard";
-
 const COMPACT_SIZE = { width: 150, height: 30 };
-const LABEL_WINDOW_HEIGHT = 30 + 4 + 330;
-const PANEL_WINDOW_HEIGHT = 30 + 4 + 520;
-const DASHBOARD_WINDOW_HEIGHT = 30 + 4 + 330 + 4 + 520;
-const CONTENT_WIDTH = 280;
+const LABEL_SIZE = { width: 280, height: 330 };
+const PANEL_SIZE = { width: 280, height: 520 };
+const CHILD_GAP = 4;
+const CHILD_HIDE_DELAY_MS = 300;
+const DRAG_TOLERANCE = 10;
 const WINDOW_MARGIN = 16;
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let sidecar: ChildProcess | null = null;
 let isQuitting = false;
-let windowMode: WindowMode = "compact";
 let hasShownWindow = false;
+
+// ── Child window state machine ──────────────────────────────────────────
+
+type ChildWindowState = {
+  window: BrowserWindow | null;
+  visible: boolean;
+  pinned: boolean;
+  hideTimer: ReturnType<typeof setTimeout> | null;
+  expectedPos: { x: number; y: number } | null;
+  size: { width: number; height: number };
+  positionFn: () => void;
+};
+
+const labelChild: ChildWindowState = {
+  window: null,
+  visible: false,
+  pinned: false,
+  hideTimer: null,
+  expectedPos: null,
+  size: LABEL_SIZE,
+  positionFn: () => {
+    positionLabel();
+  },
+};
+
+const panelChild: ChildWindowState = {
+  window: null,
+  visible: false,
+  pinned: false,
+  hideTimer: null,
+  expectedPos: null,
+  size: PANEL_SIZE,
+  positionFn: () => {
+    positionPanel();
+  },
+};
+
+function childTimerCancel(child: ChildWindowState): void {
+  if (child.hideTimer !== null) {
+    clearTimeout(child.hideTimer);
+    child.hideTimer = null;
+  }
+}
+
+function childVisibilityOn(child: ChildWindowState): void {
+  if (child.window === null || mainWindow === null) {
+    return;
+  }
+  childTimerCancel(child);
+  if (!child.visible) {
+    child.visible = true;
+    child.positionFn();
+    child.window.showInactive();
+  }
+}
+
+function childVisibilityOff(child: ChildWindowState): void {
+  child.hideTimer = null;
+  if (child.window !== null) {
+    child.window.hide();
+  }
+  child.visible = false;
+  child.pinned = false;
+  child.expectedPos = null;
+}
+
+function childVisibilityOffDeferred(child: ChildWindowState): void {
+  if (child.pinned) {
+    return;
+  }
+  childTimerCancel(child);
+  child.hideTimer = setTimeout(() => {
+    childVisibilityOff(child);
+  }, CHILD_HIDE_DELAY_MS);
+}
+
+function childPinToggle(child: ChildWindowState): void {
+  if (child.window === null || mainWindow === null) {
+    return;
+  }
+  if (child.visible && child.pinned) {
+    child.pinned = false;
+    childVisibilityOff(child);
+  } else if (child.visible && !child.pinned) {
+    child.pinned = true;
+  } else {
+    childTimerCancel(child);
+    child.pinned = true;
+    child.visible = true;
+    child.positionFn();
+    child.window.showInactive();
+  }
+}
+
+function childDragDetected(child: ChildWindowState): boolean {
+  if (!child.visible || child.window === null || child.expectedPos === null) {
+    return false;
+  }
+  const bounds = child.window.getBounds();
+  return (
+    Math.abs(bounds.x - child.expectedPos.x) > DRAG_TOLERANCE
+    || Math.abs(bounds.y - child.expectedPos.y) > DRAG_TOLERANCE
+  );
+}
+
+// ── Child positioning ───────────────────────────────────────────────────
+
+function positionLabel(): void {
+  if (mainWindow === null || labelChild.window === null || !labelChild.visible) {
+    return;
+  }
+  const pill = mainWindow.getBounds();
+  const x = pill.x + COMPACT_SIZE.width - LABEL_SIZE.width;
+  const y = pill.y + COMPACT_SIZE.height + CHILD_GAP;
+  labelChild.window.setBounds({ x, y, ...LABEL_SIZE }, false);
+  labelChild.expectedPos = { x, y };
+}
+
+function positionPanel(): void {
+  if (mainWindow === null || panelChild.window === null || !panelChild.visible) {
+    return;
+  }
+  const pill = mainWindow.getBounds();
+  const rightX = pill.x + COMPACT_SIZE.width;
+  let y = pill.y + COMPACT_SIZE.height + CHILD_GAP;
+  if (labelChild.visible) {
+    y += LABEL_SIZE.height + CHILD_GAP;
+  }
+  const x = rightX - PANEL_SIZE.width;
+  panelChild.window.setBounds({ x, y, ...PANEL_SIZE }, false);
+  panelChild.expectedPos = { x, y };
+}
+
+function onMainWindowMoved(): void {
+  if (!childDragDetected(labelChild)) {
+    positionLabel();
+  }
+  if (!childDragDetected(panelChild)) {
+    positionPanel();
+  }
+}
+
+// ── Environment helpers ─────────────────────────────────────────────────
 
 function envString(name: string, fallback: string): string {
   const value = process.env[name];
@@ -119,92 +260,26 @@ function sidecarArgs(): string[] {
   return args;
 }
 
-function sizeForMode(mode: WindowMode): { width: number; height: number } {
-  switch (mode) {
-    case "label":
-      return { width: CONTENT_WIDTH, height: LABEL_WINDOW_HEIGHT };
-    case "panel":
-      return { width: CONTENT_WIDTH, height: PANEL_WINDOW_HEIGHT };
-    case "dashboard":
-      return { width: CONTENT_WIDTH, height: DASHBOARD_WINDOW_HEIGHT };
-    case "compact":
-    default:
-      return COMPACT_SIZE;
-  }
-}
+// ── Window factories ────────────────────────────────────────────────────
 
-function clamp(value: number, min: number, max: number): number {
-  if (max < min) {
-    return min;
-  }
-  return Math.min(Math.max(value, min), max);
-}
-
-function currentDisplayWorkArea(bounds: Electron.Rectangle): Electron.Rectangle {
-  return screen.getDisplayMatching(bounds).workArea;
-}
-
-function initialBoundsFor(mode: WindowMode): Electron.Rectangle {
+function initialPillBounds(): Electron.Rectangle {
   const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
   const workArea = display.workArea;
-  const size = sizeForMode(mode);
   return {
-    x: workArea.x + workArea.width - size.width - WINDOW_MARGIN,
+    x: workArea.x + workArea.width - COMPACT_SIZE.width - WINDOW_MARGIN,
     y: workArea.y + WINDOW_MARGIN,
-    width: size.width,
-    height: size.height,
+    ...COMPACT_SIZE,
   };
 }
 
-function applyWindowMode(mode: WindowMode): void {
-  windowMode = mode;
-  if (mainWindow === null) {
-    return;
-  }
-
-  const currentBounds = mainWindow.getBounds();
-  const workArea = currentDisplayWorkArea(currentBounds);
-  const nextSize = sizeForMode(mode);
-  const rightEdge = currentBounds.x + currentBounds.width;
-  const nextX = clamp(
-    rightEdge - nextSize.width,
-    workArea.x,
-    workArea.x + workArea.width - nextSize.width,
-  );
-  const nextY = clamp(
-    currentBounds.y,
-    workArea.y,
-    workArea.y + workArea.height - nextSize.height,
-  );
-
-  mainWindow.setBounds(
-    {
-      x: nextX,
-      y: nextY,
-      width: nextSize.width,
-      height: nextSize.height,
-    },
-    false,
-  );
+function preloadScriptPath(): string {
+  return path.join(__dirname, "preload.js");
 }
 
-function createTrayIcon(): Electron.NativeImage {
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
-      <circle cx="8" cy="8" r="6" fill="#4caf50" />
-      <rect x="7" y="3" width="2" height="6" rx="1" fill="#0f1117" />
-      <circle cx="8" cy="11" r="1.2" fill="#0f1117" />
-    </svg>
-  `.trim();
-  return nativeImage.createFromDataURL(
-    `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`,
-  );
-}
-
-function createWindow(): BrowserWindow {
-  const preloadPath = path.join(__dirname, "preload.js");
+function createPillWindow(): BrowserWindow {
+  const preload = preloadScriptPath();
   const window = new BrowserWindow({
-    ...initialBoundsFor(windowMode),
+    ...initialPillBounds(),
     show: false,
     frame: false,
     transparent: true,
@@ -214,7 +289,7 @@ function createWindow(): BrowserWindow {
     hasShadow: true,
     backgroundColor: "#00000000",
     webPreferences: {
-      preload: preloadPath,
+      preload,
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
@@ -233,15 +308,51 @@ function createWindow(): BrowserWindow {
     mainWindow = null;
   });
 
+  window.on("move", onMainWindowMoved);
+
   return window;
 }
+
+function createPopupWindow(size: { width: number; height: number }): BrowserWindow {
+  const preload = preloadScriptPath();
+  const window = new BrowserWindow({
+    width: size.width,
+    height: size.height,
+    show: false,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    hasShadow: true,
+    backgroundColor: "#00000000",
+    webPreferences: {
+      preload,
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+    },
+  });
+
+  window.on("close", (event) => {
+    if (isQuitting) {
+      return;
+    }
+    event.preventDefault();
+    window.hide();
+  });
+
+  return window;
+}
+
+// ── Show / toggle ───────────────────────────────────────────────────────
 
 function showWindow(): void {
   if (mainWindow === null) {
     return;
   }
   if (!hasShownWindow) {
-    mainWindow.setBounds(initialBoundsFor(windowMode), false);
+    mainWindow.setBounds(initialPillBounds(), false);
     hasShownWindow = true;
   }
   mainWindow.show();
@@ -253,11 +364,19 @@ function toggleWindow(): void {
     return;
   }
   if (mainWindow.isVisible()) {
+    if (labelChild.visible) {
+      childVisibilityOff(labelChild);
+    }
+    if (panelChild.visible) {
+      childVisibilityOff(panelChild);
+    }
     mainWindow.hide();
     return;
   }
   showWindow();
 }
+
+// ── Sidecar ─────────────────────────────────────────────────────────────
 
 function spawnSidecar(): void {
   sidecar = spawn(pythonExecutable(), sidecarArgs(), {
@@ -329,6 +448,21 @@ async function sidecarRequest(
   }
 }
 
+// ── Tray ────────────────────────────────────────────────────────────────
+
+function createTrayIcon(): Electron.NativeImage {
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+      <circle cx="8" cy="8" r="6" fill="#4caf50" />
+      <rect x="7" y="3" width="2" height="6" rx="1" fill="#0f1117" />
+      <circle cx="8" cy="11" r="1.2" fill="#0f1117" />
+    </svg>
+  `.trim();
+  return nativeImage.createFromDataURL(
+    `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`,
+  );
+}
+
 function createTray(): Tray {
   const instance = new Tray(createTrayIcon());
   instance.setToolTip("taskclf");
@@ -385,6 +519,8 @@ function errorPageHtml(message: string): string {
   `;
 }
 
+// ── IPC ─────────────────────────────────────────────────────────────────
+
 ipcMain.handle("taskclf-host", async (_event, command: HostCommand) => {
   switch (command.cmd) {
     case "toggleDashboard":
@@ -393,15 +529,31 @@ ipcMain.handle("taskclf-host", async (_event, command: HostCommand) => {
     case "hideWindow":
       mainWindow?.hide();
       return;
+    case "showLabelGrid":
+      childVisibilityOn(labelChild);
+      return;
+    case "hideLabelGrid":
+      childVisibilityOffDeferred(labelChild);
+      return;
+    case "toggleLabelGrid":
+      childPinToggle(labelChild);
+      return;
+    case "cancelLabelHide":
+      childTimerCancel(labelChild);
+      return;
+    case "showStatePanel":
+      childVisibilityOn(panelChild);
+      return;
+    case "hideStatePanel":
+      childVisibilityOffDeferred(panelChild);
+      return;
+    case "toggleStatePanel":
+      childPinToggle(panelChild);
+      return;
+    case "cancelPanelHide":
+      childTimerCancel(panelChild);
+      return;
     case "setWindowMode":
-      if (
-        command.mode === "compact"
-        || command.mode === "label"
-        || command.mode === "panel"
-        || command.mode === "dashboard"
-      ) {
-        applyWindowMode(command.mode);
-      }
       return;
     case "frontendDebugLog":
       console.debug("[frontend]", command.message ?? "");
@@ -414,6 +566,8 @@ ipcMain.handle("taskclf-host", async (_event, command: HostCommand) => {
   }
 });
 
+// ── Bootstrap ───────────────────────────────────────────────────────────
+
 async function start(): Promise<void> {
   app.setName("taskclf");
   if (process.platform === "darwin") {
@@ -421,12 +575,30 @@ async function start(): Promise<void> {
   }
 
   tray = createTray();
-  mainWindow = createWindow();
+  mainWindow = createPillWindow();
+
+  const labelWin = createPopupWindow(LABEL_SIZE);
+  labelChild.window = labelWin;
+  labelWin.on("closed", () => {
+    labelChild.window = null;
+  });
+
+  const panelWin = createPopupWindow(PANEL_SIZE);
+  panelChild.window = panelWin;
+  panelWin.on("closed", () => {
+    panelChild.window = null;
+  });
+
   spawnSidecar();
 
   try {
-    await waitForShell(shellUrl());
-    await mainWindow.loadURL(shellUrl());
+    const base = shellUrl();
+    await waitForShell(base);
+    await Promise.all([
+      mainWindow.loadURL(base),
+      labelWin.loadURL(`${base}?view=label`),
+      panelWin.loadURL(`${base}?view=panel`),
+    ]);
     showWindow();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

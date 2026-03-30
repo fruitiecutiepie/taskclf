@@ -58,7 +58,7 @@ details.
 | `taskclf monitor show` | Display recent telemetry snapshots |
 | `taskclf diagnostics` | Collect environment info for bug reports |
 | `taskclf ui` | Launch the labeling UI as a native floating window |
-| `taskclf electron` | Launch the Electron desktop shell with native tray + single-window dashboard |
+| `taskclf electron` | Launch the Electron desktop shell with native tray + multi-window popups |
 | `taskclf tray` | Run system tray labeling app with activity transition detection |
 
 ### features build
@@ -660,9 +660,9 @@ taskclf tray --dev --browser --no-tray
 ### electron
 
 Launch the optional Electron desktop shell.  Electron owns the native
-tray icon and a single frameless BrowserWindow, while the existing Python
-tray backend runs as a sidecar process in browser mode without opening a
-separate browser tab.
+tray icon and three frameless BrowserWindows (compact pill, label popup,
+state panel popup), while the existing Python tray backend runs as a
+sidecar process in browser mode without opening a separate browser tab.
 
 ```bash
 taskclf electron
