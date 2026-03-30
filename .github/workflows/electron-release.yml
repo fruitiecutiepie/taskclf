@@ -1,8 +1,8 @@
-name: Electron Release
+name: Electron Launcher Release
 
 on:
   push:
-    tags: ["v*"]
+    tags: ["launcher-v*"]
   workflow_dispatch:
 
 permissions:
@@ -25,10 +25,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.14"
-
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -36,18 +32,6 @@ jobs:
       - uses: pnpm/action-setup@v4
         with:
           version: latest
-
-      - name: Install uv
-        run: pip install uv
-
-      - name: Install Python dependencies
-        run: uv sync --group bundle
-
-      - name: Build frontend
-        run: make ui-build
-
-      - name: Build Python backend (Nuitka standalone)
-        run: make nuitka-build
 
       - name: Install Electron dependencies
         run: pnpm install --frozen-lockfile
@@ -73,7 +57,7 @@ jobs:
             electron/release/*.exe
 
       - name: Upload to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/launcher-v')
         uses: softprops/action-gh-release@v2
         with:
           files: |

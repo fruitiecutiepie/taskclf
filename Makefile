@@ -4,7 +4,9 @@
        lint test typecheck ci check \
        nuitka-build \
        docs-serve docs-build \
-       version bump-patch bump-minor bump-major \
+       version \
+			 bump-patch bump-minor bump-major \
+			 bump-launcher-patch bump-launcher-minor bump-launcher-major \
        retag
 
 PNPM := pnpm --dir src/taskclf/ui/frontend
@@ -87,6 +89,22 @@ nuitka-build: ui-build
 		$(NUITKA_EXTRA_ARGS) \
 		src/taskclf/cli/entry.py
 
+PLATFORM_NAME ?= $(shell node -e "console.log(process.platform)" 2>/dev/null)
+ifeq ($(PLATFORM_NAME),)
+	PLATFORM_NAME := $(shell uname -s | tr A-Z a-z)
+endif
+
+build-payload: nuitka-build
+	rm -rf build/payload
+	mkdir -p build/payload/backend
+	@if [ "$(UNAME_S)" = "Darwin" ]; then \
+		cp -R build/nuitka/entry.app/Contents/MacOS/* build/payload/backend/; \
+	else \
+		cp -R build/nuitka/entry.dist/* build/payload/backend/; \
+	fi
+	cd build/payload && zip -r ../payload-$(PLATFORM_NAME).zip backend
+	@echo "Payload built at build/payload-$(PLATFORM_NAME).zip"
+
 # --- aggregates ---
 
 lint: py-lint ui-lint
@@ -120,7 +138,37 @@ CURRENT_VERSION := $(shell python3 -c "import re, pathlib; \
 version:
 	@echo $(CURRENT_VERSION)
 
-define bump_version
+define bump_launcher_version
+	$(eval NEW_VERSION := $(shell python3 -c "\
+import re, pathlib; \
+p = pathlib.Path('electron/package.json'); \
+data = p.read_text(); \
+m = re.search(r'\"version\":\s*\"([^\"]+)\"', data); \
+parts = m.group(1).split('.'); \
+idx = {'major': 0, 'minor': 1, 'patch': 2}['$(1)']; \
+parts[idx] = str(int(parts[idx]) + 1); \
+parts[idx+1:] = ['0'] * (2 - idx); \
+print('.'.join(parts))"))
+	python3 -c "\
+import re, pathlib; \
+p = pathlib.Path('electron/package.json'); \
+p.write_text(re.sub(r'(\"version\":\s*)\"[^\"]+\"', r'\1\"$(NEW_VERSION)\"', p.read_text(), count=1)); \
+print('Launcher version -> $(NEW_VERSION)')"
+	git add electron/package.json
+	git commit -m "bump launcher v$(NEW_VERSION)"
+	git tag -a launcher-v$(NEW_VERSION) -m "launcher-v$(NEW_VERSION)"
+endef
+
+bump-launcher-patch:
+	$(call bump_launcher_version,patch)
+
+bump-launcher-minor:
+	$(call bump_launcher_version,minor)
+
+bump-launcher-major:
+	$(call bump_launcher_version,major)
+
+define bump_payload_version
 	$(eval NEW_VERSION := $(shell python3 -c "\
 import re, pathlib; \
 parts = '$(CURRENT_VERSION)'.split('.'); \
@@ -140,13 +188,13 @@ print('$(CURRENT_VERSION) -> $(NEW_VERSION)')"
 endef
 
 bump-patch: check
-	$(call bump_version,patch)
+	$(call bump_payload_version,patch)
 
 bump-minor: check
-	$(call bump_version,minor)
+	$(call bump_payload_version,minor)
 
 bump-major: check
-	$(call bump_version,major)
+	$(call bump_payload_version,major)
 
 retag: check
 	@if [ -n "$$(git log origin/HEAD..HEAD --oneline)" ]; then \

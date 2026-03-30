@@ -13,6 +13,7 @@ import {
 import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { checkForUpdate, downloadAndApplyUpdate, getActivePayloadBackendPath } from "./updater";
 
 type HostCommand = {
   cmd: string;
@@ -195,14 +196,13 @@ function envFlag(name: string): boolean {
   return process.env[name] === "1";
 }
 
-function bundledBackendPath(): string {
-  const name = process.platform === "win32" ? "entry.exe" : "entry";
-  return path.join(process.resourcesPath, "backend", name);
-}
-
 function sidecarExecutable(): string {
   if (app.isPackaged) {
-    return bundledBackendPath();
+    const activePath = getActivePayloadBackendPath();
+    if (activePath) {
+      return activePath;
+    }
+    throw new Error("taskclf core not found. An internet connection is required on first launch to download the application payload.");
   }
   return envString("TASKCLF_ELECTRON_PYTHON_EXECUTABLE", "python3");
 }
@@ -527,6 +527,43 @@ async function exportLabels(): Promise<void> {
 }
 
 let syncTimer: ReturnType<typeof setInterval> | null = null;
+let updateCheckTimer: ReturnType<typeof setInterval> | null = null;
+let updatePromptShownForVersion: string | null = null;
+
+async function performBackgroundUpdateCheck() {
+  if (!app.isPackaged || isQuitting || mainWindow === null) {
+    return;
+  }
+
+  try {
+    const manifest = await checkForUpdate();
+    if (manifest && manifest.version !== updatePromptShownForVersion) {
+      updatePromptShownForVersion = manifest.version;
+
+      const res = await dialog.showMessageBox({
+        type: "info",
+        title: "Update Available",
+        message: `A new version of taskclf (v${manifest.version}) is available.`,
+        detail: "Would you like to download and restart now?",
+        buttons: ["Update and Restart", "Later"],
+        defaultId: 0,
+        cancelId: 1
+      });
+
+      if (res.response === 0) {
+        try {
+          await downloadAndApplyUpdate(manifest);
+          app.relaunch();
+          app.quit();
+        } catch (err) {
+          dialog.showErrorBox("Update Failed", `Failed to apply update: ${err}`);
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[main] Background update check failed:", err);
+  }
+}
 
 async function syncTrayMenu() {
   if (!tray || isQuitting) return;
@@ -721,9 +758,51 @@ async function start(): Promise<void> {
     panelChild.window = null;
   });
 
-  spawnSidecar();
+  if (app.isPackaged) {
+    const isFirstRun = getActivePayloadBackendPath() === null;
+
+    if (isFirstRun) {
+      const manifest = await checkForUpdate();
+      if (!manifest) {
+        dialog.showErrorBox(
+          "Network Error",
+          "taskclf core not found. An internet connection is required on first launch to download the application payload."
+        );
+        app.quit();
+        return;
+      }
+
+      const res = await dialog.showMessageBox({
+        type: "info",
+        title: "Initial Setup",
+        message: "taskclf needs to download its core components before starting.",
+        detail: `Version: ${manifest.version}`,
+        buttons: ["Download and Start", "Quit"],
+        defaultId: 0,
+        cancelId: 1
+      });
+
+      if (res.response !== 0) {
+        app.quit();
+        return;
+      }
+
+      try {
+        await downloadAndApplyUpdate(manifest);
+      } catch (err) {
+        dialog.showErrorBox("Update Failed", `Failed to download taskclf core: ${err}`);
+        app.quit();
+        return;
+      }
+    } else {
+      // Check for updates in the background on startup
+      performBackgroundUpdateCheck();
+    }
+  }
 
   try {
+    spawnSidecar();
+
     const base = shellUrl();
     await waitForShell(base);
     await Promise.all([
@@ -733,6 +812,7 @@ async function start(): Promise<void> {
     ]);
     showWindow();
     syncTimer = setInterval(() => { void syncTrayMenu(); }, 5000);
+    updateCheckTimer = setInterval(() => { void performBackgroundUpdateCheck(); }, 60 * 60 * 1000); // 1 hour
     void syncTrayMenu();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -752,6 +832,10 @@ app.on("before-quit", () => {
   if (syncTimer !== null) {
     clearInterval(syncTimer);
     syncTimer = null;
+  }
+  if (updateCheckTimer !== null) {
+    clearInterval(updateCheckTimer);
+    updateCheckTimer = null;
   }
 });
 

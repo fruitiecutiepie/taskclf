@@ -1,0 +1,92 @@
+name: Payload Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-payload:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: darwin
+          - os: ubuntu-latest
+            platform: linux
+          - os: windows-latest
+            platform: win32
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install Python dependencies
+        run: uv sync --group bundle
+
+      - name: Build payload
+        run: make build-payload PLATFORM_NAME=${{ matrix.platform }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: payload-${{ matrix.platform }}
+          path: build/payload-${{ matrix.platform }}.zip
+
+  publish:
+    needs: build-payload
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: payloads
+          pattern: payload-*
+          merge-multiple: true
+
+      - name: Generate manifest.json
+        run: |
+          python3 -c "
+          import os, json, hashlib
+          version = os.environ.get('GITHUB_REF', '').replace('refs/tags/v', '')
+          repo = os.environ.get('GITHUB_REPOSITORY', 'fruitiecutiepie/taskclf')
+          manifest = {'version': version, 'platforms': {}}
+          for p in ['darwin', 'linux', 'win32']:
+              path = f'payloads/payload-{p}.zip'
+              if os.path.exists(path):
+                  sha = hashlib.sha256(open(path, 'rb').read()).hexdigest()
+                  manifest['platforms'][p] = {
+                      'url': f'https://github.com/{repo}/releases/download/v{version}/payload-{p}.zip',
+                      'sha256': sha
+                  }
+          with open('manifest.json', 'w') as f:
+              json.dump(manifest, f, indent=2)
+          "
+          cat manifest.json
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            payloads/*.zip
+            manifest.json
