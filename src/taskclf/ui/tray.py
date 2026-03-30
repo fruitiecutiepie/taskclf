@@ -1968,6 +1968,31 @@ class TrayLabeler:
 
         from taskclf.ui.server import create_app
 
+        tray_actions: dict[str, Callable[..., Any]] = {
+            "open_dashboard": self._open_dashboard,
+            "pause_toggle": self._on_pause_menu,
+            "label_stats": self._label_stats,
+            "import_labels": self._import_labels,
+            "export_labels": self._export_labels,
+            "switch_model": self._switch_model,
+            "unload_model": self._unload_model,
+            "reload_model": self._reload_model,
+            "check_retrain": self._check_retrain,
+            "show_status": self._show_status,
+            "open_data_dir": self._open_data_dir,
+            "edit_config": self._edit_config,
+            "report_issue": self._report_issue,
+            "quit": self._quit,
+        }
+
+        def get_tray_state() -> dict[str, Any]:
+            return {
+                "paused": self._monitor.is_paused,
+                "model_dir": str(self._model_dir.resolve())
+                if self._model_dir
+                else None,
+            }
+
         fastapi_app = create_app(
             data_dir=self._data_dir,
             models_dir=self._models_dir,
@@ -1979,6 +2004,8 @@ class TrayLabeler:
             on_suggestion_accepted=self._on_suggestion_accepted,
             pause_toggle=self._toggle_pause,
             is_paused=lambda: self._monitor.is_paused,
+            tray_actions=tray_actions,
+            get_tray_state=get_tray_state,
         )
 
         uvicorn_config = uvicorn.Config(

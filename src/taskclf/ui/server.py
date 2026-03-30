@@ -191,6 +191,10 @@ class OverlapErrorDetail(BaseModel):
     conflicting_spans: list[ConflictingSpan] = []
 
 
+class TrayActionRequest(BaseModel):
+    model_id: str | None = None
+
+
 class TrainStartRequest(BaseModel):
     date_from: str = Field(description="Start date (YYYY-MM-DD)")
     date_to: str = Field(description="End date (YYYY-MM-DD, inclusive)")
@@ -372,6 +376,8 @@ def create_app(
     on_suggestion_accepted: Callable[[], None] | None = None,
     pause_toggle: Callable[[], bool] | None = None,
     is_paused: Callable[[], bool] | None = None,
+    tray_actions: dict[str, Callable[..., Any]] | None = None,
+    get_tray_state: Callable[[], dict[str, Any]] | None = None,
 ) -> FastAPI:
     """Build and return the FastAPI application.
 
@@ -395,6 +401,8 @@ def create_app(
         pause_toggle: Optional callback to toggle pause state; returns
             new paused boolean.
         is_paused: Optional callable returning current paused state.
+        tray_actions: Optional mapping of action names to callbacks for the tray menu.
+        get_tray_state: Optional callable returning the full tray state dictionary.
     """
     bus = event_bus or EventBus()
     labels_path = data_dir / "labels_v1" / "labels.parquet"
@@ -937,9 +945,41 @@ def create_app(
 
     @app.get("/api/tray/state")
     async def tray_state() -> dict[str, Any]:
+        if get_tray_state is not None:
+            state = get_tray_state()
+            state["available"] = True
+            return state
         if is_paused is None:
             return {"available": False, "paused": False}
         return {"available": True, "paused": is_paused()}
+
+    @app.post("/api/tray/action/{action}")
+    async def tray_action(
+        action: str, body: TrayActionRequest | None = None
+    ) -> dict[str, Any]:
+        if tray_actions is None or action not in tray_actions:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Action {action} not found or no tray actions configured",
+            )
+
+        try:
+            if action == "switch_model" and body and body.model_id:
+                from taskclf.model_registry import list_bundles
+
+                bundles = list_bundles(effective_models_dir)
+                target = next((b for b in bundles if b.model_id == body.model_id), None)
+                if not target:
+                    raise HTTPException(
+                        status_code=404, detail=f"Model {body.model_id} not found"
+                    )
+                tray_actions[action](target.path)
+            else:
+                tray_actions[action]()
+            return {"status": "ok"}
+        except Exception as exc:
+            logger.warning("Tray action %s failed: %s", action, exc, exc_info=True)
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     # -- REST: training -------------------------------------------------------
 

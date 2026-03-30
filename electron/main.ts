@@ -7,8 +7,11 @@ import {
   nativeImage,
   screen,
   shell,
+  dialog,
+  Notification,
 } from "electron";
 import { spawn, type ChildProcess } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 
 type HostCommand = {
@@ -458,6 +461,130 @@ async function sidecarRequest(
   }
 }
 
+async function importLabels(): Promise<void> {
+  const result = await dialog.showOpenDialog({
+    title: "Import Labels",
+    filters: [{ name: "CSV files", extensions: ["csv"] }, { name: "All files", extensions: ["*"] }],
+    properties: ["openFile"],
+  });
+  if (result.canceled || result.filePaths.length === 0) return;
+  const filePath = result.filePaths[0];
+
+  const strategyResult = await dialog.showMessageBox({
+    type: "question",
+    title: "Import Strategy",
+    message: "Merge with existing labels?\n\nYes = merge (keep existing, add new)\nNo = overwrite (replace all labels)",
+    buttons: ["Cancel", "Overwrite", "Merge"],
+    defaultId: 2,
+    cancelId: 0,
+  });
+  if (strategyResult.response === 0) return;
+  const strategy = strategyResult.response === 2 ? "merge" : "overwrite";
+
+  try {
+    const buffer = fs.readFileSync(filePath);
+    const blob = new Blob([buffer], { type: "text/csv" });
+    const formData = new FormData();
+    formData.append("file", blob, path.basename(filePath));
+    formData.append("strategy", strategy);
+
+    const res = await fetch(`http://127.0.0.1:${uiPort()}/api/labels/import`, {
+      method: "POST",
+      body: formData,
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    new Notification({ title: "taskclf", body: `Imported ${data.imported} labels` }).show();
+  } catch (err) {
+    new Notification({ title: "taskclf", body: `Import failed: ${err}` }).show();
+  }
+}
+
+async function exportLabels(): Promise<void> {
+  const result = await dialog.showSaveDialog({
+    title: "Export Labels",
+    defaultPath: "labels_export.csv",
+    filters: [{ name: "CSV files", extensions: ["csv"] }, { name: "All files", extensions: ["*"] }],
+  });
+  if (result.canceled || !result.filePath) return;
+  const filePath = result.filePath;
+
+  try {
+    const res = await fetch(`http://127.0.0.1:${uiPort()}/api/labels/export`);
+    if (!res.ok) throw new Error(await res.text());
+    const buffer = await res.arrayBuffer();
+    fs.writeFileSync(filePath, Buffer.from(buffer));
+    new Notification({ title: "taskclf", body: `Labels exported to ${path.basename(filePath)}` }).show();
+  } catch (err) {
+    new Notification({ title: "taskclf", body: `Export failed: ${err}` }).show();
+  }
+}
+
+let syncTimer: ReturnType<typeof setInterval> | null = null;
+
+async function syncTrayMenu() {
+  if (!tray || isQuitting) return;
+  try {
+    const stateRes = await fetch(`http://127.0.0.1:${uiPort()}/api/tray/state`);
+    if (!stateRes.ok) return;
+    const state = await stateRes.json();
+
+    const modelsRes = await fetch(`http://127.0.0.1:${uiPort()}/api/train/models`);
+    let models: any[] = [];
+    if (modelsRes.ok) {
+      models = await modelsRes.json();
+    }
+
+    const template: Electron.MenuItemConstructorOptions[] = [
+      { label: "Toggle Dashboard", click: toggleWindow },
+      { label: state.paused ? "Resume" : "Pause", click: () => sidecarRequest("/api/tray/action/pause_toggle", { method: "POST" }) },
+      { type: "separator" },
+      { label: "Label Stats", click: () => sidecarRequest("/api/tray/action/label_stats", { method: "POST" }) },
+      { label: "Import Labels", click: importLabels },
+      { label: "Export Labels", click: exportLabels },
+      { type: "separator" },
+      {
+        label: "Model",
+        submenu: [
+          ...models.filter((m: any) => m.valid).map((m: any) => ({
+            label: m.model_id,
+            type: "checkbox" as const,
+            checked: state.model_dir === m.path,
+            click: () => sidecarRequest("/api/tray/action/switch_model", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ model_id: m.model_id })
+            })
+          })),
+          ...(models.filter((m: any) => m.valid).length > 0 ? [
+            {
+              label: "(No Model)",
+              type: "checkbox" as const,
+              checked: state.model_dir === null,
+              click: () => sidecarRequest("/api/tray/action/unload_model", { method: "POST" })
+            }
+          ] : [
+            { label: "(no models found)", enabled: false }
+          ]),
+          { type: "separator" },
+          { label: "Reload Model", enabled: state.model_dir !== null, click: () => sidecarRequest("/api/tray/action/reload_model", { method: "POST" }) },
+          { label: "Check Retrain", click: () => sidecarRequest("/api/tray/action/check_retrain", { method: "POST" }) }
+        ]
+      },
+      { label: "Status", click: () => sidecarRequest("/api/tray/action/show_status", { method: "POST" }) },
+      { label: "Open Data Folder", click: () => sidecarRequest("/api/tray/action/open_data_dir", { method: "POST" }) },
+      { label: "Edit Config", click: () => sidecarRequest("/api/tray/action/edit_config", { method: "POST" }) },
+      { label: "Report Issue", click: () => sidecarRequest("/api/tray/action/report_issue", { method: "POST" }) },
+      { type: "separator" },
+      { label: "Quit", click: () => { isQuitting = true; void stopSidecar().finally(() => app.quit()); } }
+    ];
+
+    tray.setContextMenu(Menu.buildFromTemplate(template));
+  } catch (err) {
+    // Ignore errors, server might not be ready
+  }
+}
+
 // ── Tray ────────────────────────────────────────────────────────────────
 
 function createTrayIcon(): Electron.NativeImage {
@@ -485,18 +612,6 @@ function createTray(): Tray {
         label: "Toggle Dashboard",
         click: () => {
           toggleWindow();
-        },
-      },
-      {
-        label: "Open In Browser",
-        click: () => {
-          void shell.openExternal(shellUrl());
-        },
-      },
-      {
-        label: "Toggle Pause",
-        click: () => {
-          void sidecarRequest("/api/tray/pause", { method: "POST" });
         },
       },
       { type: "separator" },
@@ -610,6 +725,8 @@ async function start(): Promise<void> {
       panelWin.loadURL(`${base}?view=panel`),
     ]);
     showWindow();
+    syncTimer = setInterval(() => { void syncTrayMenu(); }, 5000);
+    void syncTrayMenu();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await mainWindow.loadURL(
@@ -625,6 +742,10 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   isQuitting = true;
+  if (syncTimer !== null) {
+    clearInterval(syncTimer);
+    syncTimer = null;
+  }
 });
 
 app.on("activate", () => {
