@@ -86,15 +86,39 @@ This repo enforces the following:
 
 ### Requirements
 - Python >= 3.14
-- `uv` installed
+- For the recommended CLI install: [uv](https://docs.astral.sh/uv/)
 
 ### Install
+
+**Command-line (PyPI)** — install the `taskclf` CLI:
 
 ```bash
 uv tool install taskclf
 ```
 
-For development (from source):
+Or with pip only:
+
+```bash
+pip install taskclf
+```
+
+Then run `taskclf --help`.
+
+**Desktop app (optional)** — a small Electron shell is built for Windows, Linux,
+and macOS. Download the latest **launcher** installers from
+[GitHub Releases](https://github.com/fruitiecutiepie/taskclf/releases). Choose
+the file for your OS:
+
+| OS | File |
+|----|------|
+| Windows | `*.exe` (NSIS installer) |
+| Linux | `*.AppImage` |
+| macOS | `*.dmg` (open and drag **taskclf** to Applications) |
+
+Those assets are published on GitHub releases whose tag starts with
+`launcher-v`.
+
+**Development** (from a git checkout):
 
 ```bash
 uv sync

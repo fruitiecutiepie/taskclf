@@ -40,6 +40,13 @@ uv tool install taskclf
 taskclf --help
 ```
 
+If you prefer pip and have Python ≥ 3.14:
+
+```bash
+pip install taskclf
+taskclf --help
+```
+
 When installed globally, all data/model/artifact paths default to a
 platform-specific home directory.  Override it with `TASKCLF_HOME`:
 
@@ -57,6 +64,23 @@ taskclf tray
 
 CLI options like `--data-dir` and `--models-dir` still override the
 defaults when provided.
+
+### Desktop app (Electron)
+
+Prebuilt installers are published on
+[GitHub Releases](https://github.com/fruitiecutiepie/taskclf/releases).
+Look for assets attached to tags named `launcher-v*` (the desktop shell).
+
+| OS | What to download |
+|----|------------------|
+| Windows | `*.exe` (NSIS installer) |
+| Linux | `*.AppImage` (make executable, then run) |
+| macOS | `*.dmg` (open and drag **taskclf** to Applications) |
+
+The app name in the menu bar is **taskclf**. The shell can download and run
+Python backend payloads published alongside version tags `v*`; see
+[`electron_shell`](../api/ui/electron_shell.md) for how the shell talks to the
+CLI backend.
 
 ---
 

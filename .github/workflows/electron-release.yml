@@ -15,11 +15,8 @@ jobs:
       matrix:
         include:
           - os: macos-latest
-            artifact_glob: "*.dmg\n*.zip"
           - os: ubuntu-latest
-            artifact_glob: "*.AppImage"
           - os: windows-latest
-            artifact_glob: "*.exe"
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -52,7 +49,6 @@ jobs:
           name: electron-${{ matrix.os }}
           path: |
             electron/release/*.dmg
-            electron/release/*.zip
             electron/release/*.AppImage
             electron/release/*.exe
 
@@ -62,6 +58,5 @@ jobs:
         with:
           files: |
             electron/release/*.dmg
-            electron/release/*.zip
             electron/release/*.AppImage
             electron/release/*.exe

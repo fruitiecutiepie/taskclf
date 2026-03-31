@@ -28,8 +28,7 @@
     "mac": {
       "icon": "icon.png",
       "target": [
-        "dmg",
-        "zip"
+        "dmg"
       ],
       "category": "public.app-category.productivity"
     },
