@@ -57,6 +57,15 @@ Behavior:
   a compatible sidecar backend
 - blocks until the Electron process exits
 
+## Payload release manifest
+
+GitHub releases for version tags include `manifest.json` with a `platforms`
+object. Keys are **LLVM-style target triples**, for example
+`x86_64-unknown-linux-gnu` and `x86_64-pc-windows-msvc`, matching
+`scripts/host_target_triple.py` and the Electron updater’s
+`hostTargetTriple()`. Each entry points at `payload-<triple>.zip` for that
+architecture and OS.
+
 ## Integration
 
 - Used by the `taskclf electron` CLI command in

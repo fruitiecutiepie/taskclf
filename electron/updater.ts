@@ -6,10 +6,35 @@ import AdmZip from "adm-zip";
 
 export interface Manifest {
   version: string;
+  /** Keys are LLVM-style target triples, e.g. x86_64-unknown-linux-gnu */
   platforms: Record<string, {
     url: string;
     sha256: string;
   }>;
+}
+
+/** LLVM-style host target triple for this process; must match scripts/host_target_triple.py */
+export function hostTargetTriple(): string {
+  const plat = process.platform;
+  const arch = process.arch;
+  if (plat === "darwin") {
+    if (arch === "arm64") return "aarch64-apple-darwin";
+    if (arch === "x64") return "x86_64-apple-darwin";
+    throw new Error(`unsupported macOS arch: ${arch}`);
+  }
+  if (plat === "linux") {
+    if (arch === "x64") return "x86_64-unknown-linux-gnu";
+    if (arch === "arm64") return "aarch64-unknown-linux-gnu";
+    if (arch === "ia32") return "i686-unknown-linux-gnu";
+    throw new Error(`unsupported Linux arch: ${arch}`);
+  }
+  if (plat === "win32") {
+    if (arch === "x64") return "x86_64-pc-windows-msvc";
+    if (arch === "arm64") return "aarch64-pc-windows-msvc";
+    if (arch === "ia32") return "i686-pc-windows-msvc";
+    throw new Error(`unsupported Windows arch: ${arch}`);
+  }
+  throw new Error(`unsupported platform: ${plat}`);
 }
 
 function getVersionsDir(): string {
@@ -99,9 +124,10 @@ export async function downloadAndApplyUpdate(manifest: Manifest): Promise<void> 
        return;
     }
 
-    const platformData = manifest.platforms[process.platform];
+    const triple = hostTargetTriple();
+    const platformData = manifest.platforms[triple];
     if (!platformData) {
-      throw new Error(`No payload available for platform ${process.platform}`);
+      throw new Error(`No payload available for target ${triple}`);
     }
 
     // Download

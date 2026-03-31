@@ -15,11 +15,8 @@ jobs:
       matrix:
         include:
           - os: macos-latest
-            platform: darwin
           - os: ubuntu-latest
-            platform: linux
           - os: windows-latest
-            platform: win32
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -44,12 +41,17 @@ jobs:
         run: uv sync --group bundle
 
       - name: Build payload
-        run: make build-payload PLATFORM_NAME=${{ matrix.platform }}
+        run: make build-payload
+
+      - name: Host target triple
+        id: host
+        shell: bash
+        run: echo "triple=$(python3 scripts/host_target_triple.py)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v7
         with:
-          name: payload-${{ matrix.platform }}
-          path: build/payload-${{ matrix.platform }}.zip
+          name: payload-${{ steps.host.outputs.triple }}
+          path: build/payload-${{ steps.host.outputs.triple }}.zip
 
   publish:
     needs: build-payload
@@ -67,18 +69,22 @@ jobs:
       - name: Generate manifest.json
         run: |
           python3 -c "
-          import os, json, hashlib
+          import glob, json, hashlib, os, re
           version = os.environ.get('GITHUB_REF', '').replace('refs/tags/v', '')
           repo = os.environ.get('GITHUB_REPOSITORY', 'fruitiecutiepie/taskclf')
           manifest = {'version': version, 'platforms': {}}
-          for p in ['darwin', 'linux', 'win32']:
-              path = f'payloads/payload-{p}.zip'
-              if os.path.exists(path):
-                  sha = hashlib.sha256(open(path, 'rb').read()).hexdigest()
-                  manifest['platforms'][p] = {
-                      'url': f'https://github.com/{repo}/releases/download/v{version}/payload-{p}.zip',
-                      'sha256': sha
-                  }
+          paths = glob.glob('payloads/payload-*.zip') + glob.glob('payloads/**/payload-*.zip', recursive=True)
+          for path in sorted(set(paths)):
+              base = os.path.basename(path)
+              m = re.match(r'^payload-(.+)\.zip$', base)
+              if not m:
+                  continue
+              triple = m.group(1)
+              sha = hashlib.sha256(open(path, 'rb').read()).hexdigest()
+              manifest['platforms'][triple] = {
+                  'url': f'https://github.com/{repo}/releases/download/v{version}/payload-{triple}.zip',
+                  'sha256': sha
+              }
           with open('manifest.json', 'w') as f:
               json.dump(manifest, f, indent=2)
           "

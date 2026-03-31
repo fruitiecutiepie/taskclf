@@ -1,6 +1,6 @@
 .PHONY: install \
        py-lint py-test py-typecheck \
-       ui-lint ui-test ui-typecheck ui-build ui-dev electron-typecheck \
+       ui-lint ui-test ui-typecheck ui-build ui-dev electron-typecheck electron-dist \
        lint test typecheck ci check \
        nuitka-build \
        docs-serve docs-build \
@@ -60,6 +60,10 @@ ui-dev:
 
 electron-typecheck:
 	pnpm --dir electron run typecheck
+
+# Same packaging as .github/workflows/electron-release.yml (unsigned; set CSC_IDENTITY_AUTO_DISCOVERY=true to sign locally).
+electron-dist:
+	CSC_IDENTITY_AUTO_DISCOVERY=false pnpm --dir electron run dist
 
 # --- nuitka ---
 
