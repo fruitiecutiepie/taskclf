@@ -15,6 +15,16 @@ import fs from "node:fs";
 import path from "node:path";
 import { checkForUpdate, downloadAndApplyUpdate, getActivePayloadBackendPath } from "./updater";
 
+/** Must match `build.productName` in package.json (Finder / .app name, tray, notifications). */
+function readAppDisplayName(): string {
+  const pkgPath = path.join(__dirname, "..", "package.json");
+  const raw = fs.readFileSync(pkgPath, "utf-8");
+  const pkg = JSON.parse(raw) as { build?: { productName?: string } };
+  return pkg.build?.productName ?? "taskclf";
+}
+
+const APP_DISPLAY_NAME = readAppDisplayName();
+
 type HostCommand = {
   cmd: string;
   mode?: string;
@@ -202,7 +212,9 @@ function sidecarExecutable(): string {
     if (activePath) {
       return activePath;
     }
-    throw new Error("taskclf core not found. An internet connection is required on first launch to download the application payload.");
+    throw new Error(
+      `${APP_DISPLAY_NAME} core not found. An internet connection is required on first launch to download the application payload.`,
+    );
   }
   return envString("TASKCLF_ELECTRON_PYTHON_EXECUTABLE", "python3");
 }
@@ -407,7 +419,7 @@ function spawnSidecar(): void {
     if (isQuitting) {
       return;
     }
-    console.error(`taskclf tray backend exited unexpectedly (${code ?? "unknown"})`);
+    console.error(`${APP_DISPLAY_NAME} tray backend exited unexpectedly (${code ?? "unknown"})`);
     app.quit();
   });
 }
@@ -500,9 +512,9 @@ async function importLabels(): Promise<void> {
     });
     if (!res.ok) throw new Error(await res.text());
     const data = await res.json();
-    new Notification({ title: "taskclf", body: `Imported ${data.imported} labels` }).show();
+    new Notification({ title: APP_DISPLAY_NAME, body: `Imported ${data.imported} labels` }).show();
   } catch (err) {
-    new Notification({ title: "taskclf", body: `Import failed: ${err}` }).show();
+    new Notification({ title: APP_DISPLAY_NAME, body: `Import failed: ${err}` }).show();
   }
 }
 
@@ -520,9 +532,9 @@ async function exportLabels(): Promise<void> {
     if (!res.ok) throw new Error(await res.text());
     const buffer = await res.arrayBuffer();
     fs.writeFileSync(filePath, Buffer.from(buffer));
-    new Notification({ title: "taskclf", body: `Labels exported to ${path.basename(filePath)}` }).show();
+    new Notification({ title: APP_DISPLAY_NAME, body: `Labels exported to ${path.basename(filePath)}` }).show();
   } catch (err) {
-    new Notification({ title: "taskclf", body: `Export failed: ${err}` }).show();
+    new Notification({ title: APP_DISPLAY_NAME, body: `Export failed: ${err}` }).show();
   }
 }
 
@@ -543,7 +555,7 @@ async function performBackgroundUpdateCheck() {
       const res = await dialog.showMessageBox({
         type: "info",
         title: "Update Available",
-        message: `A new version of taskclf (v${manifest.version}) is available.`,
+        message: `A new version of ${APP_DISPLAY_NAME} (v${manifest.version}) is available.`,
         detail: "Would you like to download and restart now?",
         buttons: ["Update and Restart", "Later"],
         defaultId: 0,
@@ -645,7 +657,7 @@ function createTrayIcon(): Electron.NativeImage {
 
 function createTray(): Tray {
   const instance = new Tray(createTrayIcon());
-  instance.setToolTip("taskclf");
+  instance.setToolTip(APP_DISPLAY_NAME);
   instance.on("click", () => {
     toggleWindow();
   });
@@ -679,7 +691,7 @@ function errorPageHtml(message: string): string {
     <html>
       <body style="margin:0;background:#101218;color:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,sans-serif;">
         <div style="padding:20px">
-          <h3 style="margin:0 0 12px">taskclf Electron shell</h3>
+          <h3 style="margin:0 0 12px">${APP_DISPLAY_NAME} (Electron)</h3>
           <p style="margin:0;line-height:1.5">${escaped}</p>
         </div>
       </body>
@@ -737,7 +749,7 @@ ipcMain.handle("taskclf-host", async (_event, command: HostCommand) => {
 // ── Bootstrap ───────────────────────────────────────────────────────────
 
 async function start(): Promise<void> {
-  app.setName("taskclf");
+  app.setName(APP_DISPLAY_NAME);
   if (process.platform === "darwin") {
     app.dock?.setIcon(getAppIconPath());
     app.dock?.hide();
@@ -766,7 +778,7 @@ async function start(): Promise<void> {
       if (!manifest) {
         dialog.showErrorBox(
           "Network Error",
-          "taskclf core not found. An internet connection is required on first launch to download the application payload."
+          `${APP_DISPLAY_NAME} core not found. An internet connection is required on first launch to download the application payload.`,
         );
         app.quit();
         return;
@@ -775,7 +787,7 @@ async function start(): Promise<void> {
       const res = await dialog.showMessageBox({
         type: "info",
         title: "Initial Setup",
-        message: "taskclf needs to download its core components before starting.",
+        message: `${APP_DISPLAY_NAME} needs to download its core components before starting.`,
         detail: `Version: ${manifest.version}`,
         buttons: ["Download and Start", "Quit"],
         defaultId: 0,
@@ -790,7 +802,7 @@ async function start(): Promise<void> {
       try {
         await downloadAndApplyUpdate(manifest);
       } catch (err) {
-        dialog.showErrorBox("Update Failed", `Failed to download taskclf core: ${err}`);
+        dialog.showErrorBox("Update Failed", `Failed to download ${APP_DISPLAY_NAME} core: ${err}`);
         app.quit();
         return;
       }

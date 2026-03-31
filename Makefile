@@ -80,7 +80,9 @@ nuitka-build: ui-build
 		$(NUITKA_EXTRA_ARGS) \
 		src/taskclf/cli/entry.py
 
-PLATFORM_NAME ?= $(shell node -e "console.log(process.platform)" 2>/dev/null)
+REPO_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
+# LLVM-style host target triple (e.g. x86_64-unknown-linux-gnu); see scripts/host_target_triple.py
+PLATFORM_NAME ?= $(shell python3 $(REPO_ROOT)/scripts/host_target_triple.py 2>/dev/null)
 ifeq ($(PLATFORM_NAME),)
 	PLATFORM_NAME := $(shell uname -s | tr A-Z a-z)
 endif
