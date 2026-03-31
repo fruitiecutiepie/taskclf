@@ -282,6 +282,16 @@ make docs-serve  # local preview at http://127.0.0.1:8000
 make docs-build  # static site in site/
 ```
 
+**Electron backend payload** (for packaged app downloads): after `make ui-build`,
+build the PyInstaller one-folder sidecar zip used by GitHub releases (`v*` tags):
+
+```bash
+uv sync --group bundle
+make build-payload   # writes build/payload-<triple>.zip
+```
+
+See `docs/api/scripts/payload_build.md` for details.
+
 ---
 
 ## License

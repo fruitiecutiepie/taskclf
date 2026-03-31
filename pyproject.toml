@@ -67,8 +67,7 @@ docs = [
     "mkdocstrings-python",
 ]
 bundle = [
-    "nuitka",
-    "ordered-set",
+    "pyinstaller>=6.0",
 ]
 
 [tool.mypy]

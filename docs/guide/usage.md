@@ -78,9 +78,11 @@ Look for assets attached to tags named `launcher-v*` (the desktop shell).
 | macOS | `*.dmg` (open and drag **taskclf** to Applications) |
 
 The app name in the menu bar is **taskclf**. The shell can download and run
-Python backend payloads published alongside version tags `v*`; see
-[`electron_shell`](../api/ui/electron_shell.md) for how the shell talks to the
-CLI backend.
+Python backend payloads published alongside version tags `v*`. Those payloads are
+**PyInstaller one-folder** bundles (`backend/entry` or `backend/entry.exe` inside
+`payload-<triple>.zip`); see [`electron_shell`](../api/ui/electron_shell.md) and
+[`payload_build`](../api/scripts/payload_build.md) for how the shell talks to the
+CLI backend and how release zips are built.
 
 ---
 

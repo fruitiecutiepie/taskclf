@@ -66,6 +66,11 @@ object. Keys are **LLVM-style target triples**, for example
 `hostTargetTriple()`. Each entry points at `payload-<triple>.zip` for that
 architecture and OS.
 
+The zip contains a **PyInstaller one-folder** sidecar: after extraction, the
+Electron app runs `backend/entry` (Unix) or `backend/entry.exe` (Windows),
+alongside `_internal/` and bundled data. Builds are produced with
+`make build-payload` (see [`Payload build (PyInstaller)`](../scripts/payload_build.md)).
+
 ## Integration
 
 - Used by the `taskclf electron` CLI command in

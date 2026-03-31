@@ -2,7 +2,7 @@
        py-lint py-test py-typecheck \
        ui-lint ui-test ui-typecheck ui-build ui-dev electron-typecheck electron-dist \
        lint test typecheck ci check \
-       nuitka-build \
+       pyinstaller-build \
        docs-serve docs-build \
        version \
 			 bump-patch bump-minor bump-major \
@@ -65,24 +65,7 @@ electron-typecheck:
 electron-dist:
 	CSC_IDENTITY_AUTO_DISCOVERY=false pnpm --dir electron run dist
 
-# --- nuitka ---
-
-UNAME_S := $(shell uname -s)
-NUITKA_EXTRA_ARGS ?=
-ifeq ($(UNAME_S),Darwin)
-	NUITKA_EXTRA_ARGS += --macos-create-app-bundle
-endif
-
-nuitka-build: ui-build
-	uv run --group bundle python -m nuitka \
-		--standalone \
-		--output-dir=build/nuitka \
-		--include-package=taskclf \
-		--include-data-dir=src/taskclf/ui/static=taskclf/ui/static \
-		--python-flag=no_site \
-		--assume-yes-for-downloads \
-		$(NUITKA_EXTRA_ARGS) \
-		src/taskclf/cli/entry.py
+# --- PyInstaller one-folder sidecar (Electron backend payload) ---
 
 REPO_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 # LLVM-style host target triple (e.g. x86_64-unknown-linux-gnu); see scripts/host_target_triple.py
@@ -91,15 +74,10 @@ ifeq ($(PLATFORM_NAME),)
 	PLATFORM_NAME := $(shell uname -s | tr A-Z a-z)
 endif
 
-build-payload: nuitka-build
-	rm -rf build/payload
-	mkdir -p build/payload/backend
-	@if [ "$(UNAME_S)" = "Darwin" ]; then \
-		cp -R build/nuitka/entry.app/Contents/MacOS/* build/payload/backend/; \
-	else \
-		cp -R build/nuitka/entry.dist/* build/payload/backend/; \
-	fi
-	cd build/payload && zip -r ../payload-$(PLATFORM_NAME).zip backend
+pyinstaller-build: ui-build
+	uv run --group bundle python $(REPO_ROOT)/scripts/payload_build.py
+
+build-payload: pyinstaller-build
 	@echo "Payload built at build/payload-$(PLATFORM_NAME).zip"
 
 # --- aggregates ---
