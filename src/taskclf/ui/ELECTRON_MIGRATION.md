@@ -122,3 +122,10 @@ The pywebview shell still exists as a fallback path:
 4. Hover the label badge to open the label popup window; hover the status dot to open the panel popup window. Verify both appear anchored below the pill and follow when the pill is dragged.
 5. Use the Electron tray menu to toggle the dashboard, open the browser fallback, and toggle pause.
 6. Quit from the Electron tray and verify the Python sidecar exits with it.
+
+### Manual packaged-installer checks (payload download)
+
+These apply to a **released** desktop build (DMG / AppImage / NSIS), not the dev `taskclf electron` checkout.
+
+1. **First launch:** With no prior payload under the app user-data `versions/` directory, launch the packaged app, accept **Download and Start** on the initial setup dialog, and confirm a **progress window** appears with download percentage (when `Content-Length` is present), then verifying/extracting text, before the main shell appears.
+2. **In-app update:** When a newer `manifest.json` is available and the app prompts **Update and Restart**, accept it and confirm the same progress window appears during the download before the app relaunches.

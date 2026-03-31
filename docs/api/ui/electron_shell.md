@@ -71,6 +71,18 @@ Electron app runs `backend/entry` (Unix) or `backend/entry.exe` (Windows),
 alongside `_internal/` and bundled data. Builds are produced with
 `make build-payload` (see [`Payload build (PyInstaller)`](../scripts/payload_build.md)).
 
+## Packaged app: payload download progress
+
+In a **packaged** Electron build (`app.isPackaged`), the main process downloads
+the payload zip from the release manifest when needed (first launch without a
+local core, or when the user accepts an in-app update). While the zip is
+downloading, a small native progress window shows **percentage** when the
+server sends `Content-Length`, plus byte counts; after download, it shows
+**Verifying** and **Extracting** stages. Implementation lives in
+`electron/updater.ts` (streaming download + SHA-256) and `electron/main.ts`
+(progress window). Optional override: `TASKCLF_MANIFEST_URL` for the manifest
+location (see `checkForUpdate()` in `electron/updater.ts`).
+
 ## Integration
 
 - Used by the `taskclf electron` CLI command in

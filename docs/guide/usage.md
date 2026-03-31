@@ -84,6 +84,11 @@ Python backend payloads published alongside version tags `v*`. Those payloads ar
 [`payload_build`](../api/scripts/payload_build.md) for how the shell talks to the
 CLI backend and how release zips are built.
 
+On **first launch** (or when you choose **Update and Restart** after an update
+prompt), the packaged app opens a **download progress** window: it shows
+download percentage when the size is known, then verifying and extracting
+messages while the payload is prepared.
+
 ---
 
 ## Data flow

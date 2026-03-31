@@ -13,6 +13,42 @@ export interface Manifest {
   }>;
 }
 
+export type UpdatePhase = "download" | "verify" | "extract";
+
+export interface UpdateProgressEvent {
+  phase: UpdatePhase;
+  /** Bytes received so far during download */
+  receivedBytes?: number;
+  /** Total bytes when Content-Length is present */
+  totalBytes?: number | null;
+  /** 0–100 when known; null if total size is unknown */
+  percent?: number | null;
+}
+
+export interface DownloadAndApplyOptions {
+  onProgress?: (event: UpdateProgressEvent) => void | Promise<void>;
+}
+
+async function emitProgress(
+  onProgress: DownloadAndApplyOptions["onProgress"],
+  event: UpdateProgressEvent,
+): Promise<void> {
+  if (onProgress) {
+    await Promise.resolve(onProgress(event));
+  }
+}
+
+function parseContentLength(header: string | null): number | null {
+  if (!header) return null;
+  const n = Number.parseInt(header, 10);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+function percentFromBytes(received: number, total: number | null): number | null {
+  if (total === null || total <= 0) return null;
+  return Math.min(100, Math.round((received / total) * 100));
+}
+
 /** LLVM-style host target triple for this process; must match scripts/host_target_triple.py */
 export function hostTargetTriple(): string {
   const plat = process.platform;
@@ -67,6 +103,11 @@ function getPayloadDir(version: string): string {
   return path.join(getVersionsDir(), `v${version}`);
 }
 
+/** True if the extracted payload directory for this manifest version already exists (no download needed). */
+export function isPayloadDirPresent(manifest: Manifest): boolean {
+  return fs.existsSync(getPayloadDir(manifest.version));
+}
+
 export function getActivePayloadBackendPath(): string | null {
   const version = getActiveVersion();
   if (!version) return null;
@@ -108,7 +149,79 @@ export async function checkForUpdate(): Promise<Manifest | null> {
   }
 }
 
-export async function downloadAndApplyUpdate(manifest: Manifest): Promise<void> {
+async function streamPayloadToFile(
+  downloadRes: Response,
+  zipPath: string,
+  expectedSha256: string,
+  onProgress: DownloadAndApplyOptions["onProgress"],
+): Promise<void> {
+  if (!downloadRes.body) {
+    throw new Error("Download response has no body");
+  }
+
+  const totalBytes = parseContentLength(downloadRes.headers.get("content-length"));
+  const hash = crypto.createHash("sha256");
+  const writeStream = fs.createWriteStream(zipPath);
+  const reader = downloadRes.body.getReader();
+  let receivedBytes = 0;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      if (value === undefined || value.byteLength === 0) {
+        continue;
+      }
+      const buf = Buffer.from(value);
+      receivedBytes += buf.length;
+      hash.update(buf);
+      await new Promise<void>((resolve, reject) => {
+        writeStream.write(buf, (err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+      await emitProgress(onProgress, {
+        phase: "download",
+        receivedBytes,
+        totalBytes,
+        percent: percentFromBytes(receivedBytes, totalBytes),
+      });
+    }
+    await new Promise<void>((resolve, reject) => {
+      writeStream.end((err: NodeJS.ErrnoException | null | undefined) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+  } catch (err) {
+    writeStream.destroy();
+    try {
+      fs.unlinkSync(zipPath);
+    } catch {
+      // ignore
+    }
+    throw err;
+  }
+
+  const computedHash = hash.digest("hex");
+  if (computedHash !== expectedSha256) {
+    try {
+      fs.unlinkSync(zipPath);
+    } catch {
+      // ignore
+    }
+    throw new Error(`Hash mismatch! Expected ${expectedSha256}, got ${computedHash}`);
+  }
+}
+
+export async function downloadAndApplyUpdate(
+  manifest: Manifest,
+  options?: DownloadAndApplyOptions,
+): Promise<void> {
+  const onProgress = options?.onProgress;
   try {
     // Create versions dir if not exists
     const versionsDir = getVersionsDir();
@@ -118,10 +231,10 @@ export async function downloadAndApplyUpdate(manifest: Manifest): Promise<void> 
 
     const payloadDir = getPayloadDir(manifest.version);
     if (fs.existsSync(payloadDir)) {
-       // Already downloaded but maybe not active?
-       console.log(`[updater] Payload dir already exists. Switching active version.`);
-       setActiveVersion(manifest.version);
-       return;
+      // Already downloaded but maybe not active?
+      console.log(`[updater] Payload dir already exists. Switching active version.`);
+      setActiveVersion(manifest.version);
+      return;
     }
 
     const triple = hostTargetTriple();
@@ -139,23 +252,16 @@ export async function downloadAndApplyUpdate(manifest: Manifest): Promise<void> 
       throw new Error(`Failed to download payload: ${downloadRes.statusText}`);
     }
 
-    const arrayBuffer = await downloadRes.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    fs.writeFileSync(zipPath, buffer);
+    await streamPayloadToFile(downloadRes, zipPath, platformData.sha256, onProgress);
 
-    // Verify Hash
+    // Verify Hash (already verified while streaming; emit phase for UI)
     console.log(`[updater] Verifying hash...`);
-    const hash = crypto.createHash("sha256");
-    hash.update(buffer);
-    const computedHash = hash.digest("hex");
-
-    if (computedHash !== platformData.sha256) {
-      fs.unlinkSync(zipPath);
-      throw new Error(`Hash mismatch! Expected ${platformData.sha256}, got ${computedHash}`);
-    }
+    await emitProgress(onProgress, { phase: "verify", percent: 100 });
 
     // Extract
     console.log(`[updater] Extracting payload...`);
+    await emitProgress(onProgress, { phase: "extract", percent: null });
+
     const zip = new AdmZip(zipPath);
     zip.extractAllTo(payloadDir, true);
 

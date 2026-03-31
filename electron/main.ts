@@ -13,7 +13,14 @@ import {
 import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { checkForUpdate, downloadAndApplyUpdate, getActivePayloadBackendPath } from "./updater";
+import {
+  checkForUpdate,
+  downloadAndApplyUpdate,
+  getActivePayloadBackendPath,
+  isPayloadDirPresent,
+  type Manifest,
+  type UpdateProgressEvent,
+} from "./updater";
 
 /** Must match `build.productName` in package.json (Finder / .app name, tray, notifications). */
 function readAppDisplayName(): string {
@@ -564,7 +571,11 @@ async function performBackgroundUpdateCheck() {
 
       if (res.response === 0) {
         try {
-          await downloadAndApplyUpdate(manifest);
+          if (isPayloadDirPresent(manifest)) {
+            await downloadAndApplyUpdate(manifest);
+          } else {
+            await runDownloadWithProgress(`Downloading ${APP_DISPLAY_NAME} update`, manifest);
+          }
           app.relaunch();
           app.quit();
         } catch (err) {
@@ -699,6 +710,139 @@ function errorPageHtml(message: string): string {
   `;
 }
 
+function escapeHtmlAttr(text: string): string {
+  return text
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) {
+    return `${n} B`;
+  }
+  if (n < 1024 * 1024) {
+    return `${(n / 1024).toFixed(1)} KB`;
+  }
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatProgressLine(event: UpdateProgressEvent): string {
+  switch (event.phase) {
+    case "download": {
+      const r = event.receivedBytes ?? 0;
+      const t = event.totalBytes;
+      const pct = event.percent;
+      const parts: string[] = [];
+      if (pct != null) {
+        parts.push(`${pct}%`);
+      }
+      if (t != null && t > 0) {
+        parts.push(`${formatBytes(r)} / ${formatBytes(t)}`);
+      } else {
+        parts.push(`${formatBytes(r)} received`);
+      }
+      return parts.join(" · ");
+    }
+    case "verify":
+      return "Verifying…";
+    case "extract":
+      return "Extracting…";
+    default:
+      return "";
+  }
+}
+
+function downloadProgressPageHtml(heading: string): string {
+  const h = escapeHtmlAttr(heading);
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; padding:16px 20px; background:#f5f5f5; color:#111; }
+  h1 { font-size:15px; font-weight:600; margin:0 0 12px; }
+  #barwrap { height:10px; background:#ddd; border-radius:5px; overflow:hidden; position:relative; }
+  #barwrap.indeterminate #bar { width:35% !important; animation:slide 1.2s ease-in-out infinite; }
+  @keyframes slide { 0% { transform:translateX(-100%); } 100% { transform:translateX(400%); } }
+  #bar { height:100%; width:0%; background:#2563eb; border-radius:5px; transition:width 0.12s ease; }
+  #line2 { margin:10px 0 0; font-size:13px; color:#444; min-height:1.2em; }
+</style>
+</head>
+<body>
+  <h1>${h}</h1>
+  <div id="barwrap"><div id="bar"></div></div>
+  <p id="line2"></p>
+</body>
+</html>`;
+}
+
+function createDownloadProgressWindow(heading: string): BrowserWindow {
+  const win = new BrowserWindow({
+    width: 440,
+    height: 170,
+    show: false,
+    center: true,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    title: heading,
+    icon: getAppIconPath(),
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+  win.loadURL(
+    `data:text/html;charset=utf-8,${encodeURIComponent(downloadProgressPageHtml(heading))}`,
+  );
+  win.once("ready-to-show", () => {
+    win.show();
+  });
+  return win;
+}
+
+async function applyProgressToWindow(win: BrowserWindow, event: UpdateProgressEvent): Promise<void> {
+  if (win.isDestroyed()) {
+    return;
+  }
+  const pct = event.percent;
+  const line2 = formatProgressLine(event);
+  const js = `(function(){
+    var p = ${pct === null || pct === undefined ? "null" : String(Math.round(pct))};
+    var line2 = ${JSON.stringify(line2)};
+    var bar = document.getElementById("bar");
+    var wrap = document.getElementById("barwrap");
+    if (bar && wrap) {
+      if (p === null) {
+        wrap.className = "indeterminate";
+        bar.style.width = "35%";
+      } else {
+        wrap.className = "";
+        bar.style.width = p + "%";
+      }
+    }
+    var el = document.getElementById("line2");
+    if (el) { el.textContent = line2; }
+  })();`;
+  await win.webContents.executeJavaScript(js, true);
+}
+
+async function runDownloadWithProgress(heading: string, manifest: Manifest): Promise<void> {
+  const win = createDownloadProgressWindow(heading);
+  try {
+    await downloadAndApplyUpdate(manifest, {
+      onProgress: (e) => applyProgressToWindow(win, e),
+    });
+  } finally {
+    if (!win.isDestroyed()) {
+      win.close();
+    }
+  }
+}
+
 // ── IPC ─────────────────────────────────────────────────────────────────
 
 ipcMain.handle("taskclf-host", async (_event, command: HostCommand) => {
@@ -800,7 +944,11 @@ async function start(): Promise<void> {
       }
 
       try {
-        await downloadAndApplyUpdate(manifest);
+        if (isPayloadDirPresent(manifest)) {
+          await downloadAndApplyUpdate(manifest);
+        } else {
+          await runDownloadWithProgress(`Downloading ${APP_DISPLAY_NAME} core`, manifest);
+        }
       } catch (err) {
         dialog.showErrorBox("Update Failed", `Failed to download ${APP_DISPLAY_NAME} core: ${err}`);
         app.quit();
