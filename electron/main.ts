@@ -1,6 +1,7 @@
 import {
   app,
   BrowserWindow,
+  clipboard,
   ipcMain,
   Menu,
   Tray,
@@ -15,10 +16,12 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   checkForUpdate,
+  getActiveVersion,
   downloadAndApplyUpdate,
-  getActivePayloadBackendPath,
+  getPayloadBackendPath,
   isPayloadDirPresent,
   lastManifestCheckFailure,
+  useInstalledPayloadVersion,
   type Manifest,
   type UpdateProgressEvent,
 } from "./updater";
@@ -46,12 +49,18 @@ const CHILD_GAP = 4;
 const CHILD_HIDE_DELAY_MS = 300;
 const DRAG_TOLERANCE = 10;
 const WINDOW_MARGIN = 16;
+const DEFAULT_MANIFEST_TIMEOUT_MS = 15000;
+const REPORT_ISSUE_URL_BASE = "https://github.com/fruitiecutiepie/taskclf/issues/new";
+const MAX_REPORT_ISSUE_URL_LEN = 8000;
+const MAX_RECENT_SIDECAR_LINES = 20;
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let sidecar: ChildProcess | null = null;
 let isQuitting = false;
 let hasShownWindow = false;
+let fatalLaunchErrorShown = false;
+const recentSidecarLines: string[] = [];
 
 // ── Child window state machine ──────────────────────────────────────────
 
@@ -219,19 +228,29 @@ function electronDebugEnabled(): boolean {
   return process.env.TASKCLF_ELECTRON_DEBUG === "1";
 }
 
+function manifestFetchTimeoutMs(): number {
+  return Math.max(0, envInt("TASKCLF_MANIFEST_TIMEOUT_MS", DEFAULT_MANIFEST_TIMEOUT_MS));
+}
+
 /** Persistent log path under userData (only valid after app ready). */
 function launcherLogFilePath(): string {
   return path.join(app.getPath("userData"), "logs", "electron-launcher.log");
 }
 
 /** Append to console and `logs/electron-launcher.log` for post-mortem debugging. */
-function launcherLog(message: string, level: "info" | "error" = "info"): void {
+function launcherLog(
+  message: string,
+  level: "info" | "error" = "info",
+  options?: { echoToConsole?: boolean },
+): void {
   const ts = new Date().toISOString();
   const line = `[${ts}] [${level}] ${message}`;
-  if (level === "error") {
-    console.error(line);
-  } else {
-    console.log(line);
+  if (options?.echoToConsole !== false) {
+    if (level === "error") {
+      console.error(line);
+    } else {
+      console.log(line);
+    }
   }
   try {
     const logDir = path.join(app.getPath("userData"), "logs");
@@ -240,6 +259,103 @@ function launcherLog(message: string, level: "info" | "error" = "info"): void {
   } catch {
     // ignore disk errors
   }
+}
+
+function rememberSidecarLine(line: string): void {
+  if (line.length === 0) {
+    return;
+  }
+  recentSidecarLines.push(line);
+  if (recentSidecarLines.length > MAX_RECENT_SIDECAR_LINES) {
+    recentSidecarLines.splice(0, recentSidecarLines.length - MAX_RECENT_SIDECAR_LINES);
+  }
+}
+
+function readLauncherLogTail(maxLines = 30): string {
+  try {
+    const lines = fs.readFileSync(launcherLogFilePath(), "utf8").trimEnd().split(/\r?\n/);
+    if (lines.length <= maxLines) {
+      return lines.join("\n");
+    }
+    return lines.slice(-maxLines).join("\n");
+  } catch {
+    return "";
+  }
+}
+
+function buildLauncherIssueUrl(title: string, detail: string): string {
+  const params = new URLSearchParams({
+    template: "bug_report.yml",
+    title: `[Bug]: ${title}`,
+    diagnostics: [
+      `Launcher version: ${app.getVersion()}`,
+      `Electron: ${process.versions.electron}`,
+      `Platform: ${process.platform} ${process.arch}`,
+      `Active payload: ${getActiveVersion() ?? "none"}`,
+      `User data: ${app.getPath("userData")}`,
+      `Launcher log: ${launcherLogFilePath()}`,
+      "",
+      detail,
+    ].join("\n"),
+  });
+
+  const logTail = readLauncherLogTail();
+  if (logTail) {
+    params.set("logs", logTail);
+  }
+
+  let url = `${REPORT_ISSUE_URL_BASE}?${params.toString()}`;
+  if (url.length > MAX_REPORT_ISSUE_URL_LEN) {
+    params.delete("logs");
+    url = `${REPORT_ISSUE_URL_BASE}?${params.toString()}`;
+  }
+  return url;
+}
+
+function fatalDialogDetail(message: string, detail?: string): string {
+  const parts: string[] = [message];
+  if (detail) {
+    parts.push(`Details:\n${detail}`);
+  }
+  if (recentSidecarLines.length > 0) {
+    parts.push(`Recent backend output:\n${recentSidecarLines.join("\n")}`);
+  }
+  parts.push(`Launcher log:\n${launcherLogFilePath()}`);
+  return parts.join("\n\n");
+}
+
+async function showFatalLaunchError(
+  title: string,
+  message: string,
+  detail?: string,
+): Promise<void> {
+  if (fatalLaunchErrorShown || isQuitting) {
+    return;
+  }
+  fatalLaunchErrorShown = true;
+
+  const combinedDetail = fatalDialogDetail(message, detail);
+  const response = await dialog.showMessageBox({
+    type: "error",
+    title,
+    message,
+    detail: combinedDetail,
+    buttons: ["Report Issue", "Open Log Folder", "Copy Details", "Quit"],
+    defaultId: 0,
+    cancelId: 3,
+    noLink: true,
+  });
+
+  if (response.response === 0) {
+    await shell.openExternal(buildLauncherIssueUrl(title, combinedDetail));
+  } else if (response.response === 1) {
+    shell.showItemInFolder(launcherLogFilePath());
+  } else if (response.response === 2) {
+    clipboard.writeText(combinedDetail);
+  }
+
+  isQuitting = true;
+  void stopSidecar().finally(() => app.quit());
 }
 
 /** Models dir for tray: absolute under userData when packaged (GUI apps often have cwd `/`). */
@@ -256,12 +372,12 @@ function defaultModelsDir(): string {
 
 function sidecarExecutable(): string {
   if (app.isPackaged) {
-    const activePath = getActivePayloadBackendPath();
-    if (activePath) {
-      return activePath;
+    const launcherPath = getPayloadBackendPath(app.getVersion());
+    if (launcherPath) {
+      return launcherPath;
     }
     throw new Error(
-      `${APP_DISPLAY_NAME} core not found. An internet connection is required on first launch to download the application payload.`,
+      `${APP_DISPLAY_NAME} core v${app.getVersion()} not found. The packaged launcher only starts with a matching local payload.`,
     );
   }
   return envString("TASKCLF_ELECTRON_PYTHON_EXECUTABLE", "python3");
@@ -457,7 +573,53 @@ function toggleWindow(): void {
 
 // ── Sidecar ─────────────────────────────────────────────────────────────
 
+function attachSidecarOutput(
+  stream: NodeJS.ReadableStream | null,
+  name: "stdout" | "stderr",
+): void {
+  if (stream === null) {
+    return;
+  }
+  let pending = "";
+  const level = name === "stderr" ? "error" : "info";
+  const mirror = name === "stderr" ? process.stderr : process.stdout;
+
+  const flush = (chunk: string): void => {
+    if (chunk.length === 0) {
+      return;
+    }
+    const combined = `${pending}${chunk}`;
+    const parts = combined.split(/\r?\n/);
+    pending = parts.pop() ?? "";
+    for (const line of parts) {
+      const trimmed = line.trimEnd();
+      if (trimmed.length === 0) {
+        continue;
+      }
+      rememberSidecarLine(`[${name}] ${trimmed}`);
+      launcherLog(`[sidecar:${name}] ${trimmed}`, level, { echoToConsole: false });
+    }
+  };
+
+  stream.on("data", (chunk) => {
+    const text = Buffer.isBuffer(chunk) ? chunk.toString("utf8") : String(chunk);
+    flush(text);
+    if (mirror.writable) {
+      mirror.write(text);
+    }
+  });
+  stream.on("end", () => {
+    if (pending.length === 0) {
+      return;
+    }
+    rememberSidecarLine(`[${name}] ${pending}`);
+    launcherLog(`[sidecar:${name}] ${pending}`, level, { echoToConsole: false });
+    pending = "";
+  });
+}
+
 function spawnSidecar(): void {
+  recentSidecarLines.length = 0;
   const exe = sidecarExecutable();
   const args = sidecarArgs();
   const childCwd = app.isPackaged ? app.getPath("userData") : process.cwd();
@@ -474,15 +636,24 @@ function spawnSidecar(): void {
     env.PYTHONUNBUFFERED = "1";
   }
   sidecar = spawn(exe, args, {
-    stdio: "inherit",
+    stdio: app.isPackaged ? ["ignore", "pipe", "pipe"] : "inherit",
     env,
     cwd: childCwd,
   });
+  if (app.isPackaged) {
+    attachSidecarOutput(sidecar.stdout, "stdout");
+    attachSidecarOutput(sidecar.stderr, "stderr");
+  }
   sidecar.once("error", (err) => {
     const msg = err instanceof Error ? err.message : String(err);
     launcherLog(`tray backend spawn error: ${msg}`, "error");
     console.error(`${APP_DISPLAY_NAME} tray backend spawn error:`, err);
     console.error(`(See ${launcherLogFilePath()} for history.)`);
+    void showFatalLaunchError(
+      "Backend Failed to Start",
+      `${APP_DISPLAY_NAME} could not start its local backend.`,
+      msg,
+    );
   });
   sidecar.once("exit", (code, signal) => {
     sidecar = null;
@@ -498,7 +669,11 @@ function spawnSidecar(): void {
     );
     console.error(`Full detail: ${detail}`);
     console.error(`Log file: ${launcherLogFilePath()}`);
-    app.quit();
+    void showFatalLaunchError(
+      "Backend Exited",
+      `${APP_DISPLAY_NAME} backend exited unexpectedly.`,
+      detail,
+    );
   });
 }
 
@@ -638,16 +813,21 @@ async function performBackgroundUpdateCheck() {
   }
 
   try {
-    const manifest = await checkForUpdate();
+    const manifest = await checkForUpdate({ timeoutMs: manifestFetchTimeoutMs() });
     if (manifest && manifest.version !== updatePromptShownForVersion) {
       updatePromptShownForVersion = manifest.version;
+      const activeVersion = getActiveVersion();
 
       const res = await dialog.showMessageBox({
-        type: "info",
-        title: "Update Available",
-        message: `A new version of ${APP_DISPLAY_NAME} (v${manifest.version}) is available.`,
-        detail: "Would you like to download and restart now?",
-        buttons: ["Update and Restart", "Later"],
+        type: "warning",
+        title: "Core Repair Available",
+        message: `${APP_DISPLAY_NAME} needs to repair its local core before restart.`,
+        detail: [
+          `Launcher version: ${app.getVersion()}`,
+          `Installed payload: ${activeVersion ?? "none"}`,
+          `Required payload: ${manifest.version}`,
+        ].join("\n"),
+        buttons: ["Repair and Restart", "Later"],
         defaultId: 0,
         cancelId: 1
       });
@@ -664,9 +844,10 @@ async function performBackgroundUpdateCheck() {
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           launcherLog(`background update apply failed: ${msg}`, "error");
-          dialog.showErrorBox(
-            "Update Failed",
-            `Failed to apply update: ${msg}\n\nLog file:\n${launcherLogFilePath()}`,
+          await showFatalLaunchError(
+            "Core Repair Failed",
+            `Failed to repair ${APP_DISPLAY_NAME} core.`,
+            msg,
           );
         }
       }
@@ -844,8 +1025,15 @@ function formatProgressLine(event: UpdateProgressEvent): string {
   }
 }
 
-function downloadProgressPageHtml(heading: string): string {
+type ProgressWindowState = {
+  heading?: string;
+  detail?: string;
+  percent?: number | null;
+};
+
+function progressWindowPageHtml(heading: string, detail = ""): string {
   const h = escapeHtmlAttr(heading);
+  const d = escapeHtmlAttr(detail);
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -861,14 +1049,14 @@ function downloadProgressPageHtml(heading: string): string {
 </style>
 </head>
 <body>
-  <h1>${h}</h1>
-  <div id="barwrap"><div id="bar"></div></div>
-  <p id="line2"></p>
+  <h1 id="heading">${h}</h1>
+  <div id="barwrap" class="indeterminate"><div id="bar"></div></div>
+  <p id="line2">${d}</p>
 </body>
 </html>`;
 }
 
-function createDownloadProgressWindow(heading: string): BrowserWindow {
+function createProgressWindow(heading: string, detail = ""): BrowserWindow {
   const win = new BrowserWindow({
     width: 440,
     height: 170,
@@ -886,7 +1074,7 @@ function createDownloadProgressWindow(heading: string): BrowserWindow {
     },
   });
   win.loadURL(
-    `data:text/html;charset=utf-8,${encodeURIComponent(downloadProgressPageHtml(heading))}`,
+    `data:text/html;charset=utf-8,${encodeURIComponent(progressWindowPageHtml(heading, detail))}`,
   );
   win.once("ready-to-show", () => {
     win.show();
@@ -894,17 +1082,44 @@ function createDownloadProgressWindow(heading: string): BrowserWindow {
   return win;
 }
 
-async function applyProgressToWindow(win: BrowserWindow, event: UpdateProgressEvent): Promise<void> {
+async function waitForWindowDocument(win: BrowserWindow): Promise<void> {
+  if (win.isDestroyed() || !win.webContents.isLoadingMainFrame()) {
+    return;
+  }
+  await new Promise<void>((resolve) => {
+    const done = () => {
+      resolve();
+    };
+    win.webContents.once("did-finish-load", done);
+    win.once("closed", done);
+  });
+}
+
+async function setProgressWindowState(
+  win: BrowserWindow,
+  state: ProgressWindowState,
+): Promise<void> {
   if (win.isDestroyed()) {
     return;
   }
-  const pct = event.percent;
-  const line2 = formatProgressLine(event);
+  await waitForWindowDocument(win);
+  if (win.isDestroyed()) {
+    return;
+  }
+  const pct = state.percent;
+  const heading = state.heading;
+  const detail = state.detail;
   const js = `(function(){
     var p = ${pct === null || pct === undefined ? "null" : String(Math.round(pct))};
-    var line2 = ${JSON.stringify(line2)};
+    var heading = ${heading === undefined ? "null" : JSON.stringify(heading)};
+    var line2 = ${detail === undefined ? "null" : JSON.stringify(detail)};
+    var title = document.getElementById("heading");
     var bar = document.getElementById("bar");
     var wrap = document.getElementById("barwrap");
+    if (title && heading !== null) {
+      title.textContent = heading;
+      document.title = heading;
+    }
     if (bar && wrap) {
       if (p === null) {
         wrap.className = "indeterminate";
@@ -915,21 +1130,32 @@ async function applyProgressToWindow(win: BrowserWindow, event: UpdateProgressEv
       }
     }
     var el = document.getElementById("line2");
-    if (el) { el.textContent = line2; }
+    if (el && line2 !== null) { el.textContent = line2; }
   })();`;
   await win.webContents.executeJavaScript(js, true);
 }
 
+async function applyProgressToWindow(win: BrowserWindow, event: UpdateProgressEvent): Promise<void> {
+  await setProgressWindowState(win, {
+    detail: formatProgressLine(event),
+    percent: event.percent ?? null,
+  });
+}
+
+function closeProgressWindow(win: BrowserWindow | null): void {
+  if (win !== null && !win.isDestroyed()) {
+    win.close();
+  }
+}
+
 async function runDownloadWithProgress(heading: string, manifest: Manifest): Promise<void> {
-  const win = createDownloadProgressWindow(heading);
+  const win = createProgressWindow(heading, "Connecting…");
   try {
     await downloadAndApplyUpdate(manifest, {
       onProgress: (e) => applyProgressToWindow(win, e),
     });
   } finally {
-    if (!win.isDestroyed()) {
-      win.close();
-    }
+    closeProgressWindow(win);
   }
 }
 
@@ -996,6 +1222,28 @@ async function start(): Promise<void> {
 
   tray = createTray();
   mainWindow = createPillWindow();
+  let startupWindow: BrowserWindow | null = null;
+
+  const showStartupStatus = async (detail: string): Promise<void> => {
+    if (!app.isPackaged) {
+      return;
+    }
+    const heading = `Starting ${APP_DISPLAY_NAME}`;
+    if (startupWindow === null || startupWindow.isDestroyed()) {
+      startupWindow = createProgressWindow(heading, detail);
+      return;
+    }
+    await setProgressWindowState(startupWindow, {
+      heading,
+      detail,
+      percent: null,
+    });
+  };
+
+  const hideStartupStatus = (): void => {
+    closeProgressWindow(startupWindow);
+    startupWindow = null;
+  };
 
   const labelWin = createPopupWindow(LABEL_SIZE);
   labelChild.window = labelWin;
@@ -1010,30 +1258,49 @@ async function start(): Promise<void> {
   });
 
   if (app.isPackaged) {
-    const isFirstRun = getActivePayloadBackendPath() === null;
+    const launcherVersion = app.getVersion();
+    const activePayloadVersion = getActiveVersion();
+    const reusedLauncherPayload = useInstalledPayloadVersion(launcherVersion);
 
-    if (isFirstRun) {
-      const manifest = await checkForUpdate();
-      if (!manifest) {
-        const logHint = `\n\nLog file:\n${launcherLogFilePath()}`;
-        const reason = lastManifestCheckFailure
-          ? `\n\nDetails:\n${lastManifestCheckFailure}`
-          : "\n\n(No manifest was returned. Check that the latest GitHub release includes manifest.json.)";
-        launcherLog(`first run: manifest unavailable${reason}`, "error");
-        dialog.showErrorBox(
-          "Network Error",
-          `${APP_DISPLAY_NAME} core not found. An internet connection is required on first launch to download the application payload.${reason}${logHint}`,
+    if (reusedLauncherPayload) {
+      if (activePayloadVersion !== null && activePayloadVersion !== launcherVersion) {
+        launcherLog(
+          `switching active payload from v${activePayloadVersion} to launcher-matched v${launcherVersion}`,
+          "info",
         );
-        app.quit();
+      }
+    } else {
+      await showStartupStatus("Checking for core components…");
+      const manifest = await checkForUpdate({ timeoutMs: manifestFetchTimeoutMs() });
+      if (!manifest) {
+        hideStartupStatus();
+        const reason = lastManifestCheckFailure
+          ? `Manifest fetch failed: ${lastManifestCheckFailure}`
+          : `No manifest was returned for launcher v${launcherVersion}.`;
+        launcherLog(`launcher payload manifest unavailable: ${reason}`, "error");
+        await showFatalLaunchError(
+          "Core Download Failed",
+          `${APP_DISPLAY_NAME} could not find the payload required by launcher v${launcherVersion}.`,
+          reason,
+        );
         return;
       }
 
+      hideStartupStatus();
+      const actionLabel = activePayloadVersion === null ? "Download and Start" : "Repair and Start";
+      const message = activePayloadVersion === null
+        ? `${APP_DISPLAY_NAME} needs to download its core components before starting.`
+        : `${APP_DISPLAY_NAME} needs to replace an incompatible core before starting.`;
       const res = await dialog.showMessageBox({
         type: "info",
-        title: "Initial Setup",
-        message: `${APP_DISPLAY_NAME} needs to download its core components before starting.`,
-        detail: `Version: ${manifest.version}`,
-        buttons: ["Download and Start", "Quit"],
+        title: activePayloadVersion === null ? "Initial Setup" : "Core Repair Required",
+        message,
+        detail: [
+          `Launcher version: ${launcherVersion}`,
+          `Installed payload: ${activePayloadVersion ?? "none"}`,
+          `Required payload: ${manifest.version}`,
+        ].join("\n"),
+        buttons: [actionLabel, "Quit"],
         defaultId: 0,
         cancelId: 1
       });
@@ -1045,49 +1312,55 @@ async function start(): Promise<void> {
 
       try {
         if (isPayloadDirPresent(manifest)) {
+          await showStartupStatus("Preparing local core files…");
           await downloadAndApplyUpdate(manifest);
         } else {
           await runDownloadWithProgress(`Downloading ${APP_DISPLAY_NAME} core`, manifest);
         }
       } catch (err) {
+        hideStartupStatus();
         const msg = err instanceof Error ? err.message : String(err);
-        launcherLog(`first run: download/apply failed: ${msg}`, "error");
-        dialog.showErrorBox(
-          "Update Failed",
-          `Failed to download ${APP_DISPLAY_NAME} core: ${msg}\n\nLog file:\n${launcherLogFilePath()}`,
+        launcherLog(`launcher payload download/apply failed: ${msg}`, "error");
+        await showFatalLaunchError(
+          "Core Download Failed",
+          `Failed to prepare ${APP_DISPLAY_NAME} core.`,
+          msg,
         );
-        app.quit();
         return;
       }
-    } else {
-      // Check for updates in the background on startup
-      performBackgroundUpdateCheck();
     }
+
+    // Check for payload drift in the background on startup.
+    performBackgroundUpdateCheck();
   }
 
   try {
+    await showStartupStatus("Starting local backend…");
     spawnSidecar();
 
     const base = shellUrl();
+    await showStartupStatus("Waiting for local UI…");
     await waitForShell(base);
+    await showStartupStatus("Opening dashboard…");
     await Promise.all([
       mainWindow.loadURL(base),
       labelWin.loadURL(`${base}?view=label`),
       panelWin.loadURL(`${base}?view=panel`),
     ]);
+    hideStartupStatus();
     showWindow();
     syncTimer = setInterval(() => { void syncTrayMenu(); }, 5000);
     updateCheckTimer = setInterval(() => { void performBackgroundUpdateCheck(); }, 60 * 60 * 1000); // 1 hour
     void syncTrayMenu();
   } catch (error) {
+    hideStartupStatus();
     const message = error instanceof Error ? error.message : String(error);
     launcherLog(`start failed: ${message}`, "error");
-    await mainWindow.loadURL(
-      `data:text/html;charset=utf-8,${encodeURIComponent(
-        errorPageHtml(`${message}\n\nLog: ${launcherLogFilePath()}`),
-      )}`,
+    await showFatalLaunchError(
+      "Startup Failed",
+      `${APP_DISPLAY_NAME} failed to start.`,
+      message,
     );
-    showWindow();
   }
 }
 

@@ -3,6 +3,10 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import AdmZip from "adm-zip";
+import {
+  manifestUrlForLauncherVersion,
+  resolvePayloadSyncPlan,
+} from "./update_policy";
 
 export interface Manifest {
   version: string;
@@ -27,6 +31,11 @@ export interface UpdateProgressEvent {
 
 export interface DownloadAndApplyOptions {
   onProgress?: (event: UpdateProgressEvent) => void | Promise<void>;
+}
+
+export interface CheckForUpdateOptions {
+  /** Abort manifest fetch after this many milliseconds; <= 0 disables the timeout. */
+  timeoutMs?: number;
 }
 
 async function emitProgress(
@@ -103,35 +112,77 @@ function getPayloadDir(version: string): string {
   return path.join(getVersionsDir(), `v${version}`);
 }
 
-/** True if the extracted payload directory for this manifest version already exists (no download needed). */
-export function isPayloadDirPresent(manifest: Manifest): boolean {
-  return fs.existsSync(getPayloadDir(manifest.version));
+function payloadExecutableName(): string {
+  return process.platform === "win32" ? "entry.exe" : "entry";
 }
 
-export function getActivePayloadBackendPath(): string | null {
-  const version = getActiveVersion();
-  if (!version) return null;
-
-  const payloadDir = getPayloadDir(version);
-  const name = process.platform === "win32" ? "entry.exe" : "entry";
-  const executablePath = path.join(payloadDir, "backend", name);
-
+export function getPayloadBackendPath(version: string): string | null {
+  const executablePath = path.join(
+    getPayloadDir(version),
+    "backend",
+    payloadExecutableName(),
+  );
   if (fs.existsSync(executablePath)) {
     return executablePath;
   }
   return null;
 }
 
+/** True if the extracted payload directory for this manifest version already exists (no download needed). */
+export function isPayloadDirPresent(manifest: Manifest): boolean {
+  return getPayloadBackendPath(manifest.version) !== null;
+}
+
+export function getActivePayloadBackendPath(): string | null {
+  const version = getActiveVersion();
+  if (!version) return null;
+  return getPayloadBackendPath(version);
+}
+
+export function useInstalledPayloadVersion(version: string): boolean {
+  if (getPayloadBackendPath(version) === null) {
+    return false;
+  }
+  setActiveVersion(version);
+  return true;
+}
+
 /** Set on fetch/parse failures; cleared at the start of each check. For UI / logs only. */
 export let lastManifestCheckFailure: string | null = null;
 
-export async function checkForUpdate(): Promise<Manifest | null> {
-  const manifestUrl = process.env.TASKCLF_MANIFEST_URL || "https://github.com/fruitiecutiepie/taskclf/releases/latest/download/manifest.json";
+async function fetchWithTimeout(
+  input: string,
+  timeoutMs?: number,
+): Promise<Response> {
+  if (timeoutMs === undefined || timeoutMs <= 0) {
+    return fetch(input);
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => {
+    controller.abort();
+  }, timeoutMs);
+
+  try {
+    return await fetch(input, { signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function checkForUpdate(
+  options?: CheckForUpdateOptions,
+): Promise<Manifest | null> {
+  const manifestUrl = manifestUrlForLauncherVersion(
+    app.getVersion(),
+    process.env.TASKCLF_MANIFEST_URL,
+  );
+  const timeoutMs = options?.timeoutMs;
   lastManifestCheckFailure = null;
 
   try {
     console.log(`[updater] Checking for updates at ${manifestUrl}`);
-    const res = await fetch(manifestUrl);
+    const res = await fetchWithTimeout(manifestUrl, timeoutMs);
     if (!res.ok) {
       lastManifestCheckFailure = `HTTP ${res.status} ${res.statusText} (${manifestUrl})`;
       console.error(`[updater] Failed to fetch manifest: ${res.statusText}`);
@@ -146,16 +197,33 @@ export async function checkForUpdate(): Promise<Manifest | null> {
       console.error("[updater] Manifest JSON parse failed:", parseErr);
       return null;
     }
+    const activePayloadPath = getActivePayloadBackendPath();
     const activeVersion = getActiveVersion();
+    const syncPlan = resolvePayloadSyncPlan({
+      launcherVersion: manifest.version,
+      activeVersion,
+      activePayloadPresent: activePayloadPath !== null,
+      launcherPayloadPresent: getPayloadBackendPath(manifest.version) !== null,
+    });
 
-    if (activeVersion === manifest.version) {
-      console.log(`[updater] Up to date (version ${activeVersion})`);
+    if (syncPlan.action === "none") {
+      console.log(`[updater] Payload ready for launcher v${manifest.version}`);
       return null;
     }
 
-    console.log(`[updater] Update found: ${manifest.version} (current: ${activeVersion || 'none'})`);
+    console.log(`[updater] Payload sync needed: ${syncPlan.reason}`);
     return manifest;
   } catch (error) {
+    if (
+      timeoutMs !== undefined
+      && timeoutMs > 0
+      && error instanceof Error
+      && error.name === "AbortError"
+    ) {
+      lastManifestCheckFailure = `Timed out fetching manifest after ${timeoutMs} ms (${manifestUrl})`;
+      console.error("[updater] Manifest fetch timed out");
+      return null;
+    }
     lastManifestCheckFailure = error instanceof Error ? error.message : String(error);
     console.error("[updater] Error checking for update:", error);
     return null;
@@ -243,9 +311,9 @@ export async function downloadAndApplyUpdate(
     }
 
     const payloadDir = getPayloadDir(manifest.version);
-    if (fs.existsSync(payloadDir)) {
-      // Already downloaded but maybe not active?
-      console.log(`[updater] Payload dir already exists. Switching active version.`);
+    if (getPayloadBackendPath(manifest.version) !== null) {
+      // Already downloaded and executable is present; maybe just not active yet.
+      console.log(`[updater] Payload already installed. Switching active version.`);
       setActiveVersion(manifest.version);
       return;
     }
