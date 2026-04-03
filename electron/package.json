@@ -1,6 +1,6 @@
 {
   "name": "taskclf-electron",
-  "version": "0.3.17",
+  "version": "0.3.18",
   "description": "Local-first task classifier",
   "author": "fruitiecutiepie",
   "private": true,
