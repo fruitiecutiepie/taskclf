@@ -4,17 +4,63 @@ import path from "node:path";
 import crypto from "node:crypto";
 import AdmZip from "adm-zip";
 import {
+  isPayloadVersionCompatible,
   manifestUrlForLauncherVersion,
   resolvePayloadSyncPlan,
+  selectLatestCompatiblePayloadVersion,
+  type CompatiblePayloadRange,
+  type PayloadSyncPlan,
 } from "./update_policy";
 
-export interface Manifest {
+export interface PayloadPlatformData {
+  url: string;
+  sha256: string;
+}
+
+export interface PayloadManifest {
+  kind?: "payload";
+  schema_version?: number;
   version: string;
   /** Keys are LLVM-style target triples, e.g. x86_64-unknown-linux-gnu */
-  platforms: Record<string, {
-    url: string;
-    sha256: string;
-  }>;
+  platforms: Record<string, PayloadPlatformData>;
+}
+
+export type Manifest = PayloadManifest;
+
+export interface LauncherManifest {
+  kind?: "launcher";
+  schema_version?: number;
+  launcher_version: string;
+  payload_index_url: string;
+  default_payload_selection?: {
+    strategy: "latest-compatible";
+  };
+  compatible_payloads: CompatiblePayloadRange;
+}
+
+export interface PayloadIndexEntry {
+  version: string;
+  manifest_url: string;
+}
+
+export interface PayloadIndex {
+  kind?: "payload-index";
+  schema_version?: number;
+  generated_at?: string;
+  payloads: PayloadIndexEntry[];
+}
+
+export type DesiredPayloadSource = "default" | "user-selected";
+
+export interface PayloadResolution {
+  launcherManifest: LauncherManifest;
+  payloadIndex: PayloadIndex;
+  payloadManifest: PayloadManifest;
+  defaultVersion: string;
+  desiredVersion: string;
+  desiredSource: DesiredPayloadSource;
+  selectedVersion: string | null;
+  syncPlan: PayloadSyncPlan;
 }
 
 export type UpdatePhase = "download" | "verify" | "extract";
@@ -36,6 +82,8 @@ export interface DownloadAndApplyOptions {
 export interface CheckForUpdateOptions {
   /** Abort manifest fetch after this many milliseconds; <= 0 disables the timeout. */
   timeoutMs?: number;
+  preferredVersion?: string;
+  ignoreSelectedVersion?: boolean;
 }
 
 type UpdaterRequestInit = RequestInit & { bypassCustomProtocolHandlers?: boolean };
@@ -123,26 +171,62 @@ function getVersionsDir(): string {
   return path.join(app.getPath("userData"), "versions");
 }
 
+function ensureVersionsDir(): void {
+  const versionsDir = getVersionsDir();
+  if (!fs.existsSync(versionsDir)) {
+    fs.mkdirSync(versionsDir, { recursive: true });
+  }
+}
+
 function getActivePath(): string {
   return path.join(getVersionsDir(), "active.json");
 }
 
-export function getActiveVersion(): string | null {
-  const activePath = getActivePath();
-  if (!fs.existsSync(activePath)) {
+function getSelectedPath(): string {
+  return path.join(getVersionsDir(), "selected.json");
+}
+
+function readStoredVersion(filePath: string): string | null {
+  if (!fs.existsSync(filePath)) {
     return null;
   }
   try {
-    const data = JSON.parse(fs.readFileSync(activePath, "utf-8"));
+    const data = JSON.parse(fs.readFileSync(filePath, "utf-8"));
     return data.version || null;
   } catch {
     return null;
   }
 }
 
+function writeStoredVersion(filePath: string, version: string): void {
+  ensureVersionsDir();
+  fs.writeFileSync(filePath, JSON.stringify({ version }));
+}
+
+function clearStoredVersion(filePath: string): void {
+  if (fs.existsSync(filePath)) {
+    fs.unlinkSync(filePath);
+  }
+}
+
+export function getActiveVersion(): string | null {
+  return readStoredVersion(getActivePath());
+}
+
 function setActiveVersion(version: string): void {
-  const activePath = getActivePath();
-  fs.writeFileSync(activePath, JSON.stringify({ version }));
+  writeStoredVersion(getActivePath(), version);
+}
+
+export function getSelectedVersion(): string | null {
+  return readStoredVersion(getSelectedPath());
+}
+
+export function setSelectedVersion(version: string): void {
+  writeStoredVersion(getSelectedPath(), version);
+}
+
+export function clearSelectedVersion(): void {
+  clearStoredVersion(getSelectedPath());
 }
 
 function getPayloadDir(version: string): string {
@@ -165,8 +249,21 @@ export function getPayloadBackendPath(version: string): string | null {
   return null;
 }
 
+export function listInstalledPayloadVersions(): string[] {
+  const versionsDir = getVersionsDir();
+  if (!fs.existsSync(versionsDir)) {
+    return [];
+  }
+
+  return fs.readdirSync(versionsDir)
+    .filter((entry) => entry.startsWith("v"))
+    .map((entry) => entry.slice(1))
+    .filter((version) => version.length > 0 && getPayloadBackendPath(version) !== null)
+    .sort((left, right) => right.localeCompare(left, undefined, { numeric: true }));
+}
+
 /** True if the extracted payload directory for this manifest version already exists (no download needed). */
-export function isPayloadDirPresent(manifest: Manifest): boolean {
+export function isPayloadDirPresent(manifest: PayloadManifest): boolean {
   return getPayloadBackendPath(manifest.version) !== null;
 }
 
@@ -189,10 +286,11 @@ export let lastManifestCheckFailure: string | null = null;
 
 async function fetchWithTimeout(
   input: string,
+  purpose: string,
   timeoutMs?: number,
 ): Promise<Response> {
   if (timeoutMs === undefined || timeoutMs <= 0) {
-    return updaterFetch(input, "fetch manifest");
+    return updaterFetch(input, purpose);
   }
 
   const controller = new AbortController();
@@ -201,16 +299,114 @@ async function fetchWithTimeout(
   }, timeoutMs);
 
   try {
-    return await updaterFetch(input, "fetch manifest", { signal: controller.signal });
+    return await updaterFetch(input, purpose, { signal: controller.signal });
   } finally {
     clearTimeout(timer);
   }
 }
 
-export async function checkForUpdate(
+async function fetchJsonWithTimeout<T>(
+  input: string,
+  purpose: string,
+  timeoutMs?: number,
+): Promise<T> {
+  const res = await fetchWithTimeout(input, purpose, timeoutMs);
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status} ${res.statusText} (${input})`);
+  }
+
+  try {
+    return (await res.json()) as T;
+  } catch (parseErr) {
+    throw new Error(
+      `Invalid JSON in ${purpose}: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`,
+    );
+  }
+}
+
+function validateLauncherManifest(manifest: LauncherManifest, expectedVersion: string): void {
+  if (manifest.launcher_version !== expectedVersion) {
+    throw new Error(
+      `Launcher manifest version mismatch: expected v${expectedVersion}, got v${manifest.launcher_version}`,
+    );
+  }
+  if (!manifest.payload_index_url) {
+    throw new Error("Launcher manifest missing payload_index_url");
+  }
+  if (!manifest.compatible_payloads) {
+    throw new Error("Launcher manifest missing compatible_payloads");
+  }
+}
+
+function findPayloadIndexEntry(payloadIndex: PayloadIndex, version: string): PayloadIndexEntry | null {
+  return payloadIndex.payloads.find((entry) => entry.version === version) ?? null;
+}
+
+function resolveDesiredPayloadVersion(
+  launcherManifest: LauncherManifest,
+  payloadIndex: PayloadIndex,
+  preferredVersion?: string,
+  ignoreSelectedVersion?: boolean,
+): {
+  defaultVersion: string;
+  version: string;
+  source: DesiredPayloadSource;
+  selectedVersion: string | null;
+} {
+  const selectedVersion = ignoreSelectedVersion ? null : getSelectedVersion();
+  const availableVersions = payloadIndex.payloads.map((entry) => entry.version);
+  const latestCompatible = selectLatestCompatiblePayloadVersion({
+    compatiblePayloads: launcherManifest.compatible_payloads,
+    availableVersions,
+  });
+  if (latestCompatible === null) {
+    throw new Error(
+      `No payload release satisfies launcher compatibility range `
+      + `[${launcherManifest.compatible_payloads.min_version_inclusive}, `
+      + `${launcherManifest.compatible_payloads.max_version_exclusive})`,
+    );
+  }
+
+  if (preferredVersion !== undefined) {
+    if (!availableVersions.includes(preferredVersion)) {
+      throw new Error(`Payload v${preferredVersion} is not present in the payload index`);
+    }
+    if (!isPayloadVersionCompatible(preferredVersion, launcherManifest.compatible_payloads)) {
+      throw new Error(`Payload v${preferredVersion} is not compatible with launcher v${launcherManifest.launcher_version}`);
+    }
+    return {
+      defaultVersion: latestCompatible,
+      version: preferredVersion,
+      source: "user-selected",
+      selectedVersion,
+    };
+  }
+
+  if (
+    selectedVersion !== null
+    && availableVersions.includes(selectedVersion)
+    && isPayloadVersionCompatible(selectedVersion, launcherManifest.compatible_payloads)
+  ) {
+    return {
+      defaultVersion: latestCompatible,
+      version: selectedVersion,
+      source: "user-selected",
+      selectedVersion,
+    };
+  }
+
+  return {
+    defaultVersion: latestCompatible,
+    version: latestCompatible,
+    source: "default",
+    selectedVersion,
+  };
+}
+
+export async function resolvePayloadRelease(
   options?: CheckForUpdateOptions,
-): Promise<Manifest | null> {
-  const manifestUrl = manifestUrlForLauncherVersion(
+): Promise<PayloadResolution | null> {
+  const launcherManifestUrl = manifestUrlForLauncherVersion(
     app.getVersion(),
     process.env.TASKCLF_MANIFEST_URL,
   );
@@ -218,38 +414,54 @@ export async function checkForUpdate(
   lastManifestCheckFailure = null;
 
   try {
-    console.log(`[updater] Checking for updates at ${manifestUrl}`);
-    const res = await fetchWithTimeout(manifestUrl, timeoutMs);
-    if (!res.ok) {
-      lastManifestCheckFailure = `HTTP ${res.status} ${res.statusText} (${manifestUrl})`;
-      console.error(`[updater] Failed to fetch manifest: ${res.statusText}`);
-      return null;
+    console.log(`[updater] Checking launcher manifest at ${launcherManifestUrl}`);
+    const launcherManifest = await fetchJsonWithTimeout<LauncherManifest>(
+      launcherManifestUrl,
+      "launcher manifest",
+      timeoutMs,
+    );
+    validateLauncherManifest(launcherManifest, app.getVersion());
+
+    const payloadIndex = await fetchJsonWithTimeout<PayloadIndex>(
+      launcherManifest.payload_index_url,
+      "payload index",
+      timeoutMs,
+    );
+    const desired = resolveDesiredPayloadVersion(
+      launcherManifest,
+      payloadIndex,
+      options?.preferredVersion,
+      options?.ignoreSelectedVersion,
+    );
+    const payloadIndexEntry = findPayloadIndexEntry(payloadIndex, desired.version);
+    if (payloadIndexEntry === null) {
+      throw new Error(`Payload index entry missing for v${desired.version}`);
     }
 
-    let manifest: Manifest;
-    try {
-      manifest = (await res.json()) as Manifest;
-    } catch (parseErr) {
-      lastManifestCheckFailure = `Invalid JSON in manifest: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`;
-      console.error("[updater] Manifest JSON parse failed:", parseErr);
-      return null;
-    }
+    const payloadManifest = await fetchJsonWithTimeout<PayloadManifest>(
+      payloadIndexEntry.manifest_url,
+      `payload manifest for v${desired.version}`,
+      timeoutMs,
+    );
     const activePayloadPath = getActivePayloadBackendPath();
     const activeVersion = getActiveVersion();
     const syncPlan = resolvePayloadSyncPlan({
-      launcherVersion: manifest.version,
+      desiredVersion: payloadManifest.version,
       activeVersion,
       activePayloadPresent: activePayloadPath !== null,
-      launcherPayloadPresent: getPayloadBackendPath(manifest.version) !== null,
+      desiredPayloadPresent: getPayloadBackendPath(payloadManifest.version) !== null,
     });
 
-    if (syncPlan.action === "none") {
-      console.log(`[updater] Payload ready for launcher v${manifest.version}`);
-      return null;
-    }
-
-    console.log(`[updater] Payload sync needed: ${syncPlan.reason}`);
-    return manifest;
+    return {
+      launcherManifest,
+      payloadIndex,
+      payloadManifest,
+      defaultVersion: desired.defaultVersion,
+      desiredVersion: payloadManifest.version,
+      desiredSource: desired.source,
+      selectedVersion: desired.selectedVersion,
+      syncPlan,
+    };
   } catch (error) {
     if (
       timeoutMs !== undefined
@@ -257,14 +469,34 @@ export async function checkForUpdate(
       && error instanceof Error
       && error.name === "AbortError"
     ) {
-      lastManifestCheckFailure = `Timed out fetching manifest after ${timeoutMs} ms (${manifestUrl})`;
-      console.error("[updater] Manifest fetch timed out");
+      lastManifestCheckFailure = `Timed out fetching release metadata after ${timeoutMs} ms`;
+      console.error("[updater] Release metadata fetch timed out");
       return null;
     }
     lastManifestCheckFailure = error instanceof Error ? error.message : String(error);
-    console.error("[updater] Error checking for update:", error);
+    console.error("[updater] Error resolving payload release:", error);
     return null;
   }
+}
+
+export async function checkForUpdate(
+  options?: CheckForUpdateOptions,
+): Promise<PayloadResolution | null> {
+  const resolution = await resolvePayloadRelease(options);
+  if (resolution === null) {
+    return null;
+  }
+
+  if (resolution.syncPlan.action === "none") {
+    console.log(
+      `[updater] Payload ready for launcher v${resolution.launcherManifest.launcher_version}`
+      + ` using payload v${resolution.desiredVersion}`,
+    );
+    return null;
+  }
+
+  console.log(`[updater] Payload sync needed: ${resolution.syncPlan.reason}`);
+  return resolution;
 }
 
 async function streamPayloadToFile(
@@ -336,16 +568,13 @@ async function streamPayloadToFile(
 }
 
 export async function downloadAndApplyUpdate(
-  manifest: Manifest,
+  manifest: PayloadManifest,
   options?: DownloadAndApplyOptions,
 ): Promise<void> {
   const onProgress = options?.onProgress;
   try {
-    // Create versions dir if not exists
+    ensureVersionsDir();
     const versionsDir = getVersionsDir();
-    if (!fs.existsSync(versionsDir)) {
-      fs.mkdirSync(versionsDir, { recursive: true });
-    }
 
     const payloadDir = getPayloadDir(manifest.version);
     if (getPayloadBackendPath(manifest.version) !== null) {

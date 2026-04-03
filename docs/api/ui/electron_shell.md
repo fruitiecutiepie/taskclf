@@ -59,28 +59,39 @@ Behavior:
 
 ## Payload release manifest
 
-GitHub releases must ship `manifest.json` (and matching `payload-<triple>.zip`
-files). By default, the packaged Electron app fetches the manifest from its
-own launcher tag:
+GitHub releases must ship `manifest.json`. By default, the packaged Electron
+app fetches a **launcher manifest** from its own launcher tag:
 
 ```text
 https://github.com/<org>/<repo>/releases/download/launcher-v<appVersion>/manifest.json
 ```
 
-That keeps the launcher pinned to the payload built for the same
-`electron/package.json` version instead of following unrelated `v*` payload
-releases through `releases/latest`. The **Electron launcher** workflow
-(`.github/workflows/electron-release.yml`, tags `launcher-v*`) builds payloads
-on each OS, then publishes `manifest.json` plus installers and zips in one
-release. The **Python-only payload** workflow (`.github/workflows/payload-release.yml`,
-tags `v*`) publishes the same manifest shape for library users who only need the
-sidecar zip, but the packaged launcher does not follow that channel by default.
+The launcher manifest now declares:
 
-The manifest has a `platforms` object. Keys are **LLVM-style target triples**, for example
-`x86_64-unknown-linux-gnu` and `x86_64-pc-windows-msvc`, matching
-`scripts/host_target_triple.py` and the Electron updater’s
-`hostTargetTriple()`. Each entry points at `payload-<triple>.zip` for that
-architecture and OS.
+- `launcher_version`
+- `payload_index_url`
+- `default_payload_selection`
+- `compatible_payloads`
+
+That keeps compatibility policy with the launcher release while allowing the
+app to boot the **latest compatible** `v*` payload instead of forcing an exact
+launcher-version match.
+
+The **Electron launcher** workflow (`.github/workflows/electron-release.yml`,
+tags `launcher-v*`) publishes the launcher manifest plus installers and payload
+zips in one release. The **Python-only payload** workflow
+(`.github/workflows/payload-release.yml`, tags `v*`) still publishes
+per-version **payload manifests** with `platforms` entries pointing at
+`payload-<triple>.zip` assets for that payload release.
+
+The payload index is hosted on GitHub Pages at:
+
+```text
+https://fruitiecutiepie.github.io/taskclf/payload-index.json
+```
+
+That index lists available payload versions and the `manifest.json` URL for each
+`v*` payload release.
 
 The zip contains a **PyInstaller one-folder** sidecar: after extraction, the
 Electron app runs `backend/entry` (Unix) or `backend/entry.exe` (Windows),
@@ -89,14 +100,15 @@ alongside `_internal/` and bundled data. Builds are produced with
 
 ## Packaged app: payload download progress
 
-In a **packaged** Electron build (`app.isPackaged`), the main process downloads
-the payload zip from the launcher-matched release manifest when needed (first
-launch without a local core, or when the launcher detects that `active.json`
-points at an incompatible payload version). Before any first-run network call
-or sidecar boot work begins, the launcher shows a small native **startup
-status** window so the app does not appear idle while it is checking for the
-local core, waiting on the manifest, or waiting for the local UI server to
-answer.
+In a **packaged** Electron build (`app.isPackaged`), the main process fetches
+the launcher manifest, then the GitHub Pages payload index, then the payload
+manifest for the chosen compatible version. If the desired payload is already
+installed, the launcher switches `active.json`; otherwise it downloads the
+payload zip from the chosen payload release manifest. Before any first-run
+network call or sidecar boot work begins, the launcher shows a small native
+**startup status** window so the app does not appear idle while it is checking
+for local core files, waiting on release metadata, or waiting for the local UI
+server to answer.
 
 When a payload zip is actually downloading, that same startup UX switches to a
 native progress window with **percentage** when the server sends
@@ -106,7 +118,7 @@ native progress window with **percentage** when the server sends
 Electron's Chromium network stack for packaged-app updater requests) and `electron/main.ts`
 (startup/progress windows). Optional overrides:
 
-- `TASKCLF_MANIFEST_URL` -- alternate manifest location
+- `TASKCLF_MANIFEST_URL` -- alternate launcher manifest location
 - `TASKCLF_MANIFEST_TIMEOUT_MS` -- manifest fetch timeout in milliseconds
   (default: `15000`; set `0` to disable the timeout)
 

@@ -10,6 +10,8 @@ on:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 jobs:
   release-scope:
@@ -108,7 +110,7 @@ jobs:
           import glob, json, hashlib, os, re
           version = os.environ.get('GITHUB_REF', '').replace('refs/tags/v', '')
           repo = os.environ.get('GITHUB_REPOSITORY', 'fruitiecutiepie/taskclf')
-          manifest = {'version': version, 'platforms': {}}
+          manifest = {'kind': 'payload', 'schema_version': 1, 'version': version, 'platforms': {}}
           paths = glob.glob('payloads/payload-*.zip') + glob.glob('payloads/**/payload-*.zip', recursive=True)
           for path in sorted(set(paths)):
               base = os.path.basename(path)
@@ -132,3 +134,77 @@ jobs:
           files: |
             payloads/*.zip
             manifest.json
+
+  deploy-payload-index:
+    needs: publish
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    environment:
+      name: github-pages
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: master
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Install docs builder
+        run: pip install zensical mkdocstrings-python
+
+      - name: Build docs site
+        run: zensical build
+
+      - name: Generate payload-index.json
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 -c "
+          import datetime as dt, json, os, re, urllib.request
+
+          repo = os.environ.get('GITHUB_REPOSITORY', 'fruitiecutiepie/taskclf')
+          token = os.environ.get('GITHUB_TOKEN', '')
+          req = urllib.request.Request(
+              f'https://api.github.com/repos/{repo}/releases?per_page=100',
+              headers={
+                  'Accept': 'application/vnd.github+json',
+                  **({'Authorization': f'Bearer {token}'} if token else {}),
+              },
+          )
+          with urllib.request.urlopen(req) as res:
+              releases = json.load(res)
+
+          version_re = re.compile(r'^v(\\d+)\\.(\\d+)\\.(\\d+)$')
+          payloads = []
+          for release in releases:
+              tag = release.get('tag_name', '')
+              if not version_re.match(tag):
+                  continue
+              assets = {asset.get('name') for asset in release.get('assets', [])}
+              if 'manifest.json' not in assets:
+                  continue
+              payloads.append({
+                  'version': tag[1:],
+                  'manifest_url': f'https://github.com/{repo}/releases/download/{tag}/manifest.json',
+              })
+
+          payloads.sort(
+              key=lambda item: tuple(int(part) for part in item['version'].split('.')),
+              reverse=True,
+          )
+          payload_index = {
+              'kind': 'payload-index',
+              'schema_version': 1,
+              'generated_at': dt.datetime.now(dt.UTC).replace(microsecond=0).isoformat().replace('+00:00', 'Z'),
+              'payloads': payloads,
+          }
+          with open('site/payload-index.json', 'w', encoding='utf-8') as f:
+              json.dump(payload_index, f, indent=2)
+          "
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - uses: actions/deploy-pages@v4

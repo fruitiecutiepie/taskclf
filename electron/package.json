@@ -46,6 +46,13 @@
       ]
     }
   },
+  "taskclfPayload": {
+    "payloadIndexUrl": "https://fruitiecutiepie.github.io/taskclf/payload-index.json",
+    "compatiblePayloads": {
+      "minVersionInclusive": "0.4.0",
+      "maxVersionExclusive": "0.5.0"
+    }
+  },
   "devDependencies": {
     "@resvg/resvg-js": "^2.6.2",
     "@types/adm-zip": "0.5.8",

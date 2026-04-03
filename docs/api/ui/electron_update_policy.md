@@ -4,14 +4,20 @@ Internal Electron launcher policy helpers for payload selection.
 
 ## Overview
 
-`electron/update_policy.ts` keeps the packaged launcher on the payload built
-for the same launcher release.
+`electron/update_policy.ts` resolves the newest payload compatible with the
+current launcher release and decides whether the app can keep using the active
+payload, switch to an installed compatible version, or download one.
 
-It provides two small pure helpers:
+It provides small pure helpers for:
 
 - `manifestUrlForLauncherVersion(version, overrideUrl?)` — returns the default
   GitHub manifest URL for `launcher-v<version>`, unless
   `TASKCLF_MANIFEST_URL` supplies an explicit override.
+- `compareVersions(...)` — compares `X.Y.Z` payload versions numerically.
+- `isPayloadVersionCompatible(...)` — checks a payload version against the
+  launcher manifest's compatibility range.
+- `selectLatestCompatiblePayloadVersion(...)` — picks the newest payload from
+  the payload index that satisfies the launcher's compatibility range.
 - `resolvePayloadSyncPlan(...)` — classifies launcher/payload state as:
   `none`, `switch`, or `download`.
 
@@ -21,12 +27,11 @@ state.
 
 ## Behavior
 
-- If the active payload already matches the launcher version and its backend
-  executable exists, the policy returns `none`.
-- If the launcher-matched payload is already cached locally but `active.json`
-  points elsewhere, the policy returns `switch`.
-- If the launcher-matched payload is not installed, the policy returns
-  `download`.
+- If the active payload already matches the desired payload version and its
+  backend executable exists, the policy returns `none`.
+- If the desired payload is already cached locally but `active.json` points at
+  another version, the policy returns `switch`.
+- If the desired payload is not installed, the policy returns `download`.
 
 ## Integration
 

@@ -15,16 +15,25 @@ import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import {
-  checkForUpdate,
+  clearSelectedVersion,
   getActiveVersion,
+  getActivePayloadBackendPath,
+  getSelectedVersion,
   downloadAndApplyUpdate,
-  getPayloadBackendPath,
   isPayloadDirPresent,
   lastManifestCheckFailure,
+  listInstalledPayloadVersions,
+  resolvePayloadRelease,
+  setSelectedVersion,
   useInstalledPayloadVersion,
   type Manifest,
+  type PayloadResolution,
   type UpdateProgressEvent,
 } from "./updater";
+import {
+  compareVersions,
+  isPayloadVersionCompatible,
+} from "./update_policy";
 
 /** Must match `build.productName` in package.json (Finder / .app name, tray, notifications). */
 function readAppDisplayName(): string {
@@ -61,6 +70,7 @@ let isQuitting = false;
 let hasShownWindow = false;
 let fatalLaunchErrorShown = false;
 const recentSidecarLines: string[] = [];
+let latestPayloadResolution: PayloadResolution | null = null;
 
 // ── Child window state machine ──────────────────────────────────────────
 
@@ -370,14 +380,41 @@ function defaultModelsDir(): string {
   return "models";
 }
 
+function uniquePayloadVersions(versions: Array<string | null>): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const version of versions) {
+    if (!version || seen.has(version)) {
+      continue;
+    }
+    seen.add(version);
+    result.push(version);
+  }
+  return result;
+}
+
+function activateBestLocalPayloadFallback(): string | null {
+  const candidates = uniquePayloadVersions([
+    getSelectedVersion(),
+    getActiveVersion(),
+    ...listInstalledPayloadVersions(),
+  ]);
+  for (const version of candidates) {
+    if (useInstalledPayloadVersion(version)) {
+      return version;
+    }
+  }
+  return null;
+}
+
 function sidecarExecutable(): string {
   if (app.isPackaged) {
-    const launcherPath = getPayloadBackendPath(app.getVersion());
-    if (launcherPath) {
-      return launcherPath;
+    const activePayloadPath = getActivePayloadBackendPath();
+    if (activePayloadPath) {
+      return activePayloadPath;
     }
     throw new Error(
-      `${APP_DISPLAY_NAME} core v${app.getVersion()} not found. The packaged launcher only starts with a matching local payload.`,
+      `${APP_DISPLAY_NAME} could not resolve a local payload to start.`,
     );
   }
   return envString("TASKCLF_ELECTRON_PYTHON_EXECUTABLE", "python3");
@@ -807,38 +844,156 @@ let syncTimer: ReturnType<typeof setInterval> | null = null;
 let updateCheckTimer: ReturnType<typeof setInterval> | null = null;
 let updatePromptShownForVersion: string | null = null;
 
+function payloadResolutionDetails(
+  resolution: PayloadResolution,
+  activeVersion: string | null,
+): string {
+  return [
+    `Launcher version: ${resolution.launcherManifest.launcher_version}`,
+    `Active payload: ${activeVersion ?? "none"}`,
+    `Recommended payload: ${resolution.defaultVersion}`,
+    `Selected payload: ${resolution.selectedVersion ?? "auto"}`,
+    `Target payload: ${resolution.desiredVersion}`,
+  ].join("\n");
+}
+
+async function applyPayloadResolution(
+  resolution: PayloadResolution,
+  heading: string,
+): Promise<void> {
+  if (resolution.syncPlan.action === "switch") {
+    if (!useInstalledPayloadVersion(resolution.desiredVersion)) {
+      throw new Error(`Payload v${resolution.desiredVersion} is not installed locally`);
+    }
+    return;
+  }
+
+  if (resolution.syncPlan.action === "download") {
+    if (isPayloadDirPresent(resolution.payloadManifest)) {
+      await downloadAndApplyUpdate(resolution.payloadManifest);
+    } else {
+      await runDownloadWithProgress(heading, resolution.payloadManifest);
+    }
+  }
+}
+
+async function promptForPayloadRestart(
+  resolution: PayloadResolution,
+  title: string,
+  actionLabel: string,
+): Promise<void> {
+  const activeVersion = getActiveVersion();
+  const res = await dialog.showMessageBox({
+    type: "info",
+    title,
+    message: `${APP_DISPLAY_NAME} will restart to use payload v${resolution.desiredVersion}.`,
+    detail: payloadResolutionDetails(resolution, activeVersion),
+    buttons: [actionLabel, "Later"],
+    defaultId: 0,
+    cancelId: 1,
+  });
+  if (res.response === 0) {
+    app.relaunch();
+    app.quit();
+  }
+}
+
+async function useResolvedPayloadChoice(
+  resolution: PayloadResolution,
+  rememberSelection: boolean,
+): Promise<void> {
+  const effectiveResolution: PayloadResolution = rememberSelection
+    ? {
+        ...resolution,
+        desiredSource: "user-selected",
+        selectedVersion: resolution.desiredVersion,
+      }
+    : {
+        ...resolution,
+        desiredSource: "default",
+        selectedVersion: null,
+      };
+
+  if (rememberSelection) {
+    setSelectedVersion(effectiveResolution.desiredVersion);
+  } else {
+    clearSelectedVersion();
+  }
+
+  if (effectiveResolution.syncPlan.action === "none") {
+    latestPayloadResolution = effectiveResolution;
+    new Notification({
+      title: APP_DISPLAY_NAME,
+      body: rememberSelection
+        ? `Payload v${effectiveResolution.desiredVersion} is already active`
+        : `Recommended payload v${effectiveResolution.desiredVersion} is already active`,
+    }).show();
+    return;
+  }
+
+  await applyPayloadResolution(effectiveResolution, `Downloading ${APP_DISPLAY_NAME} core`);
+  latestPayloadResolution = effectiveResolution;
+  await promptForPayloadRestart(
+    effectiveResolution,
+    "Restart Required",
+    "Restart Now",
+  );
+}
+
+async function switchToRecommendedPayload(): Promise<void> {
+  const resolution = await resolvePayloadRelease({
+    timeoutMs: manifestFetchTimeoutMs(),
+    ignoreSelectedVersion: true,
+  });
+  if (resolution === null) {
+    throw new Error(lastManifestCheckFailure ?? "Failed to resolve recommended payload");
+  }
+  await useResolvedPayloadChoice(resolution, false);
+}
+
+async function switchToPayloadVersion(version: string): Promise<void> {
+  const resolution = await resolvePayloadRelease({
+    timeoutMs: manifestFetchTimeoutMs(),
+    preferredVersion: version,
+  });
+  if (resolution === null) {
+    throw new Error(lastManifestCheckFailure ?? `Failed to resolve payload v${version}`);
+  }
+  await useResolvedPayloadChoice(resolution, true);
+}
+
 async function performBackgroundUpdateCheck() {
   if (!app.isPackaged || isQuitting || mainWindow === null) {
     return;
   }
 
   try {
-    const manifest = await checkForUpdate({ timeoutMs: manifestFetchTimeoutMs() });
-    if (manifest && manifest.version !== updatePromptShownForVersion) {
-      updatePromptShownForVersion = manifest.version;
+    const resolution = await resolvePayloadRelease({ timeoutMs: manifestFetchTimeoutMs() });
+    if (resolution === null) {
+      return;
+    }
+
+    latestPayloadResolution = resolution;
+    if (
+      resolution.syncPlan.action !== "none"
+      && resolution.desiredVersion !== updatePromptShownForVersion
+    ) {
+      updatePromptShownForVersion = resolution.desiredVersion;
       const activeVersion = getActiveVersion();
 
       const res = await dialog.showMessageBox({
         type: "warning",
-        title: "Core Repair Available",
-        message: `${APP_DISPLAY_NAME} needs to repair its local core before restart.`,
-        detail: [
-          `Launcher version: ${app.getVersion()}`,
-          `Installed payload: ${activeVersion ?? "none"}`,
-          `Required payload: ${manifest.version}`,
-        ].join("\n"),
-        buttons: ["Repair and Restart", "Later"],
+        title: "Core Update Available",
+        message: `${APP_DISPLAY_NAME} can switch to payload v${resolution.desiredVersion} on restart.`,
+        detail: payloadResolutionDetails(resolution, activeVersion),
+        buttons: ["Update and Restart", "Later"],
         defaultId: 0,
         cancelId: 1
       });
 
       if (res.response === 0) {
         try {
-          if (isPayloadDirPresent(manifest)) {
-            await downloadAndApplyUpdate(manifest);
-          } else {
-            await runDownloadWithProgress(`Downloading ${APP_DISPLAY_NAME} update`, manifest);
-          }
+          await applyPayloadResolution(resolution, `Downloading ${APP_DISPLAY_NAME} update`);
           app.relaunch();
           app.quit();
         } catch (err) {
@@ -871,6 +1026,75 @@ async function syncTrayMenu() {
     if (modelsRes.ok) {
       models = await modelsRes.json();
     }
+
+    const activePayloadVersion = getActiveVersion();
+    const selectedPayloadVersion = getSelectedVersion();
+    const installedPayloadVersions = listInstalledPayloadVersions();
+    const payloadResolution = latestPayloadResolution;
+    const compatiblePayloadVersions = payloadResolution === null
+      ? []
+      : payloadResolution.payloadIndex.payloads
+        .map((entry) => entry.version)
+        .filter((version) => isPayloadVersionCompatible(
+          version,
+          payloadResolution.launcherManifest.compatible_payloads,
+        ))
+        .sort((left, right) => compareVersions(right, left));
+    const installablePayloadVersions = compatiblePayloadVersions
+      .filter((version) => !installedPayloadVersions.includes(version));
+    const payloadSubmenu: Electron.MenuItemConstructorOptions[] = payloadResolution === null
+      ? [
+          { label: `Active: ${activePayloadVersion ?? "none"}`, enabled: false },
+          { label: "Payload metadata unavailable", enabled: false },
+        ]
+      : [
+          { label: `Launcher: v${payloadResolution.launcherManifest.launcher_version}`, enabled: false },
+          { label: `Active: ${activePayloadVersion ?? "none"}`, enabled: false },
+          { label: `Recommended: ${payloadResolution.defaultVersion}`, enabled: false },
+          { label: `Selected: ${selectedPayloadVersion ?? "auto"}`, enabled: false },
+          { type: "separator" },
+          {
+            label: `Use Recommended (${payloadResolution.defaultVersion})`,
+            type: "checkbox" as const,
+            checked: selectedPayloadVersion === null,
+            click: () => {
+              void switchToRecommendedPayload().catch((err) => {
+                const message = err instanceof Error ? err.message : String(err);
+                new Notification({ title: APP_DISPLAY_NAME, body: `Payload switch failed: ${message}` }).show();
+              });
+            },
+          },
+          ...installedPayloadVersions
+            .filter((version) => compatiblePayloadVersions.includes(version))
+            .map((version) => ({
+              label: `Use Installed v${version}`,
+              type: "checkbox" as const,
+              checked: selectedPayloadVersion === version,
+              click: () => {
+                void switchToPayloadVersion(version).catch((err) => {
+                  const message = err instanceof Error ? err.message : String(err);
+                  new Notification({ title: APP_DISPLAY_NAME, body: `Payload switch failed: ${message}` }).show();
+                });
+              },
+            })),
+          ...(installablePayloadVersions.length > 0
+            ? [
+                { type: "separator" as const },
+                {
+                  label: "Install Compatible Version",
+                  submenu: installablePayloadVersions.map((version) => ({
+                    label: `Install v${version}`,
+                    click: () => {
+                      void switchToPayloadVersion(version).catch((err) => {
+                        const message = err instanceof Error ? err.message : String(err);
+                        new Notification({ title: APP_DISPLAY_NAME, body: `Payload install failed: ${message}` }).show();
+                      });
+                    },
+                  })),
+                },
+              ]
+            : []),
+        ];
 
     const template: Electron.MenuItemConstructorOptions[] = [
       { label: "Toggle Dashboard", click: toggleWindow },
@@ -908,6 +1132,7 @@ async function syncTrayMenu() {
           { label: "Check Retrain", click: () => sidecarRequest("/api/tray/action/check_retrain", { method: "POST" }) }
         ]
       },
+      { label: "Payload", submenu: payloadSubmenu },
       { label: "Status", click: () => sidecarRequest("/api/tray/action/show_status", { method: "POST" }) },
       { label: "Open Data Folder", click: () => sidecarRequest("/api/tray/action/open_data_dir", { method: "POST" }) },
       { label: "Edit Config", click: () => sidecarRequest("/api/tray/action/edit_config", { method: "POST" }) },
@@ -1260,73 +1485,83 @@ async function start(): Promise<void> {
   if (app.isPackaged) {
     const launcherVersion = app.getVersion();
     const activePayloadVersion = getActiveVersion();
-    const reusedLauncherPayload = useInstalledPayloadVersion(launcherVersion);
-
-    if (reusedLauncherPayload) {
-      if (activePayloadVersion !== null && activePayloadVersion !== launcherVersion) {
+    await showStartupStatus("Checking for core components…");
+    const resolution = await resolvePayloadRelease({ timeoutMs: manifestFetchTimeoutMs() });
+    if (resolution === null) {
+      hideStartupStatus();
+      const fallbackVersion = activateBestLocalPayloadFallback();
+      if (fallbackVersion !== null) {
         launcherLog(
-          `switching active payload from v${activePayloadVersion} to launcher-matched v${launcherVersion}`,
-          "info",
+          `release metadata unavailable; falling back to local payload v${fallbackVersion}: `
+          + `${lastManifestCheckFailure ?? "unknown error"}`,
+          "error",
         );
-      }
-    } else {
-      await showStartupStatus("Checking for core components…");
-      const manifest = await checkForUpdate({ timeoutMs: manifestFetchTimeoutMs() });
-      if (!manifest) {
-        hideStartupStatus();
+      } else {
         const reason = lastManifestCheckFailure
-          ? `Manifest fetch failed: ${lastManifestCheckFailure}`
-          : `No manifest was returned for launcher v${launcherVersion}.`;
+          ? `Release metadata fetch failed: ${lastManifestCheckFailure}`
+          : `No payload metadata was returned for launcher v${launcherVersion}.`;
         launcherLog(`launcher payload manifest unavailable: ${reason}`, "error");
         await showFatalLaunchError(
           "Core Download Failed",
-          `${APP_DISPLAY_NAME} could not find the payload required by launcher v${launcherVersion}.`,
+          `${APP_DISPLAY_NAME} could not resolve a payload for launcher v${launcherVersion}.`,
           reason,
         );
         return;
       }
-
-      hideStartupStatus();
-      const actionLabel = activePayloadVersion === null ? "Download and Start" : "Repair and Start";
-      const message = activePayloadVersion === null
-        ? `${APP_DISPLAY_NAME} needs to download its core components before starting.`
-        : `${APP_DISPLAY_NAME} needs to replace an incompatible core before starting.`;
-      const res = await dialog.showMessageBox({
-        type: "info",
-        title: activePayloadVersion === null ? "Initial Setup" : "Core Repair Required",
-        message,
-        detail: [
-          `Launcher version: ${launcherVersion}`,
-          `Installed payload: ${activePayloadVersion ?? "none"}`,
-          `Required payload: ${manifest.version}`,
-        ].join("\n"),
-        buttons: [actionLabel, "Quit"],
-        defaultId: 0,
-        cancelId: 1
-      });
-
-      if (res.response !== 0) {
-        app.quit();
-        return;
-      }
-
-      try {
-        if (isPayloadDirPresent(manifest)) {
-          await showStartupStatus("Preparing local core files…");
-          await downloadAndApplyUpdate(manifest);
-        } else {
-          await runDownloadWithProgress(`Downloading ${APP_DISPLAY_NAME} core`, manifest);
-        }
-      } catch (err) {
+    } else {
+      latestPayloadResolution = resolution;
+      if (resolution.syncPlan.action === "switch") {
         hideStartupStatus();
-        const msg = err instanceof Error ? err.message : String(err);
-        launcherLog(`launcher payload download/apply failed: ${msg}`, "error");
-        await showFatalLaunchError(
-          "Core Download Failed",
-          `Failed to prepare ${APP_DISPLAY_NAME} core.`,
-          msg,
-        );
-        return;
+        if (!useInstalledPayloadVersion(resolution.desiredVersion)) {
+          await showFatalLaunchError(
+            "Core Switch Failed",
+            `${APP_DISPLAY_NAME} could not activate payload v${resolution.desiredVersion}.`,
+            "The desired payload is not installed locally.",
+          );
+          return;
+        }
+        if (activePayloadVersion !== null && activePayloadVersion !== resolution.desiredVersion) {
+          launcherLog(
+            `switching active payload from v${activePayloadVersion} to v${resolution.desiredVersion}`,
+            "info",
+          );
+        }
+      } else if (resolution.syncPlan.action === "download") {
+        hideStartupStatus();
+        const actionLabel = activePayloadVersion === null ? "Download and Start" : "Update and Start";
+        const message = activePayloadVersion === null
+          ? `${APP_DISPLAY_NAME} needs to download its core components before starting.`
+          : `${APP_DISPLAY_NAME} needs to update its local core before starting.`;
+        const res = await dialog.showMessageBox({
+          type: "info",
+          title: activePayloadVersion === null ? "Initial Setup" : "Core Update Required",
+          message,
+          detail: payloadResolutionDetails(resolution, activePayloadVersion),
+          buttons: [actionLabel, "Quit"],
+          defaultId: 0,
+          cancelId: 1
+        });
+
+        if (res.response !== 0) {
+          app.quit();
+          return;
+        }
+
+        try {
+          await applyPayloadResolution(resolution, `Downloading ${APP_DISPLAY_NAME} core`);
+        } catch (err) {
+          hideStartupStatus();
+          const msg = err instanceof Error ? err.message : String(err);
+          launcherLog(`launcher payload download/apply failed: ${msg}`, "error");
+          await showFatalLaunchError(
+            "Core Download Failed",
+            `Failed to prepare ${APP_DISPLAY_NAME} core.`,
+            msg,
+          );
+          return;
+        }
+      } else {
+        hideStartupStatus();
       }
     }
 
