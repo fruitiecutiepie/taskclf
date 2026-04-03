@@ -91,6 +91,17 @@ server sends `Content-Length`, plus byte counts; after download, it shows
 (progress window). Optional override: `TASKCLF_MANIFEST_URL` for the manifest
 location (see `checkForUpdate()` in `electron/updater.ts`).
 
+## Packaged app: debugging the main process
+
+The Electron main process appends structured lines to
+`<userData>/logs/electron-launcher.log` (spawn line, sidecar exit code/signal,
+`waitForShell` timeout details, first-run failures). Run the `.app` from
+Terminal and set **`TASKCLF_ELECTRON_DEBUG=1`** for extra console output
+(periodic `waitForShell` progress and successful shell-ready confirmation).
+Failed manifest fetches record HTTP status / URL in `lastManifestCheckFailure`
+(see `electron/updater.ts`) and surface in the first-run error dialog when
+possible.
+
 ## Integration
 
 - Used by the `taskclf electron` CLI command in

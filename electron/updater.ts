@@ -122,18 +122,30 @@ export function getActivePayloadBackendPath(): string | null {
   return null;
 }
 
+/** Set on fetch/parse failures; cleared at the start of each check. For UI / logs only. */
+export let lastManifestCheckFailure: string | null = null;
+
 export async function checkForUpdate(): Promise<Manifest | null> {
   const manifestUrl = process.env.TASKCLF_MANIFEST_URL || "https://github.com/fruitiecutiepie/taskclf/releases/latest/download/manifest.json";
+  lastManifestCheckFailure = null;
 
   try {
     console.log(`[updater] Checking for updates at ${manifestUrl}`);
     const res = await fetch(manifestUrl);
     if (!res.ok) {
+      lastManifestCheckFailure = `HTTP ${res.status} ${res.statusText} (${manifestUrl})`;
       console.error(`[updater] Failed to fetch manifest: ${res.statusText}`);
       return null;
     }
 
-    const manifest: Manifest = await res.json() as Manifest;
+    let manifest: Manifest;
+    try {
+      manifest = (await res.json()) as Manifest;
+    } catch (parseErr) {
+      lastManifestCheckFailure = `Invalid JSON in manifest: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`;
+      console.error("[updater] Manifest JSON parse failed:", parseErr);
+      return null;
+    }
     const activeVersion = getActiveVersion();
 
     if (activeVersion === manifest.version) {
@@ -144,6 +156,7 @@ export async function checkForUpdate(): Promise<Manifest | null> {
     console.log(`[updater] Update found: ${manifest.version} (current: ${activeVersion || 'none'})`);
     return manifest;
   } catch (error) {
+    lastManifestCheckFailure = error instanceof Error ? error.message : String(error);
     console.error("[updater] Error checking for update:", error);
     return null;
   }

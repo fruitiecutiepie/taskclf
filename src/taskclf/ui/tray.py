@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import os
 import platform
 import subprocess
 import sys
@@ -819,6 +820,16 @@ class TrayLabeler:
         self._browser = self.browser
         self._no_tray = self.no_tray
         self._open_browser = self.open_browser
+
+        # Electron-spawned sidecar: never use pystray (can return immediately
+        # without a GUI context). CLI users can still use --browser --no-open-browser
+        # with a tray icon unless TASKCLF_ELECTRON_SHELL=1 is set by Electron.
+        if (
+            os.environ.get("TASKCLF_ELECTRON_SHELL") == "1"
+            and self._browser
+            and not self._open_browser
+        ):
+            self._no_tray = True
 
         self._transition_count: int = 0
         self._last_transition: dict[str, Any] | None = None
@@ -2022,7 +2033,7 @@ class TrayLabeler:
         server_thread.start()
         self._ui_server_running = True
 
-        print(f"taskclf API on http://127.0.0.1:{self._ui_port}")
+        print(f"taskclf API on http://127.0.0.1:{self._ui_port}", flush=True)
 
         ui_port = self._ui_port
 

@@ -18,6 +18,7 @@ import {
   downloadAndApplyUpdate,
   getActivePayloadBackendPath,
   isPayloadDirPresent,
+  lastManifestCheckFailure,
   type Manifest,
   type UpdateProgressEvent,
 } from "./updater";
@@ -213,6 +214,46 @@ function envFlag(name: string): boolean {
   return process.env[name] === "1";
 }
 
+/** Set `TASKCLF_ELECTRON_DEBUG=1` for verbose console output (spawn line, waitForShell progress). */
+function electronDebugEnabled(): boolean {
+  return process.env.TASKCLF_ELECTRON_DEBUG === "1";
+}
+
+/** Persistent log path under userData (only valid after app ready). */
+function launcherLogFilePath(): string {
+  return path.join(app.getPath("userData"), "logs", "electron-launcher.log");
+}
+
+/** Append to console and `logs/electron-launcher.log` for post-mortem debugging. */
+function launcherLog(message: string, level: "info" | "error" = "info"): void {
+  const ts = new Date().toISOString();
+  const line = `[${ts}] [${level}] ${message}`;
+  if (level === "error") {
+    console.error(line);
+  } else {
+    console.log(line);
+  }
+  try {
+    const logDir = path.join(app.getPath("userData"), "logs");
+    fs.mkdirSync(logDir, { recursive: true });
+    fs.appendFileSync(path.join(logDir, "electron-launcher.log"), `${line}\n`, "utf8");
+  } catch {
+    // ignore disk errors
+  }
+}
+
+/** Models dir for tray: absolute under userData when packaged (GUI apps often have cwd `/`). */
+function defaultModelsDir(): string {
+  const fromEnv = process.env.TASKCLF_ELECTRON_MODELS_DIR;
+  if (fromEnv && fromEnv.length > 0) {
+    return fromEnv;
+  }
+  if (app.isPackaged) {
+    return path.join(app.getPath("userData"), "models");
+  }
+  return "models";
+}
+
 function sidecarExecutable(): string {
   if (app.isPackaged) {
     const activePath = getActivePayloadBackendPath();
@@ -262,7 +303,7 @@ function sidecarArgs(): string[] {
     "--transition-minutes",
     String(envInt("TASKCLF_ELECTRON_TRANSITION_MINUTES", 3)),
     "--models-dir",
-    envString("TASKCLF_ELECTRON_MODELS_DIR", "models"),
+    defaultModelsDir(),
   );
 
   const dataDir = process.env.TASKCLF_ELECTRON_DATA_DIR;
@@ -417,16 +458,46 @@ function toggleWindow(): void {
 // ── Sidecar ─────────────────────────────────────────────────────────────
 
 function spawnSidecar(): void {
-  sidecar = spawn(sidecarExecutable(), sidecarArgs(), {
+  const exe = sidecarExecutable();
+  const args = sidecarArgs();
+  const childCwd = app.isPackaged ? app.getPath("userData") : process.cwd();
+  const spawnSummary = `spawn exe=${exe} cwd=${childCwd} args=${JSON.stringify(args)}`;
+  launcherLog(`[sidecar] ${spawnSummary}`, "info");
+  if (app.isPackaged || electronDebugEnabled()) {
+    console.log(`[sidecar] ${exe} ${args.join(" ")}`);
+  }
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    TASKCLF_ELECTRON_SHELL: "1",
+  };
+  if (app.isPackaged) {
+    env.PYTHONUNBUFFERED = "1";
+  }
+  sidecar = spawn(exe, args, {
     stdio: "inherit",
-    env: process.env,
+    env,
+    cwd: childCwd,
   });
-  sidecar.once("exit", (code) => {
+  sidecar.once("error", (err) => {
+    const msg = err instanceof Error ? err.message : String(err);
+    launcherLog(`tray backend spawn error: ${msg}`, "error");
+    console.error(`${APP_DISPLAY_NAME} tray backend spawn error:`, err);
+    console.error(`(See ${launcherLogFilePath()} for history.)`);
+  });
+  sidecar.once("exit", (code, signal) => {
     sidecar = null;
     if (isQuitting) {
       return;
     }
-    console.error(`${APP_DISPLAY_NAME} tray backend exited unexpectedly (${code ?? "unknown"})`);
+    const detail = `exitCode=${code ?? "null"} signal=${signal ?? "null"} exe=${exe}`;
+    launcherLog(`tray backend exited unexpectedly: ${detail}`, "error");
+    launcherLog(`hint: set TASKCLF_ELECTRON_DEBUG=1 and re-run from Terminal; log file: ${launcherLogFilePath()}`, "error");
+    const sigPart = signal ? ` signal=${signal}` : "";
+    console.error(
+      `${APP_DISPLAY_NAME} tray backend exited unexpectedly (code=${code ?? "unknown"}${sigPart})`,
+    );
+    console.error(`Full detail: ${detail}`);
+    console.error(`Log file: ${launcherLogFilePath()}`);
     app.quit();
   });
 }
@@ -461,18 +532,30 @@ async function stopSidecar(): Promise<void> {
 
 async function waitForShell(url: string, timeoutMs = 30000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
+  let attempts = 0;
+  let lastDetail = "unknown";
   while (Date.now() < deadline) {
+    attempts++;
     try {
       const response = await fetch(url, { method: "GET" });
       if (response.ok) {
+        if (electronDebugEnabled()) {
+          launcherLog(`waitForShell: OK ${url} after ${attempts} attempt(s)`, "info");
+        }
         return;
       }
-    } catch {
-      // Server not ready yet.
+      lastDetail = `HTTP ${response.status} ${response.statusText}`;
+    } catch (e) {
+      lastDetail = e instanceof Error ? e.message : String(e);
+    }
+    if (electronDebugEnabled() && attempts % 10 === 1) {
+      launcherLog(`waitForShell: still waiting for ${url} (attempt ${attempts}, last: ${lastDetail})`, "info");
     }
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
-  throw new Error(`Timed out waiting for ${url}`);
+  const errMsg = `Timed out waiting for ${url} after ${attempts} attempts (last: ${lastDetail})`;
+  launcherLog(errMsg, "error");
+  throw new Error(errMsg);
 }
 
 async function sidecarRequest(
@@ -579,11 +662,18 @@ async function performBackgroundUpdateCheck() {
           app.relaunch();
           app.quit();
         } catch (err) {
-          dialog.showErrorBox("Update Failed", `Failed to apply update: ${err}`);
+          const msg = err instanceof Error ? err.message : String(err);
+          launcherLog(`background update apply failed: ${msg}`, "error");
+          dialog.showErrorBox(
+            "Update Failed",
+            `Failed to apply update: ${msg}\n\nLog file:\n${launcherLogFilePath()}`,
+          );
         }
       }
     }
   } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    launcherLog(`background update check failed: ${msg}`, "error");
     console.error("[main] Background update check failed:", err);
   }
 }
@@ -893,6 +983,11 @@ ipcMain.handle("taskclf-host", async (_event, command: HostCommand) => {
 // ── Bootstrap ───────────────────────────────────────────────────────────
 
 async function start(): Promise<void> {
+  launcherLog(
+    `start: packaged=${app.isPackaged} version=${app.getVersion()} userData=${app.getPath("userData")}`,
+    "info",
+  );
+
   app.setName(APP_DISPLAY_NAME);
   if (process.platform === "darwin") {
     app.dock?.setIcon(getAppIconPath());
@@ -920,9 +1015,14 @@ async function start(): Promise<void> {
     if (isFirstRun) {
       const manifest = await checkForUpdate();
       if (!manifest) {
+        const logHint = `\n\nLog file:\n${launcherLogFilePath()}`;
+        const reason = lastManifestCheckFailure
+          ? `\n\nDetails:\n${lastManifestCheckFailure}`
+          : "\n\n(No manifest was returned. Check that the latest GitHub release includes manifest.json.)";
+        launcherLog(`first run: manifest unavailable${reason}`, "error");
         dialog.showErrorBox(
           "Network Error",
-          `${APP_DISPLAY_NAME} core not found. An internet connection is required on first launch to download the application payload.`,
+          `${APP_DISPLAY_NAME} core not found. An internet connection is required on first launch to download the application payload.${reason}${logHint}`,
         );
         app.quit();
         return;
@@ -950,7 +1050,12 @@ async function start(): Promise<void> {
           await runDownloadWithProgress(`Downloading ${APP_DISPLAY_NAME} core`, manifest);
         }
       } catch (err) {
-        dialog.showErrorBox("Update Failed", `Failed to download ${APP_DISPLAY_NAME} core: ${err}`);
+        const msg = err instanceof Error ? err.message : String(err);
+        launcherLog(`first run: download/apply failed: ${msg}`, "error");
+        dialog.showErrorBox(
+          "Update Failed",
+          `Failed to download ${APP_DISPLAY_NAME} core: ${msg}\n\nLog file:\n${launcherLogFilePath()}`,
+        );
         app.quit();
         return;
       }
@@ -976,8 +1081,11 @@ async function start(): Promise<void> {
     void syncTrayMenu();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    launcherLog(`start failed: ${message}`, "error");
     await mainWindow.loadURL(
-      `data:text/html;charset=utf-8,${encodeURIComponent(errorPageHtml(message))}`,
+      `data:text/html;charset=utf-8,${encodeURIComponent(
+        errorPageHtml(`${message}\n\nLog: ${launcherLogFilePath()}`),
+      )}`,
     );
     showWindow();
   }
