@@ -22,6 +22,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
       - uses: actions/setup-node@v6
         with:
           node-version: "24"
@@ -29,6 +33,25 @@ jobs:
       - uses: pnpm/action-setup@v5
         with:
           version: latest
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install Python dependencies
+        run: uv sync --group bundle
+
+      - name: Build backend payload (PyInstaller zip)
+        run: make build-payload
+
+      - name: Host target triple
+        id: host
+        shell: bash
+        run: echo "triple=$(python3 scripts/host_target_triple.py)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: payload-${{ steps.host.outputs.triple }}
+          path: build/payload-${{ steps.host.outputs.triple }}.zip
 
       - name: Install Electron dependencies
         run: pnpm install --frozen-lockfile
@@ -52,11 +75,74 @@ jobs:
             electron/release/*.AppImage
             electron/release/*.exe
 
+  publish:
+    needs: electron-build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/launcher-v')
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/download-artifact@v8
+        with:
+          path: payloads
+          pattern: payload-*
+          merge-multiple: true
+
+      - uses: actions/download-artifact@v8
+        with:
+          path: electron-dist
+          pattern: electron-*
+          merge-multiple: true
+
+      - name: Generate manifest.json
+        run: |
+          python3 -c "
+          import glob, json, hashlib, os, re
+          ref = os.environ.get('GITHUB_REF', '')
+          tag = ref.replace('refs/tags/', '')
+          if tag.startswith('launcher-v'):
+              version = tag[len('launcher-v'):]
+          elif tag.startswith('v'):
+              version = tag[1:]
+          else:
+              version = tag
+          repo = os.environ.get('GITHUB_REPOSITORY', 'fruitiecutiepie/taskclf')
+          manifest = {'version': version, 'platforms': {}}
+          paths = (
+              glob.glob('payloads/payload-*.zip')
+              + glob.glob('payloads/**/payload-*.zip', recursive=True)
+          )
+          for path in sorted(set(paths)):
+              base = os.path.basename(path)
+              m = re.match(r'^payload-(.+)\.zip$', base)
+              if not m:
+                  continue
+              triple = m.group(1)
+              sha = hashlib.sha256(open(path, 'rb').read()).hexdigest()
+              manifest['platforms'][triple] = {
+                  'url': f'https://github.com/{repo}/releases/download/{tag}/payload-{triple}.zip',
+                  'sha256': sha,
+              }
+          with open('manifest.json', 'w') as f:
+              json.dump(manifest, f, indent=2)
+          "
+          cat manifest.json
+
+      - name: Prepare release assets
+        shell: bash
+        run: |
+          mkdir -p release-upload
+          find payloads -name 'payload-*.zip' -exec cp {} release-upload/ \;
+          find electron-dist -type f \( -name '*.dmg' -o -name '*.AppImage' -o -name '*.exe' \) -exec cp {} release-upload/ \;
+          cp manifest.json release-upload/
+          ls -la release-upload/
+
       - name: Upload to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/launcher-v')
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            electron/release/*.dmg
-            electron/release/*.AppImage
-            electron/release/*.exe
+            release-upload/manifest.json
+            release-upload/payload-*.zip
+            release-upload/*.dmg
+            release-upload/*.AppImage
+            release-upload/*.exe
