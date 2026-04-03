@@ -20,6 +20,7 @@ import datetime as dt
 import logging
 import platform
 import subprocess
+import sys
 import threading
 import time
 from collections import Counter
@@ -2180,12 +2181,23 @@ class TrayLabeler:
         mode = "with model suggestions" if self._suggester else "label-only (no model)"
 
         if self._no_tray:
-            print(f"taskclf running ({mode}), no tray icon.")
-            print(f"UI available at http://127.0.0.1:{self._ui_port}")
-            print("Press Ctrl+C to quit.")
-            stop = threading.Event()
+            # Duplicate to stderr so headless / frozen sidecars still show lines if
+            # stdout is not attached (Electron spawn, some PyInstaller configs).
+            for line in (
+                f"taskclf running ({mode}), no tray icon.",
+                f"UI available at http://127.0.0.1:{self._ui_port}",
+                "Press Ctrl+C to quit.",
+            ):
+                print(line)
+                try:
+                    print(line, file=sys.stderr, flush=True)
+                except Exception:
+                    pass
+            # threading.Event.wait() can return spuriously on some platforms; keep
+            # the Electron sidecar alive until interrupt or process exit.
             try:
-                stop.wait()
+                while True:
+                    time.sleep(86400.0)
             except KeyboardInterrupt:
                 pass
             finally:

@@ -59,8 +59,16 @@ Behavior:
 
 ## Payload release manifest
 
-GitHub releases for version tags include `manifest.json` with a `platforms`
-object. Keys are **LLVM-style target triples**, for example
+GitHub releases must ship `manifest.json` (and matching `payload-<triple>.zip`
+files) so `https://github.com/<org>/<repo>/releases/latest/download/manifest.json`
+resolves for the **latest** release. The **Electron launcher** workflow
+(`.github/workflows/electron-release.yml`, tags `launcher-v*`) builds payloads
+on each OS, then publishes `manifest.json` plus installers and zips in one
+release. The **Python-only payload** workflow (`.github/workflows/payload-release.yml`,
+tags `v*`) publishes the same manifest shape for library users who only need the
+sidecar zip.
+
+The manifest has a `platforms` object. Keys are **LLVM-style target triples**, for example
 `x86_64-unknown-linux-gnu` and `x86_64-pc-windows-msvc`, matching
 `scripts/host_target_triple.py` and the Electron updater’s
 `hostTargetTriple()`. Each entry points at `payload-<triple>.zip` for that

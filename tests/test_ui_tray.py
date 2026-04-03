@@ -3602,8 +3602,8 @@ class TestNoTrayIntegration:
     def test_cleanup_on_keyboard_interrupt(self, tmp_path: Path) -> None:
         """TC-TRAY-NOTRAY-004: KeyboardInterrupt triggers monitor.stop() and _cleanup_ui().
 
-        Mocks both threading.Thread and threading.Event so the stop Event's
-        wait() raises KeyboardInterrupt without actually blocking.
+        Mocks ``time.sleep`` in the no-tray idle loop so it raises
+        :exc:`KeyboardInterrupt` without actually blocking.
         """
         bus, _ = _capture_bus()
         labeler = TrayLabeler(
@@ -3613,8 +3613,6 @@ class TestNoTrayIntegration:
             event_bus=bus,
         )
 
-        stop_event = MagicMock()
-        stop_event.wait.side_effect = KeyboardInterrupt
         mock_thread = MagicMock()
 
         with (
@@ -3624,7 +3622,10 @@ class TestNoTrayIntegration:
             patch.object(labeler, "_cleanup_ui") as mock_cleanup,
             patch.object(labeler._monitor, "stop") as mock_stop,
             patch("threading.Thread", return_value=mock_thread),
-            patch("threading.Event", return_value=stop_event),
+            patch(
+                "taskclf.ui.tray.time.sleep",
+                side_effect=KeyboardInterrupt,
+            ),
         ):
             labeler._run_inner()
 

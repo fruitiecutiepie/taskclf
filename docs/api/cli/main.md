@@ -5,10 +5,13 @@ Typer CLI entrypoint and commands.
 ## Entry point
 
 The console script (`taskclf`) is defined in `cli.entry.cli_entry()`.
-It intercepts `--version` / `-v` before importing the full command
-module, so that version queries return instantly without loading the
-entire Typer command tree and its transitive dependencies.  All other
-invocations delegate to `cli_main()` in this module.
+It intercepts `--version` / `-v` **only when that is the first argument
+after the executable** (for example `taskclf --version` or `entry -v`),
+before importing the full command module, so that version queries return
+instantly without loading the entire Typer command tree and its transitive
+dependencies.  Invocations such as `taskclf tray … --title-salt -v` still
+load the full CLI so `-v` is handled as a value, not a version shortcut.
+All other invocations delegate to `cli_main()` in this module.
 
 ## Crash handler
 

@@ -17,8 +17,12 @@ def cli_entry() -> None:
 
     Fast-paths ``--version`` / ``-v``; delegates everything else to
     :func:`taskclf.cli.main.cli_main` (which includes the crash handler).
+
+    Only the first argument after the executable is checked for ``-v`` /
+    ``--version``. That avoids treating a ``-v`` value later in the argv list
+    (e.g. ``--title-salt -v``) as a version-only invocation.
     """
-    if "-v" in sys.argv[1:] or "--version" in sys.argv[1:]:
+    if len(sys.argv) >= 2 and sys.argv[1] in ("-v", "--version"):
         from importlib.metadata import version
 
         print(f"taskclf {version('taskclf')}")
