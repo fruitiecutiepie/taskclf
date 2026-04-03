@@ -1,5 +1,8 @@
 name: Payload Release
 
+# Skips when the tagged commit only touches paths that do not affect the PyInstaller sidecar
+# (e.g. electron/ or docs). workflow_dispatch always runs.
+
 on:
   push:
     tags: ["v*"]
@@ -9,7 +12,40 @@ permissions:
   contents: write
 
 jobs:
+  release-scope:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.paths.outputs.run }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Decide whether this tag affects the payload
+        id: paths
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          BEFORE="${{ github.event.before }}"
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if git diff --name-only "$BEFORE" "${{ github.sha }}" -- \
+              src/ pyproject.toml uv.lock scripts/ Makefile \
+              src/taskclf/ui/frontend/ | grep -q .; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping: no changes under src/, pyproject.toml, uv.lock, scripts/, Makefile, or src/taskclf/ui/frontend/ in this tag."
+          fi
+
   build-payload:
+    needs: release-scope
+    if: needs.release-scope.outputs.run == 'true'
     strategy:
       fail-fast: false
       matrix:

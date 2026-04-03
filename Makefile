@@ -1,5 +1,5 @@
 .PHONY: install \
-       py-lint py-test py-typecheck \
+       py-lint py-codepol py-test py-typecheck \
        ui-lint ui-test ui-typecheck ui-build ui-dev electron-typecheck electron-dist \
        lint test typecheck ci check \
        pyinstaller-build \
@@ -7,6 +7,7 @@
        version \
 			 bump-patch bump-minor bump-major \
 			 bump-launcher-patch bump-launcher-minor bump-launcher-major \
+       guard_payload_bump guard_launcher_bump \
        retag
 
 PNPM := pnpm --dir src/taskclf/ui/frontend
@@ -20,6 +21,9 @@ install:
 
 py-lint:
 	uv run ruff check .
+
+py-codepol:
+	codepol
 
 py-test:
 	uv run pytest
@@ -106,12 +110,38 @@ docs-build:
 
 # --- versioning ---
 
+# Last tags (for bump guards). v* = payload tags only (not launcher-v*).
+LAST_V_TAG := $(shell git tag -l 'v*' --sort=-version:refname 2>/dev/null | head -1)
+LAST_LAUNCHER_TAG := $(shell git tag -l 'launcher-v*' --sort=-version:refname 2>/dev/null | head -1)
+
+# Paths that affect the PyInstaller sidecar (payload-release + payload half of launcher).
+PAYLOAD_BUMP_PATHS := src/ pyproject.toml uv.lock scripts/ Makefile src/taskclf/ui/frontend/
+# Launcher = Electron shell + everything that affects the bundled backend zip.
+LAUNCHER_BUMP_PATHS := electron/ $(PAYLOAD_BUMP_PATHS)
+
+# Bump targets abort if nothing under these paths changed since the last tag, unless BUMP_FORCE=1
+# (e.g. you are re-tagging the same tree or only touched docs).
+
 CURRENT_VERSION := $(shell python3 -c "import re, pathlib; \
 	m = re.search(r'^version\s*=\s*\"([^\"]+)\"', pathlib.Path('pyproject.toml').read_text(), re.M); \
 	print(m.group(1) if m else '')")
 
 version:
 	@echo $(CURRENT_VERSION)
+
+guard_payload_bump:
+	@if [ -z "$$BUMP_FORCE" ] && [ -n "$(LAST_V_TAG)" ] && git diff --quiet $(LAST_V_TAG)..HEAD -- $(PAYLOAD_BUMP_PATHS) 2>/dev/null; then \
+		echo "No changes since $(LAST_V_TAG) under paths that affect the payload."; \
+		echo "Set BUMP_FORCE=1 to bump pyproject/uv.lock and tag v* anyway."; \
+		exit 1; \
+	fi
+
+guard_launcher_bump:
+	@if [ -z "$$BUMP_FORCE" ] && [ -n "$(LAST_LAUNCHER_TAG)" ] && git diff --quiet $(LAST_LAUNCHER_TAG)..HEAD -- $(LAUNCHER_BUMP_PATHS) 2>/dev/null; then \
+		echo "No changes since $(LAST_LAUNCHER_TAG) under paths that affect the launcher bundle."; \
+		echo "Set BUMP_FORCE=1 to bump electron/package.json and tag launcher-v* anyway."; \
+		exit 1; \
+	fi
 
 define bump_launcher_version
 	$(eval NEW_VERSION := $(shell python3 -c "\
@@ -134,13 +164,13 @@ print('Launcher version -> $(NEW_VERSION)')"
 	git tag -a launcher-v$(NEW_VERSION) -m "launcher-v$(NEW_VERSION)"
 endef
 
-bump-launcher-patch:
+bump-launcher-patch: guard_launcher_bump
 	$(call bump_launcher_version,patch)
 
-bump-launcher-minor:
+bump-launcher-minor: guard_launcher_bump
 	$(call bump_launcher_version,minor)
 
-bump-launcher-major:
+bump-launcher-major: guard_launcher_bump
 	$(call bump_launcher_version,major)
 
 define bump_payload_version
@@ -162,13 +192,13 @@ print('$(CURRENT_VERSION) -> $(NEW_VERSION)')"
 	git tag -a v$(NEW_VERSION) -m "v$(NEW_VERSION)"
 endef
 
-bump-patch: check
+bump-patch: guard_payload_bump check
 	$(call bump_payload_version,patch)
 
-bump-minor: check
+bump-minor: guard_payload_bump check
 	$(call bump_payload_version,minor)
 
-bump-major: check
+bump-major: guard_payload_bump check
 	$(call bump_payload_version,major)
 
 retag: check
