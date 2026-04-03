@@ -7,6 +7,14 @@ on:
   push:
     tags: ["launcher-v*"]
   workflow_dispatch:
+    inputs:
+      target_launcher_tag:
+        description: >
+          Existing tag to build and publish (e.g. launcher-v0.4.0). Use this to re-run publish
+          for a release without creating a new tag. Leave empty when running from a launcher tag push.
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: write
@@ -20,6 +28,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.target_launcher_tag != '' && github.event.inputs.target_launcher_tag || github.ref }}
 
       - name: Decide whether this tag affects the launcher bundle
         id: paths
@@ -57,6 +66,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.target_launcher_tag != '' && github.event.inputs.target_launcher_tag || github.ref }}
 
       - uses: actions/setup-python@v6
         with:
@@ -114,9 +125,13 @@ jobs:
   publish:
     needs: electron-build
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/launcher-v')
+    if: |
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/launcher-v')) ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.target_launcher_tag != '')
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.target_launcher_tag != '' && github.event.inputs.target_launcher_tag || github.ref }}
 
       - uses: actions/download-artifact@v8
         with:
@@ -131,10 +146,12 @@ jobs:
           merge-multiple: true
 
       - name: Generate manifest.json
+        env:
+          MANIFEST_REF: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.target_launcher_tag != '' && format('refs/tags/{0}', github.event.inputs.target_launcher_tag) || github.ref }}
         run: |
           python3 -c "
           import json, os, pathlib
-          ref = os.environ.get('GITHUB_REF', '')
+          ref = os.environ.get('MANIFEST_REF') or os.environ.get('GITHUB_REF', '')
           tag = ref.replace('refs/tags/', '')
           if tag.startswith('launcher-v'):
               version = tag[len('launcher-v'):]
@@ -172,6 +189,7 @@ jobs:
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.target_launcher_tag != '' && github.event.inputs.target_launcher_tag || github.ref_name }}
           files: |
             release-upload/manifest.json
             release-upload/payload-*.zip

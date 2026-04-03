@@ -79,7 +79,10 @@ launcher-version match.
 
 The **Electron launcher** workflow (`.github/workflows/electron-release.yml`,
 tags `launcher-v*`) publishes the launcher manifest plus installers and payload
-zips in one release. The **Python-only payload** workflow
+zips in one release. To **re-publish** those assets for an existing tag without
+creating a new tag, run the workflow manually (**Actions → Electron Launcher
+Release → Run workflow**) and set **target launcher tag** (for example
+`launcher-v0.4.0`). The **Python-only payload** workflow
 (`.github/workflows/payload-release.yml`, tags `v*`) still publishes
 per-version **payload manifests** with `platforms` entries pointing at
 `payload-<triple>.zip` assets for that payload release.
