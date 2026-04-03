@@ -51,6 +51,14 @@ def pyinstaller_onedir_dir(distpath: Path) -> Path:
     return distpath / "entry"
 
 
+# Dev-only tree under ``src/taskclf/ui/frontend`` (SolidJS sources, node_modules).
+# Must never ship in the Electron sidecar; runtime UI is ``taskclf/ui/static`` only.
+FORBIDDEN_ONEDIR_REL_PATHS: tuple[str, ...] = (
+    "taskclf/ui/frontend/node_modules",
+    "taskclf/ui/frontend/.pnpm",
+)
+
+
 def pyinstaller_argv(repo_root: Path) -> list[str]:
     """Arguments for ``python -m PyInstaller`` (excluding the interpreter)."""
     src = repo_root / "src"
@@ -63,9 +71,11 @@ def pyinstaller_argv(repo_root: Path) -> list[str]:
         msg = f"Missing built UI static dir: {static_dir}. Run `make ui-build` first."
         raise FileNotFoundError(msg)
 
-    # Heavy deps ship native libs / data; collect-all keeps runtime discovery reliable.
-    collect_packages = (
-        "taskclf",
+    # Do not use ``--collect-all taskclf``: it sweeps the entire source tree under
+    # ``src/taskclf``, including ``ui/frontend/node_modules`` (~hundreds of MB).
+    # Collect Python submodules only; ship the web UI via ``--add-data`` → static.
+    # Heavy third-party deps still need ``--collect-all`` for native libs / metadata.
+    collect_all_packages = (
         "lightgbm",
         "sklearn",
         "scipy",
@@ -97,8 +107,10 @@ def pyinstaller_argv(repo_root: Path) -> list[str]:
         str(src),
         "--add-data",
         add_data_arg(static_dir),
+        "--collect-submodules",
+        "taskclf",
     ]
-    for pkg in collect_packages:
+    for pkg in collect_all_packages:
         args.extend(("--collect-all", pkg))
     args.extend(
         (
@@ -126,6 +138,43 @@ def pyinstaller_argv(repo_root: Path) -> list[str]:
     return args
 
 
+def strip_ui_frontend_dev_tree(onedir: Path) -> None:
+    """Remove SolidJS sources and node_modules from the one-folder output.
+
+    The shipped UI is only ``taskclf/ui/static`` (via ``--add-data``). Dev mode
+    may reference ``taskclf/ui/frontend`` at runtime from a repo checkout; that
+    tree must never appear in the PyInstaller bundle.
+    """
+    internal = onedir / "_internal"
+    if not internal.is_dir():
+        return
+    frontend = internal / "taskclf" / "ui" / "frontend"
+    if frontend.is_dir():
+        shutil.rmtree(frontend)
+
+
+def assert_no_forbidden_dev_paths_in_onedir(onedir: Path) -> None:
+    """Fail the build if dev-only paths leaked into ``_internal``."""
+    internal = onedir / "_internal"
+    if not internal.is_dir():
+        return
+    frontend_root = internal / "taskclf" / "ui" / "frontend"
+    if frontend_root.exists():
+        msg = (
+            "PyInstaller bundle must not include the raw frontend source tree "
+            f"(found {frontend_root}). Use taskclf/ui/static only."
+        )
+        raise RuntimeError(msg)
+    for rel in FORBIDDEN_ONEDIR_REL_PATHS:
+        path = internal / rel
+        if path.exists():
+            msg = (
+                "PyInstaller bundle must not include dev frontend paths "
+                f"(found {path}). Check payload_build.py collect rules."
+            )
+            raise RuntimeError(msg)
+
+
 def run_pyinstaller(repo_root: Path) -> Path:
     argv = pyinstaller_argv(repo_root)
     subprocess.run([sys.executable, *argv], cwd=repo_root, check=True)
@@ -134,6 +183,8 @@ def run_pyinstaller(repo_root: Path) -> Path:
     if not onedir.is_dir():
         msg = f"Expected PyInstaller output directory missing: {onedir}"
         raise FileNotFoundError(msg)
+    strip_ui_frontend_dev_tree(onedir)
+    assert_no_forbidden_dev_paths_in_onedir(onedir)
     return onedir
 
 

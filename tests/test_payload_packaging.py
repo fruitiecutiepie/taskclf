@@ -79,3 +79,79 @@ def test_zip_payload_directory_preserves_backend_prefix(
     with zipfile.ZipFile(zip_path) as zf:
         names = sorted(zf.namelist())
     assert f"backend/{exe_name}" in names
+
+
+def _minimal_repo_with_static(tmp_path: Path) -> Path:
+    repo = tmp_path / "repo"
+    static = repo / "src" / "taskclf" / "ui" / "static"
+    static.mkdir(parents=True)
+    (static / "index.html").write_text("<!doctype html><html></html>", encoding="utf-8")
+    return repo
+
+
+def test_pyinstaller_argv_does_not_collect_all_taskclf(
+    payload_build,
+    tmp_path: Path,
+) -> None:
+    """Regression: ``--collect-all taskclf`` sweeps frontend/node_modules into the bundle."""
+    repo = _minimal_repo_with_static(tmp_path)
+    argv = payload_build.pyinstaller_argv(repo)
+    pairs = list(zip(argv, argv[1:]))
+    assert ("--collect-all", "taskclf") not in pairs
+
+
+def test_pyinstaller_argv_collects_taskclf_submodules_only(
+    payload_build,
+    tmp_path: Path,
+) -> None:
+    repo = _minimal_repo_with_static(tmp_path)
+    argv = payload_build.pyinstaller_argv(repo)
+    assert "--collect-submodules" in argv
+    idx = argv.index("--collect-submodules")
+    assert argv[idx + 1] == "taskclf"
+
+
+def test_pyinstaller_argv_collects_third_party_runtime_deps(
+    payload_build,
+    tmp_path: Path,
+) -> None:
+    repo = _minimal_repo_with_static(tmp_path)
+    argv = payload_build.pyinstaller_argv(repo)
+    for pkg in (
+        "lightgbm",
+        "numpy",
+        "pandas",
+        "sklearn",
+        "uvicorn",
+        "fastapi",
+    ):
+        assert pkg in argv
+        i = argv.index(pkg)
+        assert argv[i - 1] == "--collect-all"
+
+
+def test_strip_ui_frontend_dev_tree_removes_frontend(
+    payload_build,
+    tmp_path: Path,
+) -> None:
+    onedir = tmp_path / "entry"
+    internal = onedir / "_internal" / "taskclf" / "ui" / "frontend"
+    (internal / "node_modules" / "x").mkdir(parents=True)
+    (internal / "node_modules" / "x" / "pkg.json").write_text("{}", encoding="utf-8")
+
+    payload_build.strip_ui_frontend_dev_tree(onedir)
+
+    assert not internal.exists()
+
+
+def test_assert_no_forbidden_dev_paths_raises_if_frontend_present(
+    payload_build,
+    tmp_path: Path,
+) -> None:
+    onedir = tmp_path / "entry"
+    fe = onedir / "_internal" / "taskclf" / "ui" / "frontend"
+    fe.mkdir(parents=True)
+    (fe / "package.json").write_text("{}", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="raw frontend source tree"):
+        payload_build.assert_no_forbidden_dev_paths_in_onedir(onedir)
