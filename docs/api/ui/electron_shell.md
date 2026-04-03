@@ -102,7 +102,8 @@ When a payload zip is actually downloading, that same startup UX switches to a
 native progress window with **percentage** when the server sends
 `Content-Length`, plus byte counts; after download, it shows **Verifying** and
 **Extracting** stages. Implementation lives in `electron/updater.ts`
-(streaming download + SHA-256, timed manifest fetch) and `electron/main.ts`
+(streaming download + SHA-256, timed manifest fetch, and `net.fetch()` via
+Electron's Chromium network stack for packaged-app updater requests) and `electron/main.ts`
 (startup/progress windows). Optional overrides:
 
 - `TASKCLF_MANIFEST_URL` -- alternate manifest location

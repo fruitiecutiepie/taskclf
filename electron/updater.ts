@@ -1,4 +1,4 @@
-import { app } from "electron";
+import { app, net } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
@@ -38,6 +38,8 @@ export interface CheckForUpdateOptions {
   timeoutMs?: number;
 }
 
+type UpdaterRequestInit = RequestInit & { bypassCustomProtocolHandlers?: boolean };
+
 async function emitProgress(
   onProgress: DownloadAndApplyOptions["onProgress"],
   event: UpdateProgressEvent,
@@ -56,6 +58,41 @@ function parseContentLength(header: string | null): number | null {
 function percentFromBytes(received: number, total: number | null): number | null {
   if (total === null || total <= 0) return null;
   return Math.min(100, Math.round((received / total) * 100));
+}
+
+function describeFetchError(error: unknown): string {
+  if (!(error instanceof Error)) {
+    return String(error);
+  }
+
+  const cause = (error as Error & { cause?: unknown }).cause;
+  if (cause === undefined || cause === null) {
+    return error.message;
+  }
+  if (cause instanceof Error) {
+    const code = (cause as NodeJS.ErrnoException).code;
+    const suffix = code ? `${code}: ${cause.message}` : cause.message;
+    return `${error.message} (${suffix})`;
+  }
+  return `${error.message} (${String(cause)})`;
+}
+
+async function updaterFetch(
+  input: string,
+  purpose: string,
+  init?: UpdaterRequestInit,
+): Promise<Response> {
+  try {
+    return await net.fetch(input, {
+      cache: "no-store",
+      ...init,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw error;
+    }
+    throw new Error(`Failed to ${purpose} (${input}): ${describeFetchError(error)}`);
+  }
 }
 
 /** LLVM-style host target triple for this process; must match scripts/host_target_triple.py */
@@ -155,7 +192,7 @@ async function fetchWithTimeout(
   timeoutMs?: number,
 ): Promise<Response> {
   if (timeoutMs === undefined || timeoutMs <= 0) {
-    return fetch(input);
+    return updaterFetch(input, "fetch manifest");
   }
 
   const controller = new AbortController();
@@ -164,7 +201,7 @@ async function fetchWithTimeout(
   }, timeoutMs);
 
   try {
-    return await fetch(input, { signal: controller.signal });
+    return await updaterFetch(input, "fetch manifest", { signal: controller.signal });
   } finally {
     clearTimeout(timer);
   }
@@ -328,7 +365,7 @@ export async function downloadAndApplyUpdate(
     const zipPath = path.join(versionsDir, `payload-${manifest.version}.zip`);
     console.log(`[updater] Downloading payload from ${platformData.url}`);
 
-    const downloadRes = await fetch(platformData.url);
+    const downloadRes = await updaterFetch(platformData.url, "download payload");
     if (!downloadRes.ok) {
       throw new Error(`Failed to download payload: ${downloadRes.statusText}`);
     }
