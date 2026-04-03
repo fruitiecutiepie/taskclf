@@ -133,7 +133,7 @@ jobs:
       - name: Generate manifest.json
         run: |
           python3 -c "
-          import json, pathlib
+          import json, os, pathlib
           ref = os.environ.get('GITHUB_REF', '')
           tag = ref.replace('refs/tags/', '')
           if tag.startswith('launcher-v'):
