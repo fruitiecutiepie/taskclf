@@ -36,4 +36,7 @@ state.
 ## Integration
 
 - Used by [`electron_shell`](electron_shell.md) via `electron/updater.ts`
+- Compatible version lists for the tray menu and optional install/update
+  chooser reuse the same policy via [`electron_payload_choice`](electron_payload_choice.md)
+  (`electron/payload_choice.ts`).
 - Covered by `electron/update_policy.test.js`

@@ -1,6 +1,6 @@
 .PHONY: install \
        py-lint py-codepol py-test py-typecheck \
-       ui-lint ui-test ui-typecheck ui-build ui-dev electron-typecheck electron-dist \
+       ui-lint ui-test ui-typecheck ui-build ui-dev electron-typecheck electron-test electron-dist \
        lint test typecheck ci check \
        pyinstaller-build \
        docs-serve docs-build \
@@ -65,6 +65,9 @@ ui-dev:
 electron-typecheck:
 	pnpm --dir electron run typecheck
 
+electron-test:
+	pnpm --dir electron run build && cd electron && node --test update_policy.test.js payload_choice.test.js
+
 # Same packaging as .github/workflows/electron-release.yml (unsigned; set CSC_IDENTITY_AUTO_DISCOVERY=true to sign locally).
 electron-dist:
 	CSC_IDENTITY_AUTO_DISCOVERY=false pnpm --dir electron run dist
@@ -88,7 +91,7 @@ build-payload: pyinstaller-build
 
 lint: py-lint ui-lint
 
-test: py-test ui-test
+test: py-test ui-test electron-test
 
 typecheck: py-typecheck ui-typecheck electron-typecheck
 

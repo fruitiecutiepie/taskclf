@@ -125,6 +125,19 @@ Electron's Chromium network stack for packaged-app updater requests) and `electr
 - `TASKCLF_MANIFEST_TIMEOUT_MS` -- manifest fetch timeout in milliseconds
   (default: `15000`; set `0` to disable the timeout)
 
+## Packaged app: optional payload version chooser
+
+When more than one compatible payload version exists in the payload index,
+**Initial Setup** / **Core Update Required** dialogs (first download or required
+update before start) and the **Core Update Available** background prompt
+include an extra **Choose Version** action. That opens a small picker window
+listing compatible versions (newest-first, consistent with the tray **Payload**
+menu). The version chosen there applies only to that install or update step and
+does **not** persist as the tray **Selected** pin (`selected.json` remains for
+explicit tray-driven pinning via **Use Recommended** / **Use Installed**).
+
+See also [`electron_payload_choice`](electron_payload_choice.md).
+
 ## Packaged app: debugging the main process
 
 The Electron main process appends structured lines to
@@ -145,6 +158,7 @@ folder or pre-fill a GitHub bug report.
 - Read by the Electron app in `electron/main.ts`
 - Uses the launcher payload policy documented in
   [`electron_update_policy.md`](electron_update_policy.md)
+- Uses compatible list helpers in [`electron_payload_choice`](electron_payload_choice.md)
 - Works alongside the legacy pywebview shell documented in
   [`window.md`](window.md)
 

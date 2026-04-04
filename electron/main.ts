@@ -30,10 +30,12 @@ import {
   type PayloadResolution,
   type UpdateProgressEvent,
 } from "./updater";
+import { compareVersions } from "./update_policy";
 import {
-  compareVersions,
-  isPayloadVersionCompatible,
-} from "./update_policy";
+  installableOnlyPayloadVersions,
+  orderedCompatiblePayloadVersions,
+  payloadChooserOffersMultipleVersions,
+} from "./payload_choice";
 
 /** Must match `build.productName` in package.json (Finder / .app name, tray, notifications). */
 function readAppDisplayName(): string {
@@ -980,22 +982,62 @@ async function performBackgroundUpdateCheck() {
     ) {
       updatePromptShownForVersion = resolution.desiredVersion;
       const activeVersion = getActiveVersion();
+      const compatible = orderedCompatiblePayloadVersions(
+        resolution.payloadIndex.payloads,
+        resolution.launcherManifest.compatible_payloads,
+      );
+      const offerChooser = payloadChooserOffersMultipleVersions(compatible);
+      const buttons = offerChooser
+        ? ["Update and Restart", "Choose Version", "Later"]
+        : ["Update and Restart", "Later"];
 
       const res = await dialog.showMessageBox({
         type: "warning",
         title: "Core Update Available",
         message: `${APP_DISPLAY_NAME} can switch to payload v${resolution.desiredVersion} on restart.`,
         detail: payloadResolutionDetails(resolution, activeVersion),
-        buttons: ["Update and Restart", "Later"],
+        buttons,
         defaultId: 0,
-        cancelId: 1
+        cancelId: offerChooser ? 2 : 1,
       });
+
+      const applyUpdateAndRelaunch = async (toApply: PayloadResolution) => {
+        await applyPayloadResolution(toApply, `Downloading ${APP_DISPLAY_NAME} update`);
+        app.relaunch();
+        app.quit();
+      };
 
       if (res.response === 0) {
         try {
-          await applyPayloadResolution(resolution, `Downloading ${APP_DISPLAY_NAME} update`);
-          app.relaunch();
-          app.quit();
+          await applyUpdateAndRelaunch(resolution);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          launcherLog(`background update apply failed: ${msg}`, "error");
+          await showFatalLaunchError(
+            "Core Repair Failed",
+            `Failed to repair ${APP_DISPLAY_NAME} core.`,
+            msg,
+          );
+        }
+      } else if (offerChooser && res.response === 1) {
+        const picked = await promptPayloadVersionChoice({
+          versions: compatible,
+          recommended: resolution.defaultVersion,
+          title: "Choose Payload Version",
+        });
+        if (picked === null) {
+          return;
+        }
+        try {
+          const chosenResolution = await resolvePayloadRelease({
+            timeoutMs: manifestFetchTimeoutMs(),
+            preferredVersion: picked,
+          });
+          if (chosenResolution === null) {
+            throw new Error(lastManifestCheckFailure ?? "Failed to resolve selected payload");
+          }
+          latestPayloadResolution = chosenResolution;
+          await applyUpdateAndRelaunch(chosenResolution);
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           launcherLog(`background update apply failed: ${msg}`, "error");
@@ -1033,15 +1075,14 @@ async function syncTrayMenu() {
     const payloadResolution = latestPayloadResolution;
     const compatiblePayloadVersions = payloadResolution === null
       ? []
-      : payloadResolution.payloadIndex.payloads
-        .map((entry) => entry.version)
-        .filter((version) => isPayloadVersionCompatible(
-          version,
+      : orderedCompatiblePayloadVersions(
+          payloadResolution.payloadIndex.payloads,
           payloadResolution.launcherManifest.compatible_payloads,
-        ))
-        .sort((left, right) => compareVersions(right, left));
-    const installablePayloadVersions = compatiblePayloadVersions
-      .filter((version) => !installedPayloadVersions.includes(version));
+        );
+    const installablePayloadVersions = installableOnlyPayloadVersions(
+      compatiblePayloadVersions,
+      installedPayloadVersions,
+    );
     const payloadSubmenu: Electron.MenuItemConstructorOptions[] = payloadResolution === null
       ? [
           { label: `Active: ${activePayloadVersion ?? "none"}`, enabled: false },
@@ -1212,6 +1253,130 @@ function escapeHtmlAttr(text: string): string {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+/** Modal picker for a compatible payload version (install/update flow; does not persist selection). */
+function promptPayloadVersionChoice(options: {
+  versions: string[];
+  recommended: string;
+  title: string;
+}): Promise<string | null> {
+  const { versions, recommended, title } = options;
+  if (versions.length === 0) {
+    return Promise.resolve(null);
+  }
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value: string | null) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      resolve(value);
+    };
+
+    const win = new BrowserWindow({
+      width: 440,
+      height: 220,
+      show: false,
+      center: true,
+      resizable: false,
+      minimizable: false,
+      maximizable: false,
+      title,
+      modal: true,
+      parent: mainWindow ?? undefined,
+      icon: getAppIconPath(),
+      webPreferences: {
+        preload: path.join(__dirname, "payload_chooser_preload.js"),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+      },
+    });
+
+    const versionOptions = versions
+      .map((v) => {
+        const sel = v === recommended ? " selected" : "";
+        const escaped = escapeHtmlAttr(v);
+        return `<option value="${escaped}"${sel}>${escaped}</option>`;
+      })
+      .join("");
+
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>${escapeHtmlAttr(title)}</title>
+<style>
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; padding:16px 20px; background:#f5f5f5; color:#111; }
+  h1 { font-size:15px; font-weight:600; margin:0 0 12px; }
+  label { display:block; font-size:13px; margin-bottom:6px; color:#555; }
+  select { width:100%; padding:8px 10px; font-size:14px; border-radius:6px; border:1px solid #ccc; box-sizing:border-box; }
+  .row { display:flex; gap:10px; justify-content:flex-end; margin-top:16px; }
+  button { padding:8px 16px; font-size:14px; border-radius:6px; border:1px solid #ccc; background:#fff; cursor:pointer; }
+  button.primary { background:#2563eb; color:#fff; border-color:#2563eb; }
+</style>
+</head>
+<body>
+  <h1>${escapeHtmlAttr(title)}</h1>
+  <label for="payloadVersion">Payload version</label>
+  <select id="payloadVersion">${versionOptions}</select>
+  <div class="row">
+    <button type="button" id="cancelBtn">Cancel</button>
+    <button type="button" class="primary" id="okBtn">OK</button>
+  </div>
+  <script>
+    const api = window.taskclfPayloadChooser;
+    if (!api) {
+      document.body.innerText = "Payload chooser unavailable.";
+    } else {
+      const sel = document.getElementById("payloadVersion");
+      document.getElementById("okBtn").addEventListener("click", () => {
+        api.ok(sel.value);
+      });
+      document.getElementById("cancelBtn").addEventListener("click", () => {
+        api.cancel();
+      });
+    }
+  </script>
+</body>
+</html>`;
+
+    function cleanup() {
+      ipcMain.removeListener("taskclf-payload-chooser-submit", onSubmit);
+      ipcMain.removeListener("taskclf-payload-chooser-cancel", onCancel);
+    }
+
+    function onSubmit(_e: Electron.IpcMainEvent, version: string) {
+      cleanup();
+      finish(version);
+      if (!win.isDestroyed()) {
+        win.destroy();
+      }
+    }
+
+    function onCancel() {
+      cleanup();
+      finish(null);
+      if (!win.isDestroyed()) {
+        win.destroy();
+      }
+    }
+
+    ipcMain.on("taskclf-payload-chooser-submit", onSubmit);
+    ipcMain.on("taskclf-payload-chooser-cancel", onCancel);
+
+    win.once("closed", () => {
+      cleanup();
+      finish(null);
+    });
+
+    win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    win.once("ready-to-show", () => {
+      win.show();
+    });
+  });
 }
 
 function formatBytes(n: number): string {
@@ -1532,32 +1697,76 @@ async function start(): Promise<void> {
         const message = activePayloadVersion === null
           ? `${APP_DISPLAY_NAME} needs to download its core components before starting.`
           : `${APP_DISPLAY_NAME} needs to update its local core before starting.`;
+        const compatible = orderedCompatiblePayloadVersions(
+          resolution.payloadIndex.payloads,
+          resolution.launcherManifest.compatible_payloads,
+        );
+        const offerChooser = payloadChooserOffersMultipleVersions(compatible);
+        const buttons = offerChooser
+          ? [actionLabel, "Choose Version", "Quit"]
+          : [actionLabel, "Quit"];
         const res = await dialog.showMessageBox({
           type: "info",
           title: activePayloadVersion === null ? "Initial Setup" : "Core Update Required",
           message,
           detail: payloadResolutionDetails(resolution, activePayloadVersion),
-          buttons: [actionLabel, "Quit"],
+          buttons,
           defaultId: 0,
-          cancelId: 1
+          cancelId: offerChooser ? 2 : 1,
         });
 
-        if (res.response !== 0) {
-          app.quit();
-          return;
-        }
+        const applyDownload = async (toApply: PayloadResolution) => {
+          try {
+            await applyPayloadResolution(toApply, `Downloading ${APP_DISPLAY_NAME} core`);
+          } catch (err) {
+            hideStartupStatus();
+            const msg = err instanceof Error ? err.message : String(err);
+            launcherLog(`launcher payload download/apply failed: ${msg}`, "error");
+            await showFatalLaunchError(
+              "Core Download Failed",
+              `Failed to prepare ${APP_DISPLAY_NAME} core.`,
+              msg,
+            );
+            throw err;
+          }
+        };
 
-        try {
-          await applyPayloadResolution(resolution, `Downloading ${APP_DISPLAY_NAME} core`);
-        } catch (err) {
-          hideStartupStatus();
-          const msg = err instanceof Error ? err.message : String(err);
-          launcherLog(`launcher payload download/apply failed: ${msg}`, "error");
-          await showFatalLaunchError(
-            "Core Download Failed",
-            `Failed to prepare ${APP_DISPLAY_NAME} core.`,
-            msg,
-          );
+        if (res.response === 0) {
+          try {
+            await applyDownload(resolution);
+          } catch {
+            return;
+          }
+        } else if (offerChooser && res.response === 1) {
+          const picked = await promptPayloadVersionChoice({
+            versions: compatible,
+            recommended: resolution.defaultVersion,
+            title: "Choose Payload Version",
+          });
+          if (picked === null) {
+            app.quit();
+            return;
+          }
+          const chosenResolution = await resolvePayloadRelease({
+            timeoutMs: manifestFetchTimeoutMs(),
+            preferredVersion: picked,
+          });
+          if (chosenResolution === null) {
+            await showFatalLaunchError(
+              "Core Download Failed",
+              `${APP_DISPLAY_NAME} could not resolve the selected payload.`,
+              lastManifestCheckFailure ?? "unknown error",
+            );
+            return;
+          }
+          latestPayloadResolution = chosenResolution;
+          try {
+            await applyDownload(chosenResolution);
+          } catch {
+            return;
+          }
+        } else {
+          app.quit();
           return;
         }
       } else {

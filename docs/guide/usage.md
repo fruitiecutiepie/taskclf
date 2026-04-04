@@ -89,7 +89,11 @@ immediately while it checks for the local core and waits for the local UI
 backend. On **first launch** (or when you choose **Update and Restart** after an
 update prompt), that startup flow can switch into a **download progress**
 window: it shows download percentage when the size is known, then verifying and
-extracting messages while the payload is prepared.
+extracting messages while the payload is prepared. When more than one
+compatible payload exists, **Initial Setup** / **Core Update Required** and
+**Core Update Available** dialogs can also offer **Choose Version** to pick a
+specific payload for that step (without changing the tray **Selected** pin; see
+[`electron_shell`](../api/ui/electron_shell.md)).
 
 ---
 
