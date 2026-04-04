@@ -115,7 +115,9 @@ payload zip from the chosen payload release manifest. Before any first-run
 network call or sidecar boot work begins, the launcher shows a small native
 **startup status** window so the app does not appear idle while it is checking
 for local core files, waiting on release metadata, or waiting for the local UI
-server to answer.
+server to answer. While polling for the sidecar HTTP server, the main process
+also loads a lightweight `data:` placeholder into the pill and child webviews so
+renderer startup overlaps with PyInstaller cold-start.
 
 When a payload zip is actually downloading, that same startup UX switches to a
 native progress window with **percentage** when the server sends
@@ -128,6 +130,9 @@ Electron's Chromium network stack for packaged-app updater requests) and `electr
 - `TASKCLF_MANIFEST_URL` -- alternate launcher manifest location
 - `TASKCLF_MANIFEST_TIMEOUT_MS` -- manifest fetch timeout in milliseconds
   (default: `15000`; set `0` to disable the timeout)
+- `TASKCLF_ELECTRON_SHELL_WAIT_MS` -- max time to wait for the local FastAPI
+  sidecar after spawn (default: `120000` packaged, `30000` dev; PyInstaller
+  cold-starts can exceed 30s on slower disks)
 
 ## Packaged app: optional payload version chooser
 

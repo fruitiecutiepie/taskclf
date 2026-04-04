@@ -61,6 +61,9 @@ const CHILD_HIDE_DELAY_MS = 300;
 const DRAG_TOLERANCE = 10;
 const WINDOW_MARGIN = 16;
 const DEFAULT_MANIFEST_TIMEOUT_MS = 15000;
+/** Packaged PyInstaller cold-starts can exceed 30s; dev sidecar is usually faster. */
+const DEFAULT_SHELL_WAIT_MS_PACKAGED = 120000;
+const DEFAULT_SHELL_WAIT_MS_DEV = 30000;
 const REPORT_ISSUE_URL_BASE = "https://github.com/fruitiecutiepie/taskclf/issues/new";
 const MAX_REPORT_ISSUE_URL_LEN = 8000;
 const MAX_RECENT_SIDECAR_LINES = 20;
@@ -242,6 +245,12 @@ function electronDebugEnabled(): boolean {
 
 function manifestFetchTimeoutMs(): number {
   return Math.max(0, envInt("TASKCLF_MANIFEST_TIMEOUT_MS", DEFAULT_MANIFEST_TIMEOUT_MS));
+}
+
+/** Max time to wait for the FastAPI sidecar after spawn (GET until HTTP 2xx). */
+function shellWaitTimeoutMs(): number {
+  const fallback = app.isPackaged ? DEFAULT_SHELL_WAIT_MS_PACKAGED : DEFAULT_SHELL_WAIT_MS_DEV;
+  return Math.max(1000, envInt("TASKCLF_ELECTRON_SHELL_WAIT_MS", fallback));
 }
 
 /** Persistent log path under userData (only valid after app ready). */
@@ -761,6 +770,10 @@ async function waitForShell(url: string, timeoutMs = 30000): Promise<void> {
       lastDetail = `HTTP ${response.status} ${response.statusText}`;
     } catch (e) {
       lastDetail = e instanceof Error ? e.message : String(e);
+      const cause = e instanceof Error ? e.cause : undefined;
+      if (cause instanceof Error && cause.message.length > 0) {
+        lastDetail = `${lastDetail} (${cause.message})`;
+      }
     }
     if (electronDebugEnabled() && attempts % 10 === 1) {
       launcherLog(`waitForShell: still waiting for ${url} (attempt ${attempts}, last: ${lastDetail})`, "info");
@@ -770,6 +783,23 @@ async function waitForShell(url: string, timeoutMs = 30000): Promise<void> {
   const errMsg = `Timed out waiting for ${url} after ${attempts} attempts (last: ${lastDetail})`;
   launcherLog(errMsg, "error");
   throw new Error(errMsg);
+}
+
+/** Inline placeholder while the FastAPI sidecar boots; warms renderer in parallel with `waitForShell`. */
+const SHELL_LOADING_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>taskclf</title><style>body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#0f0f12;color:#e8e8ec;font-size:14px}@keyframes p{to{opacity:.35}}.s{animation:p 1s ease-in-out infinite alternate}</style></head><body><span class="s">Loading…</span></body></html>`;
+
+function shellLoadingDataUrl(): string {
+  return `data:text/html;charset=utf-8,${encodeURIComponent(SHELL_LOADING_HTML)}`;
+}
+
+/** Load placeholder pages concurrently with waiting for the real shell URL (sidecar already runs in parallel). */
+async function warmShellWindows(
+  pill: BrowserWindow,
+  label: BrowserWindow,
+  panel: BrowserWindow,
+): Promise<void> {
+  const url = shellLoadingDataUrl();
+  await Promise.all([pill.loadURL(url), label.loadURL(url), panel.loadURL(url)]);
 }
 
 async function sidecarRequest(
@@ -1784,7 +1814,17 @@ async function start(): Promise<void> {
 
     const base = shellUrl();
     await showStartupStatus("Waiting for local UI…");
-    await waitForShell(base);
+    // Sidecar process runs concurrently with polling; warm webviews in parallel with HTTP readiness.
+    if (mainWindow === null) {
+      throw new Error("main window missing before shell wait");
+    }
+    await Promise.all([
+      waitForShell(base, shellWaitTimeoutMs()),
+      warmShellWindows(mainWindow, labelWin, panelWin).catch((err) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        launcherLog(`shell window warm load failed (non-fatal): ${msg}`, "info");
+      }),
+    ]);
     await showStartupStatus("Opening dashboard…");
     await Promise.all([
       mainWindow.loadURL(base),

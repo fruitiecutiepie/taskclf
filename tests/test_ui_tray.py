@@ -2242,6 +2242,77 @@ class TestReloadModel:
 
 
 # ---------------------------------------------------------------------------
+# Initial model load (cold-start path)
+# ---------------------------------------------------------------------------
+
+
+class TestInitialModelLoad:
+    def test_constructor_defers_model_load(self, tmp_path: Path) -> None:
+        """Startup should not eagerly load the suggester before the UI server starts."""
+        model_dir = tmp_path / "models" / "run_test"
+
+        with patch("taskclf.ui.tray._LabelSuggester") as mock_suggester:
+            labeler = TrayLabeler(
+                data_dir=tmp_path,
+                model_dir=model_dir,
+            )
+
+        mock_suggester.assert_not_called()
+        assert labeler._suggester is None
+        assert labeler._model_dir == model_dir
+
+    def test_initial_load_publishes_loaded_tray_state(self, tmp_path: Path) -> None:
+        """When the deferred load completes, clients should see model_loaded=True."""
+        bus, captured = _capture_bus()
+        model_dir = tmp_path / "models" / "run_test"
+        labeler = TrayLabeler(
+            data_dir=tmp_path,
+            model_dir=model_dir,
+            event_bus=bus,
+        )
+        mock_suggester = MagicMock()
+        mock_suggester._predictor.metadata.schema_hash = "abc123"
+
+        with (
+            patch(
+                "taskclf.ui.tray._LabelSuggester",
+                return_value=mock_suggester,
+            ) as mock_ctor,
+            patch.object(bus, "wait_ready", return_value=True),
+        ):
+            labeler._load_initial_suggester()
+
+        mock_ctor.assert_called_once_with(model_dir)
+        assert labeler._suggester is mock_suggester
+        assert labeler._model_schema_hash == "abc123"
+        assert captured[-1]["type"] == "tray_state"
+        assert captured[-1]["model_loaded"] is True
+
+    def test_run_inner_starts_deferred_model_load(self, tmp_path: Path) -> None:
+        """The no-tray startup path should kick off deferred model loading."""
+        model_dir = tmp_path / "models" / "run_test"
+        labeler = TrayLabeler(
+            data_dir=tmp_path,
+            model_dir=model_dir,
+            browser=True,
+            no_tray=True,
+        )
+
+        with (
+            patch("taskclf.core.logging.setup_file_logging"),
+            patch("atexit.register"),
+            patch.object(labeler, "_start_ui_embedded"),
+            patch.object(labeler, "_cleanup_ui"),
+            patch.object(labeler, "_start_initial_model_load") as mock_start_load,
+            patch.object(labeler._monitor, "run"),
+            patch("taskclf.ui.tray.time.sleep", side_effect=KeyboardInterrupt),
+        ):
+            labeler._run_inner()
+
+        mock_start_load.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
 # Connection Status  (Item 6)
 # ---------------------------------------------------------------------------
 

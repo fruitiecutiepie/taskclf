@@ -737,6 +737,7 @@ class TrayLabeler:
     _model_schema_hash: str | None = field(init=False, default=None)
     _event_bus: EventBus = field(init=False)
     _suggester: _LabelSuggester | None = field(init=False, default=None)
+    _initial_model_load_started: bool = field(init=False, default=False)
     _monitor: ActivityMonitor = field(init=False)
     _icon: Any = field(init=False, default=None)
     _unlabeled_minutes: float = field(init=False, default=0.0)
@@ -846,37 +847,7 @@ class TrayLabeler:
         self._event_bus = self.event_bus if self.event_bus is not None else EventBus()
 
         self._suggester: _LabelSuggester | None = None
-
-        if self._models_dir is not None:
-            try:
-                self._suggester = _LabelSuggester.from_policy(self._models_dir)
-                self._suggester._aw_host = aw_host
-                self._suggester._title_salt = title_salt
-                self._suggester._user_id = self._config.user_id
-                self._model_schema_hash = (
-                    self._suggester._predictor.metadata.schema_hash
-                )
-                logger.info("Model loaded via inference policy")
-            except Exception:
-                logger.debug(
-                    "No inference policy; trying model_dir fallback", exc_info=True
-                )
-                self._suggester = None
-
-        if self._suggester is None and self.model_dir is not None:
-            try:
-                self._suggester = _LabelSuggester(self.model_dir)
-                self._suggester._aw_host = aw_host
-                self._suggester._title_salt = title_salt
-                self._suggester._user_id = self._config.user_id
-                self._model_schema_hash = (
-                    self._suggester._predictor.metadata.schema_hash
-                )
-                logger.info("Model loaded from %s", self.model_dir)
-            except Exception:
-                logger.warning(
-                    "Could not load model from %s", self.model_dir, exc_info=True
-                )
+        self._initial_model_load_started = False
 
         idle_transition_minutes = self._resolve(
             saved,
@@ -1096,6 +1067,81 @@ class TrayLabeler:
                 "Could not auto-load trained model from %s", model_path, exc_info=True
             )
 
+    def _tray_state_event(self) -> dict[str, Any]:
+        """Build the latest tray state payload for WebSocket and snapshot clients."""
+        return {
+            "type": "tray_state",
+            "model_loaded": self._suggester is not None,
+            "model_dir": str(self._model_dir) if self._model_dir else None,
+            "model_schema_hash": self._model_schema_hash,
+            "suggested_label": self._suggested_label,
+            "suggested_confidence": self._suggested_confidence,
+            "transition_count": self._transition_count,
+            "last_transition": self._last_transition,
+            "labels_saved_count": self._labels_saved_count,
+            "data_dir": str(self._data_dir),
+            "ui_port": self._ui_port,
+            "dev_mode": self._dev,
+            "paused": self._monitor.is_paused,
+        }
+
+    def _publish_tray_state(self) -> None:
+        """Publish the current tray state when the shared EventBus is ready."""
+        if self._event_bus is None:
+            return
+        self._event_bus.publish_threadsafe(self._tray_state_event())
+
+    def _model_configured(self) -> bool:
+        """Return True when startup should try to load a suggester."""
+        return self._models_dir is not None or self._model_dir is not None
+
+    def _load_initial_suggester(self) -> None:
+        """Load the optional suggester after UI startup to reduce cold-start latency."""
+        if self._models_dir is not None:
+            try:
+                self._suggester = _LabelSuggester.from_policy(self._models_dir)
+                self._suggester._aw_host = self._aw_host
+                self._suggester._title_salt = self._title_salt
+                self._suggester._user_id = self._config.user_id
+                self._model_schema_hash = (
+                    self._suggester._predictor.metadata.schema_hash
+                )
+                logger.info("Model loaded via inference policy")
+            except Exception:
+                logger.debug(
+                    "No inference policy; trying model_dir fallback", exc_info=True
+                )
+                self._suggester = None
+
+        if self._suggester is None and self._model_dir is not None:
+            try:
+                self._suggester = _LabelSuggester(self._model_dir)
+                self._suggester._aw_host = self._aw_host
+                self._suggester._title_salt = self._title_salt
+                self._suggester._user_id = self._config.user_id
+                self._model_schema_hash = (
+                    self._suggester._predictor.metadata.schema_hash
+                )
+                logger.info("Model loaded from %s", self._model_dir)
+            except Exception:
+                logger.warning(
+                    "Could not load model from %s", self._model_dir, exc_info=True
+                )
+
+        if self._event_bus.wait_ready(timeout=30):
+            self._publish_tray_state()
+
+    def _start_initial_model_load(self) -> None:
+        """Start lazy model loading once the UI server launch path has been kicked off."""
+        if self._initial_model_load_started or not self._model_configured():
+            return
+        self._initial_model_load_started = True
+        threading.Thread(
+            target=self._load_initial_suggester,
+            daemon=True,
+            name="taskclf-model-load",
+        ).start()
+
     def _toggle_pause(self) -> bool:
         """Toggle pause state on the monitor. Returns new paused state."""
         if self._monitor.is_paused:
@@ -1106,24 +1152,7 @@ class TrayLabeler:
 
     def _handle_poll(self, dominant_app: str) -> None:
         self._current_app = dominant_app
-        if self._event_bus is not None:
-            self._event_bus.publish_threadsafe(
-                {
-                    "type": "tray_state",
-                    "model_loaded": self._suggester is not None,
-                    "model_dir": str(self._model_dir) if self._model_dir else None,
-                    "model_schema_hash": self._model_schema_hash,
-                    "suggested_label": self._suggested_label,
-                    "suggested_confidence": self._suggested_confidence,
-                    "transition_count": self._transition_count,
-                    "last_transition": self._last_transition,
-                    "labels_saved_count": self._labels_saved_count,
-                    "data_dir": str(self._data_dir),
-                    "ui_port": self._ui_port,
-                    "dev_mode": self._dev,
-                    "paused": self._monitor.is_paused,
-                }
-            )
+        self._publish_tray_state()
         self._publish_live_status()
         self._publish_unlabeled_time()
 
@@ -2182,6 +2211,7 @@ class TrayLabeler:
         else:
             self._start_ui_subprocess()
         atexit.register(self._cleanup_ui)
+        self._start_initial_model_load()
 
         monitor_thread = threading.Thread(
             target=self._monitor.run,
@@ -2189,7 +2219,12 @@ class TrayLabeler:
         )
         monitor_thread.start()
 
-        mode = "with model suggestions" if self._suggester else "label-only (no model)"
+        if self._suggester is not None:
+            mode = "with model suggestions"
+        elif self._model_configured():
+            mode = "loading model suggestions"
+        else:
+            mode = "label-only (no model)"
 
         if self._no_tray:
             # Duplicate to stderr so headless / frozen sidecars still show lines if

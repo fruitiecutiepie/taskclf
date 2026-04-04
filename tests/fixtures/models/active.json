@@ -1,0 +1,12 @@
+{
+  "model_dir": "models/best_bundle",
+  "selected_at": "2026-04-04T04:21:58.416787+00:00",
+  "policy_version": 1,
+  "model_id": "best_bundle",
+  "reason": {
+    "metric": "macro_f1",
+    "macro_f1": 0.88,
+    "weighted_f1": 0.91,
+    "note": "auto-repair"
+  }
+}

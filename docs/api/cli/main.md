@@ -628,7 +628,10 @@ activity transitions, and prompts for labels.  Automatically starts the
 web UI server.  Left-clicking the tray icon opens the web dashboard
 where all labeling is done through the UI.  Right-clicking shows a
 minimal menu with "Toggle Dashboard" and "Quit".  When `--model-dir` is
-provided, the app suggests labels using the trained model.
+provided, the app suggests labels using the trained model.  To reduce
+cold-start latency, the web UI server starts before the optional model
+bundle finishes loading, so suggestions can appear a moment after the
+dashboard becomes reachable.
 
 ```bash
 taskclf tray

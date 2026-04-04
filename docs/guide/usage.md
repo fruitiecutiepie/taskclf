@@ -405,7 +405,10 @@ uv run taskclf tray
 ```
 
 Without a model, all 8 core labels are shown when a transition is
-detected.  With a trained model, the app suggests the most likely label:
+detected.  With a trained model, the app suggests the most likely label.
+The dashboard now comes up before the model bundle finishes warming, so
+suggestions may appear a moment after the UI is reachable on a cold
+start:
 
 ```bash
 uv run taskclf tray --model-dir models/<run_id>
