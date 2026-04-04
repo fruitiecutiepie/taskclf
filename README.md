@@ -116,7 +116,8 @@ the file for your OS:
 | macOS | `*.dmg` (open and drag **taskclf** to Applications) |
 
 Those assets are published on GitHub releases whose tag starts with
-`launcher-v`.
+`launcher-v`. The PyInstaller backend that the shell downloads at runtime is
+published on separate **`v*`** tags (see `make build-payload` and payload release CI).
 
 **Development** (from a git checkout):
 

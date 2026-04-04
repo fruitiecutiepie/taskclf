@@ -57,10 +57,14 @@ Behavior:
   a compatible sidecar backend
 - blocks until the Electron process exits
 
-## Payload release manifest
+## Launcher and payload release manifests
 
-GitHub releases must ship `manifest.json`. By default, the packaged Electron
-app fetches a **launcher manifest** from its own launcher tag:
+Launcher and payload releases are separate GitHub release tags:
+
+- **`launcher-v*`** — desktop installers plus a **launcher** `manifest.json` (compatibility policy and payload index URL). Built by `.github/workflows/electron-release.yml`.
+- **`v*`** — PyInstaller sidecar zips plus a **payload** `manifest.json` (per-platform URLs and SHA-256). Built by `.github/workflows/payload-release.yml`.
+
+By default, the packaged Electron app fetches a **launcher manifest** from its own launcher tag:
 
 ```text
 https://github.com/<org>/<repo>/releases/download/launcher-v<appVersion>/manifest.json
@@ -78,13 +82,13 @@ app to boot the **latest compatible** `v*` payload instead of forcing an exact
 launcher-version match.
 
 The **Electron launcher** workflow (`.github/workflows/electron-release.yml`,
-tags `launcher-v*`) publishes the launcher manifest plus installers and payload
-zips in one release. To **re-publish** those assets for an existing tag without
-creating a new tag, run the workflow manually (**Actions → Electron Launcher
-Release → Run workflow**) and set **target launcher tag** (for example
-`launcher-v0.4.0`). The **Python-only payload** workflow
-(`.github/workflows/payload-release.yml`, tags `v*`) still publishes
-per-version **payload manifests** with `platforms` entries pointing at
+tags `launcher-v*`) publishes the launcher manifest plus installers only (no
+payload zips on that tag). To **re-publish** those assets for an existing tag
+without creating a new tag, run the workflow manually (**Actions → Electron
+Launcher Release → Run workflow**) and set **target launcher tag** (for example
+`launcher-v0.4.0`). The **payload** workflow
+(`.github/workflows/payload-release.yml`, tags `v*`) publishes per-version
+**payload manifests** with `platforms` entries pointing at
 `payload-<triple>.zip` assets for that payload release.
 
 The payload index is hosted on GitHub Pages at:

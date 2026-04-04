@@ -28,12 +28,12 @@ details.
 
 Targets at the repo root:
 
-- **`bump-patch` / `bump-minor` / `bump-major`** — bump `pyproject.toml` and `uv.lock`, commit, tag **`vX.Y.Z`**, and trigger **`.github/workflows/payload-release.yml`**. Use for a **Python / sidecar payload** release.
-- **`bump-launcher-patch` / `bump-launcher-minor` / `bump-launcher-major`** — bump **`electron/package.json`**, commit, tag **`launcher-vX.Y.Z`**, and trigger **`.github/workflows/electron-release.yml`**. Use for a **desktop launcher** release (installers + a launcher compatibility `manifest.json`).
+- **`bump-patch` / `bump-minor` / `bump-major`** — bump `pyproject.toml` and `uv.lock`, commit, tag **`vX.Y.Z`**, and trigger **`.github/workflows/payload-release.yml`**. Use for a **Python / sidecar payload** release (payload zips and payload `manifest.json` on the **`v*`** release).
+- **`bump-launcher-patch` / `bump-launcher-minor` / `bump-launcher-major`** — bump **`electron/package.json`**, commit, tag **`launcher-vX.Y.Z`**, and trigger **`.github/workflows/electron-release.yml`**. Use for a **desktop launcher** release (installers + launcher compatibility `manifest.json` on the **`launcher-v*`** release only).
 
 You only need **`bump-patch`** when you want a **`v*`** tag; you only need **`bump-launcher-*`** when you want a **`launcher-v*`** tag. They are independent unless you choose to run both.
 
-**Guards:** By default, a bump aborts if there are no changes since the last matching tag under the paths that affect that release (see `Makefile`: `PAYLOAD_BUMP_PATHS` / `LAUNCHER_BUMP_PATHS`). Set **`BUMP_FORCE=1`** to tag anyway (e.g. re-release the same tree or you only changed docs).
+**Guards:** By default, a bump aborts if there are no changes since the last matching tag under the paths that affect that release (see `Makefile`: `PAYLOAD_BUMP_PATHS` covers the Python sidecar tree; `LAUNCHER_BUMP_PATHS` is **`electron/`** only). Set **`BUMP_FORCE=1`** to tag anyway (e.g. re-release the same tree or you only changed docs).
 
 **CI:** On tag push, workflows compare `github.event.before` to the tagged commit and **skip** the job when only unrelated files changed; **`workflow_dispatch`** always runs the full workflow.
 

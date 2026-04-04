@@ -70,6 +70,8 @@ defaults when provided.
 Prebuilt installers are published on
 [GitHub Releases](https://github.com/fruitiecutiepie/taskclf/releases).
 Look for assets attached to tags named `launcher-v*` (the desktop shell).
+Payload zips for the downloaded backend are on separate tags `v*`, not on
+`launcher-v*`.
 
 | OS | What to download |
 |----|------------------|

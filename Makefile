@@ -117,10 +117,10 @@ docs-build:
 LAST_V_TAG := $(shell git tag -l 'v*' --sort=-version:refname 2>/dev/null | head -1)
 LAST_LAUNCHER_TAG := $(shell git tag -l 'launcher-v*' --sort=-version:refname 2>/dev/null | head -1)
 
-# Paths that affect the PyInstaller sidecar (payload-release + payload half of launcher).
+# Paths that affect the PyInstaller sidecar (payload-release.yml, tags v*).
 PAYLOAD_BUMP_PATHS := src/ pyproject.toml uv.lock scripts/ Makefile src/taskclf/ui/frontend/
-# Launcher = Electron shell + everything that affects the bundled backend zip.
-LAUNCHER_BUMP_PATHS := electron/ $(PAYLOAD_BUMP_PATHS)
+# Launcher = Electron shell only (electron-release.yml, tags launcher-v*). Payload zips ship on v* releases.
+LAUNCHER_BUMP_PATHS := electron/
 
 # Bump targets abort if nothing under these paths changed since the last tag, unless BUMP_FORCE=1
 # (e.g. you are re-tagging the same tree or only touched docs).
@@ -141,7 +141,7 @@ guard_payload_bump:
 
 guard_launcher_bump:
 	@if [ -z "$$BUMP_FORCE" ] && [ -n "$(LAST_LAUNCHER_TAG)" ] && git diff --quiet $(LAST_LAUNCHER_TAG)..HEAD -- $(LAUNCHER_BUMP_PATHS) 2>/dev/null; then \
-		echo "No changes since $(LAST_LAUNCHER_TAG) under paths that affect the launcher bundle."; \
+		echo "No changes since $(LAST_LAUNCHER_TAG) under electron/."; \
 		echo "Set BUMP_FORCE=1 to bump electron/package.json and tag launcher-v* anyway."; \
 		exit 1; \
 	fi
