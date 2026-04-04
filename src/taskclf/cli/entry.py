@@ -31,3 +31,7 @@ def cli_entry() -> None:
     from taskclf.cli.main import cli_main
 
     cli_main()
+
+
+if __name__ == "__main__":
+    cli_entry()
