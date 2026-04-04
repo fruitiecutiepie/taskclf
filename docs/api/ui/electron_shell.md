@@ -119,6 +119,11 @@ server to answer. While polling for the sidecar HTTP server, the main process
 also loads a lightweight `data:` placeholder into the pill and child webviews so
 renderer startup overlaps with PyInstaller cold-start.
 
+The Python sidecar also defers importing heavy data dependencies (for example
+`pandas` and parquet reads) until REST routes that need them run, so the local
+HTTP port can answer sooner than a full training/feature-build import graph
+would allow.
+
 When a payload zip is actually downloading, that same startup UX switches to a
 native progress window with **percentage** when the server sends
 `Content-Length`, plus byte counts; after download, it shows **Verifying** and

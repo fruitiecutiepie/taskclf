@@ -8,8 +8,10 @@ import contextlib
 import os
 import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-import pandas as pd
+if TYPE_CHECKING:
+    import pandas as pd
 
 
 def write_parquet(df: pd.DataFrame, path: Path) -> Path:
@@ -48,4 +50,6 @@ def read_parquet(path: Path) -> pd.DataFrame:
     Returns:
         The loaded DataFrame.
     """
+    import pandas as pd
+
     return pd.read_parquet(path, engine="pyarrow")

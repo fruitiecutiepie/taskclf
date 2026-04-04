@@ -5,14 +5,14 @@ from __future__ import annotations
 import csv
 import datetime as dt
 from pathlib import Path
-from typing import Final, Sequence
-
-import pandas as pd
+from typing import TYPE_CHECKING, Final, Sequence
 
 from taskclf.core.defaults import DEFAULT_BUCKET_SECONDS, DEFAULT_DUMMY_ROWS
-from taskclf.core.store import read_parquet, write_parquet
 from taskclf.core.time import ts_utc_aware_get
 from taskclf.core.types import LabelSpan
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 # Deterministic app_id -> label mapping aligned with features/build._DUMMY_APPS.
 _APP_LABEL_MAP: Final[dict[str, str]] = {
@@ -52,6 +52,10 @@ def write_label_spans(spans: Sequence[LabelSpan], path: Path) -> Path:
     Returns:
         The *path* that was written.
     """
+    import pandas as pd
+
+    from taskclf.core.store import write_parquet
+
     df = pd.DataFrame([s.model_dump() for s in spans])
     return write_parquet(df, path)
 
@@ -66,6 +70,10 @@ def read_label_spans(path: Path) -> list[LabelSpan]:
     Returns:
         List of validated ``LabelSpan`` instances.
     """
+    import pandas as pd
+
+    from taskclf.core.store import read_parquet
+
     df = read_parquet(path)
     records = df.to_dict(orient="records")
     for row in records:
@@ -94,6 +102,8 @@ def import_labels_from_csv(path: Path) -> list[LabelSpan]:
         ValueError: If required columns are missing or any row fails
             ``LabelSpan`` validation.
     """
+    import pandas as pd
+
     df = pd.read_csv(path)
 
     required = {"start_ts", "end_ts", "label", "provenance"}
@@ -482,6 +492,8 @@ def generate_label_summary(
         ``mean_clicks_per_min``, ``mean_scroll_per_min``,
         ``total_buckets``, ``session_count``.
     """
+    import pandas as pd
+
     if features_df.empty or "bucket_start_ts" not in features_df.columns:
         return {
             "top_apps": [],

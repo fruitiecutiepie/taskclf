@@ -41,7 +41,6 @@ from taskclf.core.defaults import (
     DEFAULT_NUM_BOOST_ROUND,
     DEFAULT_TITLE_SALT,
 )
-from taskclf.core.store import read_parquet
 from taskclf.core.time import ts_utc_aware_get
 from taskclf.core.types import CoreLabel, LabelSpan
 from taskclf.labels.queue import ActiveLabelingQueue
@@ -745,6 +744,8 @@ def create_app(
     ) -> FeatureSummaryResponse:
         import pandas as pd
 
+        from taskclf.core.store import read_parquet
+
         start_ts = _ensure_utc(dt.datetime.fromisoformat(start))
         end_ts = _ensure_utc(dt.datetime.fromisoformat(end))
 
@@ -1415,6 +1416,7 @@ def create_app(
         date_from: str = Query(..., description="Start date (YYYY-MM-DD)"),
         date_to: str = Query(..., description="End date (YYYY-MM-DD)"),
     ) -> DataCheckResponse:
+        from taskclf.core.store import read_parquet
         from taskclf.features.build import build_features_for_date
 
         start = dt.date.fromisoformat(date_from)

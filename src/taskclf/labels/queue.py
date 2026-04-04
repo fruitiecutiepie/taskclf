@@ -14,10 +14,12 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Literal, Sequence
+from typing import TYPE_CHECKING, Literal, Sequence
 
-import pandas as pd
 from pydantic import BaseModel, Field, field_validator
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 from taskclf.core.defaults import (
     DEFAULT_LABEL_CONFIDENCE_THRESHOLD,
@@ -129,6 +131,8 @@ class ActiveLabelingQueue:
 
         Returns the number of newly enqueued items.
         """
+        import pandas as pd
+
         existing = self._existing_keys()
         added = 0
         now = datetime.now(tz=timezone.utc)
@@ -172,6 +176,8 @@ class ActiveLabelingQueue:
 
         Returns the number of newly enqueued items.
         """
+        import pandas as pd
+
         existing = self._existing_keys()
         added = 0
         now = datetime.now(tz=timezone.utc)
