@@ -1,18 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-labelledby="title desc">
   <title id="title">taskclf macOS tray icon</title>
-  <desc id="desc">A monochrome shield and clock icon for the macOS menu bar.</desc>
+  <desc id="desc">A monochrome compass-rose icon based on the taskclf brand mark.</desc>
 
-  <path
-    d="M8 1.5C6.55 2.6 4.84 2.72 3.86 2.81v4.06c0 2.37 1.56 4.2 4.14 5.03 2.58-.83 4.14-2.66 4.14-5.03V2.81C11.16 2.72 9.45 2.6 8 1.5Z"
-    fill="#000000"
-  />
-  <circle cx="8" cy="7.15" r="2.15" fill="none" stroke="#000000" stroke-width="1.15" />
-  <path
-    d="M8 7.15V5.9l1.12.73"
+  <rect
+    x="1.75"
+    y="1.75"
+    width="12.5"
+    height="12.5"
+    rx="2.9"
     fill="none"
     stroke="#000000"
-    stroke-width="1.15"
-    stroke-linecap="round"
-    stroke-linejoin="round"
+    stroke-width="1.1"
+  />
+  <path
+    fill="#000000"
+    fill-rule="evenodd"
+    d="M8 3.1 9.2 6.8 12.9 8 9.2 9.2 8 12.9 6.8 9.2 3.1 8 6.8 6.8Z M8 5.3 8.8 7.2 10.7 8 8.8 8.8 8 10.7 7.2 8.8 5.3 8 7.2 7.2Z"
   />
 </svg>
