@@ -117,15 +117,18 @@ export const PredictionSuggestion: Component<{
     <Show when={s()}>
       <div
         style={{
-          background: "var(--surface)",
-          border: "1px solid var(--border)",
-          "border-left": "3px solid var(--warning)",
+          background:
+            "linear-gradient(135deg, color-mix(in srgb, var(--warning) 16%, transparent) 0%, var(--surface) 55%)",
+          border: "1px solid color-mix(in srgb, var(--warning) 42%, var(--border))",
+          "border-left": "4px solid var(--warning)",
           "border-radius": "var(--radius)",
-          padding: "8px 10px",
-          "margin-bottom": "8px",
+          padding: "10px 12px",
+          "margin-bottom": "10px",
+          "box-shadow":
+            "0 0 0 1px color-mix(in srgb, var(--warning) 22%, transparent), 0 4px 18px color-mix(in srgb, var(--warning) 14%, transparent)",
           display: "flex",
           "flex-direction": "column",
-          gap: "6px",
+          gap: "8px",
         }}
       >
         <div

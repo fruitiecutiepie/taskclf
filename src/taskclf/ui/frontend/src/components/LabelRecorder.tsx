@@ -233,6 +233,14 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
           : {}),
       }}
     >
+      <Show when={props.suggestion}>
+        <PredictionSuggestion
+          suggestion={props.suggestion ?? (() => null)}
+          on_saved={() => set_label_version((v) => v + 1)}
+          on_dismiss={props.on_suggestion_dismiss}
+        />
+      </Show>
+
       <LabelTimePicker
         selected_minutes={selected_minutes}
         set_selected_minutes={set_selected_minutes}
@@ -242,14 +250,6 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
       />
 
       <ActivitySummary minutes={selected_minutes} prediction={props.prediction} />
-
-      <Show when={props.suggestion}>
-        <PredictionSuggestion
-          suggestion={props.suggestion ?? (() => null)}
-          on_saved={() => set_label_version((v) => v + 1)}
-          on_dismiss={props.on_suggestion_dismiss}
-        />
-      </Show>
 
       <Show when={selected_minutes() !== 0 || fill_from_last()}>
         <LabelExtendToggle checked={extend_fwd} on_toggle={extend_fwd_toggle} />
