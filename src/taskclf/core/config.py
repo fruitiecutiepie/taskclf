@@ -51,6 +51,9 @@ _SETTING_COMMENTS: dict[str, str] = {
     "aw_host": "ActivityWatch server URL.",
     "title_salt": "Salt used for hashing window titles (privacy).",
     "ui_port": "Port for the embedded web UI server.",
+    "suggestion_banner_ttl_seconds": (
+        "Seconds before the suggestion banner auto-dismisses; 0 disables auto-dismiss."
+    ),
 }
 
 

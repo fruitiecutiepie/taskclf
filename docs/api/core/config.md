@@ -53,6 +53,9 @@ title_salt = "taskclf-default-salt"
 
 # Port for the embedded web UI server.
 ui_port = 8741
+
+# Seconds before the suggestion banner auto-dismisses; 0 disables auto-dismiss.
+suggestion_banner_ttl_seconds = 0
 ```
 
 | Key | Type | Default | Description |
@@ -65,6 +68,7 @@ ui_port = 8741
 | `aw_host` | `str` | `"http://localhost:5600"` | ActivityWatch server URL |
 | `title_salt` | `str` | `"taskclf-default-salt"` | Window title hash salt |
 | `ui_port` | `int` | `8741` | Web UI server port |
+| `suggestion_banner_ttl_seconds` | `int` | `0` | Suggestion banner auto-dismiss after N seconds; `0` keeps the banner until skip/accept/clear |
 
 The `user_id` UUID is stored separately in `.user_id` and never appears in `config.toml`.
 
@@ -89,8 +93,8 @@ taskclf tray --username alice
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/api/config/user` | Read user_id + username |
-| `PUT` | `/api/config/user` | Update username |
+| `GET` | `/api/config/user` | Read user_id, username, and `suggestion_banner_ttl_seconds` |
+| `PUT` | `/api/config/user` | Update username and/or `suggestion_banner_ttl_seconds` |
 
 ### `GET /api/config/user`
 
@@ -99,7 +103,8 @@ Returns:
 ```json
 {
   "user_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "username": "alice"
+  "username": "alice",
+  "suggestion_banner_ttl_seconds": 0
 }
 ```
 
@@ -108,7 +113,7 @@ Returns:
 Body (`user_id` is ignored -- it is immutable):
 
 ```json
-{"username": "bob"}
+{"username": "bob", "suggestion_banner_ttl_seconds": 600}
 ```
 
 Returns the full updated config.

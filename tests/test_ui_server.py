@@ -882,12 +882,15 @@ class TestGetUserConfig:
     """TC-UI-CU-001 through TC-UI-CU-002."""
 
     def test_returns_default_config(self, client: TestClient) -> None:
-        """TC-UI-CU-001: Returns user_id (UUID) and username."""
+        """TC-UI-CU-001: Returns user_id (UUID), username, and suggestion TTL."""
         resp = client.get("/api/config/user")
         assert resp.status_code == 200
         data = resp.json()
         assert "user_id" in data
         assert "username" in data
+        assert "suggestion_banner_ttl_seconds" in data
+        assert isinstance(data["suggestion_banner_ttl_seconds"], int)
+        assert data["suggestion_banner_ttl_seconds"] >= 0
         uuid.UUID(data["user_id"])  # validates it's a real UUID
 
     def test_user_id_stable_across_requests(self, client: TestClient) -> None:
@@ -931,6 +934,19 @@ class TestUpdateUserConfig:
         client.put("/api/config/user", json={"username": "carol"})
         new_id = client.get("/api/config/user").json()["user_id"]
         assert new_id == original_id
+
+    def test_update_suggestion_banner_ttl_seconds(self, client: TestClient) -> None:
+        """TC-UI-CU-007: PUT suggestion_banner_ttl_seconds persists and GET returns it."""
+        resp = client.put(
+            "/api/config/user",
+            json={"suggestion_banner_ttl_seconds": 600},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["suggestion_banner_ttl_seconds"] == 600
+        assert (
+            client.get("/api/config/user").json()["suggestion_banner_ttl_seconds"]
+            == 600
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1564,8 +1580,6 @@ class TestLabelCreatedEvent:
                 )
 
             threading.Thread(target=_post).start()
-            cleared = ws.receive_json()
-            assert cleared["type"] == "suggestion_cleared"
             received = ws.receive_json()
             assert received["type"] == "label_created"
             assert received["label"] == "Build"
@@ -1574,6 +1588,9 @@ class TestLabelCreatedEvent:
             assert received["ts"] == "2026-02-27T10:00:00+00:00"
             assert "provenance" not in received
             assert "mapped_label" not in received
+            changed = ws.receive_json()
+            assert changed["type"] == "labels_changed"
+            assert changed["reason"] == "created"
 
     def test_no_event_without_extend_forward(self, data_dir: Path) -> None:
         """TC-UI-LC-002: extend_forward=False does not emit label_created."""
@@ -1600,8 +1617,6 @@ class TestLabelCreatedEvent:
                 bus.publish_threadsafe({"type": "status", "state": "sentinel"})
 
             threading.Thread(target=_post).start()
-            cleared = ws.receive_json()
-            assert cleared["type"] == "suggestion_cleared"
             changed = ws.receive_json()
             assert changed["type"] == "labels_changed"
             assert changed["reason"] == "created"
@@ -1664,10 +1679,12 @@ class TestLabelStoppedEvent:
 
 
 class TestSuggestionCleared:
-    """Verify label saves publish suggestion_cleared, errors do not."""
+    """Verify suggestion_cleared rules: accept/skip; manual POST /api/labels does not clear."""
 
-    def test_label_save_publishes_suggestion_cleared(self, data_dir: Path) -> None:
-        """TC-UI-SC-001: POST /api/labels emits suggestion_cleared via WS."""
+    def test_manual_label_save_does_not_publish_suggestion_cleared(
+        self, data_dir: Path
+    ) -> None:
+        """TC-UI-SC-001: POST /api/labels does not emit suggestion_cleared (preserves banner)."""
         import threading
 
         bus = EventBus()
@@ -1690,8 +1707,8 @@ class TestSuggestionCleared:
 
             threading.Thread(target=_post).start()
             received = ws.receive_json()
-            assert received["type"] == "suggestion_cleared"
-            assert received["reason"] == "label_saved"
+            assert received["type"] == "labels_changed"
+            assert received["reason"] == "created"
 
     def test_notification_accept_publishes_suggestion_cleared(
         self, data_dir: Path

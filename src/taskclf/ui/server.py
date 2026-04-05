@@ -154,10 +154,20 @@ class AWLiveEntry(BaseModel):
 class UserConfigResponse(BaseModel):
     user_id: str
     username: str
+    suggestion_banner_ttl_seconds: int = Field(
+        default=0,
+        ge=0,
+        description="0 disables auto-dismiss; positive values set the client timer in seconds.",
+    )
 
 
 class UserConfigUpdateRequest(BaseModel):
     username: str | None = None
+    suggestion_banner_ttl_seconds: int | None = Field(
+        default=None,
+        ge=0,
+        description="When set, persists suggestion banner TTL (0 = disabled).",
+    )
 
 
 class NotificationAcceptRequest(BaseModel):
@@ -543,8 +553,6 @@ def create_app(
         if on_label_saved is not None:
             on_label_saved()
 
-        await bus.publish({"type": "suggestion_cleared", "reason": "label_saved"})
-
         if span.extend_forward:
             await bus.publish(
                 {
@@ -893,11 +901,20 @@ def create_app(
     async def config_labels() -> list[str]:
         return [cl.value for cl in CoreLabel]
 
+    def _suggestion_banner_ttl_seconds() -> int:
+        raw = user_config.as_dict().get("suggestion_banner_ttl_seconds", 0)
+        try:
+            n = int(raw)
+        except TypeError, ValueError:
+            return 0
+        return max(0, n)
+
     @app.get("/api/config/user")
     async def api_op_config_user_get() -> UserConfigResponse:
         return UserConfigResponse(
             user_id=user_config.user_id,
             username=user_config.username,
+            suggestion_banner_ttl_seconds=_suggestion_banner_ttl_seconds(),
         )
 
     @app.put("/api/config/user")
@@ -913,6 +930,7 @@ def create_app(
         return UserConfigResponse(
             user_id=user_config.user_id,
             username=user_config.username,
+            suggestion_banner_ttl_seconds=_suggestion_banner_ttl_seconds(),
         )
 
     # -- REST: window control -------------------------------------------------

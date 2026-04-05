@@ -157,6 +157,7 @@ export async function notification_skip(): Promise<{ status: string }> {
 export type UserConfig = {
   user_id: string;
   username: string;
+  suggestion_banner_ttl_seconds: number;
 };
 
 export async function user_config_get(): Promise<UserConfig> {
@@ -165,6 +166,7 @@ export async function user_config_get(): Promise<UserConfig> {
 
 export async function user_config_update(patch: {
   username?: string;
+  suggestion_banner_ttl_seconds?: number;
 }): Promise<UserConfig> {
   return api_json(`${BASE}/config/user`, {
     method: "PUT",

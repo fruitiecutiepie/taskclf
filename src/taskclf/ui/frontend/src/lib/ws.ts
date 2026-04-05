@@ -1,6 +1,23 @@
 import { onCleanup, onMount } from "solid-js";
 import { createStore, produce, reconcile } from "solid-js/store";
 
+import { user_config_get } from "./api";
+
+/**
+ * Maps persisted config seconds to a timer duration; `null` means no auto-dismiss.
+ * Exported for unit tests.
+ */
+export function suggestion_banner_ttl_ms_from_seconds(seconds: number): number | null {
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    return null;
+  }
+  const ms = Math.floor(seconds) * 1000;
+  if (!Number.isFinite(ms) || ms <= 0) {
+    return null;
+  }
+  return Math.min(ms, Number.MAX_SAFE_INTEGER);
+}
+
 export type Prediction = {
   type: "prediction";
   label: string;
@@ -269,7 +286,7 @@ export function ws_store_new() {
     },
   });
 
-  const SUGGESTION_TTL_MS = 10 * 60 * 1000;
+  let suggestion_ttl_seconds = 0;
 
   let ws: WebSocket | null = null;
   let reconnect_timer: ReturnType<typeof setTimeout> | null = null;
@@ -305,10 +322,24 @@ export function ws_store_new() {
 
   function suggestion_timer_start() {
     suggestion_timer_clear();
+    const ttl_ms = suggestion_banner_ttl_ms_from_seconds(suggestion_ttl_seconds);
+    if (ttl_ms == null) {
+      return;
+    }
     suggestion_timer = setTimeout(() => {
       suggestion_timer = null;
       setStore("active_suggestion", null);
-    }, SUGGESTION_TTL_MS);
+    }, ttl_ms);
+  }
+
+  async function suggestion_banner_ttl_load_from_config() {
+    try {
+      const cfg = await user_config_get();
+      const raw = cfg.suggestion_banner_ttl_seconds;
+      suggestion_ttl_seconds = Number.isFinite(raw) ? Math.max(0, Math.floor(raw)) : 0;
+    } catch {
+      suggestion_ttl_seconds = 0;
+    }
   }
 
   function ws_stats_bump(now: string, extra?: (s: WSStats) => void) {
@@ -553,7 +584,10 @@ export function ws_store_new() {
   }
 
   onMount(() => {
-    ws_connection_open();
+    void (async () => {
+      await suggestion_banner_ttl_load_from_config();
+      ws_connection_open();
+    })();
     window.addEventListener("online", online_event_sync);
     document.addEventListener("visibilitychange", visibility_event_sync);
   });

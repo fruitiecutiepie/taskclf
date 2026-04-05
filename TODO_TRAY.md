@@ -52,7 +52,7 @@ The frontend (`LabelGrid.tsx`) now parses the structured 409 JSON from the error
 
 ### ~~8. Suggestion never expires~~ DONE
 
-The server now publishes a `suggestion_cleared` event via EventBus after every successful label save (`POST /api/labels` and `POST /api/notification/accept`), so all connected clients dismiss stale suggestions immediately. The frontend (`ws.ts`) handles the new event type and also applies a 10-minute TTL timer: if no new `suggest_label` event arrives within 10 minutes, the suggestion auto-dismisses. The TTL timer is cancelled when a suggestion is explicitly dismissed, replaced, or cleared by the server.
+The server publishes a `suggestion_cleared` event via EventBus after successful suggestion acceptance (`POST /api/notification/accept`), skip (`POST /api/notification/skip`), and tray-side auto-saves; manual `POST /api/labels` does not clear the banner. The frontend (`ws.ts`) clears on that event and optionally auto-dismisses after `suggestion_banner_ttl_seconds` from `config.toml` (`0` disables). The TTL timer is cancelled when a suggestion is explicitly dismissed, replaced, or cleared by the server.
 
 ---
 
