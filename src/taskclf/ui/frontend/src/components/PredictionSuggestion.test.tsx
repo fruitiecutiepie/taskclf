@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { notification_accept } from "../lib/api";
+import { aw_live_list, feature_summary_get, notification_accept } from "../lib/api";
 import { time_format } from "../lib/format";
 import type { LabelSuggestion } from "../lib/ws";
 import { PredictionSuggestion } from "./PredictionSuggestion";
@@ -8,6 +8,15 @@ import { PredictionSuggestion } from "./PredictionSuggestion";
 vi.mock("../lib/api", () => ({
   notification_accept: vi.fn(),
   notification_skip: vi.fn(),
+  aw_live_list: vi.fn().mockResolvedValue([]),
+  feature_summary_get: vi.fn().mockResolvedValue({
+    top_apps: [],
+    mean_keys_per_min: null,
+    mean_clicks_per_min: null,
+    mean_scroll_per_min: null,
+    total_buckets: 0,
+    session_count: 0,
+  }),
 }));
 
 vi.mock("../lib/log", () => ({
@@ -72,6 +81,26 @@ describe("PredictionSuggestion", () => {
       screen.getByText(
         suggestion_range_text(suggestion.block_start, suggestion.block_end),
       ),
+    ).toBeInTheDocument();
+  });
+
+  it("loads activity context for the suggestion block range", async () => {
+    const suggestion = suggestion_make();
+
+    render(() => <PredictionSuggestion suggestion={() => suggestion} />);
+
+    await waitFor(() => {
+      expect(vi.mocked(feature_summary_get)).toHaveBeenCalledWith(
+        suggestion.block_start,
+        suggestion.block_end,
+      );
+    });
+    expect(vi.mocked(aw_live_list)).toHaveBeenCalledWith(
+      suggestion.block_start,
+      suggestion.block_end,
+    );
+    expect(
+      await screen.findByText("No activity data for this window"),
     ).toBeInTheDocument();
   });
 

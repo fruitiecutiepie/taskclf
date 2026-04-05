@@ -4,6 +4,7 @@ import { time_format } from "../lib/format";
 import { LABEL_COLORS } from "../lib/labelColors";
 import { frontend_log_error } from "../lib/log";
 import type { LabelSuggestion } from "../lib/ws";
+import { ActivitySummary } from "./ActivitySummary";
 import { ErrorBanner } from "./ErrorBanner";
 
 /** Matches `LabelOverwrite` / recorder control sizing. */
@@ -106,6 +107,11 @@ export const PredictionSuggestion: Component<{
 
   const busy_opacity = () => (busy() ? "0.6" : "1");
   const busy_cursor = () => (busy() ? "not-allowed" : "pointer");
+
+  const suggestion_time_range = () => {
+    const sg = s();
+    return sg ? { start: sg.block_start, end: sg.block_end } : null;
+  };
 
   return (
     <Show when={s()}>
@@ -273,6 +279,7 @@ export const PredictionSuggestion: Component<{
             </Show>
           </div>
         </div>
+        <ActivitySummary time_range={suggestion_time_range} show_empty />
         <Show when={error()}>
           <ErrorBanner message={error() ?? ""} on_close={() => set_error(null)} />
         </Show>
