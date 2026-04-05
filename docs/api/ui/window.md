@@ -32,6 +32,23 @@ creates separate popup `BrowserWindow` instances for the label grid
 child-window state machine for hover, pin, delayed hide, and drag
 detection.
 
+The compact route in the Solid app uses the same layout and host
+commands as pywebview and Electron. The child routes `?view=label` and
+`?view=panel` use the same markup as native popups (full viewport, top
+drag strip, hover handlers that call `Host.invoke`) — not a separate
+“browser preview” layout.
+
+A **plain browser tab** (for example Vite alone, with no
+`window.pywebview` or `window.electronHost`) still loads that UI; the
+compact route uses a light solid page background and **in-page** label grid and
+state panel (hover / pin) because `Host.invoke` window calls are no-ops
+there. The separate `?view=label` and `?view=panel` routes match the
+native popups for focused testing; use pywebview or Electron for real
+multi-window behavior.
+
+See [`host_window_drag_strip.md`](host_window_drag_strip.md) for the
+shared grab-bar component used on child routes.
+
 ## WindowChild
 
 Encapsulates the visibility / pin / timer state machine shared by the
@@ -92,12 +109,13 @@ Internally, `WindowAPI` delegates to two `WindowChild` instances
 ### Dragging
 
 All three windows use CSS `pywebview-drag-region` elements for drag
-handles. The compact pill uses a narrow dedicated drag handle so the
-badge and status dot still receive hover/click events, while each child
-window keeps a small grab bar at the top. The main pill sets
-`easy_drag=False` to avoid conflicts between the native easy-drag
-handler and the CSS drag region, which previously caused glitches on
-multi-monitor setups.
+handles. The compact pill uses **left and right flex spacers** (empty
+regions that grow with `flex: 1`) as drag targets; the label badge and
+status dot sit in a fixed center column outside those regions so they
+still receive hover/click events. Each child window keeps a small grab
+bar at the top. The main pill sets `easy_drag=False` to avoid conflicts
+between the native easy-drag handler and the CSS drag region, which
+previously caused glitches on multi-monitor setups.
 
 ## window_run (ui.window_run)
 

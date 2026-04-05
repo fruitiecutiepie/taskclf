@@ -1,8 +1,148 @@
 import { fireEvent, render, screen } from "@solidjs/testing-library";
 import { describe, expect, it, vi } from "vitest";
+import { ws_store_stub } from "./test/ws_store_stub";
 
-describe("App native pill", () => {
-  it("keeps the label badge outside the pywebview drag region", async () => {
+describe("App view routing", () => {
+  it("renders compact shell when view query is absent", async () => {
+    vi.resetModules();
+    window.history.replaceState({}, "", "/");
+
+    vi.doMock("./lib/host", () => ({
+      host: {
+        kind: "browser",
+        isNativeWindow: false,
+        invoke: vi.fn(),
+      },
+    }));
+    vi.doMock("./lib/log", () => ({
+      frontend_error_handlers_install: () => () => {},
+    }));
+    vi.doMock("./lib/notifications", () => ({
+      notification_permission_ensure: vi.fn(),
+      transition_notification_show: vi.fn(),
+    }));
+    vi.doMock("./lib/ws", () => ({
+      ws_store_new: ws_store_stub,
+    }));
+
+    const { default: App } = await import("./App");
+    render(() => <App />);
+
+    expect(screen.getByRole("button", { name: "No Model" })).toBeInTheDocument();
+  });
+
+  it("shows browser label popup on hover with deferred hide", async () => {
+    vi.resetModules();
+    vi.useFakeTimers();
+    window.history.replaceState({}, "", "/");
+
+    vi.doMock("./lib/host", () => ({
+      host: {
+        kind: "browser",
+        isNativeWindow: false,
+        invoke: vi.fn(),
+      },
+    }));
+    vi.doMock("./lib/log", () => ({
+      frontend_error_handlers_install: () => () => {},
+    }));
+    vi.doMock("./lib/notifications", () => ({
+      notification_permission_ensure: vi.fn(),
+      transition_notification_show: vi.fn(),
+    }));
+    vi.doMock("./lib/ws", () => ({
+      ws_store_new: ws_store_stub,
+    }));
+    vi.doMock("./components/LabelRecorder", () => ({
+      LabelRecorder: () => <div data-testid="inline-label-grid">Label Recorder</div>,
+    }));
+    vi.doMock("./components/StatusPanel", () => ({
+      StatusPanel: () => <div>Status Panel</div>,
+    }));
+
+    const { default: App } = await import("./App");
+    render(() => <App />);
+
+    const badge_button = screen.getByRole("button", { name: "No Model" });
+    fireEvent.mouseEnter(badge_button);
+    expect(screen.getByTestId("inline-label-grid")).toBeInTheDocument();
+
+    fireEvent.mouseLeave(badge_button);
+    expect(screen.getByTestId("inline-label-grid")).toBeInTheDocument();
+
+    vi.advanceTimersByTime(299);
+    expect(screen.getByTestId("inline-label-grid")).toBeInTheDocument();
+
+    vi.advanceTimersByTime(1);
+    expect(screen.queryByTestId("inline-label-grid")).not.toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
+  it("renders label view when view=label", async () => {
+    vi.resetModules();
+    window.history.replaceState({}, "", "/?view=label");
+
+    vi.doMock("./lib/host", () => ({
+      host: {
+        kind: "browser",
+        isNativeWindow: false,
+        invoke: vi.fn(),
+      },
+    }));
+    vi.doMock("./lib/log", () => ({
+      frontend_error_handlers_install: () => () => {},
+    }));
+    vi.doMock("./lib/notifications", () => ({
+      notification_permission_ensure: vi.fn(),
+      transition_notification_show: vi.fn(),
+    }));
+    vi.doMock("./lib/ws", () => ({
+      ws_store_new: ws_store_stub,
+    }));
+    vi.doMock("./components/LabelRecorder", () => ({
+      LabelRecorder: () => <div data-testid="label-recorder-route">Label Recorder</div>,
+    }));
+
+    const { default: App } = await import("./App");
+    render(() => <App />);
+
+    expect(screen.getByTestId("label-recorder-route")).toBeInTheDocument();
+  });
+
+  it("renders panel view when view=panel", async () => {
+    vi.resetModules();
+    window.history.replaceState({}, "", "/?view=panel");
+
+    vi.doMock("./lib/host", () => ({
+      host: {
+        kind: "browser",
+        isNativeWindow: false,
+        invoke: vi.fn(),
+      },
+    }));
+    vi.doMock("./lib/log", () => ({
+      frontend_error_handlers_install: () => () => {},
+    }));
+    vi.doMock("./lib/notifications", () => ({
+      notification_permission_ensure: vi.fn(),
+      transition_notification_show: vi.fn(),
+    }));
+    vi.doMock("./lib/ws", () => ({
+      ws_store_new: ws_store_stub,
+    }));
+    vi.doMock("./components/StatusPanel", () => ({
+      StatusPanel: () => <div data-testid="status-panel-route">Status Panel</div>,
+    }));
+
+    const { default: App } = await import("./App");
+    render(() => <App />);
+
+    expect(screen.getByTestId("status-panel-route")).toBeInTheDocument();
+  });
+});
+
+describe("App drag regions", () => {
+  it("keeps the label badge outside every pywebview drag region", async () => {
     vi.resetModules();
     window.history.replaceState({}, "", "/");
 
@@ -95,11 +235,13 @@ describe("App native pill", () => {
     const { default: App } = await import("./App");
     render(() => <App />);
 
-    const drag_region = document.querySelector(".pywebview-drag-region");
-    expect(drag_region).not.toBeNull();
+    const drag_regions = document.querySelectorAll(".pywebview-drag-region");
+    expect(drag_regions.length).toBe(2);
 
     const badge_button = screen.getByRole("button", { name: "No Model" });
-    expect(drag_region).not.toContainElement(badge_button);
+    for (const el of drag_regions) {
+      expect(el).not.toContainElement(badge_button);
+    }
   });
 
   it("uses popup host commands in Electron multi-window mode", async () => {

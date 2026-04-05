@@ -1,6 +1,6 @@
 .PHONY: install \
        py-lint py-codepol py-test py-typecheck \
-       ui-lint ui-test ui-typecheck ui-build ui-dev electron-typecheck electron-test electron-dist \
+       ui-lint ui-test ui-typecheck ui-build ui-dev dev electron-typecheck electron-test electron-dist \
        lint test typecheck ci check \
        pyinstaller-build \
        docs-serve docs-build \
@@ -59,6 +59,10 @@ ui-build:
 
 ui-dev:
 	$(PNPM) run dev
+
+# Backend (FastAPI) + Vite HMR; opens the UI in the browser.
+dev:
+	uv run taskclf ui --dev --browser
 
 # --- electron ---
 

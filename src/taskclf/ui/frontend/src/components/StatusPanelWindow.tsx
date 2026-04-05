@@ -1,78 +1,35 @@
-import { type Component, Show } from "solid-js";
+import type { Component } from "solid-js";
 import { host } from "../lib/host";
 import { ws_store_new } from "../lib/ws";
+import { HostWindowDragStrip } from "./HostWindowDragStrip";
 import { StatusPanel } from "./StatusPanel";
-
-const CONTENT_W = 280;
-const PANEL_MAX_H = 520;
-const is_browser_mode = () => window.innerWidth > 300 && !host.isNativeWindow;
 
 export const StatusPanelWindow: Component = () => {
   const ws = ws_store_new();
-  const in_browser = is_browser_mode();
 
   return (
     <>
       {/* biome-ignore lint/a11y/noStaticElementInteractions: hover-only panel show/hide, not a user interaction */}
       <div
         onMouseEnter={() => {
-          if (!in_browser) {
-            host.invoke({ cmd: "cancelPanelHide" });
-          }
+          host.invoke({ cmd: "cancelPanelHide" });
         }}
         onMouseLeave={() => {
-          if (!in_browser) {
-            host.invoke({ cmd: "hideStatePanel" });
-          }
-        }}
-        style={{
-          ...(in_browser
-            ? {
-                display: "flex",
-                "justify-content": "center",
-                "padding-top": "32px",
-                "min-height": "100vh",
-                background: "url('/bliss.png') center/cover no-repeat fixed",
-              }
-            : {}),
+          host.invoke({ cmd: "hideStatePanel" });
         }}
       >
         <div
           style={{
             background: "transparent",
-            width: in_browser ? `${CONTENT_W}px` : "100%",
-            ...(in_browser
-              ? { "max-height": `${PANEL_MAX_H}px` }
-              : { height: "100vh", display: "flex", "flex-direction": "column" }),
+            width: "100%",
+            height: "100vh",
+            display: "flex",
+            "flex-direction": "column",
             overflow: "auto",
             padding: "4px",
           }}
         >
-          <Show when={!in_browser}>
-            <div
-              class={host.kind === "pywebview" ? "pywebview-drag-region" : undefined}
-              style={{
-                height: "10px",
-                cursor: "grab",
-                "flex-shrink": "0",
-                display: "flex",
-                "justify-content": "center",
-                "align-items": "center",
-                ...(host.kind === "electron"
-                  ? { "-webkit-app-region": "drag", "app-region": "drag" }
-                  : {}),
-              }}
-            >
-              <div
-                style={{
-                  width: "32px",
-                  height: "3px",
-                  "border-radius": "2px",
-                  background: "rgba(255,255,255,0.15)",
-                }}
-              />
-            </div>
-          </Show>
+          <HostWindowDragStrip />
           <StatusPanel
             status={ws.connection_status}
             latest_status={ws.latest_status}
@@ -82,9 +39,7 @@ export const StatusPanelWindow: Component = () => {
             ws_stats={ws.ws_stats}
             train_state={ws.train_state}
             on_open_label_recorder={() => {
-              if (!in_browser) {
-                host.invoke({ cmd: "showLabelGrid" });
-              }
+              host.invoke({ cmd: "showLabelGrid" });
             }}
           />
         </div>
