@@ -36,6 +36,7 @@ import {
   orderedCompatiblePayloadVersions,
   payloadChooserOffersMultipleVersions,
 } from "./payload_choice";
+import { dashboardWindowActionForTrayInteraction } from "./tray_dashboard";
 import { getAppIconPath, getTrayIconAsset } from "./tray_icon";
 
 /** Must match `build.productName` in package.json (Finder / .app name, tray, notifications). */
@@ -616,6 +617,14 @@ function toggleWindow(): void {
   showWindow();
 }
 
+function applyDashboardWindowAction(action: "show" | "toggle"): void {
+  if (action === "toggle") {
+    toggleWindow();
+    return;
+  }
+  showWindow();
+}
+
 // ── Sidecar ─────────────────────────────────────────────────────────────
 
 function attachSidecarOutput(
@@ -872,18 +881,27 @@ async function exportLabels(): Promise<void> {
 let syncTimer: ReturnType<typeof setInterval> | null = null;
 let updateCheckTimer: ReturnType<typeof setInterval> | null = null;
 let updatePromptShownForVersion: string | null = null;
+let updateCheckInProgress = false;
 
 function payloadResolutionDetails(
   resolution: PayloadResolution,
   activeVersion: string | null,
+  options?: {
+    selectedVersion?: string | null;
+    note?: string | null;
+  },
 ): string {
-  return [
+  const lines = [
     `Launcher version: ${resolution.launcherManifest.launcher_version}`,
     `Active payload: ${activeVersion ?? "none"}`,
     `Recommended payload: ${resolution.defaultVersion}`,
-    `Selected payload: ${resolution.selectedVersion ?? "auto"}`,
+    `Selected payload: ${options?.selectedVersion ?? resolution.selectedVersion ?? "auto"}`,
     `Target payload: ${resolution.desiredVersion}`,
-  ].join("\n");
+  ];
+  if (options?.note) {
+    lines.push("", options.note);
+  }
+  return lines.join("\n");
 }
 
 async function applyPayloadResolution(
@@ -903,6 +921,167 @@ async function applyPayloadResolution(
     } else {
       await runDownloadWithProgress(heading, resolution.payloadManifest);
     }
+  }
+}
+
+async function applyPayloadResolutionAndRelaunch(
+  resolution: PayloadResolution,
+  heading: string,
+  options?: {
+    clearSelectedVersionBeforeRelaunch?: boolean;
+  },
+): Promise<void> {
+  await applyPayloadResolution(resolution, heading);
+  if (options?.clearSelectedVersionBeforeRelaunch) {
+    clearSelectedVersion();
+  }
+  app.relaunch();
+  app.quit();
+}
+
+async function showUpdateCheckFailureDialog(detail?: string): Promise<void> {
+  await dialog.showMessageBox({
+    type: "error",
+    title: "Update Check Failed",
+    message: `${APP_DISPLAY_NAME} could not check for updates.`,
+    detail: detail ?? "unknown error",
+  });
+}
+
+async function checkForUpdatesManually(): Promise<void> {
+  if (!app.isPackaged || isQuitting) {
+    await dialog.showMessageBox({
+      type: "info",
+      title: "Updates Unavailable",
+      message: `${APP_DISPLAY_NAME} update checks are only available in packaged apps.`,
+    });
+    return;
+  }
+  if (updateCheckInProgress) {
+    new Notification({
+      title: APP_DISPLAY_NAME,
+      body: "Already checking for updates.",
+    }).show();
+    return;
+  }
+
+  updateCheckInProgress = true;
+  try {
+    const selectedVersion = getSelectedVersion();
+    const resolution = await resolvePayloadRelease({
+      timeoutMs: manifestFetchTimeoutMs(),
+      ignoreSelectedVersion: true,
+    });
+    if (resolution === null) {
+      await showUpdateCheckFailureDialog(lastManifestCheckFailure ?? undefined);
+      return;
+    }
+
+    latestPayloadResolution = resolution;
+    const activeVersion = getActiveVersion();
+    const selectionIgnoredNote = (
+      selectedVersion !== null
+      && selectedVersion !== resolution.desiredVersion
+    )
+      ? `Manual update checks compare against the latest compatible payload instead of the pinned Selected payload v${selectedVersion}.`
+      : null;
+
+    if (resolution.syncPlan.action === "none") {
+      await dialog.showMessageBox({
+        type: "info",
+        title: "Up to Date",
+        message: `${APP_DISPLAY_NAME} is up to date.`,
+        detail: payloadResolutionDetails(resolution, activeVersion, {
+          selectedVersion,
+          note: selectionIgnoredNote,
+        }),
+      });
+      return;
+    }
+
+    const compatible = orderedCompatiblePayloadVersions(
+      resolution.payloadIndex.payloads,
+      resolution.launcherManifest.compatible_payloads,
+    );
+    const offerChooser = payloadChooserOffersMultipleVersions(compatible);
+    const buttons = offerChooser
+      ? ["Update and Restart", "Choose Version", "Later"]
+      : ["Update and Restart", "Later"];
+    const prompt = await dialog.showMessageBox({
+      type: "question",
+      title: "Core Update Available",
+      message: `${APP_DISPLAY_NAME} can switch to payload v${resolution.desiredVersion} on restart.`,
+      detail: payloadResolutionDetails(resolution, activeVersion, {
+        selectedVersion,
+        note: selectionIgnoredNote,
+      }),
+      buttons,
+      defaultId: 0,
+      cancelId: offerChooser ? 2 : 1,
+    });
+
+    const applyManualUpdate = async (toApply: PayloadResolution) => {
+      await applyPayloadResolutionAndRelaunch(
+        toApply,
+        `Downloading ${APP_DISPLAY_NAME} update`,
+        { clearSelectedVersionBeforeRelaunch: true },
+      );
+    };
+
+    if (prompt.response === 0) {
+      try {
+        await applyManualUpdate(resolution);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        launcherLog(`manual update apply failed: ${msg}`, "error");
+        await dialog.showMessageBox({
+          type: "error",
+          title: "Core Update Failed",
+          message: `Failed to update ${APP_DISPLAY_NAME}.`,
+          detail: msg,
+        });
+      }
+      return;
+    }
+
+    if (offerChooser && prompt.response === 1) {
+      const picked = await promptPayloadVersionChoice({
+        versions: compatible,
+        recommended: resolution.defaultVersion,
+        title: "Choose Payload Version",
+      });
+      if (picked === null) {
+        return;
+      }
+      const chosenResolution = await resolvePayloadRelease({
+        timeoutMs: manifestFetchTimeoutMs(),
+        preferredVersion: picked,
+        ignoreSelectedVersion: true,
+      });
+      if (chosenResolution === null) {
+        await showUpdateCheckFailureDialog(lastManifestCheckFailure ?? undefined);
+        return;
+      }
+      latestPayloadResolution = chosenResolution;
+      try {
+        await applyManualUpdate(chosenResolution);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        launcherLog(`manual update apply failed: ${msg}`, "error");
+        await dialog.showMessageBox({
+          type: "error",
+          title: "Core Update Failed",
+          message: `Failed to update ${APP_DISPLAY_NAME}.`,
+          detail: msg,
+        });
+      }
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    launcherLog(`manual update check failed: ${msg}`, "error");
+    await showUpdateCheckFailureDialog(msg);
+  } finally {
+    updateCheckInProgress = false;
   }
 }
 
@@ -992,10 +1171,11 @@ async function switchToPayloadVersion(version: string): Promise<void> {
 }
 
 async function performBackgroundUpdateCheck() {
-  if (!app.isPackaged || isQuitting || mainWindow === null) {
+  if (!app.isPackaged || isQuitting || mainWindow === null || updateCheckInProgress) {
     return;
   }
 
+  updateCheckInProgress = true;
   try {
     const resolution = await resolvePayloadRelease({ timeoutMs: manifestFetchTimeoutMs() });
     if (resolution === null) {
@@ -1029,9 +1209,10 @@ async function performBackgroundUpdateCheck() {
       });
 
       const applyUpdateAndRelaunch = async (toApply: PayloadResolution) => {
-        await applyPayloadResolution(toApply, `Downloading ${APP_DISPLAY_NAME} update`);
-        app.relaunch();
-        app.quit();
+        await applyPayloadResolutionAndRelaunch(
+          toApply,
+          `Downloading ${APP_DISPLAY_NAME} update`,
+        );
       };
 
       if (res.response === 0) {
@@ -1080,6 +1261,8 @@ async function performBackgroundUpdateCheck() {
     const msg = err instanceof Error ? err.message : String(err);
     launcherLog(`background update check failed: ${msg}`, "error");
     console.error("[main] Background update check failed:", err);
+  } finally {
+    updateCheckInProgress = false;
   }
 }
 
@@ -1201,6 +1384,13 @@ async function syncTrayMenu() {
         ]
       },
       { label: "Payload", submenu: payloadSubmenu },
+      {
+        label: "Check for Updates",
+        enabled: app.isPackaged,
+        click: () => {
+          void checkForUpdatesManually();
+        },
+      },
       { label: "Status", click: () => sidecarRequest("/api/tray/action/show_status", { method: "POST" }) },
       { label: "Open Data Folder", click: () => sidecarRequest("/api/tray/action/open_data_dir", { method: "POST" }) },
       { label: "Edit Config", click: () => sidecarRequest("/api/tray/action/edit_config", { method: "POST" }) },
@@ -1263,14 +1453,25 @@ function createTray(): Tray {
   const instance = new Tray(createTrayIcon());
   instance.setToolTip(APP_DISPLAY_NAME);
   instance.on("click", () => {
-    toggleWindow();
+    applyDashboardWindowAction(
+      dashboardWindowActionForTrayInteraction("icon-click"),
+    );
   });
   instance.setContextMenu(
     Menu.buildFromTemplate([
       {
         label: "Toggle Dashboard",
         click: () => {
-          toggleWindow();
+          applyDashboardWindowAction(
+            dashboardWindowActionForTrayInteraction("menu-toggle"),
+          );
+        },
+      },
+      {
+        label: "Check for Updates",
+        enabled: app.isPackaged,
+        click: () => {
+          void checkForUpdatesManually();
         },
       },
       { type: "separator" },

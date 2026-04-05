@@ -742,6 +742,8 @@ Launch the optional Electron desktop shell.  Electron owns the native
 tray icon and three frameless BrowserWindows (compact pill, label popup,
 state panel popup), while the existing Python tray backend runs as a
 sidecar process in browser mode without opening a separate browser tab.
+Clicking the tray icon shows or focuses the dashboard; hiding remains an
+explicit tray-menu action via **Toggle Dashboard**.
 
 ```bash
 taskclf electron

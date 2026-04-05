@@ -97,6 +97,11 @@ compatible payload exists, **Initial Setup** / **Core Update Required** and
 specific payload for that step (without changing the tray **Selected** pin; see
 [`electron_shell`](../api/ui/electron_shell.md)).
 
+Packaged builds also expose **Check for Updates** in the tray menu. That action
+checks the latest compatible payload on demand, shows **Up to Date** when the
+active payload is current, and otherwise offers **Update and Restart** (plus
+**Choose Version** when multiple compatible payloads exist).
+
 ---
 
 ## Data flow
