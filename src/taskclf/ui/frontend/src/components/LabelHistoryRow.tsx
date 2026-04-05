@@ -10,6 +10,7 @@ import {
 import { LABEL_COLORS } from "../lib/labelColors";
 import type { LabelItem } from "../lib/labelTimeline";
 import { ActivitySummary } from "./ActivitySummary";
+import { ErrorBanner } from "./ErrorBanner";
 import { LabelFlash } from "./LabelFlash";
 
 export const LabelHistoryRow: Component<{
@@ -22,6 +23,8 @@ export const LabelHistoryRow: Component<{
   core_labels: string[];
   busy: boolean;
   flash: string | null;
+  error: string | null;
+  on_error_close: () => void;
 }> = (props) => {
   const is_open_ended = () => props.label_item.open_ended === true;
   const start_d = () => date_parse(props.label_item.start_ts);
@@ -202,6 +205,10 @@ export const LabelHistoryRow: Component<{
           </div>
 
           <ActivitySummary time_range={() => edited_range()} />
+
+          <Show when={props.error}>
+            <ErrorBanner message={props.error ?? ""} on_close={props.on_error_close} />
+          </Show>
 
           {props.flash && <LabelFlash flash={props.flash} />}
 

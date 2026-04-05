@@ -1,8 +1,19 @@
 import { type Accessor, type Component, createSignal, Show } from "solid-js";
 import { notification_accept, notification_skip } from "../lib/api";
 import { time_format } from "../lib/format";
+import { LABEL_COLORS } from "../lib/labelColors";
 import { frontend_log_error } from "../lib/log";
 import type { LabelSuggestion } from "../lib/ws";
+import { ErrorBanner } from "./ErrorBanner";
+
+/** Matches `LabelOverwrite` / recorder control sizing. */
+const btn_base = {
+  padding: "2px 10px",
+  "border-radius": "6px",
+  cursor: "pointer" as const,
+  "font-size": "0.7rem",
+  "font-weight": "600",
+};
 
 function suggestion_range_part_format(d: Date): string {
   return d.toLocaleString(undefined, {
@@ -69,7 +80,6 @@ export const PredictionSuggestion: Component<{
       const msg = err instanceof Error ? err.message : "Failed to save inferred label";
       frontend_log_error("Failed to save inferred label", err);
       set_error(msg);
-      setTimeout(() => set_error(null), 4000);
     } finally {
       set_busy(false);
     }
@@ -89,138 +99,182 @@ export const PredictionSuggestion: Component<{
       const msg = err instanceof Error ? err.message : "Failed to dismiss suggestion";
       frontend_log_error("Failed to dismiss suggestion", err);
       set_error(msg);
-      setTimeout(() => set_error(null), 4000);
     } finally {
       set_busy(false);
     }
   }
+
+  const busy_opacity = () => (busy() ? "0.6" : "1");
+  const busy_cursor = () => (busy() ? "not-allowed" : "pointer");
 
   return (
     <Show when={s()}>
       <div
         style={{
           background: "var(--surface)",
-          border: "1px solid var(--warning)",
+          border: "1px solid var(--border)",
+          "border-left": "3px solid var(--warning)",
           "border-radius": "var(--radius)",
-          padding: "12px 16px",
-          "margin-bottom": "16px",
+          padding: "8px 10px",
+          "margin-bottom": "8px",
           display: "flex",
-          "flex-wrap": "wrap",
-          "align-items": "center",
-          "justify-content": "space-between",
-          gap: "12px",
+          "flex-direction": "column",
+          gap: "6px",
         }}
       >
-        <div>
-          <div>
-            <strong style={{ color: "var(--warning)" }}>Task changed?</strong>{" "}
-            <span style={{ color: "var(--text-muted)" }}>
-              {s()?.old_label} → suggested:{" "}
-            </span>
-            <strong>{s()?.suggested}</strong>{" "}
-            <span style={{ color: "var(--text-muted)" }}>
-              ({Math.round((s()?.confidence ?? 0) * 100)}%)
-            </span>
+        <div
+          style={{
+            display: "flex",
+            "flex-wrap": "wrap",
+            "align-items": "flex-start",
+            "justify-content": "space-between",
+            gap: "8px",
+          }}
+        >
+          <div style={{ "min-width": "0", flex: "1 1 140px" }}>
+            <div style={{ "font-size": "0.8rem", "line-height": "1.35" }}>
+              <span style={{ color: "var(--text-muted)" }}>
+                Model suggests a change:{" "}
+              </span>
+              <span
+                style={{
+                  color: LABEL_COLORS[s()?.old_label ?? ""] ?? "var(--text)",
+                  "font-weight": "700",
+                }}
+              >
+                {s()?.old_label}
+              </span>
+              <span style={{ color: "var(--text-muted)" }}> → </span>
+              <span
+                style={{
+                  color: LABEL_COLORS[s()?.suggested ?? ""] ?? "var(--text)",
+                  "font-weight": "700",
+                }}
+              >
+                {s()?.suggested}
+              </span>
+              <span style={{ color: "var(--text-muted)" }}>
+                {" "}
+                ({Math.round((s()?.confidence ?? 0) * 100)}%)
+              </span>
+            </div>
+            <div
+              style={{
+                color: "var(--text-muted)",
+                "font-size": "0.7rem",
+                "margin-top": "4px",
+              }}
+            >
+              {suggestion_range_format(s()?.block_start, s()?.block_end)}
+            </div>
+            <Show when={confirm_pending()}>
+              <div
+                style={{
+                  color: "var(--text-muted)",
+                  "font-size": "0.65rem",
+                  "margin-top": "4px",
+                }}
+              >
+                This will save the suggested label for the range above.
+              </div>
+            </Show>
           </div>
           <div
             style={{
-              color: "var(--text-muted)",
-              "font-size": "0.8rem",
-              "margin-top": "4px",
+              display: "flex",
+              "flex-wrap": "wrap",
+              gap: "6px",
+              "flex-shrink": "0",
+              "align-items": "center",
             }}
           >
-            Applies to {suggestion_range_format(s()?.block_start, s()?.block_end)}
-          </div>
-        </div>
-        <div style={{ display: "flex", gap: "8px", "flex-shrink": "0" }}>
-          <Show
-            when={confirm_pending()}
-            fallback={
+            <Show
+              when={confirm_pending()}
+              fallback={
+                <>
+                  <button
+                    type="button"
+                    disabled={busy()}
+                    onClick={() => set_confirm_pending(true)}
+                    style={{
+                      ...btn_base,
+                      border: "1px solid var(--accent, #6366f1)",
+                      background: "var(--accent, #6366f1)",
+                      color: "#fff",
+                      opacity: busy_opacity(),
+                      cursor: busy_cursor(),
+                    }}
+                  >
+                    Use suggestion
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy()}
+                    onClick={suggestion_dismiss}
+                    style={{
+                      ...btn_base,
+                      border: "1px solid var(--border)",
+                      background: "var(--surface)",
+                      color: "var(--text-muted)",
+                      opacity: busy_opacity(),
+                      cursor: busy_cursor(),
+                    }}
+                  >
+                    Skip
+                  </button>
+                </>
+              }
+            >
               <button
                 type="button"
                 disabled={busy()}
-                onClick={() => set_confirm_pending(true)}
+                onClick={suggestion_accept_confirmed}
                 style={{
-                  padding: "6px 16px",
-                  background: "var(--success)",
+                  ...btn_base,
+                  border: "1px solid var(--accent, #6366f1)",
+                  background: "var(--accent, #6366f1)",
                   color: "#fff",
-                  border: "none",
-                  "border-radius": "var(--radius)",
-                  cursor: busy() ? "not-allowed" : "pointer",
-                  "font-size": "0.85rem",
-                  "font-weight": "500",
-                  opacity: busy() ? "0.6" : "1",
+                  opacity: busy_opacity(),
+                  cursor: busy_cursor(),
                 }}
               >
-                Save Suggested Label
+                Save label
               </button>
-            }
-          >
-            <button
-              type="button"
-              disabled={busy()}
-              onClick={suggestion_accept_confirmed}
-              style={{
-                padding: "6px 16px",
-                background: "var(--warning)",
-                color: "#111",
-                border: "none",
-                "border-radius": "var(--radius)",
-                cursor: busy() ? "not-allowed" : "pointer",
-                "font-size": "0.85rem",
-                "font-weight": "700",
-                opacity: busy() ? "0.6" : "1",
-              }}
-            >
-              Confirm Save
-            </button>
-            <button
-              type="button"
-              disabled={busy()}
-              onClick={() => set_confirm_pending(false)}
-              style={{
-                padding: "6px 16px",
-                background: "var(--border)",
-                color: "var(--text-muted)",
-                border: "none",
-                "border-radius": "var(--radius)",
-                cursor: busy() ? "not-allowed" : "pointer",
-                "font-size": "0.85rem",
-                opacity: busy() ? "0.6" : "1",
-              }}
-            >
-              Cancel
-            </button>
-          </Show>
-          <button
-            type="button"
-            disabled={busy()}
-            onClick={suggestion_dismiss}
-            style={{
-              padding: "6px 16px",
-              background: "var(--border)",
-              color: "var(--text-muted)",
-              border: "none",
-              "border-radius": "var(--radius)",
-              cursor: busy() ? "not-allowed" : "pointer",
-              "font-size": "0.85rem",
-              opacity: busy() ? "0.6" : "1",
-            }}
-          >
-            Dismiss
-          </button>
+              <button
+                type="button"
+                disabled={busy()}
+                onClick={() => set_confirm_pending(false)}
+                style={{
+                  ...btn_base,
+                  border: "1px solid var(--border)",
+                  background: "var(--surface)",
+                  color: "var(--text-muted)",
+                  opacity: busy_opacity(),
+                  cursor: busy_cursor(),
+                }}
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                disabled={busy()}
+                onClick={suggestion_dismiss}
+                style={{
+                  ...btn_base,
+                  border: "1px solid var(--border)",
+                  background: "var(--surface)",
+                  color: "var(--text-muted)",
+                  opacity: busy_opacity(),
+                  cursor: busy_cursor(),
+                }}
+              >
+                Skip
+              </button>
+            </Show>
+          </div>
         </div>
         <Show when={error()}>
-          <div
-            style={{
-              color: "var(--error, #e53935)",
-              "font-size": "0.8rem",
-              "margin-top": "6px",
-              width: "100%",
-            }}
-          >
-            Error: {error()}
-          </div>
+          <ErrorBanner message={error() ?? ""} on_close={() => set_error(null)} />
         </Show>
       </div>
     </Show>

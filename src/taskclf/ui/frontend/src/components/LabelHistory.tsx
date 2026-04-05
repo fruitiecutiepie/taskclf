@@ -51,6 +51,7 @@ export const LabelHistory: Component<{
   const [expanded_key, set_expanded_key] = createSignal<string | null>(null);
   const [busy, set_busy] = createSignal(false);
   const [flash, set_flash] = createSignal<string | null>(null);
+  const [error, set_error] = createSignal<string | null>(null);
 
   createEffect(
     on(
@@ -79,6 +80,7 @@ export const LabelHistory: Component<{
     const key = item_key(item);
     set_expanded_key(expanded_key() === key ? null : key);
     set_flash(null);
+    set_error(null);
   }
 
   async function label_update_submit(
@@ -89,6 +91,7 @@ export const LabelHistory: Component<{
   ) {
     set_busy(true);
     set_flash(null);
+    set_error(null);
     try {
       await label_update({
         start_ts: item.start_ts,
@@ -104,7 +107,7 @@ export const LabelHistory: Component<{
         refetch();
       }, 800);
     } catch (err: unknown) {
-      set_flash(`Error: ${err instanceof Error ? err.message : String(err)}`);
+      set_error(err instanceof Error ? err.message : String(err));
     } finally {
       set_busy(false);
     }
@@ -113,6 +116,7 @@ export const LabelHistory: Component<{
   async function label_delete_submit(item: LabelItem) {
     set_busy(true);
     set_flash(null);
+    set_error(null);
     try {
       await label_delete({
         start_ts: item.start_ts,
@@ -121,7 +125,7 @@ export const LabelHistory: Component<{
       set_expanded_key(null);
       refetch();
     } catch (err: unknown) {
-      set_flash(`Error: ${err instanceof Error ? err.message : String(err)}`);
+      set_error(err instanceof Error ? err.message : String(err));
     } finally {
       set_busy(false);
     }
@@ -130,6 +134,7 @@ export const LabelHistory: Component<{
   async function gap_create_submit(start_ts: string, end_ts: string, label: string) {
     set_busy(true);
     set_flash(null);
+    set_error(null);
     try {
       await label_create({
         start_ts,
@@ -143,7 +148,7 @@ export const LabelHistory: Component<{
         refetch();
       }, 800);
     } catch (err: unknown) {
-      set_flash(`Error: ${err instanceof Error ? err.message : String(err)}`);
+      set_error(err instanceof Error ? err.message : String(err));
     } finally {
       set_busy(false);
     }
@@ -291,6 +296,7 @@ export const LabelHistory: Component<{
             const key = item_key(item);
             set_expanded_key(expanded_key() === key ? null : key);
             set_flash(null);
+            set_error(null);
           }}
         />
         <For each={day_data().items}>
@@ -307,6 +313,8 @@ export const LabelHistory: Component<{
                   core_labels={coreLabels() ?? []}
                   busy={busy()}
                   flash={expanded_key() === item_key(item) ? flash() : null}
+                  error={expanded_key() === item_key(item) ? error() : null}
+                  on_error_close={() => set_error(null)}
                 />
               }
             >
@@ -322,6 +330,8 @@ export const LabelHistory: Component<{
                 core_labels={coreLabels() ?? []}
                 busy={busy()}
                 flash={expanded_key() === item_key(item) ? flash() : null}
+                error={expanded_key() === item_key(item) ? error() : null}
+                on_error_close={() => set_error(null)}
               />
             </Show>
           )}

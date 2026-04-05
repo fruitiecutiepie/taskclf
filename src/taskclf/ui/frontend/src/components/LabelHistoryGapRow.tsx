@@ -10,6 +10,7 @@ import {
 import { LABEL_COLORS } from "../lib/labelColors";
 import type { GapItem } from "../lib/labelTimeline";
 import { ActivitySummary } from "./ActivitySummary";
+import { ErrorBanner } from "./ErrorBanner";
 import { LabelFlash } from "./LabelFlash";
 
 export const LabelHistoryGapRow: Component<{
@@ -21,6 +22,8 @@ export const LabelHistoryGapRow: Component<{
   core_labels: string[];
   busy: boolean;
   flash: string | null;
+  error: string | null;
+  on_error_close: () => void;
 }> = (props) => {
   const gap_start_d = () => date_parse(props.gap.start_ts);
   const gap_end_d = () => date_parse(props.gap.end_ts);
@@ -177,6 +180,10 @@ export const LabelHistoryGapRow: Component<{
           </div>
 
           <ActivitySummary time_range={() => selected_range()} />
+
+          <Show when={props.error}>
+            <ErrorBanner message={props.error ?? ""} on_close={props.on_error_close} />
+          </Show>
 
           {props.flash && <LabelFlash flash={props.flash} />}
 

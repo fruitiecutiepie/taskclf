@@ -14,6 +14,7 @@ import { label_overwrite_pending_upd_get } from "../lib/label_overwrite_pending_
 import { LABEL_COLORS } from "../lib/labelColors";
 import type { LabelSuggestion, Prediction } from "../lib/ws";
 import { ActivitySummary } from "./ActivitySummary";
+import { ErrorBanner } from "./ErrorBanner";
 import { LabelConfidence } from "./LabelConfidence";
 import { LabelExtendToggle } from "./LabelExtendToggle";
 import { LabelFlash } from "./LabelFlash";
@@ -53,6 +54,7 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
     }
   });
   const [flash, set_flash] = createSignal<string | null>(null);
+  const [error, set_error] = createSignal<string | null>(null);
   const [overwrite_pending, set_overwrite_pending] =
     createSignal<OverwritePending | null>(null);
   const [selected_minutes, set_selected_minutes] = createSignal(0);
@@ -122,6 +124,7 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
       start = new Date(now.getTime() - mins * 60_000);
     }
     const effective_extend = force_extend_fwd || extend_fwd();
+    set_error(null);
     try {
       await label_create({
         start_ts: start.toISOString(),
@@ -168,8 +171,7 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
           /* fall through to generic error */
         }
       }
-      set_flash(`Error: ${msg}`);
-      setTimeout(() => set_flash(null), 3000);
+      set_error(msg || "Failed to save label");
     }
   }
 
@@ -179,6 +181,7 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
       return;
     }
     set_overwrite_pending(null);
+    set_error(null);
     try {
       await label_create({
         start_ts: pending.start,
@@ -192,8 +195,7 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
       set_label_version((v) => v + 1);
       setTimeout(() => set_flash(null), 1500);
     } catch (err: unknown) {
-      set_flash(`Error: ${err instanceof Error ? err.message : "overwrite failed"}`);
-      setTimeout(() => set_flash(null), 3000);
+      set_error(err instanceof Error ? err.message : "overwrite failed");
     }
   }
 
@@ -203,6 +205,7 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
       return;
     }
     set_overwrite_pending(null);
+    set_error(null);
     try {
       await label_create({
         start_ts: pending.start,
@@ -216,8 +219,7 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
       set_label_version((v) => v + 1);
       setTimeout(() => set_flash(null), 1500);
     } catch (err: unknown) {
-      set_flash(`Error: ${err instanceof Error ? err.message : "keep all failed"}`);
-      setTimeout(() => set_flash(null), 3000);
+      set_error(err instanceof Error ? err.message : "keep all failed");
     }
   }
 
@@ -282,6 +284,10 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
         >
           <LabelFlash flash={flash() ?? ""} />
         </button>
+      </Show>
+
+      <Show when={error()}>
+        <ErrorBanner message={error() ?? ""} on_close={() => set_error(null)} />
       </Show>
 
       <div

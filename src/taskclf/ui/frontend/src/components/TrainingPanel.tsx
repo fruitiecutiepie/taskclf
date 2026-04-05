@@ -17,6 +17,7 @@ import {
   training_start,
 } from "../lib/api";
 import type { TrainState } from "../lib/ws";
+import { ErrorBanner } from "./ErrorBanner";
 import { StatusProgress } from "./ui/StatusProgress";
 import { StatusRow } from "./ui/StatusRow";
 import { StatusSection } from "./ui/StatusSection";
@@ -50,9 +51,22 @@ export const TrainingPanel: Component<{
   const [train_error, set_train_error] = createSignal<string | null>(null);
   const [submitting, set_submitting] = createSignal(false);
   const [confirm_pending, set_confirm_pending] = createSignal(false);
+  const [dismissed_run_error_key, set_dismissed_run_error_key] = createSignal<
+    string | null
+  >(null);
 
   const ts = () => props.train_state();
   const is_running = () => ts().status === "running";
+  const run_error_key = () =>
+    ts().error ? `${ts().job_id ?? "no-job"}:${ts().error}` : null;
+  const visible_run_error = createMemo(() => {
+    const error = ts().error;
+    const key = run_error_key();
+    if (!error || key === dismissed_run_error_key()) {
+      return null;
+    }
+    return error;
+  });
 
   createEffect(
     on(
@@ -74,6 +88,18 @@ export const TrainingPanel: Component<{
           models_refresh();
         }
       },
+    ),
+  );
+
+  createEffect(
+    on(
+      run_error_key,
+      (key) => {
+        if (key === null) {
+          set_dismissed_run_error_key(null);
+        }
+      },
+      { defer: true },
     ),
   );
 
@@ -303,34 +329,10 @@ export const TrainingPanel: Component<{
           </div>
         </Show>
         <Show when={check_error()}>
-          <div
-            style={{
-              color: "#ef4444",
-              "margin-top": "3px",
-              "font-size": "0.58rem",
-              display: "flex",
-              "justify-content": "space-between",
-              "align-items": "center",
-            }}
-          >
-            <span>{check_error()}</span>
-            <button
-              type="button"
-              onClick={() => set_check_error(null)}
-              style={{
-                cursor: "pointer",
-                "margin-left": "4px",
-                opacity: 0.7,
-                background: "none",
-                border: "none",
-                color: "inherit",
-                font: "inherit",
-                padding: "0",
-              }}
-            >
-              ✕
-            </button>
-          </div>
+          <ErrorBanner
+            message={check_error() ?? ""}
+            on_close={() => set_check_error(null)}
+          />
         </Show>
       </StatusSection>
 
@@ -470,34 +472,10 @@ export const TrainingPanel: Component<{
             </div>
           </Show>
           <Show when={train_error()}>
-            <div
-              style={{
-                color: "#ef4444",
-                "margin-top": "3px",
-                "font-size": "0.58rem",
-                display: "flex",
-                "justify-content": "space-between",
-                "align-items": "center",
-              }}
-            >
-              <span>{train_error()}</span>
-              <button
-                type="button"
-                onClick={() => set_train_error(null)}
-                style={{
-                  cursor: "pointer",
-                  "margin-left": "4px",
-                  opacity: 0.7,
-                  background: "none",
-                  border: "none",
-                  color: "inherit",
-                  font: "inherit",
-                  padding: "0",
-                }}
-              >
-                ✕
-              </button>
-            </div>
+            <ErrorBanner
+              message={train_error() ?? ""}
+              on_close={() => set_train_error(null)}
+            />
           </Show>
         </div>
       </StatusSection>
@@ -554,12 +532,10 @@ export const TrainingPanel: Component<{
           <Show when={ts().progress_pct != null && ts().status === "running"}>
             <StatusProgress pct={ts().progress_pct ?? 0} />
           </Show>
-          <Show when={ts().error}>
-            <StatusRow
-              label="error"
-              value={ts().error ?? ""}
-              color="#ef4444"
-              tooltip="Error message from the failed training run"
+          <Show when={visible_run_error()}>
+            <ErrorBanner
+              message={visible_run_error() ?? ""}
+              on_close={() => set_dismissed_run_error_key(run_error_key())}
             />
           </Show>
           <Show when={ts().metrics}>

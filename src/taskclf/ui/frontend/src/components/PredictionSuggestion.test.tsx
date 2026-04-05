@@ -1,5 +1,6 @@
-import { render, screen } from "@solidjs/testing-library";
-import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { notification_accept } from "../lib/api";
 import { time_format } from "../lib/format";
 import type { LabelSuggestion } from "../lib/ws";
 import { PredictionSuggestion } from "./PredictionSuggestion";
@@ -12,6 +13,16 @@ vi.mock("../lib/api", () => ({
 vi.mock("../lib/log", () => ({
   frontend_log_error: vi.fn(),
 }));
+
+const clipboard_write = vi.fn().mockResolvedValue(undefined);
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  Object.defineProperty(window.navigator, "clipboard", {
+    configurable: true,
+    value: { writeText: clipboard_write },
+  });
+});
 
 function suggestion_make(overrides: Partial<LabelSuggestion> = {}): LabelSuggestion {
   return {
@@ -35,10 +46,10 @@ function suggestion_range_text(block_start: string, block_end: string): string {
     || start.getDate() !== end.getDate();
 
   if (!crosses_local_day) {
-    return `Applies to ${time_format(block_start)} → ${time_format(block_end)}`;
+    return `${time_format(block_start)} → ${time_format(block_end)}`;
   }
 
-  return `Applies to ${start.toLocaleString(undefined, {
+  return `${start.toLocaleString(undefined, {
     month: "short",
     day: "numeric",
     hour: "2-digit",
@@ -77,5 +88,23 @@ describe("PredictionSuggestion", () => {
         suggestion_range_text(suggestion.block_start, suggestion.block_end),
       ),
     ).toBeInTheDocument();
+  });
+
+  it("keeps save errors visible until closed and allows copying them", async () => {
+    vi.mocked(notification_accept).mockRejectedValueOnce(new Error("save failed"));
+    const suggestion = suggestion_make();
+
+    render(() => <PredictionSuggestion suggestion={() => suggestion} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Use suggestion" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save label" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("save failed");
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy error" }));
+    await waitFor(() => expect(clipboard_write).toHaveBeenCalledWith("save failed"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Close error" }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
