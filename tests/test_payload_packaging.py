@@ -122,6 +122,7 @@ def test_pyinstaller_argv_collects_third_party_runtime_deps(
         "numpy",
         "pandas",
         "sklearn",
+        "tomli_w",
         "uvicorn",
         "fastapi",
     ):

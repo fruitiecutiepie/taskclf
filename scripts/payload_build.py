@@ -86,6 +86,7 @@ def pyinstaller_argv(repo_root: Path) -> list[str]:
         "duckdb",
         "PIL",
         "pystray",
+        "tomli_w",
         "uvicorn",
         "fastapi",
         "pydantic",
