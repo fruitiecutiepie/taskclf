@@ -344,4 +344,111 @@ describe("App drag regions", () => {
 
     expect(host_invoke).toHaveBeenCalledWith({ cmd: "toggleLabelGrid" });
   });
+
+  it("routes transition prompts through Electron native notifications", async () => {
+    vi.resetModules();
+    window.history.replaceState({}, "", "/");
+
+    const host_invoke = vi.fn().mockResolvedValue(undefined);
+    const notification_permission_ensure = vi.fn();
+    const transition_notification_show = vi.fn();
+    const prompt = {
+      type: "prompt_label" as const,
+      prev_app: "Editor",
+      new_app: "Browser",
+      block_start: "2026-04-05T00:00:00.000Z",
+      block_end: "2026-04-05T00:05:00.000Z",
+      duration_min: 5,
+      suggested_label: "ReadResearch",
+      suggestion_text: "Was this ReadResearch? 10:00–10:05",
+    };
+
+    vi.doMock("./lib/host", () => ({
+      host: {
+        kind: "electron",
+        isNativeWindow: true,
+        invoke: host_invoke,
+      },
+    }));
+    vi.doMock("./lib/log", () => ({
+      frontend_error_handlers_install: () => () => {},
+    }));
+    vi.doMock("./lib/notifications", () => ({
+      notification_permission_ensure,
+      transition_notification_show,
+    }));
+    vi.doMock("./lib/ws", () => ({
+      ws_store_new: () => ({
+        latest_status: () => ({
+          type: "status",
+          state: "idle",
+          current_app: "unknown",
+          current_app_since: null,
+          candidate_app: null,
+          candidate_duration_s: 0,
+          transition_threshold_s: 0,
+          poll_seconds: 0,
+          poll_count: 0,
+          last_poll_ts: new Date(0).toISOString(),
+          uptime_s: 0,
+          aw_connected: false,
+          aw_bucket_id: null,
+          aw_host: "http://localhost:5600",
+          last_event_count: 0,
+          last_app_counts: {},
+        }),
+        latest_prediction: () => null,
+        latest_tray_state: () => ({
+          type: "tray_state",
+          model_loaded: false,
+          model_dir: null,
+          model_schema_hash: null,
+          suggested_label: null,
+          suggested_confidence: null,
+          transition_count: 0,
+          last_transition: null,
+          labels_saved_count: 0,
+          data_dir: "~/.taskclf",
+          ui_port: 0,
+          dev_mode: false,
+          paused: false,
+        }),
+        active_suggestion: () => null,
+        latest_prompt: () => prompt,
+        label_grid_requested: () => 0,
+        connection_status: () => "connected",
+        ws_stats: () => ({
+          message_count: 0,
+          status_count: 0,
+          prediction_count: 0,
+          tray_state_count: 0,
+          suggestion_count: 0,
+          last_message_at: null,
+          reconnect_count: 0,
+          connected_since: null,
+        }),
+        train_state: () => ({
+          job_id: null,
+          status: "idle",
+          step: null,
+          progress_pct: null,
+          message: null,
+          error: null,
+          metrics: null,
+          model_dir: null,
+        }),
+        suggestion_dismiss: vi.fn(),
+      }),
+    }));
+
+    const { default: App } = await import("./App");
+    render(() => <App />);
+
+    expect(notification_permission_ensure).not.toHaveBeenCalled();
+    expect(transition_notification_show).not.toHaveBeenCalled();
+    expect(host_invoke).toHaveBeenCalledWith({
+      cmd: "showTransitionNotification",
+      prompt,
+    });
+  });
 });

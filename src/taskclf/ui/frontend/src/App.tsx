@@ -118,7 +118,7 @@ const App: Component = () => {
   const permission_ensure_once = (() => {
     let asked = false;
     return () => {
-      if (!asked) {
+      if (!asked && host.kind !== "electron") {
         asked = true;
         notification_permission_ensure();
       }
@@ -126,7 +126,9 @@ const App: Component = () => {
   })();
 
   onMount(() => {
-    notification_permission_ensure();
+    if (host.kind !== "electron") {
+      notification_permission_ensure();
+    }
     const cleanup_error_handlers = frontend_error_handlers_install();
     onCleanup(() => {
       label_hide_cancel();
@@ -151,13 +153,20 @@ const App: Component = () => {
     if (!prompt) {
       return;
     }
-    transition_notification_show(prompt, () => {
+    const open_label_grid = () => {
       if (browser_compact) {
         set_label_pinned(true);
       } else {
         host.invoke({ cmd: "toggleLabelGrid" });
       }
-    });
+    };
+
+    if (host.kind === "electron") {
+      host.invoke({ cmd: "showTransitionNotification", prompt });
+      return;
+    }
+
+    transition_notification_show(prompt, open_label_grid);
   });
 
   return (

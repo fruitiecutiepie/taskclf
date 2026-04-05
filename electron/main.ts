@@ -10,6 +10,7 @@ import {
   shell,
   dialog,
   Notification,
+  type NotificationAction,
 } from "electron";
 import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
@@ -53,6 +54,15 @@ type HostCommand = {
   cmd: string;
   mode?: string;
   message?: string;
+  prompt?: {
+    prev_app: string;
+    new_app: string;
+    block_start: string;
+    block_end: string;
+    duration_min: number;
+    suggested_label: string | null;
+    suggestion_text: string | null;
+  };
 };
 
 const COMPACT_SIZE = { width: 150, height: 30 };
@@ -615,6 +625,118 @@ function toggleWindow(): void {
     return;
   }
   showWindow();
+}
+
+function openLabelGridFromNotification(): void {
+  showWindow();
+  if (labelChild.window === null) {
+    return;
+  }
+  childTimerCancel(labelChild);
+  labelChild.visible = true;
+  labelChild.pinned = true;
+  positionLabel();
+  labelChild.window.show();
+}
+
+function transitionNotificationBody(prompt: NonNullable<HostCommand["prompt"]>): string {
+  return prompt.suggestion_text
+    ?? `${prompt.prev_app} → ${prompt.new_app} (${prompt.duration_min} min)`;
+}
+
+async function notificationActionPost(
+  pathName: string,
+  body?: Record<string, unknown>,
+): Promise<{ ok: boolean; detail: string }> {
+  const response = await sidecarRequest(pathName, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+  if (response === null) {
+    return { ok: false, detail: "backend unavailable" };
+  }
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    return { ok: false, detail: detail || `${response.status}` };
+  }
+  return { ok: true, detail: "" };
+}
+
+async function acceptTransitionSuggestion(
+  prompt: NonNullable<HostCommand["prompt"]>,
+): Promise<void> {
+  if (prompt.suggested_label === null) {
+    openLabelGridFromNotification();
+    return;
+  }
+
+  const result = await notificationActionPost("/api/notification/accept", {
+    block_start: prompt.block_start,
+    block_end: prompt.block_end,
+    label: prompt.suggested_label,
+  });
+  if (result.ok) {
+    return;
+  }
+
+  launcherLog(`transition notification accept failed: ${result.detail}`, "error");
+  openLabelGridFromNotification();
+  new Notification({
+    title: APP_DISPLAY_NAME,
+    body: "Could not save the suggested label. Opened the labeler to review.",
+  }).show();
+}
+
+async function skipTransitionSuggestion(): Promise<void> {
+  const result = await notificationActionPost("/api/notification/skip");
+  if (result.ok) {
+    return;
+  }
+
+  launcherLog(`transition notification skip failed: ${result.detail}`, "error");
+  openLabelGridFromNotification();
+  new Notification({
+    title: APP_DISPLAY_NAME,
+    body: "Could not dismiss the suggestion. Opened the labeler to review.",
+  }).show();
+}
+
+function showTransitionNotification(
+  prompt: NonNullable<HostCommand["prompt"]>,
+): void {
+  const actions: NotificationAction[] = prompt.suggested_label === null
+    ? [{ type: "button", text: "Open labeler" }]
+    : [
+        { type: "button", text: "Use suggestion" },
+        { type: "button", text: "Skip" },
+      ];
+
+  const notification = new Notification({
+    title: `${APP_DISPLAY_NAME} — Activity changed`,
+    body: transitionNotificationBody(prompt),
+    actions,
+  });
+
+  notification.on("click", () => {
+    openLabelGridFromNotification();
+  });
+  notification.on("action", (_event, index) => {
+    if (prompt.suggested_label === null) {
+      openLabelGridFromNotification();
+      return;
+    }
+    if (index === 0) {
+      void acceptTransitionSuggestion(prompt);
+      return;
+    }
+    if (index === 1) {
+      void skipTransitionSuggestion();
+      return;
+    }
+    openLabelGridFromNotification();
+  });
+  notification.show();
 }
 
 function applyDashboardWindowAction(action: "show" | "toggle"): void {
@@ -1827,6 +1949,11 @@ ipcMain.handle("taskclf-host", async (_event, command: HostCommand) => {
       return;
     case "cancelLabelHide":
       childTimerCancel(labelChild);
+      return;
+    case "showTransitionNotification":
+      if (command.prompt) {
+        showTransitionNotification(command.prompt);
+      }
       return;
     case "showStatePanel":
       childVisibilityOn(panelChild);

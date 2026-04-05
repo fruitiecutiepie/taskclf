@@ -9,6 +9,8 @@
  * ipcRenderer.invoke(). Zero component code changes needed.
  */
 
+import type { PromptLabelEvent } from "./ws";
+
 export type WindowMode = "compact" | "label" | "panel" | "dashboard";
 
 export type HostKind = "browser" | "pywebview" | "electron";
@@ -18,6 +20,7 @@ export type HostCommand =
   | { cmd: "hideLabelGrid" }
   | { cmd: "toggleLabelGrid" }
   | { cmd: "cancelLabelHide" }
+  | { cmd: "showTransitionNotification"; prompt: PromptLabelEvent }
   | { cmd: "hideWindow" }
   | { cmd: "toggleDashboard" }
   | { cmd: "setWindowMode"; mode: WindowMode }
@@ -115,6 +118,8 @@ class AdaptiveHost implements Host {
           break;
         case "cancelLabelHide":
           await api.label_grid_cancel_hide();
+          break;
+        case "showTransitionNotification":
           break;
         case "hideWindow":
           await api.window_hide();
