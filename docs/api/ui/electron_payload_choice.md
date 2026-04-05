@@ -1,8 +1,8 @@
 # electron.payload_choice
 
 Pure helpers used by the Electron main process to build compatible payload
-version lists for the tray **Payload** submenu and for optional **Choose
-Version** prompts during install/update flows.
+version lists for the tray **Backend Versions** submenu and for optional
+**Choose Backend Version** prompts during install/update flows.
 
 ## Functions
 

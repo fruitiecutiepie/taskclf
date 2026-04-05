@@ -77,6 +77,10 @@ depending on source:
   an already-open shell
 - the tray menu keeps an explicit **Toggle Dashboard** action for hide/show
   behavior
+- after the sidecar is ready, the full tray menu mirrors the Python tray labels
+  (**Show Status**, **Today's Labels**, **Prediction Model** with **Refresh Model**
+  and **Retrain Status**, etc.); packaged builds also include **Backend Versions** and
+  **Check for Updates** after **Prediction Model**
 
 That keeps the Electron shell aligned with the documented pystray UX
 where a primary tray click opens the UI, while still preserving a clear
@@ -170,7 +174,7 @@ When more than one compatible payload version exists in the payload index,
 **Initial Setup** / **Core Update Required** dialogs (first download or required
 update before start) and the **Core Update Available** background prompt
 include an extra **Choose Version** action. That opens a small picker window
-listing compatible versions (newest-first, consistent with the tray **Payload**
+listing compatible versions (newest-first, consistent with the tray **Backend Versions**
 menu). The version chosen there applies only to that install or update step and
 does **not** persist as the tray **Selected** pin (`selected.json` remains for
 explicit tray-driven pinning via **Use Recommended** / **Use Installed**).

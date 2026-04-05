@@ -3490,13 +3490,14 @@ def tray_cmd(
     retrain_config: str | None = typer.Option(
         None,
         "--retrain-config",
-        help="Path to retrain YAML config (enables Check Retrain in Model submenu)",
+        help="Path to retrain YAML config (enables Retrain Status in Prediction Model submenu)",
     ),
 ) -> None:
     """Run a system tray labeling app with activity transition detection.
 
     Left-clicking the tray icon opens the web dashboard where all
-    labeling is done.  Right-click shows a minimal menu with Quit.
+    labeling is done.  Right-click shows the full tray menu (Toggle Dashboard,
+    Pause/Resume, Show Status, label import/export, Prediction Model, etc.).
     """
     import shutil
     import tempfile

@@ -10,7 +10,7 @@ export interface PayloadVersionEntry {
 }
 
 /**
- * Compatible payload versions from the index, newest first (same as tray Payload submenu).
+ * Compatible payload versions from the index, newest first (same as tray Backend Versions submenu).
  */
 export function orderedCompatiblePayloadVersions(
   payloads: PayloadVersionEntry[],

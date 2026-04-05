@@ -1101,7 +1101,11 @@ class TestNotificationPrivacy:
         assert "com.apple.Terminal" not in message
         assert "us.zoom.xos" not in message
         assert "Activity changed" in message
-        assert "15 min" in message
+        expected_range = (
+            f"{_BLOCK_START.astimezone().strftime('%H:%M:%S')}"
+            f"\u2013{_BLOCK_END.astimezone().strftime('%H:%M:%S')}"
+        )
+        assert expected_range in message
 
     @patch("taskclf.ui.tray._send_desktop_notification")
     def test_privacy_off_shows_raw_app_names(
@@ -1126,6 +1130,11 @@ class TestNotificationPrivacy:
         message = mock_notif.call_args[0][1]
         assert "com.apple.Terminal" in message
         assert "us.zoom.xos" in message
+        expected_range = (
+            f"{_BLOCK_START.astimezone().strftime('%H:%M:%S')}"
+            f"\u2013{_BLOCK_END.astimezone().strftime('%H:%M:%S')}"
+        )
+        assert expected_range in message
 
     @patch("taskclf.ui.tray._send_desktop_notification")
     def test_privacy_default_is_true(
@@ -1886,7 +1895,7 @@ class TestImportLabels:
 
 
 # ---------------------------------------------------------------------------
-# Label Stats  (Item 1)
+# Today's Labels  (Item 1)
 # ---------------------------------------------------------------------------
 
 
@@ -2183,7 +2192,7 @@ class TestSettingsPersistence:
 
 
 # ---------------------------------------------------------------------------
-# Reload Model  (Item 5)
+# Refresh Model  (Item 5)
 # ---------------------------------------------------------------------------
 
 
@@ -2390,7 +2399,7 @@ class TestBuildMenuEnhancements:
 
     def _find_model_submenu(self, menu: object) -> object | None:
         for item in menu.items:  # type: ignore[attr-defined]
-            if hasattr(item, "text") and item.text == "Model":
+            if hasattr(item, "text") and item.text == "Prediction Model":
                 return item.submenu
         return None
 
@@ -2410,32 +2419,32 @@ class TestBuildMenuEnhancements:
 
         labels = self._get_top_level_labels(menu)
 
-        assert "Label Stats" in labels
-        assert "Status" in labels
+        assert "Today's Labels" in labels
+        assert "Show Status" in labels
         assert "Open Data Folder" in labels
-        assert "Model" in labels
+        assert "Prediction Model" in labels
         assert "Export Labels" in labels
 
     def test_model_submenu_contains_reload_and_check_retrain(
         self, tmp_path: Path
     ) -> None:
-        """Reload Model and Check Retrain live inside the Model submenu, not at top level."""
+        """Refresh Model and Retrain Status live inside the Model submenu, not at top level."""
         bus, _ = _capture_bus()
         labeler = _make_tray_labeler(tmp_path, event_bus=bus)
         menu = labeler._build_menu()
 
         top_labels = self._get_top_level_labels(menu)
-        assert "Reload Model" not in top_labels
-        assert "Check Retrain" not in top_labels
+        assert "Refresh Model" not in top_labels
+        assert "Retrain Status" not in top_labels
 
         submenu = self._find_model_submenu(menu)
         assert submenu is not None
         sub_labels = self._get_submenu_labels(submenu)
-        assert "Reload Model" in sub_labels
-        assert "Check Retrain" in sub_labels
+        assert "Refresh Model" in sub_labels
+        assert "Retrain Status" in sub_labels
 
     def test_reload_model_disabled_without_model_dir(self, tmp_path: Path) -> None:
-        """Reload Model inside Model submenu is disabled when no model_dir."""
+        """Refresh Model inside Model submenu is disabled when no model_dir."""
         bus, _ = _capture_bus()
         labeler = _make_tray_labeler(tmp_path, event_bus=bus)
         assert labeler._model_dir is None
@@ -2446,7 +2455,7 @@ class TestBuildMenuEnhancements:
 
         reload_item = None
         for item in submenu.items:  # type: ignore[attr-defined]
-            if hasattr(item, "text") and item.text == "Reload Model":
+            if hasattr(item, "text") and item.text == "Refresh Model":
                 reload_item = item
                 break
 
@@ -2454,7 +2463,7 @@ class TestBuildMenuEnhancements:
         assert reload_item.enabled is False
 
     def test_reload_model_enabled_with_model_dir(self, tmp_path: Path) -> None:
-        """Reload Model inside Model submenu is enabled when model_dir is set."""
+        """Refresh Model inside Model submenu is enabled when model_dir is set."""
         bus, _ = _capture_bus()
         labeler = _make_tray_labeler(tmp_path, event_bus=bus)
         labeler._model_dir = Path("models/run_test")
@@ -2465,7 +2474,7 @@ class TestBuildMenuEnhancements:
 
         reload_item = None
         for item in submenu.items:  # type: ignore[attr-defined]
-            if hasattr(item, "text") and item.text == "Reload Model":
+            if hasattr(item, "text") and item.text == "Refresh Model":
                 reload_item = item
                 break
 
@@ -2743,7 +2752,7 @@ class TestSwitchModel:
 
     def _find_model_submenu(self, menu: object) -> object:
         for item in menu.items:  # type: ignore[attr-defined]
-            if hasattr(item, "text") and item.text == "Model":
+            if hasattr(item, "text") and item.text == "Prediction Model":
                 return item.submenu
         raise AssertionError("Model submenu not found in menu")
 
@@ -2773,8 +2782,8 @@ class TestSwitchModel:
         labels = self._submenu_labels(submenu)
         assert "run_20260301" in labels
         assert "run_20260226" in labels
-        assert "(No Model)" in labels
-        assert "Reload Model" in labels
+        assert "No Model" in labels
+        assert "Refresh Model" in labels
 
     def test_submenu_excludes_invalid_bundles(self, tmp_path: Path) -> None:
         """Invalid bundles are filtered out of the submenu."""
@@ -2828,11 +2837,11 @@ class TestSwitchModel:
                 assert item.checked is True
             elif hasattr(item, "text") and item.text == "run_20260226":
                 assert item.checked is False
-            elif hasattr(item, "text") and item.text == "(No Model)":
+            elif hasattr(item, "text") and item.text == "No Model":
                 assert item.checked is False
 
     def test_no_model_checked_when_unloaded(self, tmp_path: Path) -> None:
-        """'(No Model)' is checked when no model is loaded."""
+        """'No Model' is checked when no model is loaded."""
         from taskclf.model_registry import ModelBundle
 
         labeler = self._make_labeler_with_models_dir(tmp_path)
@@ -2850,7 +2859,7 @@ class TestSwitchModel:
             submenu = labeler._build_model_submenu()
 
         for item in submenu.items:
-            if hasattr(item, "text") and item.text == "(No Model)":
+            if hasattr(item, "text") and item.text == "No Model":
                 assert item.checked is True
             elif hasattr(item, "text") and item.text == "run_20260301":
                 assert item.checked is False
@@ -2948,7 +2957,7 @@ class TestSwitchModel:
     # -- fallback: no models_dir --
 
     def test_no_models_dir_shows_fallback(self, tmp_path: Path) -> None:
-        """When models_dir is None, submenu shows '(no models found)'."""
+        """When models_dir is None, submenu shows 'No Models Found'."""
         bus, _ = _capture_bus()
         labeler = TrayLabeler(
             data_dir=tmp_path,
@@ -2959,21 +2968,21 @@ class TestSwitchModel:
 
         submenu = labeler._build_model_submenu()
         labels = self._submenu_labels(submenu)
-        assert "(no models found)" in labels
-        assert "Reload Model" in labels
+        assert "No Models Found" in labels
+        assert "Refresh Model" in labels
 
     def test_empty_models_dir_shows_fallback(self, tmp_path: Path) -> None:
-        """When models_dir exists but is empty, submenu shows '(no models found)'."""
+        """When models_dir exists but is empty, submenu shows 'No Models Found'."""
         labeler = self._make_labeler_with_models_dir(tmp_path)
 
         with patch("taskclf.model_registry.list_bundles", return_value=[]):
             submenu = labeler._build_model_submenu()
 
         labels = self._submenu_labels(submenu)
-        assert "(no models found)" in labels
+        assert "No Models Found" in labels
 
     def test_all_invalid_bundles_shows_fallback(self, tmp_path: Path) -> None:
-        """When all bundles are invalid, submenu shows '(no models found)'."""
+        """When all bundles are invalid, submenu shows 'No Models Found'."""
         from taskclf.model_registry import ModelBundle
 
         labeler = self._make_labeler_with_models_dir(tmp_path)
@@ -2990,12 +2999,12 @@ class TestSwitchModel:
             submenu = labeler._build_model_submenu()
 
         labels = self._submenu_labels(submenu)
-        assert "(no models found)" in labels
+        assert "No Models Found" in labels
 
     # -- menu structure --
 
     def test_model_submenu_in_main_menu(self, tmp_path: Path) -> None:
-        """Top-level menu contains a 'Model' item with a submenu."""
+        """Top-level menu contains a 'Prediction Model' item with a submenu."""
         labeler = self._make_labeler_with_models_dir(tmp_path)
 
         with patch("taskclf.model_registry.list_bundles", return_value=[]):
@@ -3003,13 +3012,13 @@ class TestSwitchModel:
 
         submenu = self._find_model_submenu(menu)
         labels = self._submenu_labels(submenu)
-        assert "(no models found)" in labels
-        assert "Reload Model" in labels
-        assert "Check Retrain" in labels
+        assert "No Models Found" in labels
+        assert "Refresh Model" in labels
+        assert "Retrain Status" in labels
 
 
 # ---------------------------------------------------------------------------
-# Check Retrain  (Item 7)
+# Retrain Status  (Item 7)
 # ---------------------------------------------------------------------------
 
 
@@ -3178,7 +3187,7 @@ class TestCheckRetrain:
         assert "disk error" in msg
 
     def test_check_retrain_in_submenu_enabled(self, tmp_path: Path) -> None:
-        """Check Retrain is enabled when models_dir is set."""
+        """Retrain Status is enabled when models_dir is set."""
         bus, _ = _capture_bus()
         labeler = TrayLabeler(
             data_dir=tmp_path,
@@ -3190,7 +3199,7 @@ class TestCheckRetrain:
 
         menu = labeler._build_menu()
         for item in menu.items:  # type: ignore[attr-defined]
-            if hasattr(item, "text") and item.text == "Model":
+            if hasattr(item, "text") and item.text == "Prediction Model":
                 submenu = item.submenu
                 break
         else:
@@ -3198,7 +3207,7 @@ class TestCheckRetrain:
 
         retrain_item = None
         for item in submenu.items:  # type: ignore[attr-defined]
-            if hasattr(item, "text") and item.text == "Check Retrain":
+            if hasattr(item, "text") and item.text == "Retrain Status":
                 retrain_item = item
                 break
 
@@ -3208,14 +3217,14 @@ class TestCheckRetrain:
     def test_check_retrain_in_submenu_disabled_without_models_dir(
         self, tmp_path: Path
     ) -> None:
-        """Check Retrain is disabled when models_dir is None."""
+        """Retrain Status is disabled when models_dir is None."""
         bus, _ = _capture_bus()
         labeler = _make_tray_labeler(tmp_path, event_bus=bus)
         assert labeler._models_dir is None
 
         menu = labeler._build_menu()
         for item in menu.items:  # type: ignore[attr-defined]
-            if hasattr(item, "text") and item.text == "Model":
+            if hasattr(item, "text") and item.text == "Prediction Model":
                 submenu = item.submenu
                 break
         else:
@@ -3223,7 +3232,7 @@ class TestCheckRetrain:
 
         retrain_item = None
         for item in submenu.items:  # type: ignore[attr-defined]
-            if hasattr(item, "text") and item.text == "Check Retrain":
+            if hasattr(item, "text") and item.text == "Retrain Status":
                 retrain_item = item
                 break
 
@@ -3263,7 +3272,7 @@ class TestDynamicModelMenuRefresh:
 
     def _find_model_submenu(self, menu: object) -> object:
         for item in menu.items:  # type: ignore[attr-defined]
-            if hasattr(item, "text") and item.text == "Model":
+            if hasattr(item, "text") and item.text == "Prediction Model":
                 return item.submenu
         raise AssertionError("Model submenu not found in menu")
 
@@ -3302,14 +3311,18 @@ class TestDynamicModelMenuRefresh:
 
         with patch("taskclf.model_registry.list_bundles", return_value=bundles_v1):
             items1 = dynamic_menu.items
-        model_item1 = [i for i in items1 if hasattr(i, "text") and i.text == "Model"][0]
+        model_item1 = [
+            i for i in items1 if hasattr(i, "text") and i.text == "Prediction Model"
+        ][0]
         sub_labels1 = self._submenu_labels(model_item1.submenu)
         assert "run_A" in sub_labels1
         assert "run_B" not in sub_labels1
 
         with patch("taskclf.model_registry.list_bundles", return_value=bundles_v2):
             items2 = dynamic_menu.items
-        model_item2 = [i for i in items2 if hasattr(i, "text") and i.text == "Model"][0]
+        model_item2 = [
+            i for i in items2 if hasattr(i, "text") and i.text == "Prediction Model"
+        ][0]
         sub_labels2 = self._submenu_labels(model_item2.submenu)
         assert "run_A" in sub_labels2
         assert "run_B" in sub_labels2
@@ -3408,7 +3421,7 @@ class TestDynamicModelMenuRefresh:
 
     def test_empty_to_populated_transition(self, tmp_path: Path) -> None:
         """When models_dir starts empty and a bundle appears, the menu
-        transitions from '(no models found)' to listing the new bundle."""
+        transitions from 'No Models Found' to listing the new bundle."""
         from taskclf.model_registry import ModelBundle
 
         labeler = self._make_labeler_with_models_dir(tmp_path)
@@ -3416,7 +3429,7 @@ class TestDynamicModelMenuRefresh:
         with patch("taskclf.model_registry.list_bundles", return_value=[]):
             menu1 = labeler._build_menu()
         labels1 = self._submenu_labels(self._find_model_submenu(menu1))
-        assert "(no models found)" in labels1
+        assert "No Models Found" in labels1
 
         bundles = [
             ModelBundle(
@@ -3428,12 +3441,12 @@ class TestDynamicModelMenuRefresh:
         with patch("taskclf.model_registry.list_bundles", return_value=bundles):
             menu2 = labeler._build_menu()
         labels2 = self._submenu_labels(self._find_model_submenu(menu2))
-        assert "(no models found)" not in labels2
+        assert "No Models Found" not in labels2
         assert "first_model" in labels2
-        assert "(No Model)" in labels2
+        assert "No Model" in labels2
 
     def test_populated_to_empty_transition(self, tmp_path: Path) -> None:
-        """When all bundles are removed, the menu shows '(no models found)'."""
+        """When all bundles are removed, the menu shows 'No Models Found'."""
         from taskclf.model_registry import ModelBundle
 
         labeler = self._make_labeler_with_models_dir(tmp_path)
@@ -3452,7 +3465,7 @@ class TestDynamicModelMenuRefresh:
             menu2 = labeler._build_menu()
         labels2 = self._submenu_labels(self._find_model_submenu(menu2))
         assert "run_A" not in labels2
-        assert "(no models found)" in labels2
+        assert "No Models Found" in labels2
 
     def test_icon_constructor_accepts_dynamic_menu(self, tmp_path: Path) -> None:
         """pystray.Icon(menu=Menu(callable)) must not raise — smoke test
@@ -3908,13 +3921,13 @@ class TestMenuStructureSnapshot:
         expected = [
             "Toggle Dashboard",
             "Pause",
+            "Show Status",
             self._SEPARATOR_TEXT,
-            "Label Stats",
+            "Today's Labels",
             "Import Labels",
             "Export Labels",
             self._SEPARATOR_TEXT,
-            "Model",
-            "Status",
+            "Prediction Model",
             "Open Data Folder",
             "Edit Config",
             "Report Issue",
@@ -3924,7 +3937,7 @@ class TestMenuStructureSnapshot:
         assert labels_only == expected
 
     def test_separator_positions(self, tmp_path: Path) -> None:
-        """TC-TRAY-MENU-002: separators appear at positions 2, 6, 12."""
+        """TC-TRAY-MENU-002: separators appear at positions 3, 7, 12."""
         bus, _ = _capture_bus()
         labeler = TrayLabeler(
             data_dir=tmp_path,
@@ -3936,10 +3949,10 @@ class TestMenuStructureSnapshot:
         sep_positions = [
             i for i, (text, _) in enumerate(structure) if text == self._SEPARATOR_TEXT
         ]
-        assert sep_positions == [2, 6, 12]
+        assert sep_positions == [3, 7, 12]
 
     def test_model_item_has_submenu(self, tmp_path: Path) -> None:
-        """TC-TRAY-MENU-003: 'Model' is the only item with a submenu."""
+        """TC-TRAY-MENU-003: 'Prediction Model' is the only item with a submenu."""
         bus, _ = _capture_bus()
         labeler = TrayLabeler(
             data_dir=tmp_path,
@@ -3949,7 +3962,7 @@ class TestMenuStructureSnapshot:
         (tmp_path / "models").mkdir(exist_ok=True)
         structure = self._extract_top_level(labeler)
         submenu_items = [label for label, has_sub in structure if has_sub]
-        assert submenu_items == ["Model"]
+        assert submenu_items == ["Prediction Model"]
 
     def test_open_dashboard_is_default(self, tmp_path: Path) -> None:
         """TC-TRAY-MENU-004: 'Toggle Dashboard' has default=True."""
@@ -3977,7 +3990,7 @@ class TestMenuStructureSnapshot:
         assert pause_item.text == "Pause"
 
     def test_model_submenu_no_bundles(self, tmp_path: Path) -> None:
-        """TC-TRAY-MENU-006: Model submenu shows '(no models found)' when empty."""
+        """TC-TRAY-MENU-006: Model submenu shows 'No Models Found' when empty."""
         bus, _ = _capture_bus()
         labeler = TrayLabeler(
             data_dir=tmp_path,
@@ -3988,11 +4001,11 @@ class TestMenuStructureSnapshot:
 
         menu = labeler._build_menu()
         for item in menu.items:  # type: ignore[attr-defined]
-            if hasattr(item, "text") and item.text == "Model":
+            if hasattr(item, "text") and item.text == "Prediction Model":
                 sub_labels = self._submenu_labels(item.submenu)
-                assert "(no models found)" in sub_labels
-                assert "Reload Model" in sub_labels
-                assert "Check Retrain" in sub_labels
+                assert "No Models Found" in sub_labels
+                assert "Refresh Model" in sub_labels
+                assert "Retrain Status" in sub_labels
                 return
         pytest.fail("Model submenu not found")
 
@@ -4021,13 +4034,13 @@ class TestMenuStructureSnapshot:
             menu = labeler._build_menu()
 
         for item in menu.items:  # type: ignore[attr-defined]
-            if hasattr(item, "text") and item.text == "Model":
+            if hasattr(item, "text") and item.text == "Prediction Model":
                 sub_labels = self._submenu_labels(item.submenu)
                 assert "run_X" in sub_labels
                 assert "run_Y" in sub_labels
-                assert "(No Model)" in sub_labels
-                assert "Reload Model" in sub_labels
-                assert "Check Retrain" in sub_labels
+                assert "No Model" in sub_labels
+                assert "Refresh Model" in sub_labels
+                assert "Retrain Status" in sub_labels
                 return
         pytest.fail("Model submenu not found")
 

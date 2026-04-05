@@ -437,7 +437,7 @@ function sidecarExecutable(): string {
       return activePayloadPath;
     }
     throw new Error(
-      `${APP_DISPLAY_NAME} could not resolve a local payload to start.`,
+      `${APP_DISPLAY_NAME} could not resolve a local backend version to start.`,
     );
   }
   return envString("TASKCLF_ELECTRON_PYTHON_EXECUTABLE", "python3");
@@ -1052,10 +1052,10 @@ function payloadResolutionDetails(
 ): string {
   const lines = [
     `Launcher version: ${resolution.launcherManifest.launcher_version}`,
-    `Active payload: ${activeVersion ?? "none"}`,
-    `Recommended payload: ${resolution.defaultVersion}`,
-    `Selected payload: ${options?.selectedVersion ?? resolution.selectedVersion ?? "auto"}`,
-    `Target payload: ${resolution.desiredVersion}`,
+    `Active backend version: ${activeVersion ?? "none"}`,
+    `Recommended backend version: ${resolution.defaultVersion}`,
+    `Selected backend version: ${options?.selectedVersion ?? resolution.selectedVersion ?? "auto"}`,
+    `Target backend version: ${resolution.desiredVersion}`,
   ];
   if (options?.note) {
     lines.push("", options.note);
@@ -1069,7 +1069,9 @@ async function applyPayloadResolution(
 ): Promise<void> {
   if (resolution.syncPlan.action === "switch") {
     if (!useInstalledPayloadVersion(resolution.desiredVersion)) {
-      throw new Error(`Payload v${resolution.desiredVersion} is not installed locally`);
+      throw new Error(
+        `Backend version v${resolution.desiredVersion} is not installed locally`,
+      );
     }
     return;
   }
@@ -1142,7 +1144,7 @@ async function checkForUpdatesManually(): Promise<void> {
       selectedVersion !== null
       && selectedVersion !== resolution.desiredVersion
     )
-      ? `Manual update checks compare against the latest compatible payload instead of the pinned Selected payload v${selectedVersion}.`
+      ? `Manual update checks compare against the latest compatible backend version instead of the pinned selected backend version v${selectedVersion}.`
       : null;
 
     if (resolution.syncPlan.action === "none") {
@@ -1169,7 +1171,7 @@ async function checkForUpdatesManually(): Promise<void> {
     const prompt = await dialog.showMessageBox({
       type: "question",
       title: "Core Update Available",
-      message: `${APP_DISPLAY_NAME} can switch to payload v${resolution.desiredVersion} on restart.`,
+      message: `${APP_DISPLAY_NAME} can switch to backend version v${resolution.desiredVersion} on restart.`,
       detail: payloadResolutionDetails(resolution, activeVersion, {
         selectedVersion,
         note: selectionIgnoredNote,
@@ -1207,7 +1209,7 @@ async function checkForUpdatesManually(): Promise<void> {
       const picked = await promptPayloadVersionChoice({
         versions: compatible,
         recommended: resolution.defaultVersion,
-        title: "Choose Payload Version",
+        title: "Choose Backend Version",
       });
       if (picked === null) {
         return;
@@ -1253,7 +1255,7 @@ async function promptForPayloadRestart(
   const res = await dialog.showMessageBox({
     type: "info",
     title,
-    message: `${APP_DISPLAY_NAME} will restart to use payload v${resolution.desiredVersion}.`,
+    message: `${APP_DISPLAY_NAME} will restart to use backend version v${resolution.desiredVersion}.`,
     detail: payloadResolutionDetails(resolution, activeVersion),
     buttons: [actionLabel, "Later"],
     defaultId: 0,
@@ -1292,8 +1294,8 @@ async function useResolvedPayloadChoice(
     new Notification({
       title: APP_DISPLAY_NAME,
       body: rememberSelection
-        ? `Payload v${effectiveResolution.desiredVersion} is already active`
-        : `Recommended payload v${effectiveResolution.desiredVersion} is already active`,
+        ? `Backend version v${effectiveResolution.desiredVersion} is already active`
+        : `Recommended backend version v${effectiveResolution.desiredVersion} is already active`,
     }).show();
     return;
   }
@@ -1313,7 +1315,9 @@ async function switchToRecommendedPayload(): Promise<void> {
     ignoreSelectedVersion: true,
   });
   if (resolution === null) {
-    throw new Error(lastManifestCheckFailure ?? "Failed to resolve recommended payload");
+    throw new Error(
+      lastManifestCheckFailure ?? "Failed to resolve recommended backend version",
+    );
   }
   await useResolvedPayloadChoice(resolution, false);
 }
@@ -1324,7 +1328,9 @@ async function switchToPayloadVersion(version: string): Promise<void> {
     preferredVersion: version,
   });
   if (resolution === null) {
-    throw new Error(lastManifestCheckFailure ?? `Failed to resolve payload v${version}`);
+    throw new Error(
+      lastManifestCheckFailure ?? `Failed to resolve backend version v${version}`,
+    );
   }
   await useResolvedPayloadChoice(resolution, true);
 }
@@ -1360,7 +1366,7 @@ async function performBackgroundUpdateCheck() {
       const res = await dialog.showMessageBox({
         type: "warning",
         title: "Core Update Available",
-        message: `${APP_DISPLAY_NAME} can switch to payload v${resolution.desiredVersion} on restart.`,
+        message: `${APP_DISPLAY_NAME} can switch to backend version v${resolution.desiredVersion} on restart.`,
         detail: payloadResolutionDetails(resolution, activeVersion),
         buttons,
         defaultId: 0,
@@ -1390,7 +1396,7 @@ async function performBackgroundUpdateCheck() {
         const picked = await promptPayloadVersionChoice({
           versions: compatible,
           recommended: resolution.defaultVersion,
-          title: "Choose Payload Version",
+          title: "Choose Backend Version",
         });
         if (picked === null) {
           return;
@@ -1401,7 +1407,9 @@ async function performBackgroundUpdateCheck() {
             preferredVersion: picked,
           });
           if (chosenResolution === null) {
-            throw new Error(lastManifestCheckFailure ?? "Failed to resolve selected payload");
+            throw new Error(
+              lastManifestCheckFailure ?? "Failed to resolve selected backend version",
+            );
           }
           latestPayloadResolution = chosenResolution;
           await applyUpdateAndRelaunch(chosenResolution);
@@ -1455,7 +1463,7 @@ async function syncTrayMenu() {
     const payloadSubmenu: Electron.MenuItemConstructorOptions[] = payloadResolution === null
       ? [
           { label: `Active: ${activePayloadVersion ?? "none"}`, enabled: false },
-          { label: "Payload metadata unavailable", enabled: false },
+          { label: "Backend version data unavailable", enabled: false },
         ]
       : [
           { label: `Launcher: v${payloadResolution.launcherManifest.launcher_version}`, enabled: false },
@@ -1470,7 +1478,10 @@ async function syncTrayMenu() {
             click: () => {
               void switchToRecommendedPayload().catch((err) => {
                 const message = err instanceof Error ? err.message : String(err);
-                new Notification({ title: APP_DISPLAY_NAME, body: `Payload switch failed: ${message}` }).show();
+                new Notification({
+                  title: APP_DISPLAY_NAME,
+                  body: `Backend version switch failed: ${message}`,
+                }).show();
               });
             },
           },
@@ -1483,7 +1494,10 @@ async function syncTrayMenu() {
               click: () => {
                 void switchToPayloadVersion(version).catch((err) => {
                   const message = err instanceof Error ? err.message : String(err);
-                  new Notification({ title: APP_DISPLAY_NAME, body: `Payload switch failed: ${message}` }).show();
+                  new Notification({
+                    title: APP_DISPLAY_NAME,
+                    body: `Backend version switch failed: ${message}`,
+                  }).show();
                 });
               },
             })),
@@ -1497,7 +1511,10 @@ async function syncTrayMenu() {
                     click: () => {
                       void switchToPayloadVersion(version).catch((err) => {
                         const message = err instanceof Error ? err.message : String(err);
-                        new Notification({ title: APP_DISPLAY_NAME, body: `Payload install failed: ${message}` }).show();
+                        new Notification({
+                          title: APP_DISPLAY_NAME,
+                          body: `Backend version install failed: ${message}`,
+                        }).show();
                       });
                     },
                   })),
@@ -1543,7 +1560,7 @@ async function syncTrayMenu() {
           { label: "Retrain Status", click: () => sidecarRequest("/api/tray/action/check_retrain", { method: "POST" }) }
         ]
       },
-      { label: "Payload", submenu: payloadSubmenu },
+      { label: "Backend Versions", submenu: payloadSubmenu },
       {
         label: "Check for Updates",
         enabled: app.isPackaged,
@@ -1736,7 +1753,7 @@ function promptPayloadVersionChoice(options: {
 </head>
 <body>
   <h1>${escapeHtmlAttr(title)}</h1>
-  <label for="payloadVersion">Payload version</label>
+  <label for="payloadVersion">Backend version</label>
   <select id="payloadVersion">${versionOptions}</select>
   <div class="row">
     <button type="button" id="cancelBtn">Cancel</button>
@@ -1745,7 +1762,7 @@ function promptPayloadVersionChoice(options: {
   <script>
     const api = window.taskclfPayloadChooser;
     if (!api) {
-      document.body.innerText = "Payload chooser unavailable.";
+      document.body.innerText = "Backend version chooser unavailable.";
     } else {
       const sel = document.getElementById("payloadVersion");
       document.getElementById("okBtn").addEventListener("click", () => {
@@ -2085,11 +2102,11 @@ async function start(): Promise<void> {
       } else {
         const reason = lastManifestCheckFailure
           ? `Release metadata fetch failed: ${lastManifestCheckFailure}`
-          : `No payload metadata was returned for launcher v${launcherVersion}.`;
+          : `No backend version metadata was returned for launcher v${launcherVersion}.`;
         launcherLog(`launcher payload manifest unavailable: ${reason}`, "error");
         await showFatalLaunchError(
           "Core Download Failed",
-          `${APP_DISPLAY_NAME} could not resolve a payload for launcher v${launcherVersion}.`,
+          `${APP_DISPLAY_NAME} could not resolve a backend version for launcher v${launcherVersion}.`,
           reason,
         );
         return;
@@ -2101,8 +2118,8 @@ async function start(): Promise<void> {
         if (!useInstalledPayloadVersion(resolution.desiredVersion)) {
           await showFatalLaunchError(
             "Core Switch Failed",
-            `${APP_DISPLAY_NAME} could not activate payload v${resolution.desiredVersion}.`,
-            "The desired payload is not installed locally.",
+            `${APP_DISPLAY_NAME} could not activate backend version v${resolution.desiredVersion}.`,
+            "The desired backend version is not installed locally.",
           );
           return;
         }
@@ -2162,7 +2179,7 @@ async function start(): Promise<void> {
           const picked = await promptPayloadVersionChoice({
             versions: compatible,
             recommended: resolution.defaultVersion,
-            title: "Choose Payload Version",
+            title: "Choose Backend Version",
           });
           if (picked === null) {
             app.quit();
@@ -2175,7 +2192,7 @@ async function start(): Promise<void> {
           if (chosenResolution === null) {
             await showFatalLaunchError(
               "Core Download Failed",
-              `${APP_DISPLAY_NAME} could not resolve the selected payload.`,
+              `${APP_DISPLAY_NAME} could not resolve the selected backend version.`,
               lastManifestCheckFailure ?? "unknown error",
             );
             return;
