@@ -119,7 +119,7 @@ describe("PredictionSuggestion", () => {
     ).toBeInTheDocument();
   });
 
-  it("saves after Use suggestion then Save label", async () => {
+  it("saves immediately when Use suggestion is clicked", async () => {
     const suggestion = suggestion_make();
     const on_saved = vi.fn();
     const on_dismiss = vi.fn();
@@ -133,7 +133,6 @@ describe("PredictionSuggestion", () => {
     ));
 
     fireEvent.click(screen.getByRole("button", { name: "Use suggestion" }));
-    fireEvent.click(screen.getByRole("button", { name: "Save label" }));
 
     await waitFor(() => {
       expect(vi.mocked(notification_accept)).toHaveBeenCalledWith({
@@ -153,7 +152,6 @@ describe("PredictionSuggestion", () => {
     render(() => <PredictionSuggestion suggestion={() => suggestion} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Use suggestion" }));
-    fireEvent.click(screen.getByRole("button", { name: "Save label" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("save failed");
 
@@ -201,7 +199,6 @@ describe("PredictionSuggestion", () => {
     ));
 
     fireEvent.click(screen.getByRole("button", { name: "Use suggestion" }));
-    fireEvent.click(screen.getByRole("button", { name: "Save label" }));
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Overwrite All" })).toBeInTheDocument();
@@ -251,7 +248,6 @@ describe("PredictionSuggestion", () => {
     render(() => <PredictionSuggestion suggestion={() => suggestion} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Use suggestion" }));
-    fireEvent.click(screen.getByRole("button", { name: "Save label" }));
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Keep All" })).toBeInTheDocument();
