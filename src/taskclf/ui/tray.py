@@ -1430,11 +1430,7 @@ class TrayLabeler:
             pystray.MenuItem("Prediction Model", self._build_model_submenu()),
             pystray.MenuItem("Open Data Folder", self._open_data_dir),
             pystray.MenuItem("Edit Config", self._edit_config),
-            pystray.MenuItem(
-                "Edit Inference Policy",
-                self._edit_inference_policy,
-                enabled=lambda _: self._models_dir is not None,
-            ),
+            pystray.MenuItem("Advanced", self._build_advanced_submenu()),
             pystray.MenuItem("Report Issue", self._report_issue),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Quit", self._quit),
@@ -2045,6 +2041,18 @@ class TrayLabeler:
             )
 
         return pystray.Menu(*items)
+
+    def _build_advanced_submenu(self) -> "pystray.Menu":
+        """Power-user actions (inference policy, etc.)."""
+        import pystray
+
+        return pystray.Menu(
+            pystray.MenuItem(
+                "Edit Inference Policy",
+                self._edit_inference_policy,
+                enabled=lambda _: self._models_dir is not None,
+            ),
+        )
 
     def _switch_model(self, model_path: Path) -> None:
         """Hot-swap the active model to a different bundle."""

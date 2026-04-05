@@ -40,7 +40,7 @@ explicitly want a placeholder file with live provenance and
 
 ## Editing from the tray
 
-The tray menu **Edit Inference Policy** opens this file in the default
+The tray menu **Advanced → Edit Inference Policy** opens this file in the default
 editor. If the file is missing, the tray creates it first only when a
 model bundle can be resolved. In that case the seeded policy reuses the
 bundle's `metadata.json` advisory `reject_threshold` and attaches a

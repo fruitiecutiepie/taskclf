@@ -1571,9 +1571,14 @@ async function syncTrayMenu() {
       { label: "Open Data Folder", click: () => sidecarRequest("/api/tray/action/open_data_dir", { method: "POST" }) },
       { label: "Edit Config", click: () => sidecarRequest("/api/tray/action/edit_config", { method: "POST" }) },
       {
-        label: "Edit Inference Policy",
-        enabled: state.models_dir != null,
-        click: () => sidecarRequest("/api/tray/action/edit_inference_policy", { method: "POST" }),
+        label: "Advanced",
+        submenu: [
+          {
+            label: "Edit Inference Policy",
+            enabled: state.models_dir != null,
+            click: () => sidecarRequest("/api/tray/action/edit_inference_policy", { method: "POST" }),
+          },
+        ],
       },
       { label: "Report Issue", click: () => sidecarRequest("/api/tray/action/report_issue", { method: "POST" }) },
       { type: "separator" },

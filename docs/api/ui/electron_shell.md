@@ -79,7 +79,7 @@ depending on source:
   behavior
 - after the sidecar is ready, the full tray menu mirrors the Python tray labels
   (**Show Status**, **Today's Labels**, **Prediction Model** with **Refresh Model**
-  and **Retrain Status**, **Open Data Folder**, **Edit Config**, **Edit Inference Policy**, etc.); packaged builds also include **Backend Versions** and
+  and **Retrain Status**, **Open Data Folder**, **Edit Config**, **Advanced** with **Edit Inference Policy**, etc.); packaged builds also include **Backend Versions** and
   **Check for Updates** after **Prediction Model**
 
 That keeps the Electron shell aligned with the documented pystray UX

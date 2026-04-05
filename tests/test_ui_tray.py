@@ -2356,13 +2356,22 @@ class TestEditInferencePolicy:
         )
         (tmp_path / "models").mkdir(exist_ok=True)
         menu = labeler._build_menu()
-        labels = []
-        for item in menu.items:
-            if hasattr(item, "text") and item.text is not None:
-                text = item.text if isinstance(item.text, str) else item.text(None)
-                if text:
-                    labels.append(text)
-        assert "Edit Inference Policy" in labels
+        assert "Advanced" in [
+            item.text if isinstance(item.text, str) else item.text(None)
+            for item in menu.items
+            if hasattr(item, "text") and item.text is not None
+        ]
+        advanced = next(
+            i
+            for i in menu.items
+            if hasattr(i, "text") and i.text == "Advanced" and i.submenu is not None
+        )
+        sub_labels = [
+            si.text if isinstance(si.text, str) else si.text(None)
+            for si in advanced.submenu.items
+            if hasattr(si, "text") and si.text is not None
+        ]
+        assert "Edit Inference Policy" in sub_labels
 
 
 class TestSettingsPersistence:
@@ -4207,7 +4216,7 @@ class TestMenuStructureSnapshot:
             "Prediction Model",
             "Open Data Folder",
             "Edit Config",
-            "Edit Inference Policy",
+            "Advanced",
             "Report Issue",
             self._SEPARATOR_TEXT,
             "Quit",
@@ -4230,7 +4239,7 @@ class TestMenuStructureSnapshot:
         assert sep_positions == [3, 7, 13]
 
     def test_model_item_has_submenu(self, tmp_path: Path) -> None:
-        """TC-TRAY-MENU-003: 'Prediction Model' is the only item with a submenu."""
+        """TC-TRAY-MENU-003: 'Prediction Model' and 'Advanced' have submenus."""
         bus, _ = _capture_bus()
         labeler = TrayLabeler(
             data_dir=tmp_path,
@@ -4240,7 +4249,7 @@ class TestMenuStructureSnapshot:
         (tmp_path / "models").mkdir(exist_ok=True)
         structure = self._extract_top_level(labeler)
         submenu_items = [label for label, has_sub in structure if has_sub]
-        assert submenu_items == ["Prediction Model"]
+        assert submenu_items == ["Prediction Model", "Advanced"]
 
     def test_open_dashboard_is_default(self, tmp_path: Path) -> None:
         """TC-TRAY-MENU-004: 'Toggle Dashboard' has default=True."""
