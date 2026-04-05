@@ -1,12 +1,10 @@
 import {
   type Accessor,
   type Component,
-  createEffect,
   createMemo,
   createResource,
   createSignal,
   For,
-  on,
   Show,
 } from "solid-js";
 import {
@@ -25,25 +23,30 @@ import {
   type LabelItem,
   type TimelineItem,
 } from "../lib/labelTimeline";
-import type { Prediction } from "../lib/ws";
 import { LabelHistoryGapRow } from "./LabelHistoryGapRow";
 import { LabelHistoryRow } from "./LabelHistoryRow";
 import { LabelHistoryTimeline } from "./LabelHistoryTimeline";
 
 export const LabelHistory: Component<{
   visible: Accessor<boolean>;
-  latest_prediction?: Accessor<Prediction | null>;
+  label_change_count?: Accessor<number>;
 }> = (props) => {
   const [selected_date, set_selected_date] = createSignal(date_today_str());
   let date_input_ref: HTMLInputElement | undefined;
 
   const [labels, { refetch }] = createResource(
-    () => (props.visible() ? selected_date() : null),
-    async (dateStr) => {
-      if (!dateStr) {
+    () =>
+      props.visible()
+        ? {
+            date_str: selected_date(),
+            label_change_count: props.label_change_count?.() ?? 0,
+          }
+        : null,
+    async (source) => {
+      if (!source) {
         return [];
       }
-      return labels_list_by_date(dateStr);
+      return labels_list_by_date(source.date_str);
     },
   );
   const [coreLabels] = createResource(core_labels_list);
@@ -52,18 +55,6 @@ export const LabelHistory: Component<{
   const [busy, set_busy] = createSignal(false);
   const [flash, set_flash] = createSignal<string | null>(null);
   const [error, set_error] = createSignal<string | null>(null);
-
-  createEffect(
-    on(
-      () => props.latest_prediction?.(),
-      () => {
-        if (props.visible()) {
-          refetch();
-        }
-      },
-      { defer: true },
-    ),
-  );
 
   const day_data = createMemo(() => {
     const l = labels();

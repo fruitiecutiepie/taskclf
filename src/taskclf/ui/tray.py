@@ -1253,6 +1253,13 @@ class TrayLabeler:
             self._event_bus.publish_threadsafe(
                 {"type": "suggestion_cleared", "reason": "auto_saved_breakidle"}
             )
+            self._event_bus.publish_threadsafe(
+                {
+                    "type": "labels_changed",
+                    "reason": "auto_saved_breakidle",
+                    "ts": block_end.isoformat(),
+                }
+            )
 
     def _handle_transition(
         self,

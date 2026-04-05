@@ -6,6 +6,7 @@ import { LabelRecorder } from "./LabelRecorder";
 
 export const LabelRecorderWindow: Component = () => {
   const ws = ws_store_new();
+  const label_change_count = ws.label_change_count ?? (() => 0);
 
   function window_collapse() {
     host.invoke({ cmd: "toggleLabelGrid" });
@@ -36,6 +37,7 @@ export const LabelRecorderWindow: Component = () => {
           on_collapse={window_collapse}
           prediction={ws.latest_prediction}
           suggestion={ws.active_suggestion}
+          label_change_count={label_change_count}
           on_suggestion_dismiss={ws.suggestion_dismiss}
         />
       </div>

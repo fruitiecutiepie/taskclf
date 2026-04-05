@@ -26,6 +26,7 @@ export const StatusPanel: Component<{
   latest_prediction: Accessor<Prediction | null>;
   latest_tray_state: Accessor<TrayState>;
   active_suggestion: Accessor<LabelSuggestion | null>;
+  label_change_count?: Accessor<number>;
   ws_stats: Accessor<WSStats>;
   train_state: Accessor<TrainState>;
   on_open_label_recorder?: () => void;
@@ -66,7 +67,7 @@ export const StatusPanel: Component<{
       <Show when={tab() === "history"}>
         <LabelHistory
           visible={() => true}
-          latest_prediction={props.latest_prediction}
+          label_change_count={props.label_change_count}
         />
       </Show>
 

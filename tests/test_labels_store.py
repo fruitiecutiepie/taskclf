@@ -828,6 +828,39 @@ class TestUpdateLabelSpan:
         assert updated.end_ts == s.end_ts
         assert updated.label == "Debug"
 
+    def test_stop_open_ended_label_turns_off_extend_forward(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """TC-LABEL-UPD-011: stopping a running label stamps an end time and clears extend_forward."""
+        path = tmp_path / "labels.parquet"
+        span = LabelSpan(
+            start_ts=dt.datetime(2025, 6, 15, 10, 0),
+            end_ts=dt.datetime(2025, 6, 15, 10, 0),
+            label="Build",
+            provenance="manual",
+            extend_forward=True,
+        )
+        write_label_spans([span], path)
+
+        updated = update_label_span(
+            span.start_ts,
+            span.end_ts,
+            "Build",
+            path,
+            new_end_ts=dt.datetime(2025, 6, 15, 10, 15),
+            new_extend_forward=False,
+        )
+
+        assert updated.start_ts == _utc(2025, 6, 15, 10, 0)
+        assert updated.end_ts == _utc(2025, 6, 15, 10, 15)
+        assert updated.extend_forward is False
+
+        loaded = read_label_spans(path)
+        assert len(loaded) == 1
+        assert loaded[0].end_ts == _utc(2025, 6, 15, 10, 15)
+        assert loaded[0].extend_forward is False
+
 
 # ---------------------------------------------------------------------------
 # delete_label_span

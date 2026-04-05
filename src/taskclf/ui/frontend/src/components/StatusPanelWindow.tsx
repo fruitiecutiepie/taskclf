@@ -6,6 +6,7 @@ import { StatusPanel } from "./StatusPanel";
 
 export const StatusPanelWindow: Component = () => {
   const ws = ws_store_new();
+  const label_change_count = ws.label_change_count ?? (() => 0);
 
   return (
     <>
@@ -36,6 +37,7 @@ export const StatusPanelWindow: Component = () => {
             latest_prediction={ws.latest_prediction}
             latest_tray_state={ws.latest_tray_state}
             active_suggestion={ws.active_suggestion}
+            label_change_count={label_change_count}
             ws_stats={ws.ws_stats}
             train_state={ws.train_state}
             on_open_label_recorder={() => {
