@@ -1756,39 +1756,11 @@ class TrayLabeler:
 
     def _write_inference_policy_starter_template(self, models_dir: Path) -> Path:
         """Write a placeholder policy with inline help for manual editing."""
-        from taskclf.core.inference_policy import build_inference_policy
+        from taskclf.core.inference_policy import (
+            write_inference_policy_starter_template,
+        )
 
-        starter = build_inference_policy(
-            model_dir="models/<run_id>",
-            model_schema_hash="<schema_hash>",
-            model_label_set=["<label>"],
-            reject_threshold=DEFAULT_REJECT_THRESHOLD,
-            source="tray-template",
-        ).model_dump()
-        starter["_help"] = {
-            "summary": (
-                "Replace the placeholder values below or generate a validated policy "
-                "with the CLI."
-            ),
-            "preferred_command": "taskclf policy create --model-dir models/<run_id>",
-            "with_calibration": (
-                "taskclf policy create --model-dir models/<run_id> "
-                "--calibrator-store artifacts/calibrator_store"
-            ),
-            "paths_are_relative_to": str(models_dir.parent),
-            "notes": [
-                "model_dir points to a model bundle relative to TASKCLF_HOME.",
-                "calibrator_store_dir is optional; leave it null for identity calibration.",
-                "reject_threshold defaults to 0.55 unless you tuned it separately.",
-            ],
-        }
-
-        models_dir.mkdir(parents=True, exist_ok=True)
-        policy_path = models_dir / DEFAULT_INFERENCE_POLICY_FILE
-        tmp_path = models_dir / f".{DEFAULT_INFERENCE_POLICY_FILE}.tmp"
-        tmp_path.write_text(json.dumps(starter, indent=2) + "\n")
-        os.replace(tmp_path, policy_path)
-        return policy_path
+        return write_inference_policy_starter_template(models_dir)
 
     def _ensure_inference_policy_file_for_editing(
         self,

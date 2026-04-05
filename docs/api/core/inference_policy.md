@@ -23,6 +23,20 @@ model bundle + calibrator store + reject threshold → InferencePolicy
 The policy file lives at `models/inference_policy.json` and is the
 first thing inference resolution checks.
 
+## Canonical template (repository)
+
+Unlike per-user `config.toml`, `models/inference_policy.json` is **not**
+auto-written on first tray startup. The repository holds a stable
+checked-in example at
+[`configs/inference_policy.template.json`](https://github.com/fruitiecutiepie/taskclf/blob/master/configs/inference_policy.template.json)
+that matches `render_default_inference_policy_template_json()` (fixed
+`created_at` / `git_commit` for reproducibility). See the
+[Inference policy template](../../guide/inference_policy_template.md) guide.
+
+Runtime placeholder files use the same shape via
+`write_inference_policy_starter_template()`, with live provenance and
+`_help.paths_are_relative_to` set to your install’s TASKCLF_HOME.
+
 ## Editing from the tray
 
 The tray menu **Edit Inference Policy** opens this file in the default
@@ -107,6 +121,25 @@ remove_inference_policy(models_dir: Path) -> bool
 
 Delete the policy file.  Returns `True` if removed, `False` if it
 did not exist.
+
+### render_default_inference_policy_template_json
+
+```python
+render_default_inference_policy_template_json() -> str
+```
+
+Return the canonical JSON text for `configs/inference_policy.template.json`
+(stable timestamps for the checked-in file).
+
+### write_inference_policy_starter_template
+
+```python
+write_inference_policy_starter_template(models_dir: Path) -> Path
+```
+
+Atomically write a placeholder `inference_policy.json` for manual editing
+(same shape as the canonical template, with live `created_at` /
+`git_commit` and `_help.paths_are_relative_to`).
 
 ### validate_policy
 

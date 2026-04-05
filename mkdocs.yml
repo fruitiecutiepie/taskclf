@@ -82,6 +82,7 @@ nav:
       - Basics:
           - Getting Started: guide/usage.md
           - User config template: guide/config_template.md
+          - Inference policy template: guide/inference_policy_template.md
           - Privacy Model: guide/privacy.md
           - Acceptance Criteria: guide/acceptance.md
       - Data & Labels:

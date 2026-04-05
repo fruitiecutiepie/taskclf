@@ -18,8 +18,10 @@ from taskclf.core.inference_policy import (
     build_inference_policy,
     load_inference_policy,
     remove_inference_policy,
+    render_default_inference_policy_template_json,
     save_inference_policy,
     validate_policy,
+    write_inference_policy_starter_template,
 )
 from taskclf.core.schema import FeatureSchemaV1
 from taskclf.core.types import LABEL_SET_V1
@@ -176,6 +178,27 @@ class TestBuildInferencePolicy:
             model_label_set=["A"],
         )
         assert policy.reject_threshold == DEFAULT_REJECT_THRESHOLD
+
+
+def test_inference_policy_template_file_matches_render() -> None:
+    """configs/inference_policy.template.json matches render output."""
+    root = Path(__file__).resolve().parents[1]
+    on_disk = (root / "configs" / "inference_policy.template.json").read_text()
+    assert on_disk == render_default_inference_policy_template_json()
+
+
+class TestWriteInferencePolicyStarterTemplate:
+    def test_writes_valid_policy_and_paths_help(self, tmp_path: Path) -> None:
+        models_dir = tmp_path / "models"
+        path = write_inference_policy_starter_template(models_dir)
+        assert path == models_dir / "inference_policy.json"
+        loaded = load_inference_policy(models_dir)
+        assert loaded is not None
+        assert loaded.source == "tray-template"
+        raw = json.loads(path.read_text())
+        assert raw["_help"]["paths_are_relative_to"] == str(tmp_path)
+        assert "canonical_template" in raw["_help"]
+        assert not (models_dir / ".inference_policy.starter.tmp").exists()
 
 
 class TestValidatePolicy:

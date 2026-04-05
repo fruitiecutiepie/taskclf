@@ -2323,6 +2323,7 @@ class TestEditInferencePolicy:
             "taskclf policy create --model-dir models/<run_id>"
         )
         assert raw["_help"]["paths_are_relative_to"] == str(tmp_path)
+        assert "github" in raw["_help"]["canonical_template"]
         mock_notify.assert_called_once()
         assert "inline _help" in mock_notify.call_args[0][0].lower()
 

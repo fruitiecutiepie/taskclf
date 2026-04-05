@@ -32,6 +32,48 @@ from taskclf.core.defaults import (
 logger = logging.getLogger(__name__)
 
 _POLICY_TMP = ".inference_policy.json.tmp"
+_POLICY_STARTER_TMP = ".inference_policy.starter.tmp"
+
+# Stable metadata for the checked-in ``configs/inference_policy.template.json`` only.
+_INFERENCE_POLICY_TEMPLATE_CANONICAL_CREATED_AT = "2000-01-01T00:00:00+00:00"
+_INFERENCE_POLICY_TEMPLATE_PATHS_PLACEHOLDER = "<TASKCLF_HOME>"
+
+# Same three remote URLs pattern as ``config.toml`` / ``user_config.template.toml``.
+_INFERENCE_POLICY_TEMPLATE_REMOTE = {
+    "github": (
+        "https://github.com/fruitiecutiepie/taskclf/blob/master/"
+        "configs/inference_policy.template.json"
+    ),
+    "download": (
+        "https://raw.githubusercontent.com/fruitiecutiepie/taskclf/master/"
+        "configs/inference_policy.template.json"
+    ),
+    "guide": (
+        "https://fruitiecutiepie.github.io/taskclf/guide/inference_policy_template/"
+    ),
+}
+
+
+def _inference_policy_starter_help(paths_relative_to: str) -> dict[str, Any]:
+    """Inline help for placeholder starter policies (tray + repo template)."""
+    return {
+        "summary": (
+            "Replace the placeholder values below or generate a validated policy "
+            "with the CLI."
+        ),
+        "preferred_command": "taskclf policy create --model-dir models/<run_id>",
+        "with_calibration": (
+            "taskclf policy create --model-dir models/<run_id> "
+            "--calibrator-store artifacts/calibrator_store"
+        ),
+        "paths_are_relative_to": paths_relative_to,
+        "notes": [
+            "model_dir points to a model bundle relative to TASKCLF_HOME.",
+            "calibrator_store_dir is optional; leave it null for identity calibration.",
+            "reject_threshold defaults to 0.55 unless you tuned it separately.",
+        ],
+        "canonical_template": _INFERENCE_POLICY_TEMPLATE_REMOTE,
+    }
 
 
 class InferencePolicy(BaseModel, frozen=True):
@@ -120,6 +162,61 @@ def build_inference_policy(
         source=source,
         git_commit=_current_git_commit(),
     )
+
+
+def render_default_inference_policy_template_json() -> str:
+    """Return the canonical checked-in starter JSON text for ``configs/``.
+
+    Uses stable ``created_at`` / ``git_commit`` so the file matches the
+    repository template byte-for-byte. Runtime starter files written by
+    :func:`write_inference_policy_starter_template` use live provenance.
+    """
+    policy = InferencePolicy(
+        model_dir="models/<run_id>",
+        model_schema_hash="<schema_hash>",
+        model_label_set=["<label>"],
+        reject_threshold=DEFAULT_REJECT_THRESHOLD,
+        created_at=_INFERENCE_POLICY_TEMPLATE_CANONICAL_CREATED_AT,
+        git_commit="",
+        source="template",
+    )
+    data = policy.model_dump()
+    data["_help"] = _inference_policy_starter_help(
+        _INFERENCE_POLICY_TEMPLATE_PATHS_PLACEHOLDER
+    )
+    return json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+
+
+def write_inference_policy_starter_template(models_dir: Path) -> Path:
+    """Atomically write a placeholder ``inference_policy.json`` for manual editing.
+
+    Same content shape as :func:`render_default_inference_policy_template_json`,
+    but with live ``created_at`` / ``git_commit`` and
+    ``_help.paths_are_relative_to`` set to ``str(models_dir.parent)``.
+
+    Args:
+        models_dir: The ``models/`` directory (under TASKCLF_HOME).
+
+    Returns:
+        Path to the written policy file.
+    """
+    policy = build_inference_policy(
+        model_dir="models/<run_id>",
+        model_schema_hash="<schema_hash>",
+        model_label_set=["<label>"],
+        reject_threshold=DEFAULT_REJECT_THRESHOLD,
+        source="tray-template",
+    )
+    data = policy.model_dump()
+    data["_help"] = _inference_policy_starter_help(str(models_dir.parent))
+
+    models_dir.mkdir(parents=True, exist_ok=True)
+    tmp_path = models_dir / _POLICY_STARTER_TMP
+    final_path = models_dir / DEFAULT_INFERENCE_POLICY_FILE
+    tmp_path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+    os.replace(tmp_path, final_path)
+    logger.info("Wrote inference policy starter template to %s", final_path)
+    return final_path
 
 
 def save_inference_policy(
