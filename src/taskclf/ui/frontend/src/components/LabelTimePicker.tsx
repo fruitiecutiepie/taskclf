@@ -1,5 +1,6 @@
 import { type Accessor, type Component, createSignal, For } from "solid-js";
 import { iso_date_parse } from "../lib/date";
+import { label_entry_is_open_ended } from "../lib/labelTimeline";
 
 const MINUTE_OPTIONS = [0, 1, 5, 15, 30, 60] as const;
 export type TimeUnit = "s" | "m" | "h" | "d";
@@ -10,7 +11,9 @@ type LabelTimePickerProps = {
   set_selected_minutes: (m: number) => void;
   fill_from_last: Accessor<boolean>;
   set_fill_from_last: (v: boolean) => void;
-  last_label: Accessor<{ end_ts: string } | null | undefined>;
+  last_label: Accessor<
+    { start_ts: string; end_ts: string; extend_forward?: boolean } | null | undefined
+  >;
 };
 
 export const LabelTimePicker: Component<LabelTimePickerProps> = (props) => {
@@ -92,7 +95,7 @@ export const LabelTimePicker: Component<LabelTimePickerProps> = (props) => {
       </For>
       {(() => {
         const ll = props.last_label();
-        if (!ll?.end_ts) {
+        if (!ll?.end_ts || label_entry_is_open_ended(ll)) {
           return null;
         }
         const ago = Math.round(

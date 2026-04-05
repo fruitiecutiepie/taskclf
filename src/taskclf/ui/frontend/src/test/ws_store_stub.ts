@@ -39,7 +39,9 @@ export function ws_store_stub() {
     }),
     active_suggestion: () => null,
     latest_prompt: () => null,
+    live_status: () => null,
     label_grid_requested: () => 0,
+    label_change_count: () => 0,
     connection_status: () => "connected" as const,
     ws_stats: () => ({
       message_count: 0,

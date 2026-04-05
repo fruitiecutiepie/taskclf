@@ -117,6 +117,17 @@ export type SuggestionClearedEvent = {
   reason: string;
 };
 
+export type LabelStoppedEvent = {
+  type: "label_stopped";
+  ts: string;
+};
+
+export type LabelsChangedEvent = {
+  type: "labels_changed";
+  reason: string;
+  ts: string;
+};
+
 export type NoModelTransitionEvent = {
   type: "no_model_transition";
   current_app: string;
@@ -170,6 +181,8 @@ export type WSEvent =
   | ShowLabelGridEvent
   | PromptLabelEvent
   | SuggestionClearedEvent
+  | LabelStoppedEvent
+  | LabelsChangedEvent
   | NoModelTransitionEvent
   | LabelCreatedEvent
   | LiveStatusEvent
@@ -209,6 +222,7 @@ export type WebSocketStore = {
   latest_prompt: PromptLabelEvent | null;
   live_status: LiveStatusEvent | null;
   label_grid_requested: number;
+  label_change_count: number;
   train_state: TrainState;
   connection_status: ConnectionStatus;
   ws_stats: WSStats;
@@ -231,6 +245,7 @@ export function ws_store_new() {
     latest_prompt: null,
     live_status: null,
     label_grid_requested: 0,
+    label_change_count: 0,
     train_state: {
       job_id: null,
       status: "idle",
@@ -260,6 +275,26 @@ export function ws_store_new() {
   let reconnect_timer: ReturnType<typeof setTimeout> | null = null;
   let suggestion_timer: ReturnType<typeof setTimeout> | null = null;
   let retry_delay = 1000;
+
+  function manual_prediction_clear_if_stale(stop_ts: string) {
+    setStore(
+      produce((state) => {
+        const pred = state.latest_prediction;
+        if (!pred || pred.provenance !== "manual") {
+          return;
+        }
+        const pred_ms = Date.parse(pred.ts);
+        const stop_ms = Date.parse(stop_ts);
+        if (
+          !Number.isFinite(pred_ms)
+          || !Number.isFinite(stop_ms)
+          || pred_ms <= stop_ms
+        ) {
+          state.latest_prediction = null;
+        }
+      }),
+    );
+  }
 
   function suggestion_timer_clear() {
     if (suggestion_timer) {
@@ -299,6 +334,15 @@ export function ws_store_new() {
       }
       if (snap.prediction) {
         setStore("latest_prediction", reconcile(snap.prediction as Prediction | null));
+      }
+      if (snap.live_status) {
+        setStore("live_status", snap.live_status as LiveStatusEvent);
+      }
+      if (snap.labels_changed) {
+        setStore("label_change_count", (n) => n + 1);
+      }
+      if (snap.label_stopped) {
+        manual_prediction_clear_if_stale((snap.label_stopped as LabelStoppedEvent).ts);
       }
       if (snap.tray_state) {
         setStore("latest_tray_state", snap.tray_state as TrayState);
@@ -362,6 +406,14 @@ export function ws_store_new() {
           case "suggestion_cleared":
             setStore("active_suggestion", null);
             suggestion_timer_clear();
+            ws_stats_bump(now);
+            break;
+          case "label_stopped":
+            manual_prediction_clear_if_stale(data.ts);
+            ws_stats_bump(now);
+            break;
+          case "labels_changed":
+            setStore("label_change_count", (n) => n + 1);
             ws_stats_bump(now);
             break;
           case "label_grid_show":
@@ -522,7 +574,9 @@ export function ws_store_new() {
     latest_tray_state: () => store.latest_tray_state,
     active_suggestion: () => store.active_suggestion,
     latest_prompt: () => store.latest_prompt,
+    live_status: () => store.live_status,
     label_grid_requested: () => store.label_grid_requested,
+    label_change_count: () => store.label_change_count,
     connection_status: () => store.connection_status,
     ws_stats: () => store.ws_stats,
     train_state: () => store.train_state,

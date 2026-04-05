@@ -3,6 +3,7 @@ import { LABEL_COLORS } from "../lib/labelColors";
 import type {
   ConnectionStatus,
   LabelSuggestion,
+  LiveStatusEvent,
   Prediction,
   StatusEvent,
   TrayState,
@@ -13,6 +14,7 @@ export const PredictionBadge: Component<{
   status: Accessor<ConnectionStatus>;
   latest_status: Accessor<StatusEvent>;
   latest_prediction: Accessor<Prediction | null>;
+  live_status: Accessor<LiveStatusEvent | null>;
   latest_tray_state: Accessor<TrayState>;
   active_suggestion: Accessor<LabelSuggestion | null>;
   label_pinned?: Accessor<boolean>;
@@ -29,13 +31,17 @@ export const PredictionBadge: Component<{
     return pred ? pred.mapped_label || pred.label : null;
   };
 
+  const live_label = () => props.live_status()?.label ?? null;
+
+  const display_label = () => prediction_label() ?? live_label();
+
   const no_model = () => !props.latest_tray_state().model_loaded;
 
   const badge_text = () =>
-    prediction_label() ?? (no_model() ? "No Model" : "Unknown Label");
+    display_label() ?? (no_model() ? "No Model" : "Unknown Label");
 
   const pred_color = () => {
-    const l = prediction_label();
+    const l = display_label();
     return l ? (LABEL_COLORS[l] ?? "#555") : "#333";
   };
 
@@ -56,9 +62,9 @@ export const PredictionBadge: Component<{
           "border-radius": "20px",
           "font-size": "0.75rem",
           "font-weight": "600",
-          color: prediction_label() ? "#fff" : "#b0b0b0",
+          color: display_label() ? "#fff" : "#b0b0b0",
           background: pred_color(),
-          "text-shadow": prediction_label() ? "0 1px 3px rgba(0,0,0,0.5)" : "none",
+          "text-shadow": display_label() ? "0 1px 3px rgba(0,0,0,0.5)" : "none",
           "white-space": "nowrap",
           cursor: "pointer",
           outline: props.label_pinned?.() ? `2px solid ${pred_color()}aa` : "none",

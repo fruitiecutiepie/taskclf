@@ -7,6 +7,11 @@ export type LabelEntry = {
   extend_forward?: boolean;
 };
 
+export type OpenEndedLabelLike = Pick<
+  LabelEntry,
+  "start_ts" | "end_ts" | "extend_forward"
+>;
+
 export type TimelineSegment = {
   label: string | null;
   start_ms: number;
@@ -29,6 +34,12 @@ export type LabelItem = {
 };
 
 export type TimelineItem = GapItem | LabelItem;
+
+export function label_entry_is_open_ended(entry: OpenEndedLabelLike): boolean {
+  const start_ms = date_parse(entry.start_ts).getTime();
+  const end_ms = date_parse(entry.end_ts).getTime();
+  return entry.extend_forward === true && end_ms <= start_ms;
+}
 
 export function day_timeline_build(
   entries: LabelEntry[],
@@ -63,7 +74,7 @@ export function day_timeline_build(
   for (const entry of sorted) {
     const start_ms = date_parse(entry.start_ts).getTime();
     const end_ms = date_parse(entry.end_ts).getTime();
-    const open_ended = entry.extend_forward === true && end_ms <= start_ms;
+    const open_ended = label_entry_is_open_ended(entry);
     const s = Math.max(start_ms, day_start);
     const e = open_ended ? day_end : Math.min(end_ms, day_end);
     if (e <= s) {

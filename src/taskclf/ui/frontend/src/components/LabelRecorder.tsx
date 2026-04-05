@@ -8,10 +8,11 @@ import {
   on,
   Show,
 } from "solid-js";
-import { core_labels_list, label_create, labels_list } from "../lib/api";
+import { core_labels_list, label_create, label_update, labels_list } from "../lib/api";
 import { iso_date_parse } from "../lib/date";
 import { label_overwrite_pending_upd_get } from "../lib/label_overwrite_pending_upd_get";
 import { LABEL_COLORS } from "../lib/labelColors";
+import { label_entry_is_open_ended } from "../lib/labelTimeline";
 import type { LabelSuggestion, Prediction } from "../lib/ws";
 import { ActivitySummary } from "./ActivitySummary";
 import { ErrorBanner } from "./ErrorBanner";
@@ -39,20 +40,24 @@ type LabelRecorderProps = {
   on_collapse: () => void;
   prediction?: Accessor<Prediction | null>;
   suggestion?: Accessor<LabelSuggestion | null>;
+  label_change_count?: Accessor<number>;
   on_suggestion_dismiss?: () => void;
 };
 
 export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
   const [labels] = createResource(core_labels_list);
   const [label_version, set_label_version] = createSignal(0);
-  const [last_label] = createResource(label_version, async () => {
-    try {
-      const rows = await labels_list(1);
-      return rows.length ? rows[0] : null;
-    } catch {
-      return null;
-    }
-  });
+  const [last_label] = createResource(
+    () => [label_version(), props.label_change_count?.() ?? 0] as const,
+    async () => {
+      try {
+        const rows = await labels_list(1);
+        return rows.length ? rows[0] : null;
+      } catch {
+        return null;
+      }
+    },
+  );
   const [flash, set_flash] = createSignal<string | null>(null);
   const [error, set_error] = createSignal<string | null>(null);
   const [overwrite_pending, set_overwrite_pending] =
@@ -61,6 +66,13 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
   const [extend_fwd, set_extend_fwd] = createSignal(extend_forward_pref_read());
   const [fill_from_last, set_fill_from_last] = createSignal(false);
   const [conf_percent, set_conf_percent] = createSignal(100);
+  const [stop_current_pending, set_stop_current_pending] = createSignal(false);
+  const [stop_current_busy, set_stop_current_busy] = createSignal(false);
+
+  const current_label = () => {
+    const row = last_label();
+    return row && label_entry_is_open_ended(row) ? row : null;
+  };
 
   createEffect(
     on(
@@ -68,6 +80,9 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
       () => {
         if (overwrite_pending()) {
           set_overwrite_pending(null);
+        }
+        if (stop_current_pending()) {
+          set_stop_current_pending(false);
         }
       },
       { defer: true },
@@ -223,6 +238,35 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
     }
   }
 
+  async function current_label_stop() {
+    const current = current_label();
+    if (!current || stop_current_busy()) {
+      return;
+    }
+    const start_ms = iso_date_parse(current.start_ts).getTime();
+    const now_ms = Date.now();
+    const stop_ts = new Date(now_ms <= start_ms ? start_ms + 1 : now_ms).toISOString();
+
+    set_stop_current_busy(true);
+    set_error(null);
+    set_flash(null);
+    try {
+      await label_update({
+        start_ts: current.start_ts,
+        end_ts: current.end_ts,
+        label: current.label,
+        new_end_ts: stop_ts,
+        extend_forward: false,
+      });
+      set_label_version((v) => v + 1);
+      set_stop_current_pending(false);
+    } catch (err: unknown) {
+      set_error(err instanceof Error ? err.message : "Failed to stop current label");
+    } finally {
+      set_stop_current_busy(false);
+    }
+  }
+
   return (
     <div
       style={{
@@ -322,6 +366,85 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
       </div>
 
       <LabelLast last_label={last_label} />
+
+      <Show when={current_label()}>
+        <div
+          style={{
+            display: "flex",
+            "align-items": "center",
+            "justify-content": "center",
+            gap: "6px",
+            "flex-wrap": "wrap",
+            "margin-top": "6px",
+          }}
+        >
+          <Show
+            when={stop_current_pending()}
+            fallback={
+              <button
+                type="button"
+                disabled={stop_current_busy()}
+                onClick={() => {
+                  set_flash(null);
+                  set_error(null);
+                  set_stop_current_pending(true);
+                }}
+                style={{
+                  padding: "2px 8px",
+                  "border-radius": "6px",
+                  border: "1px solid color-mix(in srgb, #ef4444 40%, var(--border))",
+                  background: "transparent",
+                  color: "#ef4444",
+                  cursor: stop_current_busy() ? "not-allowed" : "pointer",
+                  "font-size": "0.65rem",
+                  opacity: stop_current_busy() ? "0.6" : "0.85",
+                }}
+              >
+                Stop current label
+              </button>
+            }
+          >
+            <span style={{ "font-size": "0.62rem", color: "var(--text-muted)" }}>
+              Stop recording the current label now?
+            </span>
+            <button
+              type="button"
+              disabled={stop_current_busy()}
+              onClick={() => set_stop_current_pending(false)}
+              style={{
+                padding: "2px 8px",
+                "border-radius": "6px",
+                border: "1px solid var(--border)",
+                background: "transparent",
+                color: "var(--text-muted)",
+                cursor: stop_current_busy() ? "not-allowed" : "pointer",
+                "font-size": "0.65rem",
+                opacity: stop_current_busy() ? "0.6" : "1",
+              }}
+            >
+              Keep recording
+            </button>
+            <button
+              type="button"
+              disabled={stop_current_busy()}
+              onClick={() => void current_label_stop()}
+              style={{
+                padding: "2px 8px",
+                "border-radius": "6px",
+                border: "1px solid #ef4444",
+                background: "#ef4444",
+                color: "#fff",
+                cursor: stop_current_busy() ? "not-allowed" : "pointer",
+                "font-size": "0.65rem",
+                "font-weight": "600",
+                opacity: stop_current_busy() ? "0.6" : "1",
+              }}
+            >
+              {stop_current_busy() ? "Stopping…" : "Confirm stop"}
+            </button>
+          </Show>
+        </div>
+      </Show>
     </div>
   );
 };

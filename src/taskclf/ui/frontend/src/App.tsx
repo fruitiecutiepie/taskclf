@@ -65,6 +65,7 @@ const App: Component = () => {
   };
 
   const ws = ws_store_new();
+  const label_change_count = ws.label_change_count ?? (() => 0);
 
   const [label_pinned, set_label_pinned] = createSignal(false);
   const [badge_hovered, set_badge_hovered] = createSignal(false);
@@ -246,6 +247,7 @@ const App: Component = () => {
                   status={ws.connection_status}
                   latest_status={ws.latest_status}
                   latest_prediction={ws.latest_prediction}
+                  live_status={ws.live_status}
                   latest_tray_state={ws.latest_tray_state}
                   active_suggestion={ws.active_suggestion}
                   label_pinned={label_pinned}
@@ -371,6 +373,7 @@ const App: Component = () => {
               }}
               prediction={ws.latest_prediction}
               suggestion={ws.active_suggestion}
+              label_change_count={label_change_count}
               on_suggestion_dismiss={ws.suggestion_dismiss}
             />
           </div>
@@ -400,6 +403,7 @@ const App: Component = () => {
               latest_prediction={ws.latest_prediction}
               latest_tray_state={ws.latest_tray_state}
               active_suggestion={ws.active_suggestion}
+              label_change_count={label_change_count}
               ws_stats={ws.ws_stats}
               train_state={ws.train_state}
               on_open_label_recorder={() => {

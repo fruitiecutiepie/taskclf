@@ -109,6 +109,7 @@ export async function label_update(body: {
   label: string;
   new_start_ts?: string;
   new_end_ts?: string;
+  extend_forward?: boolean;
 }): Promise<LabelResponse> {
   return api_json(`${BASE}/labels`, {
     method: "PUT",

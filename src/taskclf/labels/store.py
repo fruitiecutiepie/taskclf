@@ -401,6 +401,7 @@ def update_label_span(
     *,
     new_start_ts: dt.datetime | None = None,
     new_end_ts: dt.datetime | None = None,
+    new_extend_forward: bool | None = None,
 ) -> LabelSpan:
     """Change the label and/or timestamps on an existing span.
 
@@ -411,6 +412,8 @@ def update_label_span(
         path: Parquet file containing label spans.
         new_start_ts: If provided, replaces the span's start timestamp.
         new_end_ts: If provided, replaces the span's end timestamp.
+        new_extend_forward: If provided, replaces the span's
+            ``extend_forward`` flag.
 
     Returns:
         The updated ``LabelSpan``.
@@ -435,7 +438,11 @@ def update_label_span(
                 provenance=s.provenance,
                 user_id=s.user_id,
                 confidence=s.confidence,
-                extend_forward=s.extend_forward,
+                extend_forward=(
+                    new_extend_forward
+                    if new_extend_forward is not None
+                    else s.extend_forward
+                ),
             )
             spans[i] = updated
             write_label_spans(spans, path)

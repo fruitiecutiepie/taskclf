@@ -636,6 +636,40 @@ class TestUpdateLabel:
         assert data["end_ts"] == "2026-02-27T10:00:00+00:00"
         assert data["label"] == "Write"
 
+    def test_stop_current_open_ended_label(self, client: TestClient) -> None:
+        """TC-UI-UPD-009: PUT can stop a running extend-forward label at a concrete end time."""
+        create_resp = client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:00:00",
+                "end_ts": "2026-02-27T09:00:00",
+                "label": "Build",
+                "extend_forward": True,
+            },
+        )
+        assert create_resp.status_code == 201
+
+        resp = client.put(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:00:00",
+                "end_ts": "2026-02-27T09:00:00",
+                "label": "Build",
+                "new_end_ts": "2026-02-27T09:30:00",
+                "extend_forward": False,
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["start_ts"] == "2026-02-27T09:00:00+00:00"
+        assert data["end_ts"] == "2026-02-27T09:30:00+00:00"
+        assert data["extend_forward"] is False
+
+        labels = client.get("/api/labels").json()
+        assert len(labels) == 1
+        assert labels[0]["end_ts"] == "2026-02-27T09:30:00+00:00"
+        assert labels[0]["extend_forward"] is False
+
 
 # ---------------------------------------------------------------------------
 # DELETE /api/labels  (Item 35)
@@ -710,6 +744,80 @@ class TestDeleteLabel:
             },
         )
         assert resp.status_code == 422
+
+
+class TestLabelsChangedEvents:
+    def test_create_publishes_labels_changed(self, client: TestClient) -> None:
+        client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:00:00",
+                "end_ts": "2026-02-27T10:00:00",
+                "label": "Build",
+            },
+        )
+
+        snap = client.get("/api/ws/snapshot").json()
+        assert snap["labels_changed"]["reason"] == "created"
+
+    def test_update_publishes_labels_changed(self, client: TestClient) -> None:
+        client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:00:00",
+                "end_ts": "2026-02-27T10:00:00",
+                "label": "Build",
+            },
+        )
+
+        client.put(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:00:00",
+                "end_ts": "2026-02-27T10:00:00",
+                "label": "Write",
+            },
+        )
+
+        snap = client.get("/api/ws/snapshot").json()
+        assert snap["labels_changed"]["reason"] == "updated"
+
+    def test_delete_publishes_labels_changed(self, client: TestClient) -> None:
+        client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:00:00",
+                "end_ts": "2026-02-27T10:00:00",
+                "label": "Build",
+            },
+        )
+
+        client.request(
+            "DELETE",
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:00:00",
+                "end_ts": "2026-02-27T10:00:00",
+            },
+        )
+
+        snap = client.get("/api/ws/snapshot").json()
+        assert snap["labels_changed"]["reason"] == "deleted"
+
+    def test_notification_accept_publishes_labels_changed(
+        self, client: TestClient
+    ) -> None:
+        client.post(
+            "/api/notification/accept",
+            json={
+                "block_start": "2026-02-27T09:00:00",
+                "block_end": "2026-02-27T10:00:00",
+                "label": "Build",
+            },
+        )
+
+        snap = client.get("/api/ws/snapshot").json()
+        assert snap["labels_changed"]["reason"] == "suggestion_accepted"
 
 
 # ---------------------------------------------------------------------------
@@ -1445,9 +1553,60 @@ class TestLabelCreatedEvent:
             threading.Thread(target=_post).start()
             cleared = ws.receive_json()
             assert cleared["type"] == "suggestion_cleared"
+            changed = ws.receive_json()
+            assert changed["type"] == "labels_changed"
+            assert changed["reason"] == "created"
             received = ws.receive_json()
             assert received["type"] == "status"
             assert received["state"] == "sentinel"
+
+
+# ---------------------------------------------------------------------------
+# label_stopped event type
+# ---------------------------------------------------------------------------
+
+
+class TestLabelStoppedEvent:
+    """Verify stopping an open-ended label publishes label_stopped."""
+
+    def test_stop_current_label_publishes_label_stopped(self, data_dir: Path) -> None:
+        import threading
+        import time
+
+        bus = EventBus()
+        app = create_app(data_dir=data_dir, event_bus=bus)
+
+        with TestClient(app) as tc:
+            create_resp = tc.post(
+                "/api/labels",
+                json={
+                    "start_ts": "2026-02-27T09:00:00",
+                    "end_ts": "2026-02-27T09:00:00",
+                    "label": "Build",
+                    "extend_forward": True,
+                },
+            )
+            assert create_resp.status_code == 201
+
+            with tc.websocket_connect("/ws/predictions") as ws:
+
+                def _put() -> None:
+                    time.sleep(0.05)
+                    tc.put(
+                        "/api/labels",
+                        json={
+                            "start_ts": "2026-02-27T09:00:00",
+                            "end_ts": "2026-02-27T09:00:00",
+                            "label": "Build",
+                            "new_end_ts": "2026-02-27T09:30:00",
+                            "extend_forward": False,
+                        },
+                    )
+
+                threading.Thread(target=_put).start()
+                received = ws.receive_json()
+                assert received["type"] == "label_stopped"
+                assert received["ts"] == "2026-02-27T09:30:00+00:00"
 
 
 # ---------------------------------------------------------------------------

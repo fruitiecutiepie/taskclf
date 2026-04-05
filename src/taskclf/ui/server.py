@@ -122,6 +122,10 @@ class LabelUpdateRequest(BaseModel):
     new_end_ts: str | None = Field(
         default=None, description="New end timestamp (if changing time)"
     )
+    extend_forward: bool | None = Field(
+        default=None,
+        description="When provided, replaces the span's extend_forward flag.",
+    )
 
 
 class LabelDeleteRequest(BaseModel):
@@ -160,6 +164,17 @@ class NotificationAcceptRequest(BaseModel):
     block_start: str = Field(description="ISO-8601 start of the activity block")
     block_end: str = Field(description="ISO-8601 end of the activity block")
     label: str = Field(description="Suggested label to accept")
+
+
+class LabelStoppedEventResponse(BaseModel):
+    type: Literal["label_stopped"] = "label_stopped"
+    ts: str
+
+
+class LabelsChangedEventResponse(BaseModel):
+    type: Literal["labels_changed"] = "labels_changed"
+    reason: str
+    ts: str
 
 
 class LabelStatsResponse(BaseModel):
@@ -422,6 +437,14 @@ def create_app(
         lifespan=lifespan,
     )
 
+    async def publish_labels_changed(reason: str) -> None:
+        await bus.publish(
+            LabelsChangedEventResponse(
+                reason=reason,
+                ts=_utc_iso(dt.datetime.now(dt.timezone.utc)),
+            ).model_dump()
+        )
+
     # -- REST: labels ---------------------------------------------------------
 
     @app.get("/api/labels")
@@ -525,6 +548,7 @@ def create_app(
                     "extend_forward": True,
                 }
             )
+        await publish_labels_changed("created")
 
         return LabelResponse(
             start_ts=_utc_iso(span.start_ts),
@@ -538,6 +562,7 @@ def create_app(
 
     @app.put("/api/labels")
     async def api_op_labels_put(body: LabelUpdateRequest) -> LabelResponse:
+        prior_span: LabelSpan | None = None
         try:
             start = _ensure_utc(dt.datetime.fromisoformat(body.start_ts))
             end = _ensure_utc(dt.datetime.fromisoformat(body.end_ts))
@@ -553,6 +578,11 @@ def create_app(
             )
         except (ValueError, Exception) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+        if labels_path.exists():
+            for existing in read_label_spans(labels_path):
+                if existing.start_ts == start and existing.end_ts == end:
+                    prior_span = existing
+                    break
         try:
             span = update_label_span(
                 start,
@@ -561,9 +591,21 @@ def create_app(
                 labels_path,
                 new_start_ts=new_start,
                 new_end_ts=new_end,
+                new_extend_forward=body.extend_forward,
             )
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+        was_open_ended = (
+            prior_span is not None
+            and prior_span.extend_forward
+            and prior_span.end_ts <= prior_span.start_ts
+        )
+        is_closed = not span.extend_forward and span.end_ts > span.start_ts
+        if was_open_ended and is_closed:
+            await bus.publish(
+                LabelStoppedEventResponse(ts=_utc_iso(span.end_ts)).model_dump()
+            )
+        await publish_labels_changed("updated")
         return LabelResponse(
             start_ts=_utc_iso(span.start_ts),
             end_ts=_utc_iso(span.end_ts),
@@ -585,6 +627,7 @@ def create_app(
             delete_label_span(start, end, labels_path)
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+        await publish_labels_changed("deleted")
         return {"status": "deleted"}
 
     @app.get("/api/labels/export")
@@ -691,6 +734,8 @@ def create_app(
             labels_path.parent.mkdir(parents=True, exist_ok=True)
             write_label_spans(merged, labels_path)
             total = len(merged)
+
+        await publish_labels_changed("imported")
 
         return LabelImportResponse(
             status="ok",
@@ -917,6 +962,7 @@ def create_app(
             on_label_saved()
 
         await bus.publish({"type": "suggestion_cleared", "reason": "label_saved"})
+        await publish_labels_changed("suggestion_accepted")
 
         if on_suggestion_accepted is not None:
             on_suggestion_accepted()

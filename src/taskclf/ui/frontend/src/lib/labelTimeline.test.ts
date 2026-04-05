@@ -1,11 +1,29 @@
 import { describe, expect, it } from "vitest";
-import { day_timeline_build } from "./labelTimeline";
+import { day_timeline_build, label_entry_is_open_ended } from "./labelTimeline";
 
 function iso(h: number, m: number): string {
   return `2026-03-14T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00+00:00`;
 }
 
 describe("day_timeline_build", () => {
+  it("recognizes open-ended now-labels", () => {
+    const start = iso(11, 6);
+    expect(
+      label_entry_is_open_ended({
+        start_ts: start,
+        end_ts: start,
+        extend_forward: true,
+      }),
+    ).toBe(true);
+    expect(
+      label_entry_is_open_ended({
+        start_ts: start,
+        end_ts: start,
+        extend_forward: false,
+      }),
+    ).toBe(false);
+  });
+
   it("renders an open-ended now-label as a label item", () => {
     const start = iso(11, 6);
     const result = day_timeline_build(

@@ -200,6 +200,7 @@ describe("App drag regions", () => {
         }),
         active_suggestion: () => null,
         latest_prompt: () => null,
+        live_status: () => null,
         label_grid_requested: () => 0,
         connection_status: () => "connected",
         ws_stats: () => ({
@@ -302,6 +303,7 @@ describe("App drag regions", () => {
         }),
         active_suggestion: () => null,
         latest_prompt: () => null,
+        live_status: () => null,
         label_grid_requested: () => 0,
         connection_status: () => "connected",
         ws_stats: () => ({
@@ -415,6 +417,7 @@ describe("App drag regions", () => {
         }),
         active_suggestion: () => null,
         latest_prompt: () => prompt,
+        live_status: () => null,
         label_grid_requested: () => 0,
         connection_status: () => "connected",
         ws_stats: () => ({
