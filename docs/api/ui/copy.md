@@ -18,6 +18,7 @@ stay consistent and changeable in one place.
 ## Design conventions (Decision 6)
 
 - **Action-oriented framing** with concrete time ranges for transition suggestions.
+- Transition suggestion time ranges are rendered in the user's **local timezone** for display, while structured interval fields remain UTC elsewhere in the UI/API.
 - **Present-tense statement** for live status, no time range needed.
 - **No hedging language** ("We think you might have been...").
 - **No numeric confidence** on live status or transition surfaces.

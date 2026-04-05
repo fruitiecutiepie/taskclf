@@ -14,8 +14,13 @@ from __future__ import annotations
 
 import datetime as dt
 import inspect
+import os
+import time
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from taskclf.ui.copy import (
     gap_fill_detail,
@@ -36,6 +41,36 @@ def _capture_bus() -> tuple[EventBus, list[dict]]:
 
 _BLOCK_START = dt.datetime(2026, 3, 1, 10, 0, 0, tzinfo=dt.timezone.utc)
 _BLOCK_END = dt.datetime(2026, 3, 1, 10, 15, 0, tzinfo=dt.timezone.utc)
+
+
+def _transition_text_for_interval(
+    label: str,
+    block_start: dt.datetime,
+    block_end: dt.datetime,
+) -> str:
+    return transition_suggestion_text(
+        label,
+        block_start.astimezone().strftime("%H:%M"),
+        block_end.astimezone().strftime("%H:%M"),
+    )
+
+
+@contextmanager
+def _local_timezone(name: str):
+    if not hasattr(time, "tzset"):
+        pytest.skip("Local timezone override requires time.tzset()")
+
+    previous = os.environ.get("TZ")
+    os.environ["TZ"] = name
+    time.tzset()
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop("TZ", None)
+        else:
+            os.environ["TZ"] = previous
+        time.tzset()
 
 
 class TestCopyStrings:
@@ -108,6 +143,34 @@ class TestTransitionSurface:
         assert "Was this Build?" in message
 
     @patch("taskclf.ui.tray._send_desktop_notification")
+    def test_transition_notification_uses_local_display_time(
+        self,
+        mock_notif: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Transition notification copy uses local clock time, not raw UTC."""
+        bus, _ = _capture_bus()
+        labeler = TrayLabeler(
+            data_dir=tmp_path,
+            model_dir=None,
+            event_bus=bus,
+            privacy_notifications=False,
+        )
+        labeler._suggested_label = "Build"
+
+        with _local_timezone("America/Los_Angeles"):
+            labeler._send_notification(
+                "com.apple.Terminal",
+                "us.zoom.xos",
+                _BLOCK_START,
+                _BLOCK_END,
+            )
+
+        mock_notif.assert_called_once()
+        message = mock_notif.call_args[0][1]
+        assert message == "Was this Build? 02:00\u201302:15"
+
+    @patch("taskclf.ui.tray._send_desktop_notification")
     def test_srf004_prompt_label_event_excludes_confidence(
         self,
         _mock_notif: MagicMock,
@@ -134,7 +197,42 @@ class TestTransitionSurface:
 
         prompt = next(e for e in captured if e["type"] == "prompt_label")
         assert "suggested_confidence" not in prompt
-        assert prompt["suggestion_text"] == "Was this Build? 10:00\u201310:15"
+        assert prompt["suggestion_text"] == _transition_text_for_interval(
+            "Build",
+            _BLOCK_START,
+            _BLOCK_END,
+        )
+
+    @patch("taskclf.ui.tray._send_desktop_notification")
+    def test_prompt_label_event_uses_local_display_time(
+        self,
+        _mock_notif: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """prompt_label copy uses local time while structured bounds stay UTC."""
+        bus, captured = _capture_bus()
+        labeler = TrayLabeler(
+            data_dir=tmp_path,
+            model_dir=None,
+            event_bus=bus,
+        )
+
+        mock_suggester = MagicMock()
+        mock_suggester.suggest.return_value = ("Build", 0.85)
+        labeler._suggester = mock_suggester
+
+        with _local_timezone("America/Los_Angeles"):
+            labeler._handle_transition(
+                "com.apple.Terminal",
+                "us.zoom.xos",
+                _BLOCK_START,
+                _BLOCK_END,
+            )
+
+        prompt = next(e for e in captured if e["type"] == "prompt_label")
+        assert prompt["block_start"] == _BLOCK_START.isoformat()
+        assert prompt["block_end"] == _BLOCK_END.isoformat()
+        assert prompt["suggestion_text"] == "Was this Build? 02:00\u201302:15"
 
 
 class TestSurfaceSeparation:

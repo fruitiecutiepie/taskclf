@@ -23,6 +23,7 @@ from PIL import Image
 
 from taskclf.core.types import LabelSpan
 from taskclf.labels.store import append_label_span, read_label_spans
+from taskclf.ui.copy import transition_suggestion_text
 from taskclf.ui.events import EventBus
 from taskclf.ui.tray import (
     ActivityMonitor,
@@ -417,7 +418,11 @@ class TestHandleTransition:
         prompt = next(e for e in captured if e["type"] == "prompt_label")
         assert prompt["suggested_label"] == "Build"
         assert "suggested_confidence" not in prompt
-        assert prompt["suggestion_text"] == "Was this Build? 10:00\u201310:15"
+        assert prompt["suggestion_text"] == transition_suggestion_text(
+            "Build",
+            _BLOCK_START.astimezone().strftime("%H:%M"),
+            _BLOCK_END.astimezone().strftime("%H:%M"),
+        )
 
         suggest = next(e for e in captured if e["type"] == "suggest_label")
         assert suggest["reason"] == "app_switch"

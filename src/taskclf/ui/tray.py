@@ -109,6 +109,13 @@ def _send_desktop_notification(title: str, message: str, timeout: int = 10) -> N
     logger.info("[%s] %s", title, message)
 
 
+def _display_clock_time_local(ts: dt.datetime) -> str:
+    """Format a transition-boundary timestamp in the user's local timezone."""
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=dt.timezone.utc)
+    return ts.astimezone().strftime("%H:%M")
+
+
 # ---------------------------------------------------------------------------
 # Activity transition detection
 # ---------------------------------------------------------------------------
@@ -1298,8 +1305,8 @@ class TrayLabeler:
         if self._event_bus is not None:
             from taskclf.ui.copy import transition_suggestion_text
 
-            start_str = block_start.strftime("%H:%M")
-            end_str = block_end.strftime("%H:%M")
+            start_str = _display_clock_time_local(block_start)
+            end_str = _display_clock_time_local(block_end)
             suggestion_text = (
                 transition_suggestion_text(self._suggested_label, start_str, end_str)
                 if self._suggested_label is not None
@@ -1358,8 +1365,8 @@ class TrayLabeler:
         from taskclf.ui.copy import transition_suggestion_text
 
         title = "taskclf — Activity changed"
-        start_str = block_start.strftime("%H:%M")
-        end_str = block_end.strftime("%H:%M")
+        start_str = _display_clock_time_local(block_start)
+        end_str = _display_clock_time_local(block_end)
 
         if self._suggested_label is not None:
             message = transition_suggestion_text(
