@@ -40,6 +40,7 @@ import {
 import { dashboardWindowActionForTrayInteraction } from "./tray_dashboard";
 import { getAppIconPath, getTrayIconAsset } from "./tray_icon";
 import { getPortListenerInfo, killPidAndWaitForPortFree } from "./port_conflict";
+import { warmPillWindow } from "./shell_warm.js";
 
 /** Must match `build.productName` in package.json (Finder / .app name, tray, notifications). */
 function readAppDisplayName(): string {
@@ -80,6 +81,10 @@ const DEFAULT_SHELL_WAIT_MS_DEV = 30000;
 const REPORT_ISSUE_URL_BASE = "https://github.com/fruitiecutiepie/taskclf/issues/new";
 const MAX_REPORT_ISSUE_URL_LEN = 8000;
 const MAX_RECENT_SIDECAR_LINES = 20;
+/** Default tray menu refresh interval when idle (ms). Override with `TASKCLF_ELECTRON_TRAY_SYNC_MS`. */
+const DEFAULT_TRAY_SYNC_IDLE_MS = 30_000;
+/** Defer first background payload drift check after dashboard is shown (ms). */
+const BACKGROUND_UPDATE_CHECK_DELAY_MS = 8_000;
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -89,6 +94,8 @@ let hasShownWindow = false;
 let fatalLaunchErrorShown = false;
 const recentSidecarLines: string[] = [];
 let latestPayloadResolution: PayloadResolution | null = null;
+/** Set after the pill loads the real shell URL; used to lazy-load `?view=label` / `?view=panel` popups. */
+let shellBaseUrl: string | null = null;
 
 // ── Child window state machine ──────────────────────────────────────────
 
@@ -674,6 +681,36 @@ function createPopupWindow(size: { width: number; height: number }): BrowserWind
   return window;
 }
 
+async function ensureLabelWindow(): Promise<void> {
+  if (mainWindow === null || shellBaseUrl === null) {
+    return;
+  }
+  if (labelChild.window !== null && !labelChild.window.isDestroyed()) {
+    return;
+  }
+  const win = createPopupWindow(LABEL_SIZE);
+  labelChild.window = win;
+  win.on("closed", () => {
+    labelChild.window = null;
+  });
+  await win.loadURL(`${shellBaseUrl}?view=label`);
+}
+
+async function ensurePanelWindow(): Promise<void> {
+  if (mainWindow === null || shellBaseUrl === null) {
+    return;
+  }
+  if (panelChild.window !== null && !panelChild.window.isDestroyed()) {
+    return;
+  }
+  const win = createPopupWindow(PANEL_SIZE);
+  panelChild.window = win;
+  win.on("closed", () => {
+    panelChild.window = null;
+  });
+  await win.loadURL(`${shellBaseUrl}?view=panel`);
+}
+
 // ── Show / toggle ───────────────────────────────────────────────────────
 
 function showWindow(): void {
@@ -705,8 +742,9 @@ function toggleWindow(): void {
   showWindow();
 }
 
-function openLabelGridFromNotification(): void {
+async function openLabelGridFromNotification(): Promise<void> {
   showWindow();
+  await ensureLabelWindow();
   if (labelChild.window === null) {
     return;
   }
@@ -777,7 +815,7 @@ async function acceptTransitionSuggestion(
   prompt: NonNullable<HostCommand["prompt"]>,
 ): Promise<void> {
   if (prompt.suggested_label === null) {
-    openLabelGridFromNotification();
+    void openLabelGridFromNotification();
     return;
   }
 
@@ -791,7 +829,7 @@ async function acceptTransitionSuggestion(
   }
 
   launcherLog(`transition notification accept failed: ${result.detail}`, "error");
-  openLabelGridFromNotification();
+  void openLabelGridFromNotification();
   new Notification({
     title: APP_DISPLAY_NAME,
     body: "Could not save the suggested label. Opened the labeler to review.",
@@ -805,7 +843,7 @@ async function skipTransitionSuggestion(): Promise<void> {
   }
 
   launcherLog(`transition notification skip failed: ${result.detail}`, "error");
-  openLabelGridFromNotification();
+  void openLabelGridFromNotification();
   new Notification({
     title: APP_DISPLAY_NAME,
     body: "Could not dismiss the suggestion. Opened the labeler to review.",
@@ -830,11 +868,11 @@ function showTransitionNotification(
   });
 
   notification.on("click", () => {
-    openLabelGridFromNotification();
+    void openLabelGridFromNotification();
   });
   notification.on("action", (_event, index) => {
     if (prompt.suggested_label === null) {
-      openLabelGridFromNotification();
+      void openLabelGridFromNotification();
       return;
     }
     if (index === 0) {
@@ -842,14 +880,14 @@ function showTransitionNotification(
       return;
     }
     if (index === 1) {
-      openLabelGridFromNotification();
+      void openLabelGridFromNotification();
       return;
     }
     if (index === 2) {
       void skipTransitionSuggestion();
       return;
     }
-    openLabelGridFromNotification();
+    void openLabelGridFromNotification();
   });
   notification.show();
 }
@@ -1026,23 +1064,6 @@ async function waitForShell(url: string, timeoutMs = 30000): Promise<void> {
   const errMsg = `Timed out waiting for ${url} after ${attempts} attempts (last: ${lastDetail})`;
   launcherLog(errMsg, "error");
   throw new Error(errMsg);
-}
-
-/** Inline placeholder while the FastAPI sidecar boots; warms renderer in parallel with `waitForShell`. */
-const SHELL_LOADING_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>taskclf</title><style>body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#0f0f12;color:#e8e8ec;font-size:14px}@keyframes p{to{opacity:.35}}.s{animation:p 1s ease-in-out infinite alternate}</style></head><body><span class="s">Loading…</span></body></html>`;
-
-function shellLoadingDataUrl(): string {
-  return `data:text/html;charset=utf-8,${encodeURIComponent(SHELL_LOADING_HTML)}`;
-}
-
-/** Load placeholder pages concurrently with waiting for the real shell URL (sidecar already runs in parallel). */
-async function warmShellWindows(
-  pill: BrowserWindow,
-  label: BrowserWindow,
-  panel: BrowserWindow,
-): Promise<void> {
-  const url = shellLoadingDataUrl();
-  await Promise.all([pill.loadURL(url), label.loadURL(url), panel.loadURL(url)]);
 }
 
 async function sidecarRequest(
@@ -1721,6 +1742,11 @@ function createTray(): Tray {
       dashboardWindowActionForTrayInteraction("icon-click"),
     );
   });
+  if (process.platform !== "darwin") {
+    instance.on("right-click", () => {
+      void syncTrayMenu();
+    });
+  }
   instance.setContextMenu(
     Menu.buildFromTemplate([
       {
@@ -2081,12 +2107,14 @@ ipcMain.handle("taskclf-host", async (_event, command: HostCommand) => {
       mainWindow?.hide();
       return;
     case "showLabelGrid":
+      await ensureLabelWindow();
       childVisibilityOn(labelChild);
       return;
     case "hideLabelGrid":
       childVisibilityOffDeferred(labelChild);
       return;
     case "toggleLabelGrid":
+      await ensureLabelWindow();
       childPinToggle(labelChild);
       return;
     case "cancelLabelHide":
@@ -2098,12 +2126,14 @@ ipcMain.handle("taskclf-host", async (_event, command: HostCommand) => {
       }
       return;
     case "showStatePanel":
+      await ensurePanelWindow();
       childVisibilityOn(panelChild);
       return;
     case "hideStatePanel":
       childVisibilityOffDeferred(panelChild);
       return;
     case "toggleStatePanel":
+      await ensurePanelWindow();
       childPinToggle(panelChild);
       return;
     case "cancelPanelHide":
@@ -2160,18 +2190,6 @@ async function start(): Promise<void> {
     closeProgressWindow(startupWindow);
     startupWindow = null;
   };
-
-  const labelWin = createPopupWindow(LABEL_SIZE);
-  labelChild.window = labelWin;
-  labelWin.on("closed", () => {
-    labelChild.window = null;
-  });
-
-  const panelWin = createPopupWindow(PANEL_SIZE);
-  panelChild.window = panelWin;
-  panelWin.on("closed", () => {
-    panelChild.window = null;
-  });
 
   if (app.isPackaged) {
     const launcherVersion = app.getVersion();
@@ -2299,9 +2317,6 @@ async function start(): Promise<void> {
         hideStartupStatus();
       }
     }
-
-    // Check for payload drift in the background on startup.
-    performBackgroundUpdateCheck();
   }
 
   try {
@@ -2320,20 +2335,28 @@ async function start(): Promise<void> {
     }
     await Promise.all([
       waitForShell(base, shellWaitTimeoutMs()),
-      warmShellWindows(mainWindow, labelWin, panelWin).catch((err) => {
+      warmPillWindow(mainWindow).catch((err) => {
         const msg = err instanceof Error ? err.message : String(err);
-        launcherLog(`shell window warm load failed (non-fatal): ${msg}`, "info");
+        launcherLog(`pill warm load failed (non-fatal): ${msg}`, "info");
       }),
     ]);
+    shellBaseUrl = base;
     await showStartupStatus("Opening dashboard…");
-    await Promise.all([
-      mainWindow.loadURL(base),
-      labelWin.loadURL(`${base}?view=label`),
-      panelWin.loadURL(`${base}?view=panel`),
-    ]);
+    await mainWindow.loadURL(base);
     hideStartupStatus();
     showWindow();
-    syncTimer = setInterval(() => { void syncTrayMenu(); }, 5000);
+    if (app.isPackaged) {
+      setTimeout(() => {
+        void performBackgroundUpdateCheck();
+      }, BACKGROUND_UPDATE_CHECK_DELAY_MS);
+    }
+    const traySyncMs = Math.max(
+      5_000,
+      envInt("TASKCLF_ELECTRON_TRAY_SYNC_MS", DEFAULT_TRAY_SYNC_IDLE_MS),
+    );
+    syncTimer = setInterval(() => {
+      void syncTrayMenu();
+    }, traySyncMs);
     updateCheckTimer = setInterval(() => { void performBackgroundUpdateCheck(); }, 60 * 60 * 1000); // 1 hour
     void syncTrayMenu();
   } catch (error) {

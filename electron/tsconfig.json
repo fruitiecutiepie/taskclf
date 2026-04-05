@@ -13,6 +13,7 @@
   },
   "include": [
     "main.ts",
+    "shell_warm.ts",
     "port_conflict.ts",
     "preload.ts",
     "payload_choice.ts",

@@ -30,7 +30,9 @@ Electron uses the same three-window arrangement. Its main process
 creates separate popup `BrowserWindow` instances for the label grid
 (`?view=label`) and state panel (`?view=panel`), with an equivalent
 child-window state machine for hover, pin, delayed hide, and drag
-detection.
+detection. Those popups are **created on first use** (not at process
+startup) so the pill dashboard can load with lower overhead; routes and
+markup match the pywebview shell once opened.
 
 The compact route in the Solid app uses the same layout and host
 commands as pywebview and Electron. The child routes `?view=label` and

@@ -749,7 +749,8 @@ taskclf tray --dev --browser --no-tray
 
 Launch the optional Electron desktop shell.  Electron owns the native
 tray icon and three frameless BrowserWindows (compact pill, label popup,
-state panel popup), while the existing Python tray backend runs as a
+state panel popup); the label and panel popups are created when first opened.
+The existing Python tray backend runs as a
 sidecar process in browser mode without opening a separate browser tab.
 Clicking the tray icon shows or focuses the dashboard; hiding remains an
 explicit tray-menu action via **Toggle Dashboard**.
@@ -789,6 +790,10 @@ In the **packaged** Electron app (installers / `.app`), the main process runs a
 starting the sidecar: it can stop a leftover taskclf listener automatically or
 prompt if another process owns the port. See
 [`electron_shell`](../ui/electron_shell.md#packaged-app-ui-port-preflight).
+
+Optional launcher environment variables are documented under
+[`electron_shell`](../ui/electron_shell.md) (for example `TASKCLF_ELECTRON_SHELL_WAIT_MS`,
+`TASKCLF_ELECTRON_TRAY_SYNC_MS`, manifest timeouts).
 
 ### ui
 

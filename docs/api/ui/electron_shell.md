@@ -147,8 +147,11 @@ network call or sidecar boot work begins, the launcher shows a small native
 **startup status** window so the app does not appear idle while it is checking
 for local core files, waiting on release metadata, or waiting for the local UI
 server to answer. While polling for the sidecar HTTP server, the main process
-also loads a lightweight `data:` placeholder into the pill and child webviews so
-renderer startup overlaps with PyInstaller cold-start.
+also loads a lightweight `data:` placeholder into the **pill** webview only so
+renderer startup overlaps with PyInstaller cold-start. Label grid and state panel
+popup `BrowserWindow`s are **created and loaded on first use** (`?view=label` /
+`?view=panel`) to reduce startup subprocess and memory cost; see
+[`shell_warm`](shell_warm.md).
 
 The Python sidecar also defers importing heavy data dependencies (for example
 `pandas` and parquet reads) until REST routes that need them run, so the local
@@ -169,6 +172,28 @@ Electron's Chromium network stack for packaged-app updater requests) and `electr
 - `TASKCLF_ELECTRON_SHELL_WAIT_MS` -- max time to wait for the local FastAPI
   sidecar after spawn (default: `120000` packaged, `30000` dev; PyInstaller
   cold-starts can exceed 30s on slower disks)
+- `TASKCLF_ELECTRON_TRAY_SYNC_MS` -- interval in milliseconds for idle tray menu
+  refresh (default: `30000`; minimum enforced `5000`). The tray menu is also
+  refreshed once after startup; on Windows/Linux, right-clicking the tray icon
+  triggers a refresh before the context menu is used.
+
+## Performance targets (Electron shell)
+
+These are **engineering targets**, not guarantees (Chromium still owns GPU and
+utility helpers):
+
+- **Startup:** Prefer only the pill renderer plus the Python sidecar until the
+  dashboard is shown; defer label/panel popup renderers until the user opens
+  those surfaces.
+- **Steady state:** Avoid aggressive idle polling of the sidecar; tray menu
+  refresh uses `TASKCLF_ELECTRON_TRAY_SYNC_MS` (see above).
+- **Background updates:** The first packaged “payload drift” check runs a few
+  seconds after the dashboard is shown, not in the middle of port preflight /
+  sidecar spawn, so it does not compete with cold-start work.
+
+Measure with OS tools (for example Activity Monitor on macOS) and
+`TASKCLF_ELECTRON_DEBUG=1` plus `<userData>/logs/electron-launcher.log` (see
+below).
 
 ## Packaged app: UI port preflight
 
@@ -244,6 +269,7 @@ folder or pre-fill a GitHub bug report.
 - Used by the `taskclf electron` CLI command in
   [`docs/api/cli/main.md`](../cli/main.md)
 - Read by the Electron app in `electron/main.ts`
+- Pill placeholder warmup in [`shell_warm`](shell_warm.md)
 - Uses the tray interaction helper in
   [`electron_tray_dashboard`](electron_tray_dashboard.md)
 - Uses the launcher payload policy documented in
