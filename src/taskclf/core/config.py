@@ -30,8 +30,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import tomli_w
-
+from taskclf.core import _toml_write
 from taskclf.core.defaults import (
     DEFAULT_AW_HOST,
     DEFAULT_AW_TIMEOUT_SECONDS,
@@ -355,7 +354,7 @@ def _to_commented_toml(data: dict[str, Any]) -> str:
         comment = _comment_for_key(key)
         if comment:
             lines.append(f"# {comment}")
-        lines.append(tomli_w.dumps({key: val}).rstrip())
+        lines.append(_toml_write.dumps({key: val}).rstrip())
         lines.append("")
     if lines and lines[-1] == "":
         lines.pop()
