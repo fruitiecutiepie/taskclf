@@ -12,6 +12,41 @@ const prompt: PromptLabelEvent = {
   suggestion_text: "Was this Research? 11:00-11:05",
 };
 
+function notification_range_text(prompt: PromptLabelEvent): string {
+  const start = new Date(prompt.block_start);
+  const end = new Date(prompt.block_end);
+  const same_local_day =
+    start.getFullYear() === end.getFullYear()
+    && start.getMonth() === end.getMonth()
+    && start.getDate() === end.getDate();
+
+  if (same_local_day) {
+    return `${start.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    })} → ${end.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    })}`;
+  }
+
+  return `${start.toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  })} → ${end.toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  })}`;
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -47,7 +82,7 @@ describe("transition_notification_show", () => {
     const notification = transition_notification_show(prompt, on_click);
 
     expect(notification_ctor).toHaveBeenCalledWith("taskclf — Activity changed", {
-      body: "Was this Research? 11:00-11:05",
+      body: `Was this Research? 11:00-11:05\n${notification_range_text(prompt)}`,
       tag: "taskclf-transition",
       renotify: true,
       requireInteraction: true,
@@ -76,5 +111,35 @@ describe("transition_notification_show", () => {
 
     expect(transition_notification_show(prompt, vi.fn())).toBeNull();
     expect(notification_ctor).not.toHaveBeenCalled();
+  });
+
+  it("shows the exact local range when there is no suggestion text", async () => {
+    vi.resetModules();
+
+    const no_suggestion_prompt: PromptLabelEvent = {
+      ...prompt,
+      suggested_label: null,
+      suggestion_text: null,
+    };
+    const notification_ctor = vi.fn(function NotificationMock() {});
+    Object.assign(notification_ctor, {
+      permission: "granted",
+      requestPermission: vi.fn(),
+    });
+
+    vi.stubGlobal("Notification", notification_ctor);
+
+    const { notification_permission_ensure, transition_notification_show } =
+      await import("./notifications");
+
+    await notification_permission_ensure();
+    transition_notification_show(no_suggestion_prompt, vi.fn());
+
+    expect(notification_ctor).toHaveBeenCalledWith("taskclf — Activity changed", {
+      body: `Editor → Browser\n${notification_range_text(no_suggestion_prompt)}`,
+      tag: "taskclf-transition",
+      renotify: true,
+      requireInteraction: true,
+    });
   });
 });

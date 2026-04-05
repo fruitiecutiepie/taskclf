@@ -55,6 +55,22 @@ def _transition_text_for_interval(
     )
 
 
+def _exact_local_range_for_interval(
+    block_start: dt.datetime,
+    block_end: dt.datetime,
+) -> str:
+    start_local = block_start.astimezone()
+    end_local = block_end.astimezone()
+    if start_local.date() == end_local.date():
+        return (
+            f"{start_local.strftime('%H:%M:%S')}\u2013{end_local.strftime('%H:%M:%S')}"
+        )
+    return (
+        f"{start_local.strftime('%b %d %H:%M:%S')}"
+        f"\u2013{end_local.strftime('%b %d %H:%M:%S')}"
+    )
+
+
 @contextmanager
 def _local_timezone(name: str):
     if not hasattr(time, "tzset"):
@@ -141,6 +157,7 @@ class TestTransitionSurface:
         assert "0.92" not in message
         assert "Build" in message
         assert "Was this Build?" in message
+        assert _exact_local_range_for_interval(_BLOCK_START, _BLOCK_END) in message
 
     @patch("taskclf.ui.tray._send_desktop_notification")
     def test_transition_notification_uses_local_display_time(
@@ -168,7 +185,7 @@ class TestTransitionSurface:
 
         mock_notif.assert_called_once()
         message = mock_notif.call_args[0][1]
-        assert message == "Was this Build? 02:00\u201302:15"
+        assert message == "Was this Build? 02:00\u201302:15\n02:00:00\u201302:15:00"
 
     @patch("taskclf.ui.tray._send_desktop_notification")
     def test_srf004_prompt_label_event_excludes_confidence(

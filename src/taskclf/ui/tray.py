@@ -116,6 +116,28 @@ def _display_clock_time_local(ts: dt.datetime) -> str:
     return ts.astimezone().strftime("%H:%M")
 
 
+def _display_time_range_exact_local(
+    start: dt.datetime,
+    end: dt.datetime,
+) -> str:
+    """Format an exact local transition range, adding dates if it crosses midnight."""
+    if start.tzinfo is None:
+        start = start.replace(tzinfo=dt.timezone.utc)
+    if end.tzinfo is None:
+        end = end.replace(tzinfo=dt.timezone.utc)
+
+    start_local = start.astimezone()
+    end_local = end.astimezone()
+    if start_local.date() == end_local.date():
+        return (
+            f"{start_local.strftime('%H:%M:%S')}\u2013{end_local.strftime('%H:%M:%S')}"
+        )
+    return (
+        f"{start_local.strftime('%b %d %H:%M:%S')}"
+        f"\u2013{end_local.strftime('%b %d %H:%M:%S')}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Activity transition detection
 # ---------------------------------------------------------------------------
@@ -685,8 +707,8 @@ class TrayLabeler:
         data_dir: Path to the processed data directory (for label storage).
         model_dir: Optional path to a model bundle for label suggestions.
         models_dir: Optional path to the directory containing all model
-            bundles.  When set, the tray builds a dynamic "Model" submenu
-            listing available bundles for hot-swapping.
+            bundles.  When set, the tray builds a dynamic "Prediction Model"
+            submenu listing available bundles for hot-swapping.
         aw_host: ActivityWatch server URL.
         title_salt: Salt for hashing window titles.
         poll_seconds: Seconds between AW polls.
@@ -1380,17 +1402,17 @@ class TrayLabeler:
         title = "taskclf — Activity changed"
         start_str = _display_clock_time_local(block_start)
         end_str = _display_clock_time_local(block_end)
+        range_str = _display_time_range_exact_local(block_start, block_end)
 
         if self._suggested_label is not None:
-            message = transition_suggestion_text(
-                self._suggested_label, start_str, end_str
+            message = (
+                f"{transition_suggestion_text(self._suggested_label, start_str, end_str)}"
+                f"\n{range_str}"
             )
         elif self._privacy_notifications:
-            duration_min = max(1, int((block_end - block_start).total_seconds() / 60))
-            message = f"Activity changed\nLabel the last {duration_min} min?"
+            message = f"Activity changed\n{range_str}"
         else:
-            duration_min = max(1, int((block_end - block_start).total_seconds() / 60))
-            message = f"{prev_app} \u2192 {new_app}\nLabel the last {duration_min} min?"
+            message = f"{prev_app} \u2192 {new_app}\n{range_str}"
 
         _send_desktop_notification(title, message, timeout=10)
 
@@ -1398,7 +1420,7 @@ class TrayLabeler:
         """Return top-level menu items.
 
         Used as a callable by ``pystray.Menu`` so the menu is rebuilt
-        (including a fresh Model submenu scan) on every right-click.
+        (including a fresh Prediction Model submenu scan) on every right-click.
         """
         import pystray
 
@@ -1412,13 +1434,13 @@ class TrayLabeler:
                 lambda _: "Resume" if self._monitor.is_paused else "Pause",
                 self._on_pause_menu,
             ),
+            pystray.MenuItem("Show Status", self._show_status),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem("Label Stats", self._label_stats),
+            pystray.MenuItem("Today's Labels", self._label_stats),
             pystray.MenuItem("Import Labels", self._import_labels),
             pystray.MenuItem("Export Labels", self._export_labels),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem("Model", self._build_model_submenu()),
-            pystray.MenuItem("Status", self._show_status),
+            pystray.MenuItem("Prediction Model", self._build_model_submenu()),
             pystray.MenuItem("Open Data Folder", self._open_data_dir),
             pystray.MenuItem("Edit Config", self._edit_config),
             pystray.MenuItem("Report Issue", self._report_issue),
@@ -1768,7 +1790,7 @@ class TrayLabeler:
 
             items.append(
                 pystray.MenuItem(
-                    "(No Model)",
+                    "No Model",
                     self._unload_model,
                     checked=lambda _item: self._model_dir is None,
                 )
@@ -1776,14 +1798,14 @@ class TrayLabeler:
             items.append(pystray.Menu.SEPARATOR)
             items.append(
                 pystray.MenuItem(
-                    "Reload Model",
+                    "Refresh Model",
                     self._reload_model,
                     enabled=lambda _: self._model_dir is not None,
                 )
             )
             items.append(
                 pystray.MenuItem(
-                    "Check Retrain",
+                    "Retrain Status",
                     self._check_retrain,
                     enabled=lambda _: self._models_dir is not None,
                 )
@@ -1791,7 +1813,7 @@ class TrayLabeler:
         else:
             items.append(
                 pystray.MenuItem(
-                    "(no models found)",
+                    "No Models Found",
                     None,
                     enabled=False,
                 )
@@ -1799,14 +1821,14 @@ class TrayLabeler:
             items.append(pystray.Menu.SEPARATOR)
             items.append(
                 pystray.MenuItem(
-                    "Reload Model",
+                    "Refresh Model",
                     self._reload_model,
                     enabled=lambda _: self._model_dir is not None,
                 )
             )
             items.append(
                 pystray.MenuItem(
-                    "Check Retrain",
+                    "Retrain Status",
                     self._check_retrain,
                     enabled=lambda _: self._models_dir is not None,
                 )
@@ -2329,7 +2351,7 @@ def run_tray(
         model_dir: Optional path to a trained model bundle.  When
             provided, the tray suggests labels on activity transitions.
         models_dir: Optional path to the directory containing all model
-            bundles.  Enables the "Model" submenu for hot-swapping.
+            bundles.  Enables the "Prediction Model" submenu for hot-swapping.
         aw_host: ActivityWatch server URL.
         poll_seconds: Seconds between AW polling cycles.
         aw_timeout_seconds: Seconds to wait for AW API responses.
@@ -2359,7 +2381,7 @@ def run_tray(
             are redacted from desktop notifications to protect privacy.
             Set to ``False`` to show raw app identifiers.
         retrain_config: Optional path to a retrain YAML config.
-            Enables the "Check Retrain" item in the Model submenu.
+            Enables the "Retrain Status" item in the Prediction Model submenu.
     """
     tray = TrayLabeler(
         data_dir=data_dir,

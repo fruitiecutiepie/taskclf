@@ -640,8 +640,40 @@ function openLabelGridFromNotification(): void {
 }
 
 function transitionNotificationBody(prompt: NonNullable<HostCommand["prompt"]>): string {
+  const start = new Date(prompt.block_start);
+  const end = new Date(prompt.block_end);
+  const sameLocalDay =
+    start.getFullYear() === end.getFullYear()
+    && start.getMonth() === end.getMonth()
+    && start.getDate() === end.getDate();
+  const range = Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())
+    ? `${prompt.block_start} → ${prompt.block_end}`
+    : sameLocalDay
+      ? `${start.toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        })} → ${end.toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        })}`
+      : `${start.toLocaleString([], {
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        })} → ${end.toLocaleString([], {
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        })}`;
   return prompt.suggestion_text
-    ?? `${prompt.prev_app} → ${prompt.new_app} (${prompt.duration_min} min)`;
+    ? `${prompt.suggestion_text}\n${range}`
+    : `${prompt.prev_app} → ${prompt.new_app}\n${range}`;
 }
 
 async function notificationActionPost(
@@ -706,9 +738,10 @@ function showTransitionNotification(
   prompt: NonNullable<HostCommand["prompt"]>,
 ): void {
   const actions: NotificationAction[] = prompt.suggested_label === null
-    ? [{ type: "button", text: "Open labeler" }]
+    ? [{ type: "button", text: "Review" }]
     : [
-        { type: "button", text: "Use suggestion" },
+        { type: "button", text: "Accept" },
+        { type: "button", text: "Review" },
         { type: "button", text: "Skip" },
       ];
 
@@ -731,6 +764,10 @@ function showTransitionNotification(
       return;
     }
     if (index === 1) {
+      openLabelGridFromNotification();
+      return;
+    }
+    if (index === 2) {
       void skipTransitionSuggestion();
       return;
     }
@@ -1472,13 +1509,14 @@ async function syncTrayMenu() {
     const template: Electron.MenuItemConstructorOptions[] = [
       { label: "Toggle Dashboard", click: toggleWindow },
       { label: state.paused ? "Resume" : "Pause", click: () => sidecarRequest("/api/tray/action/pause_toggle", { method: "POST" }) },
+      { label: "Show Status", click: () => sidecarRequest("/api/tray/action/show_status", { method: "POST" }) },
       { type: "separator" },
-      { label: "Label Stats", click: () => sidecarRequest("/api/tray/action/label_stats", { method: "POST" }) },
+      { label: "Today's Labels", click: () => sidecarRequest("/api/tray/action/label_stats", { method: "POST" }) },
       { label: "Import Labels", click: importLabels },
       { label: "Export Labels", click: exportLabels },
       { type: "separator" },
       {
-        label: "Model",
+        label: "Prediction Model",
         submenu: [
           ...models.filter((m: any) => m.valid).map((m: any) => ({
             label: m.model_id,
@@ -1492,17 +1530,17 @@ async function syncTrayMenu() {
           })),
           ...(models.filter((m: any) => m.valid).length > 0 ? [
             {
-              label: "(No Model)",
+              label: "No Model",
               type: "checkbox" as const,
               checked: state.model_dir === null,
               click: () => sidecarRequest("/api/tray/action/unload_model", { method: "POST" })
             }
           ] : [
-            { label: "(no models found)", enabled: false }
+            { label: "No Models Found", enabled: false }
           ]),
           { type: "separator" },
-          { label: "Reload Model", enabled: state.model_dir !== null, click: () => sidecarRequest("/api/tray/action/reload_model", { method: "POST" }) },
-          { label: "Check Retrain", click: () => sidecarRequest("/api/tray/action/check_retrain", { method: "POST" }) }
+          { label: "Refresh Model", enabled: state.model_dir !== null, click: () => sidecarRequest("/api/tray/action/reload_model", { method: "POST" }) },
+          { label: "Retrain Status", click: () => sidecarRequest("/api/tray/action/check_retrain", { method: "POST" }) }
         ]
       },
       { label: "Payload", submenu: payloadSubmenu },
@@ -1513,7 +1551,6 @@ async function syncTrayMenu() {
           void checkForUpdatesManually();
         },
       },
-      { label: "Status", click: () => sidecarRequest("/api/tray/action/show_status", { method: "POST" }) },
       { label: "Open Data Folder", click: () => sidecarRequest("/api/tray/action/open_data_dir", { method: "POST" }) },
       { label: "Edit Config", click: () => sidecarRequest("/api/tray/action/edit_config", { method: "POST" }) },
       { label: "Report Issue", click: () => sidecarRequest("/api/tray/action/report_issue", { method: "POST" }) },
