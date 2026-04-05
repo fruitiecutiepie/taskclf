@@ -11,5 +11,11 @@
     "types": ["node"],
     "lib": ["ES2022", "DOM"]
   },
-  "include": ["main.ts", "preload.ts", "payload_choice.ts", "payload_chooser_preload.ts"]
+  "include": [
+    "main.ts",
+    "preload.ts",
+    "payload_choice.ts",
+    "payload_chooser_preload.ts",
+    "tray_dashboard.ts"
+  ]
 }

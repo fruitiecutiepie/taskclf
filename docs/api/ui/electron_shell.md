@@ -68,6 +68,20 @@ can leave the tray glyph invisible until the item is highlighted.
 
 See also [`electron_tray_icon`](electron_tray_icon.md).
 
+## Tray interaction policy
+
+The Electron shell intentionally treats tray interactions differently
+depending on source:
+
+- clicking the tray icon shows or focuses the dashboard and does not hide
+  an already-open shell
+- the tray menu keeps an explicit **Toggle Dashboard** action for hide/show
+  behavior
+
+That keeps the Electron shell aligned with the documented pystray UX
+where a primary tray click opens the UI, while still preserving a clear
+way to hide it on demand.
+
 ## Launcher and payload release manifests
 
 Launcher and payload releases are separate GitHub release tags:
@@ -163,6 +177,25 @@ explicit tray-driven pinning via **Use Recommended** / **Use Installed**).
 
 See also [`electron_payload_choice`](electron_payload_choice.md).
 
+## Packaged app: manual update check
+
+The tray menu includes **Check for Updates** in packaged builds. That action
+fetches the launcher manifest, payload index, and latest compatible payload on
+demand, then:
+
+- shows **Up to Date** when the active payload already matches the latest
+  compatible release
+- shows **Core Update Available** with **Update and Restart** (and
+  **Choose Version** when multiple compatible payloads exist) when a newer
+  compatible payload should be activated
+- shows **Update Check Failed** when release metadata cannot be fetched
+
+Unlike normal startup/background resolution, the manual check compares against
+the latest compatible payload even when the tray **Selected** payload is pinned
+to an older version, so users can explicitly discover and apply newer payload
+releases. Applying the recommended update from this dialog clears the tray
+selection pin and restarts in recommended/auto mode.
+
 ## Packaged app: debugging the main process
 
 The Electron main process appends structured lines to
@@ -181,6 +214,8 @@ folder or pre-fill a GitHub bug report.
 - Used by the `taskclf electron` CLI command in
   [`docs/api/cli/main.md`](../cli/main.md)
 - Read by the Electron app in `electron/main.ts`
+- Uses the tray interaction helper in
+  [`electron_tray_dashboard`](electron_tray_dashboard.md)
 - Uses the launcher payload policy documented in
   [`electron_update_policy.md`](electron_update_policy.md)
 - Uses compatible list helpers in [`electron_payload_choice`](electron_payload_choice.md)
