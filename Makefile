@@ -66,7 +66,7 @@ electron-typecheck:
 	pnpm --dir electron run typecheck
 
 electron-test:
-	pnpm --dir electron run build && cd electron && node --test update_policy.test.js payload_choice.test.js
+	pnpm --dir electron run build && cd electron && node --test update_policy.test.js payload_choice.test.js tray_icon.test.js
 
 # Same packaging as .github/workflows/electron-release.yml (unsigned; set CSC_IDENTITY_AUTO_DISCOVERY=true to sign locally).
 electron-dist:

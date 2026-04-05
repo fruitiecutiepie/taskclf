@@ -36,6 +36,7 @@ import {
   orderedCompatiblePayloadVersions,
   payloadChooserOffersMultipleVersions,
 } from "./payload_choice";
+import { getAppIconPath, getTrayIconAsset } from "./tray_icon";
 
 /** Must match `build.productName` in package.json (Finder / .app name, tray, notifications). */
 function readAppDisplayName(): string {
@@ -507,10 +508,6 @@ function initialPillBounds(): Electron.Rectangle {
     y: workArea.y + WINDOW_MARGIN,
     ...COMPACT_SIZE,
   };
-}
-
-function getAppIconPath(): string {
-  return path.join(__dirname, "..", "build", "icon.png");
 }
 
 function preloadScriptPath(): string {
@@ -1221,16 +1218,42 @@ async function syncTrayMenu() {
 // ── Tray ────────────────────────────────────────────────────────────────
 
 function createTrayIcon(): Electron.NativeImage {
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
-      <circle cx="8" cy="8" r="6" fill="#4caf50" />
-      <rect x="7" y="3" width="2" height="6" rx="1" fill="#0f1117" />
-      <circle cx="8" cy="11" r="1.2" fill="#0f1117" />
-    </svg>
-  `.trim();
-  return nativeImage.createFromDataURL(
-    `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`,
+  const { path: trayIconPath, template } = getTrayIconAsset();
+  const trayIcon = nativeImage.createFromPath(trayIconPath);
+  if (!trayIcon.isEmpty()) {
+    if (template) {
+      trayIcon.setTemplateImage(true);
+    }
+    return trayIcon;
+  }
+
+  launcherLog(
+    `tray icon asset missing at ${trayIconPath}; falling back to inline icon`,
+    "info",
   );
+
+  const fallbackSvg = template
+    ? `
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+        <path d="M8 1.5C6.55 2.6 4.84 2.72 3.86 2.81v4.06c0 2.37 1.56 4.2 4.14 5.03 2.58-.83 4.14-2.66 4.14-5.03V2.81C11.16 2.72 9.45 2.6 8 1.5Z" fill="#000000" />
+        <circle cx="8" cy="7.15" r="2.15" fill="none" stroke="#000000" stroke-width="1.15" />
+        <path d="M8 7.15V5.9l1.12.73" fill="none" stroke="#000000" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
+    `
+    : `
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+        <circle cx="8" cy="8" r="6" fill="#4caf50" />
+        <rect x="7" y="3" width="2" height="6" rx="1" fill="#0f1117" />
+        <circle cx="8" cy="11" r="1.2" fill="#0f1117" />
+      </svg>
+    `;
+  const fallbackIcon = nativeImage.createFromDataURL(
+    `data:image/svg+xml;charset=utf-8,${encodeURIComponent(fallbackSvg.trim())}`,
+  );
+  if (template) {
+    fallbackIcon.setTemplateImage(true);
+  }
+  return fallbackIcon;
 }
 
 function createTray(): Tray {

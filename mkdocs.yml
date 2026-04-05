@@ -157,6 +157,7 @@ nav:
           - Event Bus: api/ui/events.md
           - Native Window: api/ui/window.md
           - Electron Shell: api/ui/electron_shell.md
+          - Electron Tray Icon: api/ui/electron_tray_icon.md
           - Electron Payload Choice: api/ui/electron_payload_choice.md
           - Payload build (PyInstaller): api/scripts/payload_build.md
       - CLI:

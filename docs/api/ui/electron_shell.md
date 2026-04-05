@@ -57,6 +57,17 @@ Behavior:
   a compatible sidecar backend
 - blocks until the Electron process exits
 
+The Electron build also generates separate icon assets under `electron/build/`:
+
+- `icon.png` for the app/window icon on all platforms
+- `trayTemplate.png` and `trayTemplate@2x.png` for the macOS menu-bar tray icon
+
+The tray icon is intentionally separate from the app icon because macOS expects
+a monochrome template image for status-bar rendering; using the colored app icon
+can leave the tray glyph invisible until the item is highlighted.
+
+See also [`electron_tray_icon`](electron_tray_icon.md).
+
 ## Launcher and payload release manifests
 
 Launcher and payload releases are separate GitHub release tags:

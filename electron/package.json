@@ -23,7 +23,9 @@
     "files": [
       "dist/**/*",
       "package.json",
-      "build/icon.png"
+      "build/icon.png",
+      "build/trayTemplate.png",
+      "build/trayTemplate@2x.png"
     ],
     "mac": {
       "icon": "icon.png",
