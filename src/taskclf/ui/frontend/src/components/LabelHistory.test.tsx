@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@solidjs/testing-library";
 import { createSignal } from "solid-js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { core_labels_list, labels_list_by_date } from "../lib/api";
+import { date_today_str } from "../lib/date";
 import { LabelHistory } from "./LabelHistory";
 
 vi.mock("../lib/api", () => ({
@@ -12,6 +13,11 @@ vi.mock("../lib/api", () => ({
   labels_list_by_date: vi.fn(),
 }));
 
+function iso_at_local_time(date_str: string, hour: number): string {
+  const [year, month, day] = date_str.split("-").map(Number);
+  return new Date(year, month - 1, day, hour, 0, 0, 0).toISOString();
+}
+
 describe("LabelHistory", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -19,11 +25,13 @@ describe("LabelHistory", () => {
   });
 
   it("refetches the selected day when the label change count increments", async () => {
+    const date_str = date_today_str();
+
     vi.mocked(labels_list_by_date)
       .mockResolvedValueOnce([
         {
-          start_ts: "2026-04-05T09:00:00Z",
-          end_ts: "2026-04-05T10:00:00Z",
+          start_ts: iso_at_local_time(date_str, 9),
+          end_ts: iso_at_local_time(date_str, 10),
           label: "Build",
           provenance: "manual",
           user_id: null,
@@ -33,8 +41,8 @@ describe("LabelHistory", () => {
       ])
       .mockResolvedValueOnce([
         {
-          start_ts: "2026-04-05T09:00:00Z",
-          end_ts: "2026-04-05T10:00:00Z",
+          start_ts: iso_at_local_time(date_str, 9),
+          end_ts: iso_at_local_time(date_str, 10),
           label: "Build",
           provenance: "manual",
           user_id: null,
@@ -42,8 +50,8 @@ describe("LabelHistory", () => {
           extend_forward: false,
         },
         {
-          start_ts: "2026-04-05T10:00:00Z",
-          end_ts: "2026-04-05T11:00:00Z",
+          start_ts: iso_at_local_time(date_str, 10),
+          end_ts: iso_at_local_time(date_str, 11),
           label: "Write",
           provenance: "suggestion",
           user_id: null,
