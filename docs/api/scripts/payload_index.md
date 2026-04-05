@@ -26,6 +26,8 @@ Used by `.github/workflows/payload-release.yml`.
 - Includes only published `v*` releases with a `manifest.json` asset.
 - Sorts payload versions newest-first.
 - Writes a fresh `generated_at` timestamp.
+- Also powers the workflow's manual **index refresh only** path for repairing a
+  stale GitHub Pages index without rebuilding or republishing payload zips.
 
 ### `preserve-current`
 

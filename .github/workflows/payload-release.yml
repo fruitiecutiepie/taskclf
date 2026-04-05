@@ -7,6 +7,14 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      refresh_payload_index_only:
+        description: >
+          Skip payload build/publish and refresh GitHub Pages payload-index.json
+          from published releases only.
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -47,7 +55,9 @@ jobs:
 
   build-payload:
     needs: release-scope
-    if: needs.release-scope.outputs.run == 'true'
+    if: |
+      needs.release-scope.outputs.run == 'true' &&
+      !(github.event_name == 'workflow_dispatch' && inputs.refresh_payload_index_only)
     strategy:
       fail-fast: false
       matrix:
@@ -139,6 +149,45 @@ jobs:
     needs: publish
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
+    concurrency:
+      group: pages
+      cancel-in-progress: true
+    environment:
+      name: github-pages
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: master
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Install docs builder
+        run: pip install zensical mkdocstrings-python
+
+      - name: Build docs site
+        run: zensical build
+
+      - name: Generate payload-index.json
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/payload_index.py generate-from-releases \
+            --repo "${GITHUB_REPOSITORY}" \
+            --token "${GITHUB_TOKEN}" \
+            --output site/payload-index.json
+          cat site/payload-index.json
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - uses: actions/deploy-pages@v4
+
+  refresh-payload-index:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && inputs.refresh_payload_index_only
     concurrency:
       group: pages
       cancel-in-progress: true

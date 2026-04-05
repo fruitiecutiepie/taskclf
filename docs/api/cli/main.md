@@ -42,7 +42,9 @@ Payload releases also refresh the GitHub Pages payload index at
 packaged Electron launcher uses to discover the newest compatible `v*`
 sidecar release.  The payload release workflow is the source of truth for that
 file; ordinary docs deploys preserve the currently published copy so a `master`
-push cannot overwrite a freshly tagged payload release.
+push cannot overwrite a freshly tagged payload release.  The workflow also
+supports a manual index-refresh-only dispatch for repairing stale Pages metadata
+without rebuilding payload archives.
 
 ## Commands
 
