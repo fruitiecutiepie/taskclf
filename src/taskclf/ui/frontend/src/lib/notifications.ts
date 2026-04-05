@@ -6,6 +6,7 @@ import type { PromptLabelEvent } from "./ws";
 // https://developer.mozilla.org/en-US/docs/Web/API/Notification/Notification#renotify
 type NotificationOptionsExtended = NotificationOptions & {
   renotify?: boolean;
+  requireInteraction?: boolean;
 };
 
 let permission_granted = false;
@@ -46,9 +47,10 @@ export function transition_notification_show(
 
   const n = new Notification("taskclf — Activity changed", {
     body,
-
     tag: "taskclf-transition",
     renotify: true,
+    // Keep transition prompts visible until the user acts on supported runtimes.
+    requireInteraction: true,
   } satisfies NotificationOptionsExtended as NotificationOptions);
 
   n.onclick = () => {
