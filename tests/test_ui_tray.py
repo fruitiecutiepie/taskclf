@@ -1977,6 +1977,46 @@ class TestLabelStats:
         assert "45m" in msg
         assert "20m" in msg
 
+    def test_today_labels_summary_formats_long_breakdown_in_hours_and_minutes(
+        self, tmp_path: Path
+    ) -> None:
+        """Breakdown entries longer than 59 minutes use hour/minute formatting."""
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+
+        labels_dir = tmp_path / "labels_v1"
+        labels_dir.mkdir(parents=True)
+
+        now = dt.datetime.now(dt.timezone.utc)
+        today = now.replace(tzinfo=None)
+        base = dt.datetime(today.year, today.month, today.day, 9, 0, 0)
+        spans = [
+            LabelSpan(
+                start_ts=base,
+                end_ts=base + dt.timedelta(minutes=65),
+                label="Build",
+                provenance="manual",
+            ),
+            LabelSpan(
+                start_ts=base + dt.timedelta(minutes=65),
+                end_ts=base + dt.timedelta(minutes=85),
+                label="Meet",
+                provenance="manual",
+            ),
+        ]
+        from taskclf.labels.store import write_label_spans
+
+        write_label_spans(spans, labels_dir / "labels.parquet")
+
+        with patch.object(labeler, "_notify") as mock_notify:
+            labeler._label_stats()
+
+        mock_notify.assert_called_once()
+        msg = mock_notify.call_args[0][0]
+        assert "2 labels" in msg
+        assert "Build 1h 5m" in msg
+        assert "Meet 20m" in msg
+
 
 # ---------------------------------------------------------------------------
 # Open Data Directory  (Item 4)

@@ -1641,7 +1641,7 @@ class TrayLabeler:
         time_str = f"{hours}h {mins}m" if hours else f"{mins}m"
 
         parts = [
-            f"{label} {int(m)}m"
+            f"{label} {self._format_duration(m)}"
             for label, m in sorted(
                 breakdown.items(),
                 key=lambda x: x[1],
