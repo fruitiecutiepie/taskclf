@@ -14,6 +14,8 @@ The starter file groups settings under **section headers** like `# --- Identity 
 
 The same three **remote URLs** (labeled GitHub, Download, and Guide in the file) are copied into the top of a newly generated `config.toml` as comments, so you can open the live template from your local file.
 
+The checked-in `configs/user_config.template.toml` file is kept in sync with the renderer that writes the first-run starter file.
+
 | | URL |
 |---|---|
 | **Browse on GitHub** (default branch) | [github.com/fruitiecutiepie/taskclf/blob/master/configs/user_config.template.toml](https://github.com/fruitiecutiepie/taskclf/blob/master/configs/user_config.template.toml) |

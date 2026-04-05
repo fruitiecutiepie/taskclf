@@ -357,4 +357,6 @@ def _to_commented_toml(data: dict[str, Any]) -> str:
             lines.append(f"# {comment}")
         lines.append(tomli_w.dumps({key: val}).rstrip())
         lines.append("")
+    if lines and lines[-1] == "":
+        lines.pop()
     return "\n".join(lines) + "\n" if lines else ""
