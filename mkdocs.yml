@@ -164,5 +164,6 @@ nav:
           - Electron Tray Icon: api/ui/electron_tray_icon.md
           - Electron Payload Choice: api/ui/electron_payload_choice.md
           - Payload build (PyInstaller): api/scripts/payload_build.md
+          - Payload index (GitHub Pages): api/scripts/payload_index.md
       - CLI:
           - Commands: api/cli/main.md

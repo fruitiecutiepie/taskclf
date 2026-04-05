@@ -127,7 +127,9 @@ https://fruitiecutiepie.github.io/taskclf/payload-index.json
 ```
 
 That index lists available payload versions and the `manifest.json` URL for each
-`v*` payload release.
+`v*` payload release.  The payload release workflow is the writer for this file;
+regular docs deploys preserve the currently published copy so a `master` push
+cannot republish stale release metadata over a newer payload tag.
 
 The zip contains a **PyInstaller one-folder** sidecar: after extraction, the
 Electron app runs `backend/entry` (Unix) or `backend/entry.exe` (Windows),

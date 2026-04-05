@@ -40,7 +40,9 @@ You only need **`bump-patch`** when you want a **`v*`** tag; you only need **`bu
 Payload releases also refresh the GitHub Pages payload index at
 `https://fruitiecutiepie.github.io/taskclf/payload-index.json`, which the
 packaged Electron launcher uses to discover the newest compatible `v*`
-sidecar release.
+sidecar release.  The payload release workflow is the source of truth for that
+file; ordinary docs deploys preserve the currently published copy so a `master`
+push cannot overwrite a freshly tagged payload release.
 
 ## Commands
 
