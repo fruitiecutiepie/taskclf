@@ -1036,6 +1036,7 @@ def train_evaluate_cmd(
         cat_encoders=cat_encoders,
         holdout_users=holdout_users,
         reject_threshold=reject_threshold,
+        schema_version=metadata.schema_version,
     )
 
     # -- Overall metrics table --
@@ -2022,6 +2023,7 @@ def model_inspect_cmd(
     pc_table.add_column("P", justify="right")
     pc_table.add_column("R", justify="right")
     pc_table.add_column("F1", justify="right")
+    pc_table.add_column("Supp", justify="right")
     for cls in bs.label_names:
         m = bs.per_class_derived.get(cls, {})
         pc_table.add_row(
@@ -2029,8 +2031,22 @@ def model_inspect_cmd(
             f"{m.get('precision', 0):.4f}",
             f"{m.get('recall', 0):.4f}",
             f"{m.get('f1', 0):.4f}",
+            str(int(m.get("support", 0))),
         )
     console.print(pc_table)
+
+    if bs.top_confusion_pairs:
+        tcp = Table(title="Top confusion pairs (validation, off-diagonal)")
+        tcp.add_column("True", style="bold")
+        tcp.add_column("Predicted", style="bold")
+        tcp.add_column("Count", justify="right")
+        for row in bs.top_confusion_pairs[:15]:
+            tcp.add_row(
+                str(row.get("true_label", "")),
+                str(row.get("pred_label", "")),
+                str(int(row.get("count", 0))),
+            )
+        console.print(tcp)
 
     pl = result.prediction_logic
     console.print("\n[bold]Prediction / metrics logic[/bold]")
@@ -2072,6 +2088,59 @@ def model_inspect_cmd(
             console.print(f"  Seen-user F1: {rep['seen_user_f1']:.4f}")
         if rep.get("unseen_user_f1") is not None:
             console.print(f"  Unseen-user F1: {rep['unseen_user_f1']:.4f}")
+
+        console.print(
+            "\n[bold]Calibration / probability scores (test, raw proba)[/bold]"
+        )
+        console.print(
+            f"  ECE: {rep.get('expected_calibration_error', 0):.4f}  "
+            f"Brier: {rep.get('multiclass_brier_score', 0):.4f}  "
+            f"Log loss: {rep.get('multiclass_log_loss', 0):.4f}"
+        )
+
+        unk = rep.get("unknown_category_rates") or {}
+        if unk.get("per_column"):
+            console.print(
+                "\n[bold]Unknown-category rate (raw value not in encoder vocab)[/bold]"
+            )
+            for col, rate in sorted(unk["per_column"].items()):
+                console.print(f"  {col}: {rate:.4f}")
+            if unk.get("overall_rate") is not None:
+                console.print(f"  (mean across columns: {unk['overall_rate']:.4f})")
+
+        top_rep = rep.get("top_confusion_pairs") or []
+        if top_rep:
+            trt = Table(title="Top confusion pairs (test)")
+            trt.add_column("True", style="bold")
+            trt.add_column("Predicted", style="bold")
+            trt.add_column("Count", justify="right")
+            for row in top_rep[:15]:
+                trt.add_row(
+                    str(row.get("true_label", "")),
+                    str(row.get("pred_label", "")),
+                    str(int(row.get("count", 0))),
+                )
+            console.print(trt)
+
+        sm = rep.get("slice_metrics") or {}
+        if sm:
+            console.print("\n[bold]Slice metrics (top groups per column)[/bold]")
+            for col, groups in sm.items():
+                st = Table(title=f"Slice: {col}")
+                st.add_column("Value", style="bold")
+                st.add_column("n", justify="right")
+                st.add_column("macro F1", justify="right")
+                st.add_column("wt F1", justify="right")
+                st.add_column("rej", justify="right")
+                for gkey, g in list(groups.items())[:12]:
+                    st.add_row(
+                        gkey[:48] + ("…" if len(gkey) > 48 else ""),
+                        str(int(g.get("row_count", 0))),
+                        f"{float(g.get('macro_f1', 0)):.4f}",
+                        f"{float(g.get('weighted_f1', 0)):.4f}",
+                        f"{float(g.get('reject_rate', 0)):.4f}",
+                    )
+                console.print(st)
     elif result.replay_error:
         console.print("\n[yellow]Test replay skipped or failed[/yellow]")
         console.print(f"  {result.replay_error}")

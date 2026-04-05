@@ -282,6 +282,12 @@ uv run taskclf model inspect --model-dir models/<run_id> \
 See [CLI model inspect](../api/cli/main.md#model-inspect) and
 [Model Inspection API](../api/model_inspection.md).
 
+Bundle-only output summarizes validation metrics from `metrics.json` (support,
+confusions, top mistake pairs).  Adding `--from` / `--to` (and optional
+`--synthetic`) replays test evaluation and surfaces richer quality signals
+(calibration, slices, unseen categorical exposure) in the same shape as
+`evaluation.json` from `taskclf train evaluate`.
+
 ### Step 5: Run batch inference
 
 ```bash

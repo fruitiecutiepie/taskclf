@@ -17,7 +17,7 @@ import pandas as pd
 from pydantic import BaseModel, Field
 
 from taskclf.core.defaults import DEFAULT_REJECT_THRESHOLD
-from taskclf.core.metrics import class_distribution
+from taskclf.core.metrics import class_distribution, top_confusion_pairs
 from taskclf.core.model_io import ModelMetadata, load_model_bundle
 from taskclf.core.types import LABEL_SET_V1
 from taskclf.features.build import generate_dummy_features
@@ -31,7 +31,7 @@ from taskclf.train.evaluate import evaluate_model
 def per_class_metrics_from_confusion_matrix(
     cm: list[list[int]],
     label_names: list[str],
-) -> dict[str, dict[str, float]]:
+) -> dict[str, dict[str, float | int]]:
     """Derive per-class precision, recall, and F1 from a square confusion matrix.
 
     Uses the same layout as :func:`sklearn.metrics.confusion_matrix` with
@@ -49,7 +49,7 @@ def per_class_metrics_from_confusion_matrix(
     n = len(label_names)
     if len(cm) != n or any(len(row) != n for row in cm):
         raise ValueError(f"confusion matrix must be {n}x{n}, got {len(cm)} rows")
-    result: dict[str, dict[str, float]] = {}
+    result: dict[str, dict[str, float | int]] = {}
     for i, name in enumerate(label_names):
         row_sum = sum(cm[i][j] for j in range(n))
         col_sum = sum(cm[j][i] for j in range(n))
@@ -64,6 +64,7 @@ def per_class_metrics_from_confusion_matrix(
             "precision": round(prec, 4),
             "recall": round(rec, 4),
             "f1": round(f1, 4),
+            "support": int(row_sum),
         }
     return result
 
@@ -184,7 +185,8 @@ class BundleInspectionSection(BaseModel, frozen=True):
     weighted_f1: float
     label_names: list[str]
     confusion_matrix: list[list[int]]
-    per_class_derived: dict[str, dict[str, float]]
+    per_class_derived: dict[str, dict[str, float | int]]
+    top_confusion_pairs: list[dict[str, str | int]] = Field(default_factory=list)
 
 
 class ReplayTestSection(BaseModel, frozen=True):
@@ -234,6 +236,7 @@ def inspect_bundle_only(
     cm = raw_metrics["confusion_matrix"]
     label_names = list(raw_metrics["label_names"])
     per_class = per_class_metrics_from_confusion_matrix(cm, label_names)
+    pairs = top_confusion_pairs(cm, label_names)
 
     section = BundleInspectionSection(
         macro_f1=macro_f1,
@@ -241,6 +244,7 @@ def inspect_bundle_only(
         label_names=label_names,
         confusion_matrix=cm,
         per_class_derived=per_class,
+        top_confusion_pairs=pairs,
     )
     return path, metadata, section
 
@@ -257,7 +261,7 @@ def replay_test_evaluation(
 ) -> ReplayTestSection:
     """Run held-out evaluation on the test split (same as ``train evaluate``)."""
     bundle_path = Path(model_dir).resolve()
-    model, _metadata, cat_encoders = load_model_bundle(bundle_path)
+    model, metadata, cat_encoders = load_model_bundle(bundle_path)
 
     labeled_df = build_labeled_dataframe(
         date_from, date_to, data_dir=data_dir, synthetic=synthetic
@@ -275,6 +279,7 @@ def replay_test_evaluation(
         cat_encoders=cat_encoders,
         holdout_users=holdout_users,
         reject_threshold=reject_threshold,
+        schema_version=metadata.schema_version,
     )
 
     label_order = sorted(LABEL_SET_V1)

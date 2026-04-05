@@ -361,10 +361,15 @@ taskclf train list --schema-hash 740b4db787e9 --eligible
 ### model inspect
 
 Inspect a trained model bundle: metadata, bundle-saved validation metrics
-(with per-class precision/recall/F1 derived from the saved confusion matrix),
-and a short description of multiclass prediction code paths.  Optionally
-replay **held-out test** evaluation for a date range (same pipeline as
-`taskclf train evaluate`), including test-set class distribution.
+(with per-class precision/recall/F1 **and support** derived from the saved
+confusion matrix, plus **top confusion pairs**), and a short description of
+multiclass prediction code paths.  Optionally replay **held-out test**
+evaluation for a date range (same pipeline as `taskclf train evaluate`),
+which adds **calibration scalars** (ECE, Brier, log loss), **slice metrics**
+(default: `user_id`, `app_id`, `app_category`, `domain_category`,
+`hour_of_day`), **unknown-category rates** vs the bundle encoders, and
+test-set **class distribution**.  Use `--json` for the full structured
+payload (`bundle_saved_validation` vs `replayed_test_evaluation.report`).
 
 Bundle-only (no labeled replay):
 

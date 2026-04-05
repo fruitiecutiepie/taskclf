@@ -20,9 +20,14 @@ from taskclf.core.metrics import (
     compare_baselines,
     compute_metrics,
     confusion_matrix_df,
+    expected_calibration_error_multiclass,
+    multiclass_brier_score,
+    multiclass_log_loss_score,
     per_class_metrics,
     per_user_metrics,
     reject_rate,
+    top_confusion_pairs,
+    unknown_category_rates,
     user_stratification_report,
 )
 
@@ -335,6 +340,61 @@ class TestPerClassMetrics:
             assert "precision" in result[name]
             assert "recall" in result[name]
             assert "f1" in result[name]
+            assert "support" in result[name]
+
+    def test_support_counts(self) -> None:
+        labels = ["Build", "Write"]
+        y_true = ["Build", "Build", "Write"]
+        y_pred = ["Build", "Write", "Write"]
+        result = per_class_metrics(y_true, y_pred, labels)
+        assert result["Build"]["support"] == 2
+        assert result["Write"]["support"] == 1
+
+
+class TestTopConfusionPairs:
+    def test_ranks_off_diagonal(self) -> None:
+        labels = ["A", "B", "C"]
+        cm = [
+            [10, 5, 0],
+            [2, 8, 1],
+            [0, 0, 3],
+        ]
+        pairs = top_confusion_pairs(cm, labels, k=5)
+        assert pairs[0]["true_label"] == "A"
+        assert pairs[0]["pred_label"] == "B"
+        assert pairs[0]["count"] == 5
+
+
+class TestCalibrationScalars:
+    def test_perfect_calibration_brier_zero(self) -> None:
+        import numpy as np
+
+        y_idx = np.array([0, 1, 2, 0])
+        proba = np.eye(3)[y_idx]
+        assert multiclass_brier_score(y_idx, proba) == pytest.approx(0.0)
+        assert multiclass_log_loss_score(y_idx, proba) == pytest.approx(0.0)
+
+    def test_ece_is_finite(self) -> None:
+        import numpy as np
+
+        rng = np.random.default_rng(0)
+        y_idx = rng.integers(0, 3, size=100)
+        proba = rng.random((100, 3))
+        proba /= proba.sum(axis=1, keepdims=True)
+        ece = expected_calibration_error_multiclass(y_idx, proba, ["a", "b", "c"])
+        assert 0.0 <= ece <= 1.0
+
+
+class TestUnknownCategoryRates:
+    def test_detects_unseen_value(self) -> None:
+        import pandas as pd
+        from sklearn.preprocessing import LabelEncoder
+
+        df = pd.DataFrame({"app_id": ["x", "y", "z_new"]})
+        le = LabelEncoder()
+        le.fit(["x", "y", "__unknown__"])
+        out = unknown_category_rates(df, {"app_id": le}, ["app_id"])
+        assert out["per_column"]["app_id"] == pytest.approx(1 / 3, abs=1e-4)
 
 
 # ---------------------------------------------------------------------------

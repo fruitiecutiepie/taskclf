@@ -139,7 +139,11 @@ class TestInspectModel:
         )
         assert r.replayed_test_evaluation is not None
         assert r.replayed_test_evaluation.test_row_count > 0
-        assert "macro_f1" in r.replayed_test_evaluation.report
+        rep = r.replayed_test_evaluation.report
+        assert "macro_f1" in rep
+        assert "expected_calibration_error" in rep
+        assert "slice_metrics" in rep
+        assert "unknown_category_rates" in rep
         assert r.replay_error is None
 
 

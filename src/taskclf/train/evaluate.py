@@ -11,7 +11,7 @@ from typing import Any, Literal, Sequence
 import lightgbm as lgb
 import numpy as np
 import pandas as pd
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sklearn.metrics import accuracy_score, f1_score
 from sklearn.preprocessing import LabelEncoder
 
@@ -25,13 +25,20 @@ from taskclf.core.metrics import (
     calibration_curve_data,
     compute_metrics,
     confusion_matrix_df,
+    expected_calibration_error_multiclass,
+    multiclass_brier_score,
+    multiclass_log_loss_score,
     per_class_metrics,
     per_user_metrics,
     reject_rate,
+    slice_metrics_by_columns,
+    top_confusion_pairs,
+    unknown_category_rates,
     user_stratification_report,
 )
 from taskclf.core.types import LABEL_SET_V1
 from taskclf.infer.batch import predict_proba
+from taskclf.train.lgbm import get_categorical_columns
 from taskclf.infer.calibration import Calibrator
 from taskclf.infer.smooth import flap_rate, rolling_majority, segmentize
 
@@ -57,7 +64,7 @@ class EvaluationReport(BaseModel, frozen=True):
 
     macro_f1: float
     weighted_f1: float
-    per_class: dict[str, dict[str, float]]
+    per_class: dict[str, dict[str, float | int]]
     confusion_matrix: list[list[int]]
     label_names: list[str]
     per_user: dict[str, dict[str, float]]
@@ -71,6 +78,12 @@ class EvaluationReport(BaseModel, frozen=True):
     flip_rate: float | None = None
     segment_duration_distribution: dict[str, int] | None = None
     eval_mode: str = "raw"
+    top_confusion_pairs: list[dict[str, str | int]] = Field(default_factory=list)
+    expected_calibration_error: float = 0.0
+    multiclass_brier_score: float = 0.0
+    multiclass_log_loss: float = 0.0
+    slice_metrics: dict[str, dict[str, dict[str, Any]]] = Field(default_factory=dict)
+    unknown_category_rates: dict[str, Any] = Field(default_factory=dict)
 
 
 class RejectTuningResult(BaseModel, frozen=True):
@@ -209,6 +222,7 @@ def evaluate_model(
     ] = "raw",
     calibrator: Calibrator | None = None,
     smooth_window: int = DEFAULT_SMOOTH_WINDOW,
+    schema_version: str = "v1",
 ) -> EvaluationReport:
     """Run comprehensive evaluation of a trained model on a test set.
 
@@ -234,6 +248,8 @@ def evaluate_model(
         calibrator: Probability calibrator to apply in non-raw modes.
             Required when *eval_mode* is not ``"raw"``.
         smooth_window: Window size for rolling-majority smoothing.
+        schema_version: ``"v1"`` or ``"v2"`` — selects categorical columns for
+            unknown-category-rate (see :func:`~taskclf.train.lgbm.get_categorical_columns`).
 
     Returns:
         A frozen :class:`EvaluationReport` with all evaluation artifacts.
@@ -298,6 +314,23 @@ def evaluate_model(
         pc = per_class_metrics(y_true, labels_for_metrics, label_names)
 
     cm_df = confusion_matrix_df(y_true, labels_for_metrics, label_names)
+    cm_list = cm_df.values.tolist()
+    top_pairs = top_confusion_pairs(cm_list, label_names)
+    ece = round(
+        expected_calibration_error_multiclass(y_true_indices, y_proba, label_names),
+        4,
+    )
+    brier = round(multiclass_brier_score(y_true_indices, y_proba), 4)
+    ll = round(multiclass_log_loss_score(y_true_indices, y_proba), 4)
+    slices = slice_metrics_by_columns(
+        test_df,
+        y_true,
+        labels_for_metrics,
+        label_names,
+    )
+    cat_cols = get_categorical_columns(schema_version)
+    unknown_rates = unknown_category_rates(test_df, cat_encoders, cat_cols)
+
     pu = per_user_metrics(y_true, labels_for_metrics, user_ids, label_names)
     cal = calibration_curve_data(y_true_indices, y_proba, label_names)
     strat = user_stratification_report(user_ids, y_true, label_names)
@@ -359,7 +392,7 @@ def evaluate_model(
         macro_f1=metrics["macro_f1"],
         weighted_f1=metrics["weighted_f1"],
         per_class=pc,
-        confusion_matrix=cm_df.values.tolist(),
+        confusion_matrix=cm_list,
         label_names=label_names,
         per_user=pu,
         calibration=cal,
@@ -372,6 +405,12 @@ def evaluate_model(
         flip_rate=fr,
         segment_duration_distribution=seg_dist,
         eval_mode=eval_mode,
+        top_confusion_pairs=top_pairs,
+        expected_calibration_error=ece,
+        multiclass_brier_score=brier,
+        multiclass_log_loss=ll,
+        slice_metrics=slices,
+        unknown_category_rates=unknown_rates,
     )
 
 

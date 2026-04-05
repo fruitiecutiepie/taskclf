@@ -557,6 +557,7 @@ def run_retrain_pipeline(
         cat_encoders=cat_encoders,
         holdout_users=holdout_users,
         reject_threshold=reject_threshold,
+        schema_version="v1",
     )
 
     # Determine date range from features
@@ -594,6 +595,7 @@ def run_retrain_pipeline(
                 cat_encoders=champ_encoders,
                 holdout_users=holdout_users,
                 reject_threshold=reject_threshold,
+                schema_version=champ_meta.schema_version,
             )
             champion_macro_f1 = champion_report.macro_f1
             regression = check_regression_gates(

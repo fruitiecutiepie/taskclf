@@ -12,7 +12,11 @@ deployed inference behavior:
 ```
 model + test_df → evaluate_model → EvaluationReport
                                        ├── overall metrics (macro/weighted F1)
-                                       ├── per-class precision/recall/F1
+                                       ├── per-class precision/recall/F1 (+ support)
+                                       ├── top confusion pairs (off-diagonal)
+                                       ├── calibration scalars (ECE, Brier, log loss)
+                                       ├── slice metrics (default feature columns)
+                                       ├── unknown-category rates vs training encoders
                                        ├── per-user macro-F1
                                        ├── calibration curves
                                        ├── user stratification
@@ -35,9 +39,15 @@ Frozen Pydantic model containing all evaluation artifacts.
 |-------|------|-------------|
 | `macro_f1` | `float` | Overall macro-averaged F1 |
 | `weighted_f1` | `float` | Overall weighted-averaged F1 |
-| `per_class` | `dict[str, dict[str, float]]` | Per-class precision, recall, F1 |
+| `per_class` | `dict[str, dict[str, float \| int]]` | Per-class precision, recall, F1, support |
 | `confusion_matrix` | `list[list[int]]` | Confusion matrix as nested lists |
 | `label_names` | `list[str]` | Ordered label names (rows/columns of confusion matrix) |
+| `top_confusion_pairs` | `list[dict[str, str \| int]]` | Largest off-diagonal confusion counts |
+| `expected_calibration_error` | `float` | Multiclass ECE (OVR, support-weighted) |
+| `multiclass_brier_score` | `float` | Multiclass Brier score |
+| `multiclass_log_loss` | `float` | Multiclass log loss |
+| `slice_metrics` | `dict[str, dict[str, dict[str, Any]]]` | Per-column slice breakdowns (see [`core.metrics`](../core/metrics.md)) |
+| `unknown_category_rates` | `dict[str, Any]` | Per-column unseen categorical rate vs bundle encoders |
 | `per_user` | `dict[str, dict[str, float]]` | Per-user macro-F1 and row count |
 | `calibration` | `dict[str, dict[str, list[float]]]` | Per-class calibration curve data (`fraction_of_positives`, `mean_predicted_value`) |
 | `stratification` | `dict[str, Any]` | User stratification report with optional warnings |
@@ -106,16 +116,23 @@ evaluate_model(
     eval_mode: Literal["raw", "calibrated", "calibrated_reject", "smoothed", "interval"] = "raw",
     calibrator: Calibrator | None = None,
     smooth_window: int = DEFAULT_SMOOTH_WINDOW,
+    schema_version: str = "v1",
 ) -> EvaluationReport
 ```
 
 Runs comprehensive evaluation: overall metrics, per-class and per-user
-breakdowns, calibration curves, user stratification, and acceptance
-checks.  When `holdout_users` is non-empty, computes separate
+breakdowns, calibration curves, user stratification, slice metrics,
+unknown-category rates, probability-based calibration scalars, and
+acceptance checks.  When `holdout_users` is non-empty, computes separate
 seen/unseen-user F1 scores.
 
 The `eval_mode` parameter selects the evaluation pipeline (see table
 above).  Non-raw modes require a `calibrator`.
+
+**`schema_version`** selects which feature columns are treated as
+categorical when computing `unknown_category_rates` (via
+`get_categorical_columns`).  Callers loading a model bundle should pass
+`metadata.schema_version` so the column set matches training.
 
 ### tune_reject_threshold
 

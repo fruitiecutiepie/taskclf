@@ -76,6 +76,7 @@ class TestModelInspect:
         data = json.loads(result.output)
         assert data["bundle_path"]
         assert data["bundle_saved_validation"]["macro_f1"] is not None
+        assert "top_confusion_pairs" in data["bundle_saved_validation"]
         assert data["prediction_logic"]["problem_type"] == "multiclass"
         assert data["replayed_test_evaluation"] is None
 
@@ -102,6 +103,10 @@ class TestModelInspect:
         assert data["replayed_test_evaluation"] is not None
         assert data["replayed_test_evaluation"]["test_row_count"] > 0
         assert data["replay_error"] is None
+        rep = data["replayed_test_evaluation"]["report"]
+        assert "expected_calibration_error" in rep
+        assert "slice_metrics" in rep
+        assert "unknown_category_rates" in rep
 
     def test_from_without_to_errors(self, tmp_path: Path) -> None:
         """TC-MI-004: mismatched date options exit non-zero."""

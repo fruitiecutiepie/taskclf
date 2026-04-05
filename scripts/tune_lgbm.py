@@ -207,7 +207,10 @@ def run_grid_search() -> dict[str, Any]:
 
     eval_df = test_df if not test_df.empty else val_df
     challenger_report = evaluate_model(
-        best_model, eval_df, cat_encoders=best_cat_encoders
+        best_model,
+        eval_df,
+        cat_encoders=best_cat_encoders,
+        schema_version="v1",
     )
 
     candidate_gates = check_candidate_gates(challenger_report)
@@ -223,7 +226,10 @@ def run_grid_search() -> dict[str, Any]:
     if champion_result is not None:
         champ_model, champ_encoders = champion_result
         champion_report = evaluate_model(
-            champ_model, eval_df, cat_encoders=champ_encoders
+            champ_model,
+            eval_df,
+            cat_encoders=champ_encoders,
+            schema_version="v1",
         )
         config = RetrainConfig()
         regression = check_regression_gates(champion_report, challenger_report, config)
