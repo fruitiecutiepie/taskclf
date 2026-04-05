@@ -154,9 +154,9 @@ in the startup callback.
 - The `WindowAPI` instance is shared with the FastAPI app so that
   REST endpoints (e.g. `POST /api/window/show-label-grid`) can
   control window visibility.
-- Events flow from `ActivityMonitor` through
-  [`EventBus`](events.md) to the WebSocket layer inside the
-  webview.
+- Events flow from `ActivityMonitor` in
+  [`ui.runtime`](runtime.md) through [`EventBus`](events.md)
+  to the WebSocket layer inside the webview.
 
 ::: taskclf.ui.window
 

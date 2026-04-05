@@ -157,6 +157,7 @@ nav:
           - Report Export: api/report/export.md
       - UI:
           - Web UI & System Tray: api/ui/labeling.md
+          - Shared Runtime: api/ui/runtime.md
           - Event Bus: api/ui/events.md
           - Native Window: api/ui/window.md
           - Electron Shell: api/ui/electron_shell.md

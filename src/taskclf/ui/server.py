@@ -1679,7 +1679,7 @@ def _create_dev_app_from_env() -> FastAPI:
     """
     import os
 
-    from taskclf.ui.tray import ActivityMonitor, _LabelSuggester
+    from taskclf.ui.runtime import ActivityMonitor, _LabelSuggester
     from taskclf.ui.window import WindowAPI
 
     if os.environ.get("TASKCLF_UI_DEV") == "1":

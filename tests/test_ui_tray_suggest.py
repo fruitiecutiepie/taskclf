@@ -1,4 +1,4 @@
-"""Tests for _LabelSuggester in the tray module.
+"""Tests for _LabelSuggester in the shared UI runtime module.
 
 Covers:
 - UID-001: suggest() passes config-backed user_id to build_features_from_aw_events
@@ -17,6 +17,7 @@ from typer.testing import CliRunner
 
 from taskclf.cli.main import app
 from taskclf.features.build import generate_dummy_features
+from taskclf.ui.runtime import _LabelSuggester
 
 runner = CliRunner()
 
@@ -49,8 +50,6 @@ class TestLabelSuggesterUserId:
         self, trained_model_dir: Path
     ) -> None:
         """UID-001: suggest() passes the configured user_id to build_features_from_aw_events."""
-        from taskclf.ui.tray import _LabelSuggester
-
         suggester = _LabelSuggester(trained_model_dir)
         stable_uid = "user-uuid-12345"
         suggester._user_id = stable_uid
@@ -81,8 +80,6 @@ class TestLabelSuggesterUserId:
 
     def test_uid003_default_user_id_fallback(self, trained_model_dir: Path) -> None:
         """UID-003: _user_id defaults to 'default-user' when not overridden."""
-        from taskclf.ui.tray import _LabelSuggester
-
         suggester = _LabelSuggester(trained_model_dir)
         assert suggester._user_id == "default-user"
 
@@ -93,7 +90,6 @@ class TestLabelSuggesterInputEvents:
     ) -> None:
         """INP-001: suggest() fetches input events and passes them to build_features_from_aw_events."""
         from taskclf.adapters.activitywatch.types import AWInputEvent
-        from taskclf.ui.tray import _LabelSuggester
 
         suggester = _LabelSuggester(trained_model_dir)
 

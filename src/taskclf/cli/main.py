@@ -3809,8 +3809,8 @@ def ui_serve_cmd(
         import uvicorn
 
         from taskclf.ui.events import EventBus
+        from taskclf.ui.runtime import ActivityMonitor, _LabelSuggester
         from taskclf.ui.server import create_app
-        from taskclf.ui.tray import ActivityMonitor, _LabelSuggester
         from taskclf.ui.window import WindowAPI
 
         bus = EventBus()

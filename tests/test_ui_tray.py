@@ -25,10 +25,9 @@ from taskclf.core.types import LabelSpan
 from taskclf.labels.store import append_label_span, read_label_spans
 from taskclf.ui.copy import transition_suggestion_text
 from taskclf.ui.events import EventBus
+from taskclf.ui.runtime import ActivityMonitor, _LabelSuggester
 from taskclf.ui.tray import (
-    ActivityMonitor,
     TrayLabeler,
-    _LabelSuggester,
     _make_icon_image,
     _send_desktop_notification,
 )

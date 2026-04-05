@@ -73,7 +73,7 @@ Entry point: `OnlinePredictor.predict_bucket()` in `src/taskclf/infer/online.py`
 
 ### 2.3 Tray
 
-Entry point: `_LabelSuggester.suggest()` in `src/taskclf/ui/tray.py`.
+Entry point: `_LabelSuggester.suggest()` in `src/taskclf/ui/runtime.py`.
 
 Delegates entirely to the online path:
 
