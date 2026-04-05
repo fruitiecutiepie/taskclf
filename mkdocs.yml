@@ -81,6 +81,7 @@ nav:
   - Guide:
       - Basics:
           - Getting Started: guide/usage.md
+          - User config template: guide/config_template.md
           - Privacy Model: guide/privacy.md
           - Acceptance Criteria: guide/acceptance.md
       - Data & Labels:

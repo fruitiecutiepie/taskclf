@@ -1,0 +1,35 @@
+# Display name shown in labels. Does not affect label identity.
+username = "default-user"
+
+# Set to false to suppress all desktop notifications.
+notifications_enabled = true
+
+# When true, app names are redacted from notifications.
+privacy_notifications = true
+
+# ActivityWatch server URL.
+aw_host = "http://localhost:5600"
+
+# Seconds between ActivityWatch polling cycles.
+poll_seconds = 60
+
+# Seconds to wait for ActivityWatch API responses before timing out.
+aw_timeout_seconds = 10
+
+# Salt used for hashing window titles (privacy).
+title_salt = "taskclf-default-salt"
+
+# Port for the embedded web UI server.
+ui_port = 8741
+
+# Seconds before the suggestion banner auto-dismisses; 0 disables auto-dismiss.
+suggestion_banner_ttl_seconds = 0
+
+# Minutes a new app must persist before a transition fires.
+transition_minutes = 2
+
+# Minutes lockscreen/idle apps must persist before a transition fires (BreakIdle).
+idle_transition_minutes = 1
+
+# Minutes of unlabeled time before gap-fill tray escalation (orange icon).
+gap_fill_escalation_minutes = 480

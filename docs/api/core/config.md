@@ -9,8 +9,7 @@ cannot accidentally break label continuity by editing their config.
 On first run a unique UUID `user_id` is generated and written to
 `.user_id`.  This stable ID is written into every `LabelSpan` and
 never changes.
-`UserConfig` is implemented as a slotted dataclass with the same
-runtime behavior as before (`UserConfig(data_dir=...)`).
+`UserConfig` is a dataclass (`UserConfig(data_dir=...)`).
 
 The editable `username` field is a display name that can be changed
 freely without affecting label identity or continuity.
@@ -26,9 +25,11 @@ Default: `~/Library/Application Support/taskclf/data/processed/`
 
 ## config.toml schema
 
+On first run, if `config.toml` is missing, taskclf writes a **full commented starter file** once (see the [User config template](../../guide/config_template.md) guide and [`configs/user_config.template.toml`](https://github.com/fruitiecutiepie/taskclf/blob/master/configs/user_config.template.toml)). The file is not regenerated on later startups.
+
 ```toml
 # Display name shown in labels. Does not affect label identity.
-username = "alice"
+username = "default-user"
 
 # Set to false to suppress all desktop notifications.
 notifications_enabled = true
@@ -36,17 +37,14 @@ notifications_enabled = true
 # When true, app names are redacted from notifications.
 privacy_notifications = true
 
+# ActivityWatch server URL.
+aw_host = "http://localhost:5600"
+
 # Seconds between ActivityWatch polling cycles.
 poll_seconds = 60
 
 # Seconds to wait for ActivityWatch API responses before timing out.
 aw_timeout_seconds = 10
-
-# Minutes a new app must persist before a transition fires.
-transition_minutes = 3
-
-# ActivityWatch server URL.
-aw_host = "http://localhost:5600"
 
 # Salt used for hashing window titles (privacy).
 title_salt = "taskclf-default-salt"
@@ -56,6 +54,15 @@ ui_port = 8741
 
 # Seconds before the suggestion banner auto-dismisses; 0 disables auto-dismiss.
 suggestion_banner_ttl_seconds = 0
+
+# Minutes a new app must persist before a transition fires.
+transition_minutes = 2
+
+# Minutes lockscreen/idle apps must persist before a transition fires (BreakIdle).
+idle_transition_minutes = 1
+
+# Minutes of unlabeled time before gap-fill tray escalation (orange icon).
+gap_fill_escalation_minutes = 480
 ```
 
 | Key | Type | Default | Description |
@@ -63,12 +70,15 @@ suggestion_banner_ttl_seconds = 0
 | `username` | `str` | `"default-user"` | Display name (cosmetic only) |
 | `notifications_enabled` | `bool` | `true` | Desktop notifications on/off |
 | `privacy_notifications` | `bool` | `true` | Redact app names from notifications |
-| `poll_seconds` | `int` | `60` | AW polling interval |
-| `transition_minutes` | `int` | `3` | App persistence threshold for transitions |
 | `aw_host` | `str` | `"http://localhost:5600"` | ActivityWatch server URL |
+| `poll_seconds` | `int` | `60` | AW polling interval |
+| `aw_timeout_seconds` | `int` | `10` | ActivityWatch HTTP timeout (seconds) |
 | `title_salt` | `str` | `"taskclf-default-salt"` | Window title hash salt |
 | `ui_port` | `int` | `8741` | Web UI server port |
 | `suggestion_banner_ttl_seconds` | `int` | `0` | Suggestion banner auto-dismiss after N seconds; `0` keeps the banner until skip/accept/clear |
+| `transition_minutes` | `int` | `2` | App persistence threshold for transitions |
+| `idle_transition_minutes` | `int` | `1` | Lockscreen/idle transition threshold (minutes) |
+| `gap_fill_escalation_minutes` | `int` | `480` | Unlabeled time before gap-fill tray escalation (minutes) |
 
 The `user_id` UUID is stored separately in `.user_id` and never appears in `config.toml`.
 

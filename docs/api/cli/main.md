@@ -731,7 +731,7 @@ taskclf tray --dev --browser --no-tray
 | `--aw-host` | `http://localhost:5600` | ActivityWatch server URL |
 | `--poll-seconds` | `60` | Seconds between AW polls |
 | `--aw-timeout` | `10` | Seconds to wait for AW API responses |
-| `--transition-minutes` | `3` | Minutes a new app must persist before prompting |
+| `--transition-minutes` | `2` | Minutes a new app must persist before prompting |
 | `--data-dir` | `data/processed` (ephemeral in `--dev`) | Processed data directory; omit with `--dev` for an auto-cleaned temp dir |
 | `--port` | `8741` | Port for the embedded web UI server |
 | `--dev` | off | Vite hot reload + ephemeral data dir (unless `--data-dir` is set) |
@@ -772,10 +772,10 @@ taskclf electron --dev
 | `--poll-seconds` | `60` | Seconds between AW polls |
 | `--title-salt` | `taskclf-default-salt` | Salt for hashing window titles |
 | `--data-dir` | `data/processed` (ephemeral in `--dev`) | Processed data directory; omit with `--dev` for an auto-cleaned temp dir |
-| `--transition-minutes` | `3` | Minutes a new app must persist before prompting |
+| `--transition-minutes` | `2` | Minutes a new app must persist before prompting |
 | `--port` | `8741` | Port for the embedded web UI server and Electron sidecar |
 | `--dev` | off | Enable frontend hot reload inside Electron; uses an ephemeral data dir unless `--data-dir` is set |
-| `--username` | *(none)* | Display name to persist in `config.json` |
+| `--username` | *(none)* | Display name to persist in `config.toml` |
 | `--retrain-config` | *(none)* | Retrain YAML config path passed through to the tray backend |
 
 ### ui
@@ -821,7 +821,7 @@ taskclf ui --dev --browser
 | `--poll-seconds` | `60` | Seconds between AW polling iterations |
 | `--title-salt` | `taskclf-default-salt` | Salt for hashing window titles |
 | `--data-dir` | `data/processed` (ephemeral in `--dev`) | Processed data directory; omit with `--dev` for an auto-cleaned temp dir |
-| `--transition-minutes` | `3` | Minutes a new app must persist before suggesting a label |
+| `--transition-minutes` | `2` | Minutes a new app must persist before suggesting a label |
 | `--browser` | off | Open UI in browser instead of native window |
 | `--dev` | off | Start Vite dev server for frontend hot reload; uses ephemeral data dir unless `--data-dir` is set |
 

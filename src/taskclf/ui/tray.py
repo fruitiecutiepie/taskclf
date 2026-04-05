@@ -824,25 +824,9 @@ class TrayLabeler:
             saved, "title_salt", self.title_salt, DEFAULT_TITLE_SALT
         )
         ui_port = self._resolve(saved, "ui_port", self.ui_port, 8741)
-        _raw_suggestion_ttl = saved.get("suggestion_banner_ttl_seconds", 0)
-        try:
-            suggestion_banner_ttl_seconds = max(0, int(_raw_suggestion_ttl))
-        except TypeError, ValueError:
-            suggestion_banner_ttl_seconds = 0
 
-        self._config.update(
-            {
-                "notifications_enabled": notifications_enabled,
-                "privacy_notifications": privacy_notifications,
-                "poll_seconds": poll_seconds,
-                "aw_timeout_seconds": aw_timeout_seconds,
-                "transition_minutes": transition_minutes,
-                "aw_host": aw_host,
-                "title_salt": title_salt,
-                "ui_port": ui_port,
-                "suggestion_banner_ttl_seconds": suggestion_banner_ttl_seconds,
-            }
-        )
+        # Resolved values are applied at runtime only; do not rewrite config.toml on
+        # every startup (starter template is written once when the file is missing).
 
         self._notifications_enabled = notifications_enabled
         self._privacy_notifications = privacy_notifications

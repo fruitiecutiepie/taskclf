@@ -2305,11 +2305,16 @@ class TestEditInferencePolicy:
 
 
 class TestSettingsPersistence:
-    """Verify runtime settings are persisted to config.toml."""
+    """Verify config.toml starter template and runtime resolution."""
 
-    def test_settings_written_to_config(self, tmp_path: Path) -> None:
+    def test_tray_writes_full_starter_template_on_first_run(
+        self, tmp_path: Path
+    ) -> None:
+        """First tray startup creates the full default template; CLI overrides are runtime-only."""
+        from taskclf.core.config import default_starter_config_dict
+
         bus, _ = _capture_bus()
-        TrayLabeler(
+        labeler = TrayLabeler(
             data_dir=tmp_path,
             model_dir=None,
             event_bus=bus,
@@ -2325,13 +2330,27 @@ class TestSettingsPersistence:
         import tomllib
 
         config = tomllib.loads((tmp_path / "config.toml").read_text())
-        assert config["notifications_enabled"] is False
-        assert config["privacy_notifications"] is False
-        assert config["poll_seconds"] == 120
-        assert config["transition_minutes"] == 5
-        assert config["aw_host"] == "http://localhost:9999"
-        assert config["title_salt"] == "custom-salt"
-        assert config["ui_port"] == 9000
+        assert config == default_starter_config_dict()
+        assert config["notifications_enabled"] is True
+
+        assert labeler._notifications_enabled is False
+        assert labeler._monitor._poll_seconds == 120
+        assert labeler._monitor._transition_threshold == 5 * 60
+
+    def test_tray_startup_does_not_rewrite_existing_config(
+        self, tmp_path: Path
+    ) -> None:
+        """Existing user config.toml bytes are preserved across tray startup."""
+        bus, _ = _capture_bus()
+        path = tmp_path / "config.toml"
+        path.write_text(
+            'username = "keep-me"\nnotifications_enabled = false\npoll_seconds = 77\n',
+            "utf-8",
+        )
+        (tmp_path / ".user_id").write_text("fixed-uuid", "utf-8")
+        before = path.read_text()
+        TrayLabeler(data_dir=tmp_path, model_dir=None, event_bus=bus)
+        assert path.read_text() == before
 
     def test_config_values_used_as_defaults(self, tmp_path: Path) -> None:
         """When CLI args match defaults, persisted config values take precedence."""

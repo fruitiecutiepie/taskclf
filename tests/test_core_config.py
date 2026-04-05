@@ -8,7 +8,13 @@ import uuid
 
 import pytest
 
-from taskclf.core.config import UserConfig
+from pathlib import Path
+
+from taskclf.core.config import (
+    UserConfig,
+    render_default_user_config_toml,
+    default_starter_config_dict,
+)
 
 
 def test_auto_generates_uuid_user_id(tmp_path):
@@ -23,11 +29,8 @@ def test_user_id_stored_in_dot_file(tmp_path):
     cfg = UserConfig(tmp_path)
     assert (tmp_path / ".user_id").exists()
     assert (tmp_path / ".user_id").read_text().strip() == cfg.user_id
-    toml_text = (
-        (tmp_path / "config.toml").read_text()
-        if (tmp_path / "config.toml").exists()
-        else ""
-    )
+    assert (tmp_path / "config.toml").exists()
+    toml_text = (tmp_path / "config.toml").read_text()
     assert "user_id" not in toml_text
 
 
@@ -257,3 +260,28 @@ def test_toml_has_comments(tmp_path):
     assert "# Set to false to suppress" in text
     assert "# Seconds between" in text
     assert "user_id" not in text
+
+
+def test_starter_template_written_on_first_run(tmp_path):
+    """First UserConfig creates a full starter config with every known key."""
+    UserConfig(tmp_path)
+    data = tomllib.loads((tmp_path / "config.toml").read_text())
+    assert data == default_starter_config_dict()
+
+
+def test_existing_config_not_regenerated(tmp_path):
+    """An existing config.toml is not overwritten on a second UserConfig load."""
+    path = tmp_path / "config.toml"
+    path.write_text('username = "keep-me"\npoll_seconds = 77\n', "utf-8")
+    (tmp_path / ".user_id").write_text("fixed-uuid", "utf-8")
+
+    before = path.read_text()
+    UserConfig(tmp_path)
+    assert path.read_text() == before
+
+
+def test_template_file_matches_render():
+    """configs/user_config.template.toml stays in sync with render_default_user_config_toml."""
+    root = Path(__file__).resolve().parents[1]
+    on_disk = (root / "configs" / "user_config.template.toml").read_text()
+    assert on_disk == render_default_user_config_toml()
