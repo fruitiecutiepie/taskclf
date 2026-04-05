@@ -1,7 +1,43 @@
 import { type Accessor, type Component, createSignal, Show } from "solid-js";
 import { notification_accept, notification_skip } from "../lib/api";
+import { time_format } from "../lib/format";
 import { frontend_log_error } from "../lib/log";
 import type { LabelSuggestion } from "../lib/ws";
+
+function suggestion_range_part_format(d: Date): string {
+  return d.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function suggestion_range_format(
+  block_start: string | null | undefined,
+  block_end: string | null | undefined,
+): string {
+  if (!block_start || !block_end) {
+    return `${time_format(block_start)} → ${time_format(block_end)}`;
+  }
+
+  const start = new Date(block_start);
+  const end = new Date(block_end);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return `${time_format(block_start)} → ${time_format(block_end)}`;
+  }
+
+  const crosses_local_day =
+    start.getFullYear() !== end.getFullYear()
+    || start.getMonth() !== end.getMonth()
+    || start.getDate() !== end.getDate();
+
+  if (!crosses_local_day) {
+    return `${time_format(block_start)} → ${time_format(block_end)}`;
+  }
+
+  return `${suggestion_range_part_format(start)} → ${suggestion_range_part_format(end)}`;
+}
 
 export const PredictionSuggestion: Component<{
   suggestion: Accessor<LabelSuggestion | null>;
@@ -76,14 +112,25 @@ export const PredictionSuggestion: Component<{
         }}
       >
         <div>
-          <strong style={{ color: "var(--warning)" }}>Task changed?</strong>{" "}
-          <span style={{ color: "var(--text-muted)" }}>
-            {s()?.old_label} → suggested:{" "}
-          </span>
-          <strong>{s()?.suggested}</strong>{" "}
-          <span style={{ color: "var(--text-muted)" }}>
-            ({Math.round((s()?.confidence ?? 0) * 100)}%)
-          </span>
+          <div>
+            <strong style={{ color: "var(--warning)" }}>Task changed?</strong>{" "}
+            <span style={{ color: "var(--text-muted)" }}>
+              {s()?.old_label} → suggested:{" "}
+            </span>
+            <strong>{s()?.suggested}</strong>{" "}
+            <span style={{ color: "var(--text-muted)" }}>
+              ({Math.round((s()?.confidence ?? 0) * 100)}%)
+            </span>
+          </div>
+          <div
+            style={{
+              color: "var(--text-muted)",
+              "font-size": "0.8rem",
+              "margin-top": "4px",
+            }}
+          >
+            Applies to {suggestion_range_format(s()?.block_start, s()?.block_end)}
+          </div>
         </div>
         <div style={{ display: "flex", gap: "8px", "flex-shrink": "0" }}>
           <Show
