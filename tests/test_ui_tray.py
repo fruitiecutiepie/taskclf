@@ -2209,6 +2209,7 @@ class TestEditInferencePolicy:
                 {
                     "schema_hash": "abc123",
                     "label_set": ["Build", "Meet"],
+                    "reject_threshold": 0.61,
                 }
             )
         )
@@ -2226,7 +2227,65 @@ class TestEditInferencePolicy:
         loaded = load_inference_policy(models_dir)
         assert loaded is not None
         assert loaded.model_schema_hash == "abc123"
+        assert loaded.reject_threshold == 0.61
         assert loaded.source == "tray-edit"
+
+    @patch("taskclf.ui.tray.subprocess.Popen")
+    @patch("taskclf.ui.tray.platform.system", return_value="Darwin")
+    def test_creates_policy_with_matching_calibrator_store(
+        self,
+        _mock_sys: MagicMock,
+        _mock_popen: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        import json
+
+        from taskclf.core.defaults import DEFAULT_INFERENCE_POLICY_FILE
+        from taskclf.core.inference_policy import load_inference_policy
+
+        bus, _ = _capture_bus()
+        models_dir = tmp_path / "models"
+        models_dir.mkdir()
+        model_path = models_dir / "run_test"
+        model_path.mkdir()
+        (model_path / "metadata.json").write_text(
+            json.dumps(
+                {
+                    "schema_hash": "abc123",
+                    "label_set": ["Build", "Meet"],
+                    "reject_threshold": 0.62,
+                }
+            )
+        )
+
+        store_dir = tmp_path / "artifacts" / "calibrator_store"
+        store_dir.mkdir(parents=True)
+        (store_dir / "store.json").write_text(
+            json.dumps(
+                {
+                    "method": "temperature",
+                    "model_bundle_id": "run_test",
+                    "model_schema_hash": "abc123",
+                }
+            )
+        )
+        (store_dir / "global.json").write_text(json.dumps({"type": "identity"}))
+
+        labeler = TrayLabeler(
+            data_dir=tmp_path,
+            model_dir=model_path,
+            models_dir=models_dir,
+            event_bus=bus,
+        )
+        labeler._edit_inference_policy()
+
+        policy_path = models_dir / DEFAULT_INFERENCE_POLICY_FILE
+        assert policy_path.is_file()
+        loaded = load_inference_policy(models_dir)
+        assert loaded is not None
+        assert loaded.calibrator_store_dir == "artifacts/calibrator_store"
+        assert loaded.calibration_method == "temperature"
+        assert loaded.reject_threshold == 0.62
 
     @patch("taskclf.ui.tray.subprocess.Popen")
     @patch("taskclf.ui.tray.platform.system", return_value="Darwin")
@@ -2236,6 +2295,8 @@ class TestEditInferencePolicy:
         _mock_popen: MagicMock,
         tmp_path: Path,
     ) -> None:
+        import json
+
         from taskclf.core.defaults import DEFAULT_INFERENCE_POLICY_FILE
         from taskclf.core.inference_policy import load_inference_policy
 
@@ -2257,8 +2318,13 @@ class TestEditInferencePolicy:
         loaded = load_inference_policy(models_dir)
         assert loaded is not None
         assert loaded.source == "tray-template"
+        raw = json.loads(policy_path.read_text())
+        assert raw["_help"]["preferred_command"] == (
+            "taskclf policy create --model-dir models/<run_id>"
+        )
+        assert raw["_help"]["paths_are_relative_to"] == str(tmp_path)
         mock_notify.assert_called_once()
-        assert "placeholder" in mock_notify.call_args[0][0].lower()
+        assert "inline _help" in mock_notify.call_args[0][0].lower()
 
     @patch("taskclf.ui.tray.subprocess.Popen", side_effect=OSError("no editor"))
     @patch("taskclf.ui.tray.platform.system", return_value="Darwin")

@@ -1668,6 +1668,128 @@ class TrayLabeler:
             logger.debug("Could not open config file", exc_info=True)
             self._notify(f"Config: {config_path}")
 
+    def _candidate_calibrator_store_dirs(self, base: Path) -> list[Path]:
+        """Return candidate calibrator-store directories under ``artifacts/``."""
+        artifacts_dir = base / "artifacts"
+        if not artifacts_dir.is_dir():
+            return []
+
+        default_store = artifacts_dir / "calibrator_store"
+        candidates: list[Path] = []
+        seen: set[Path] = set()
+
+        for store_dir in [
+            default_store,
+            *(p.parent for p in artifacts_dir.rglob("store.json")),
+        ]:
+            if store_dir in seen:
+                continue
+            seen.add(store_dir)
+            if not (store_dir / "store.json").is_file():
+                continue
+            if not (store_dir / "global.json").is_file():
+                continue
+            candidates.append(store_dir)
+        return candidates
+
+    def _find_matching_calibrator_store(
+        self,
+        *,
+        models_dir: Path,
+        model_bundle: Path,
+        model_schema_hash: str,
+    ) -> tuple[str | None, str | None]:
+        """Return ``(relative_store_dir, method)`` for a matching store.
+
+        Only stores with explicit model binding metadata are auto-selected,
+        which avoids guessing across unrelated calibration outputs.
+        """
+        base = models_dir.parent
+        matches: list[tuple[int, int, int, str, Path, str | None]] = []
+
+        for store_dir in self._candidate_calibrator_store_dirs(base):
+            try:
+                store_meta = json.loads((store_dir / "store.json").read_text())
+            except json.JSONDecodeError, OSError:
+                logger.debug(
+                    "Could not inspect calibrator store metadata at %s",
+                    store_dir,
+                    exc_info=True,
+                )
+                continue
+
+            store_bundle_id = store_meta.get("model_bundle_id")
+            store_schema_hash = store_meta.get("model_schema_hash")
+            if store_bundle_id is None and store_schema_hash is None:
+                continue
+            if (
+                store_bundle_id is not None
+                and str(store_bundle_id) != model_bundle.name
+            ):
+                continue
+            if (
+                store_schema_hash is not None
+                and str(store_schema_hash) != model_schema_hash
+            ):
+                continue
+
+            method_raw = store_meta.get("method")
+            method = method_raw if isinstance(method_raw, str) else None
+            created_at_raw = store_meta.get("created_at")
+            created_at = created_at_raw if isinstance(created_at_raw, str) else ""
+            matches.append(
+                (
+                    1 if store_bundle_id == model_bundle.name else 0,
+                    1 if store_schema_hash == model_schema_hash else 0,
+                    1 if store_dir.name == "calibrator_store" else 0,
+                    created_at,
+                    store_dir,
+                    method,
+                )
+            )
+
+        if not matches:
+            return None, None
+
+        _, _, _, _, best_dir, best_method = max(matches, key=lambda item: item[:4])
+        return str(best_dir.relative_to(base)), best_method
+
+    def _write_inference_policy_starter_template(self, models_dir: Path) -> Path:
+        """Write a placeholder policy with inline help for manual editing."""
+        from taskclf.core.inference_policy import build_inference_policy
+
+        starter = build_inference_policy(
+            model_dir="models/<run_id>",
+            model_schema_hash="<schema_hash>",
+            model_label_set=["<label>"],
+            reject_threshold=DEFAULT_REJECT_THRESHOLD,
+            source="tray-template",
+        ).model_dump()
+        starter["_help"] = {
+            "summary": (
+                "Replace the placeholder values below or generate a validated policy "
+                "with the CLI."
+            ),
+            "preferred_command": "taskclf policy create --model-dir models/<run_id>",
+            "with_calibration": (
+                "taskclf policy create --model-dir models/<run_id> "
+                "--calibrator-store artifacts/calibrator_store"
+            ),
+            "paths_are_relative_to": str(models_dir.parent),
+            "notes": [
+                "model_dir points to a model bundle relative to TASKCLF_HOME.",
+                "calibrator_store_dir is optional; leave it null for identity calibration.",
+                "reject_threshold defaults to 0.55 unless you tuned it separately.",
+            ],
+        }
+
+        models_dir.mkdir(parents=True, exist_ok=True)
+        policy_path = models_dir / DEFAULT_INFERENCE_POLICY_FILE
+        tmp_path = models_dir / f".{DEFAULT_INFERENCE_POLICY_FILE}.tmp"
+        tmp_path.write_text(json.dumps(starter, indent=2) + "\n")
+        os.replace(tmp_path, policy_path)
+        return policy_path
+
     def _ensure_inference_policy_file_for_editing(
         self,
     ) -> tuple[Path | None, bool]:
@@ -1691,7 +1813,9 @@ class TrayLabeler:
 
         from taskclf.core.inference_policy import (
             build_inference_policy,
+            PolicyValidationError,
             save_inference_policy,
+            validate_policy,
         )
         from taskclf.infer.resolve import ModelResolutionError, resolve_model_dir
 
@@ -1711,25 +1835,60 @@ class TrayLabeler:
 
         if model_bundle is not None:
             meta_path = model_bundle / "metadata.json"
-            meta = json.loads(meta_path.read_text())
-            policy = build_inference_policy(
-                model_dir=str(model_bundle.relative_to(models_dir.parent)),
-                model_schema_hash=meta["schema_hash"],
-                model_label_set=meta["label_set"],
-                reject_threshold=DEFAULT_REJECT_THRESHOLD,
-                source="tray-edit",
-            )
-            written = save_inference_policy(policy, models_dir)
-            return written, False
+            try:
+                meta = json.loads(meta_path.read_text())
+                model_schema_hash = str(meta["schema_hash"])
+                model_label_set = list(meta["label_set"])
+            except KeyError, TypeError, ValueError, json.JSONDecodeError, OSError:
+                logger.debug(
+                    "Could not seed inference policy from %s; using placeholder",
+                    model_bundle,
+                    exc_info=True,
+                )
+            else:
+                raw_threshold = meta.get("reject_threshold")
+                try:
+                    reject_threshold = (
+                        float(raw_threshold)
+                        if raw_threshold is not None
+                        else DEFAULT_REJECT_THRESHOLD
+                    )
+                except TypeError, ValueError:
+                    reject_threshold = DEFAULT_REJECT_THRESHOLD
 
-        policy = build_inference_policy(
-            model_dir="models/REPLACE_WITH_YOUR_RUN_DIR",
-            model_schema_hash="REPLACE",
-            model_label_set=["REPLACE"],
-            reject_threshold=DEFAULT_REJECT_THRESHOLD,
-            source="tray-template",
-        )
-        written = save_inference_policy(policy, models_dir)
+                cal_store_rel, cal_method = self._find_matching_calibrator_store(
+                    models_dir=models_dir,
+                    model_bundle=model_bundle,
+                    model_schema_hash=model_schema_hash,
+                )
+                policy = build_inference_policy(
+                    model_dir=os.path.relpath(model_bundle, models_dir.parent),
+                    model_schema_hash=model_schema_hash,
+                    model_label_set=model_label_set,
+                    reject_threshold=reject_threshold,
+                    calibrator_store_dir=cal_store_rel,
+                    calibration_method=cal_method,
+                    source="tray-edit",
+                )
+                if cal_store_rel is not None:
+                    try:
+                        validate_policy(policy, models_dir)
+                    except PolicyValidationError:
+                        logger.debug(
+                            "Ignoring detected calibrator store %s for starter policy",
+                            cal_store_rel,
+                            exc_info=True,
+                        )
+                        policy = policy.model_copy(
+                            update={
+                                "calibrator_store_dir": None,
+                                "calibration_method": None,
+                            }
+                        )
+                written = save_inference_policy(policy, models_dir)
+                return written, False
+
+        written = self._write_inference_policy_starter_template(models_dir)
         return written, True
 
     def _edit_inference_policy(self, *_args: Any) -> None:
@@ -1748,8 +1907,8 @@ class TrayLabeler:
 
         if template_warning:
             self._notify(
-                "Created starter inference_policy.json with placeholders — "
-                "edit paths or run: taskclf policy create --model-dir …"
+                "Created starter inference_policy.json with inline _help. "
+                "Prefer: taskclf policy create --model-dir models/<run_id>"
             )
 
         system = platform.system()

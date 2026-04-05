@@ -26,12 +26,16 @@ first thing inference resolution checks.
 ## Editing from the tray
 
 The tray menu **Edit Inference Policy** opens this file in the default
-editor. If the file is missing, the tray creates it first (preferring
-metadata from the loaded model bundle when available, otherwise a
-placeholder starter). Prefer `taskclf policy create` for a validated
-policy. Hand-edited JSON that fails validation is ignored by
-`load_inference_policy`, so inference falls back to `active.json`
-resolution until the file is fixed.
+editor. If the file is missing, the tray creates it first. When a model
+bundle can be resolved, the starter policy is seeded from that bundle's
+`metadata.json`, reusing its advisory `reject_threshold` and attaching a
+matching calibrator store when `artifacts/**/store.json` explicitly
+binds to the same model/schema. When no model can be resolved, the tray
+writes a placeholder starter with an inline `_help` block showing the
+preferred `taskclf policy create` commands and path conventions. Prefer
+`taskclf policy create` for a validated policy. Hand-edited JSON that
+fails validation is ignored by `load_inference_policy`, so inference
+falls back to `active.json` resolution until the file is fixed.
 
 ## Resolution precedence
 
