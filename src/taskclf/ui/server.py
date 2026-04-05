@@ -39,7 +39,9 @@ from taskclf.core.defaults import (
     DEFAULT_DATA_DIR,
     DEFAULT_MODELS_DIR,
     DEFAULT_NUM_BOOST_ROUND,
+    DEFAULT_POLL_SECONDS,
     DEFAULT_TITLE_SALT,
+    DEFAULT_TRANSITION_MINUTES,
 )
 from taskclf.core.time import ts_utc_aware_get
 from taskclf.core.types import CoreLabel, LabelSpan
@@ -1652,5 +1654,119 @@ def create_app(
             if file_path.is_file():
                 return FileResponse(file_path)
             return FileResponse(_STATIC_DIR / "index.html")
+
+    return app
+
+
+def _env_int(name: str, default: int) -> int:
+    """Return an integer environment variable or *default* when unset."""
+    import os
+
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except ValueError as exc:  # pragma: no cover - defensive configuration error
+        raise RuntimeError(f"{name} must be an integer, got {raw!r}") from exc
+
+
+def _create_dev_app_from_env() -> FastAPI:
+    """Build a reloadable dev app from CLI-provided environment variables.
+
+    Used by ``taskclf ui --dev --browser`` so uvicorn can own the backend
+    process and restart it on Python source changes.
+    """
+    import os
+
+    from taskclf.ui.tray import ActivityMonitor, _LabelSuggester
+    from taskclf.ui.window import WindowAPI
+
+    if os.environ.get("TASKCLF_UI_DEV") == "1":
+        logging.getLogger("taskclf").setLevel(logging.DEBUG)
+
+    data_dir = Path(os.environ.get("TASKCLF_UI_DATA_DIR", DEFAULT_DATA_DIR))
+    aw_host = os.environ.get("TASKCLF_AW_HOST", DEFAULT_AW_HOST)
+    title_salt = os.environ.get("TASKCLF_TITLE_SALT", DEFAULT_TITLE_SALT)
+    poll_seconds = _env_int("TASKCLF_POLL_SECONDS", DEFAULT_POLL_SECONDS)
+    transition_minutes = _env_int(
+        "TASKCLF_TRANSITION_MINUTES",
+        DEFAULT_TRANSITION_MINUTES,
+    )
+    model_dir_raw = os.environ.get("TASKCLF_MODEL_DIR")
+
+    bus = EventBus()
+    win_api = WindowAPI()
+
+    suggester: _LabelSuggester | None = None
+    if model_dir_raw:
+        try:
+            suggester = _LabelSuggester(Path(model_dir_raw))
+            suggester._aw_host = aw_host
+            suggester._title_salt = title_salt
+        except Exception as exc:  # pragma: no cover - depends on model bundle
+            logger.warning("Could not load dev suggester model: %s", exc)
+
+    def on_transition(
+        prev: str,
+        new: str,
+        start: dt.datetime,
+        end: dt.datetime,
+    ) -> None:
+        if suggester is not None:
+            result = suggester.suggest(start, end)
+            if result is not None:
+                label, confidence = result
+                bus.publish_threadsafe(
+                    {
+                        "type": "suggest_label",
+                        "reason": "app_switch",
+                        "old_label": prev,
+                        "suggested": label,
+                        "confidence": confidence,
+                        "block_start": start.isoformat(),
+                        "block_end": end.isoformat(),
+                    }
+                )
+                return
+        bus.publish_threadsafe(
+            {
+                "type": "prediction",
+                "label": "unknown",
+                "confidence": 0.0,
+                "ts": end.isoformat(),
+                "mapped_label": "unknown",
+                "current_app": new,
+            }
+        )
+
+    monitor = ActivityMonitor(
+        aw_host=aw_host,
+        title_salt=title_salt,
+        poll_seconds=poll_seconds,
+        transition_minutes=transition_minutes,
+        on_transition=on_transition,
+        event_bus=bus,
+    )
+    monitor_thread = threading.Thread(target=monitor.run, daemon=True)
+
+    app = create_app(
+        data_dir=data_dir,
+        aw_host=aw_host,
+        title_salt=title_salt,
+        event_bus=bus,
+        window_api=win_api,
+    )
+
+    @app.on_event("startup")
+    async def _start_monitor() -> None:
+        if not monitor_thread.is_alive():
+            monitor_thread.start()
+
+    @app.on_event("shutdown")
+    async def _stop_monitor() -> None:
+        monitor.stop()
+        if monitor_thread.is_alive():
+            monitor_thread.join(timeout=1)
 
     return app

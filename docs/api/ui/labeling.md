@@ -17,6 +17,13 @@ For frontend development with hot reload:
 taskclf ui --dev
 ```
 
+For browser-based full-stack development with frontend HMR plus backend
+auto-reload:
+
+```bash
+taskclf ui --dev --browser
+```
+
 Options:
 
 | Option | Default | Description |
@@ -29,7 +36,7 @@ Options:
 | `--data-dir` | `data/processed` (ephemeral in `--dev`) | Processed data directory; omit with `--dev` for an auto-cleaned temp dir |
 | `--transition-minutes` | `3` | Minutes before suggesting a label change |
 | `--idle-transition-minutes` | `1` | Minutes before a lockscreen/idle transition fires (separate from general transitions) |
-| `--dev` | off | Start Vite dev server for frontend hot reload; uses ephemeral data dir unless `--data-dir` is set |
+| `--dev` | off | Start Vite dev server for frontend hot reload; in browser mode, the FastAPI backend also runs with auto-reload. Uses an ephemeral data dir unless `--data-dir` is set |
 
 ## Panels
 

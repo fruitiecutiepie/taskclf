@@ -245,6 +245,16 @@ uv run taskclf ui --dev
 This starts the Vite dev server on `http://127.0.0.1:5173` alongside
 the API backend. Edit `.tsx` files and see changes instantly.
 
+For browser-based full-stack development, use:
+
+```bash
+uv run taskclf ui --dev --browser
+```
+
+This keeps Vite HMR for the frontend and also runs the FastAPI backend
+with auto-reload, so Python changes under `src/taskclf/` restart the
+server without restarting the dev session.
+
 In `--dev` mode, an ephemeral data directory is created automatically
 and cleaned up on exit, so your production data is never touched.
 To use a specific directory instead, pass `--data-dir`:

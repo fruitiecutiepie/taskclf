@@ -813,6 +813,10 @@ Combined dev + browser mode:
 taskclf ui --dev --browser
 ```
 
+In browser mode, `--dev` now enables backend auto-reload as well, so
+editing Python files under `src/taskclf/` restarts the FastAPI process
+while Vite keeps frontend HMR active.
+
 | Option | Default | Description |
 |---|---|---|
 | `--port` | `8741` | Port for the web UI server |
@@ -823,6 +827,6 @@ taskclf ui --dev --browser
 | `--data-dir` | `data/processed` (ephemeral in `--dev`) | Processed data directory; omit with `--dev` for an auto-cleaned temp dir |
 | `--transition-minutes` | `2` | Minutes a new app must persist before suggesting a label |
 | `--browser` | off | Open UI in browser instead of native window |
-| `--dev` | off | Start Vite dev server for frontend hot reload; uses ephemeral data dir unless `--data-dir` is set |
+| `--dev` | off | Start Vite dev server for frontend hot reload; in browser mode, the FastAPI backend also runs with auto-reload. Uses an ephemeral data dir unless `--data-dir` is set |
 
 ::: taskclf.cli.main

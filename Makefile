@@ -60,7 +60,7 @@ ui-build:
 ui-dev:
 	$(PNPM) run dev
 
-# Backend (FastAPI) + Vite HMR; opens the UI in the browser.
+# Backend (FastAPI reload) + Vite HMR; opens the UI in the browser.
 dev:
 	uv run taskclf ui --dev --browser
 

@@ -3648,6 +3648,78 @@ def electron_cmd(
 # -- ui -----------------------------------------------------------------------
 
 
+def _wait_for_local_http(
+    url: str,
+    *,
+    proc=None,
+    attempts: int = 30,
+    delay_s: float = 0.5,
+) -> bool:
+    """Return ``True`` when a local HTTP endpoint starts responding."""
+    import time
+    import urllib.request
+
+    for _attempt in range(attempts):
+        try:
+            urllib.request.urlopen(url, timeout=1)
+            return True
+        except Exception:
+            if proc is not None and proc.poll() is not None:
+                return False
+            time.sleep(delay_s)
+    return False
+
+
+def _start_reloadable_ui_backend(
+    *,
+    port: int,
+    data_dir: str,
+    aw_host: str,
+    poll_seconds: int,
+    title_salt: str,
+    transition_minutes: int,
+    model_dir: str | None,
+):
+    """Start the browser dev backend under uvicorn reload."""
+    import os
+    import subprocess
+    import sys
+
+    reload_dir = Path(__file__).resolve().parents[1]
+    env = {
+        **os.environ,
+        "TASKCLF_UI_DEV": "1",
+        "TASKCLF_UI_DATA_DIR": data_dir,
+        "TASKCLF_AW_HOST": aw_host,
+        "TASKCLF_POLL_SECONDS": str(poll_seconds),
+        "TASKCLF_TITLE_SALT": title_salt,
+        "TASKCLF_TRANSITION_MINUTES": str(transition_minutes),
+    }
+    if model_dir is None:
+        env.pop("TASKCLF_MODEL_DIR", None)
+    else:
+        env["TASKCLF_MODEL_DIR"] = model_dir
+    return subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "uvicorn",
+            "taskclf.ui.server:_create_dev_app_from_env",
+            "--factory",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+            "--log-level",
+            "warning",
+            "--reload",
+            "--reload-dir",
+            str(reload_dir),
+        ],
+        env=env,
+    )
+
+
 @app.command("ui")
 def ui_serve_cmd(
     port: int = typer.Option(8741, "--port", help="Port for the web UI server"),
@@ -3681,7 +3753,9 @@ def ui_serve_cmd(
         False, "--browser", help="Open in browser instead of native window"
     ),
     dev: bool = typer.Option(
-        False, "--dev", help="Start Vite dev server for frontend hot reload"
+        False,
+        "--dev",
+        help="Start Vite dev server for frontend hot reload (browser mode also reloads the backend)",
     ),
 ) -> None:
     """Launch the labeling UI as a native floating window with live prediction streaming."""
@@ -3690,14 +3764,6 @@ def ui_serve_cmd(
     import subprocess
     import tempfile
     import threading
-
-    import uvicorn
-
-    from taskclf.ui.events import EventBus
-    from taskclf.ui.server import create_app
-    from taskclf.ui.tray import ActivityMonitor, _LabelSuggester
-    from taskclf.ui.window import WindowAPI
-    from taskclf.ui.window_run import window_run
 
     if dev:
         logging.getLogger("taskclf").setLevel(logging.DEBUG)
@@ -3712,80 +3778,117 @@ def ui_serve_cmd(
     else:
         resolved_data_dir = DEFAULT_DATA_DIR
 
-    bus = EventBus()
-    win_api = WindowAPI()
+    backend_proc = None
+    server_thread = None
+    win_api = None
+    use_reloadable_backend = dev and browser
 
-    suggester: _LabelSuggester | None = None
-    if model_dir is not None:
-        try:
-            suggester = _LabelSuggester(Path(model_dir))
-            suggester._aw_host = aw_host
-            suggester._title_salt = title_salt
-        except Exception as exc:
-            typer.echo(f"Warning: could not load model — {exc}", err=True)
+    if use_reloadable_backend:
+        backend_proc = _start_reloadable_ui_backend(
+            port=port,
+            data_dir=resolved_data_dir,
+            aw_host=aw_host,
+            poll_seconds=poll_seconds,
+            title_salt=title_salt,
+            transition_minutes=transition_minutes,
+            model_dir=model_dir,
+        )
+        typer.echo(f"taskclf API on http://127.0.0.1:{port} (backend hot reload)")
+        if not _wait_for_local_http(
+            f"http://127.0.0.1:{port}",
+            proc=backend_proc,
+        ):
+            if backend_proc.poll() is not None:
+                typer.echo("Error: backend dev server exited unexpectedly", err=True)
+                raise typer.Exit(1)
+            typer.echo(
+                "Warning: backend dev server not responding, opening anyway",
+                err=True,
+            )
+    else:
+        import uvicorn
 
-    def on_transition(
-        prev: str, new: str, start: dt.datetime, end: dt.datetime
-    ) -> None:
-        if suggester is not None:
-            result = suggester.suggest(start, end)
-            if result is not None:
-                label, confidence = result
-                bus.publish_threadsafe(
-                    {
-                        "type": "suggest_label",
-                        "reason": "app_switch",
-                        "old_label": prev,
-                        "suggested": label,
-                        "confidence": confidence,
-                        "block_start": start.isoformat(),
-                        "block_end": end.isoformat(),
-                    }
-                )
-                return
-        bus.publish_threadsafe(
-            {
-                "type": "prediction",
-                "label": "unknown",
-                "confidence": 0.0,
-                "ts": end.isoformat(),
-                "mapped_label": "unknown",
-                "current_app": new,
-            }
+        from taskclf.ui.events import EventBus
+        from taskclf.ui.server import create_app
+        from taskclf.ui.tray import ActivityMonitor, _LabelSuggester
+        from taskclf.ui.window import WindowAPI
+
+        bus = EventBus()
+        win_api = WindowAPI()
+
+        suggester: _LabelSuggester | None = None
+        if model_dir is not None:
+            try:
+                suggester = _LabelSuggester(Path(model_dir))
+                suggester._aw_host = aw_host
+                suggester._title_salt = title_salt
+            except Exception as exc:
+                typer.echo(f"Warning: could not load model — {exc}", err=True)
+
+        def on_transition(
+            prev: str,
+            new: str,
+            start: dt.datetime,
+            end: dt.datetime,
+        ) -> None:
+            if suggester is not None:
+                result = suggester.suggest(start, end)
+                if result is not None:
+                    label, confidence = result
+                    bus.publish_threadsafe(
+                        {
+                            "type": "suggest_label",
+                            "reason": "app_switch",
+                            "old_label": prev,
+                            "suggested": label,
+                            "confidence": confidence,
+                            "block_start": start.isoformat(),
+                            "block_end": end.isoformat(),
+                        }
+                    )
+                    return
+            bus.publish_threadsafe(
+                {
+                    "type": "prediction",
+                    "label": "unknown",
+                    "confidence": 0.0,
+                    "ts": end.isoformat(),
+                    "mapped_label": "unknown",
+                    "current_app": new,
+                }
+            )
+
+        monitor = ActivityMonitor(
+            aw_host=aw_host,
+            title_salt=title_salt,
+            poll_seconds=poll_seconds,
+            transition_minutes=transition_minutes,
+            on_transition=on_transition,
+            event_bus=bus,
+        )
+        monitor_thread = threading.Thread(target=monitor.run, daemon=True)
+        monitor_thread.start()
+
+        fastapi_app = create_app(
+            data_dir=Path(resolved_data_dir),
+            aw_host=aw_host,
+            title_salt=title_salt,
+            event_bus=bus,
+            window_api=win_api,
         )
 
-    monitor = ActivityMonitor(
-        aw_host=aw_host,
-        title_salt=title_salt,
-        poll_seconds=poll_seconds,
-        transition_minutes=transition_minutes,
-        on_transition=on_transition,
-        event_bus=bus,
-    )
-    monitor_thread = threading.Thread(target=monitor.run, daemon=True)
-    monitor_thread.start()
-
-    fastapi_app = create_app(
-        data_dir=Path(resolved_data_dir),
-        aw_host=aw_host,
-        title_salt=title_salt,
-        event_bus=bus,
-        window_api=win_api,
-    )
-
-    uvicorn_config = uvicorn.Config(
-        fastapi_app,
-        host="127.0.0.1",
-        port=port,
-        log_level="warning",
-        ws_ping_interval=30,
-        ws_ping_timeout=30,
-    )
-    server = uvicorn.Server(uvicorn_config)
-    server_thread = threading.Thread(target=server.run, daemon=True)
-    server_thread.start()
-
-    typer.echo(f"taskclf API on http://127.0.0.1:{port}")
+        uvicorn_config = uvicorn.Config(
+            fastapi_app,
+            host="127.0.0.1",
+            port=port,
+            log_level="warning",
+            ws_ping_interval=30,
+            ws_ping_timeout=30,
+        )
+        server = uvicorn.Server(uvicorn_config)
+        server_thread = threading.Thread(target=server.run, daemon=True)
+        server_thread.start()
+        typer.echo(f"taskclf API on http://127.0.0.1:{port}")
 
     vite_proc: subprocess.Popen[bytes] | None = None
     ui_port = port
@@ -3814,19 +3917,10 @@ def ui_serve_cmd(
         ui_port = 5173
         typer.echo(f"Vite dev server → http://127.0.0.1:{ui_port} (hot reload)")
 
-        import time
-        import urllib.request
-
-        for attempt in range(30):
-            try:
-                urllib.request.urlopen(f"http://127.0.0.1:{ui_port}", timeout=1)
-                break
-            except Exception:
-                if vite_proc.poll() is not None:
-                    typer.echo("Error: Vite dev server exited unexpectedly", err=True)
-                    raise typer.Exit(1)
-                time.sleep(0.5)
-        else:
+        if not _wait_for_local_http(f"http://127.0.0.1:{ui_port}", proc=vite_proc):
+            if vite_proc.poll() is not None:
+                typer.echo("Error: Vite dev server exited unexpectedly", err=True)
+                raise typer.Exit(1)
             typer.echo(
                 "Warning: Vite dev server not responding, opening anyway", err=True
             )
@@ -3836,8 +3930,13 @@ def ui_serve_cmd(
             import webbrowser
 
             webbrowser.open(f"http://127.0.0.1:{ui_port}")
-            server_thread.join()
+            if backend_proc is not None:
+                backend_proc.wait()
+            elif server_thread is not None:
+                server_thread.join()
         else:
+            from taskclf.ui.window_run import window_run
+
             window_run(port=ui_port, window_api=win_api)
     except KeyboardInterrupt:
         pass
@@ -3845,6 +3944,9 @@ def ui_serve_cmd(
         if vite_proc is not None:
             vite_proc.terminate()
             vite_proc.wait(timeout=5)
+        if backend_proc is not None:
+            backend_proc.terminate()
+            backend_proc.wait(timeout=5)
         if tmp_dir is not None:
             shutil.rmtree(tmp_dir, ignore_errors=True)
             typer.echo(f"Dev mode: cleaned up ephemeral data dir → {tmp_dir}")

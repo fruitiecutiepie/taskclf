@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -1785,3 +1786,81 @@ class TestDesktopShellCommands:
         assert config.transition_minutes == 9
         assert config.ui_port == 9555
         assert config.username == "Audrey"
+
+    def test_ui_browser_dev_uses_reloadable_backend(self, tmp_path: Path) -> None:
+        """TC-CLI-DS-003: ui --dev --browser runs backend via uvicorn reload."""
+        fake_ui_root = tmp_path / "ui"
+        frontend_dir = fake_ui_root / "frontend"
+        (frontend_dir / "node_modules").mkdir(parents=True)
+
+        backend_proc = MagicMock()
+        backend_proc.poll.return_value = None
+        backend_proc.wait.side_effect = [KeyboardInterrupt(), None]
+
+        vite_proc = MagicMock()
+        vite_proc.poll.return_value = None
+        vite_proc.wait.return_value = None
+
+        data_dir = tmp_path / "data"
+        expected_reload_dir = Path(__file__).resolve().parents[1] / "src" / "taskclf"
+
+        with (
+            patch("taskclf.ui.server.__file__", str(fake_ui_root / "server.py")),
+            patch(
+                "subprocess.Popen", side_effect=[backend_proc, vite_proc]
+            ) as mock_popen,
+            patch("urllib.request.urlopen", return_value=MagicMock()),
+            patch("webbrowser.open") as mock_open,
+        ):
+            result = runner.invoke(
+                app,
+                [
+                    "ui",
+                    "--dev",
+                    "--browser",
+                    "--data-dir",
+                    str(data_dir),
+                    "--aw-host",
+                    "http://localhost:5600",
+                    "--poll-seconds",
+                    "30",
+                    "--title-salt",
+                    "salt-456",
+                    "--transition-minutes",
+                    "9",
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        assert mock_popen.call_count == 2
+
+        backend_call = mock_popen.call_args_list[0]
+        backend_cmd = backend_call.args[0]
+        backend_env = backend_call.kwargs["env"]
+        assert backend_cmd[:4] == [
+            sys.executable,
+            "-m",
+            "uvicorn",
+            "taskclf.ui.server:_create_dev_app_from_env",
+        ]
+        assert "--factory" in backend_cmd
+        assert "--reload" in backend_cmd
+        assert backend_cmd[backend_cmd.index("--reload-dir") + 1] == str(
+            expected_reload_dir
+        )
+        assert backend_env["TASKCLF_UI_DEV"] == "1"
+        assert backend_env["TASKCLF_UI_DATA_DIR"] == str(data_dir)
+        assert backend_env["TASKCLF_AW_HOST"] == "http://localhost:5600"
+        assert backend_env["TASKCLF_POLL_SECONDS"] == "30"
+        assert backend_env["TASKCLF_TITLE_SALT"] == "salt-456"
+        assert backend_env["TASKCLF_TRANSITION_MINUTES"] == "9"
+        assert "TASKCLF_MODEL_DIR" not in backend_env
+
+        vite_call = mock_popen.call_args_list[1]
+        assert vite_call.args[0] == ["pnpm", "run", "dev"]
+        assert vite_call.kwargs["cwd"] == frontend_dir
+        assert vite_call.kwargs["env"]["TASKCLF_PORT"] == "8741"
+
+        mock_open.assert_called_once_with("http://127.0.0.1:5173")
+        backend_proc.terminate.assert_called_once()
+        vite_proc.terminate.assert_called_once()
