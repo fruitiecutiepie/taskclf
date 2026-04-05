@@ -83,6 +83,24 @@ export function time_input_date(dateStr: string, timeVal: string): Date {
   return new Date(`${dateStr}T${hh}:${mm}:${ss}`);
 }
 
+/**
+ * Quick-label gap shortcut text from a label's end time, or `null` when the
+ * control should stay hidden (under one rounded minute since end).
+ */
+export function gap_shortcut_label_from_end(
+  end_ms: number,
+  now_ms: number,
+): string | null {
+  const ago = Math.round((now_ms - end_ms) / 60_000);
+  if (ago < 1) {
+    return null;
+  }
+  if (ago >= 60) {
+    return `gap ${Math.floor(ago / 60)}h${ago % 60 ? `${ago % 60}m` : ""}`;
+  }
+  return `gap ${ago}m`;
+}
+
 export function time_ago(iso: string): string {
   const d = iso_date_parse(iso);
   const mins = Math.round((Date.now() - d.getTime()) / 60_000);

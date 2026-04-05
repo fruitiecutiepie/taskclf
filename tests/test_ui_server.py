@@ -103,7 +103,7 @@ class TestLabelsCRUD:
         resp = client.get("/api/labels")
         labels = resp.json()
         assert len(labels) == 3
-        assert labels[0]["start_ts"] > labels[1]["start_ts"]
+        assert labels[0]["end_ts"] > labels[1]["end_ts"]
 
 
 class TestQueue:
@@ -1117,6 +1117,37 @@ class TestLabelsLimit:
         """TC-UI-LL-004: limit=501 violates le=500 -> 422."""
         resp = client.get("/api/labels", params={"limit": 501})
         assert resp.status_code == 422
+
+
+class TestLabelsLatestEndOrdering:
+    """GET /api/labels ordering must match quick-label gap (latest end_ts first)."""
+
+    def test_limit_1_prefers_latest_end_ts_when_overlaps_allowed(
+        self, client: TestClient
+    ) -> None:
+        client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:00:00",
+                "end_ts": "2026-02-27T14:00:00",
+                "label": "Build",
+            },
+        )
+        client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T13:00:00",
+                "end_ts": "2026-02-27T13:30:00",
+                "label": "Meet",
+                "allow_overlap": True,
+            },
+        )
+        resp = client.get("/api/labels", params={"limit": 1})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 1
+        assert data[0]["end_ts"] == "2026-02-27T14:00:00+00:00"
+        assert data[0]["label"] == "Build"
 
 
 # ---------------------------------------------------------------------------

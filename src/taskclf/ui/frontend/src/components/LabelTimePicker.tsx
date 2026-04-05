@@ -1,6 +1,18 @@
-import { type Accessor, type Component, createSignal, For } from "solid-js";
-import { iso_date_parse } from "../lib/date";
+import {
+  type Accessor,
+  type Component,
+  createMemo,
+  createSignal,
+  For,
+  onCleanup,
+  onMount,
+  Show,
+} from "solid-js";
+import { gap_shortcut_label_from_end, iso_date_parse } from "../lib/date";
 import { label_entry_is_open_ended } from "../lib/labelTimeline";
+
+/** Wall-clock tick so the gap label advances while the picker stays open. */
+const GAP_LABEL_TICK_MS = 30_000;
 
 const MINUTE_OPTIONS = [0, 1, 5, 15, 30, 60] as const;
 export type TimeUnit = "s" | "m" | "h" | "d";
@@ -17,9 +29,28 @@ type LabelTimePickerProps = {
 };
 
 export const LabelTimePicker: Component<LabelTimePickerProps> = (props) => {
+  const [now_ms, set_now_ms] = createSignal(Date.now());
   const [custom_active, set_custom_active] = createSignal(false);
   const [custom_value, set_custom_value] = createSignal("");
   const [custom_unit, set_custom_unit] = createSignal<TimeUnit>("m");
+
+  onMount(() => {
+    const id = window.setInterval(() => {
+      set_now_ms(Date.now());
+    }, GAP_LABEL_TICK_MS);
+    onCleanup(() => {
+      window.clearInterval(id);
+    });
+  });
+
+  const gap_shortcut_label = createMemo(() => {
+    const t = now_ms();
+    const ll = props.last_label();
+    if (!ll?.end_ts || label_entry_is_open_ended(ll)) {
+      return null;
+    }
+    return gap_shortcut_label_from_end(iso_date_parse(ll.end_ts).getTime(), t);
+  });
 
   function preset_select(m: number) {
     props.set_selected_minutes(m);
@@ -93,22 +124,8 @@ export const LabelTimePicker: Component<LabelTimePickerProps> = (props) => {
           );
         }}
       </For>
-      {(() => {
-        const ll = props.last_label();
-        if (!ll?.end_ts || label_entry_is_open_ended(ll)) {
-          return null;
-        }
-        const ago = Math.round(
-          (Date.now() - iso_date_parse(ll.end_ts).getTime()) / 60_000,
-        );
-        if (ago < 1) {
-          return null;
-        }
-        const label =
-          ago >= 60
-            ? `gap ${Math.floor(ago / 60)}h${ago % 60 ? `${ago % 60}m` : ""}`
-            : `gap ${ago}m`;
-        return (
+      <Show when={gap_shortcut_label()}>
+        {(label) => (
           <button
             type="button"
             onClick={() => {
@@ -130,10 +147,10 @@ export const LabelTimePicker: Component<LabelTimePickerProps> = (props) => {
               transition: "all 0.1s ease",
             }}
           >
-            {label}
+            {label()}
           </button>
-        );
-      })()}
+        )}
+      </Show>
       <div
         style={{
           display: "flex",

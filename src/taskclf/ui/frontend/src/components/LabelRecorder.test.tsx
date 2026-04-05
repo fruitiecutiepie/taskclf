@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { core_labels_list, label_update, labels_list } from "../lib/api";
+import { core_labels_list, label_create, label_update, labels_list } from "../lib/api";
 import { LabelRecorder } from "./LabelRecorder";
 
 vi.mock("../lib/api", () => ({
@@ -125,5 +125,50 @@ describe("LabelRecorder", () => {
     expect(
       screen.queryByRole("button", { name: "Stop current label" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("gap shortcut starts label at last label end_ts", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-05T11:00:00.000Z"));
+    vi.mocked(labels_list).mockResolvedValue([
+      {
+        start_ts: "2026-04-05T08:00:00Z",
+        end_ts: "2026-04-05T09:30:00Z",
+        label: "Build",
+        provenance: "manual",
+        user_id: null,
+        confidence: 1,
+        extend_forward: false,
+      },
+    ]);
+    vi.mocked(label_create).mockResolvedValue({
+      start_ts: "2026-04-05T09:30:00.000Z",
+      end_ts: "2026-04-05T11:00:00.000Z",
+      label: "Write",
+      provenance: "manual",
+      user_id: null,
+      confidence: 1,
+      extend_forward: true,
+    });
+
+    render(() => <LabelRecorder on_collapse={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "gap 1h30m" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "gap 1h30m" }));
+    fireEvent.click(screen.getByRole("button", { name: "Write" }));
+
+    await waitFor(() => {
+      expect(label_create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          start_ts: "2026-04-05T09:30:00.000Z",
+          end_ts: "2026-04-05T11:00:00.000Z",
+          label: "Write",
+        }),
+      );
+    });
+    vi.useRealTimers();
   });
 });

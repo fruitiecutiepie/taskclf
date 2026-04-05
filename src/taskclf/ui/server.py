@@ -504,7 +504,8 @@ def create_app(
             day_end = dt.datetime.combine(target, dt.time.max, tzinfo=dt.timezone.utc)
             spans = [s for s in spans if s.end_ts > day_start and s.start_ts < day_end]
 
-        spans.sort(key=lambda s: s.start_ts, reverse=True)
+        # Latest-ended first: matches tray gap-fill (max end_ts) and quick-label gap.
+        spans.sort(key=lambda s: s.end_ts, reverse=True)
         return [
             LabelResponse(
                 start_ts=_utc_iso(s.start_ts),
