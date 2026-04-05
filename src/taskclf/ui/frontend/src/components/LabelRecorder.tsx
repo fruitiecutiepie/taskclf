@@ -13,6 +13,7 @@ import { iso_date_parse } from "../lib/date";
 import { label_overwrite_pending_upd_get } from "../lib/label_overwrite_pending_upd_get";
 import { LABEL_COLORS } from "../lib/labelColors";
 import { label_entry_is_open_ended } from "../lib/labelTimeline";
+import { overwrite_pending_from_api_error } from "../lib/overwrite_pending_from_api_error";
 import type { LabelSuggestion, Prediction } from "../lib/ws";
 import { ActivitySummary } from "./ActivitySummary";
 import { ErrorBanner } from "./ErrorBanner";
@@ -152,40 +153,18 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
       set_label_version((v) => v + 1);
       setTimeout(() => set_flash(null), 1500);
     } catch (err: unknown) {
-      const msg: string = err instanceof Error ? err.message : "";
-      const json_match = msg.match(/\{[\s\S]*\}/);
-      if (json_match) {
-        try {
-          const parsed = JSON.parse(json_match[0]);
-          const overlap = parsed.detail ?? parsed;
-          const spans: { start_ts: string; end_ts: string; label: string }[] =
-            overlap.conflicting_spans ?? [];
-          if (
-            spans.length === 0
-            && overlap.conflicting_start_ts
-            && overlap.conflicting_end_ts
-          ) {
-            spans.push({
-              start_ts: overlap.conflicting_start_ts,
-              end_ts: overlap.conflicting_end_ts,
-              label: overlap.conflicting_label ?? "unknown",
-            });
-          }
-          if (spans.length > 0) {
-            set_overwrite_pending({
-              label,
-              start: start.toISOString(),
-              end: now.toISOString(),
-              conflicts: spans,
-              confidence: conf_percent() / 100,
-              extend_forward: effective_extend,
-            });
-            return;
-          }
-        } catch {
-          /* fall through to generic error */
-        }
+      const pending = overwrite_pending_from_api_error(err, {
+        label,
+        start: start.toISOString(),
+        end: now.toISOString(),
+        confidence: conf_percent() / 100,
+        extend_forward: effective_extend,
+      });
+      if (pending) {
+        set_overwrite_pending(pending);
+        return;
       }
+      const msg: string = err instanceof Error ? err.message : "";
       set_error(msg || "Failed to save label");
     }
   }

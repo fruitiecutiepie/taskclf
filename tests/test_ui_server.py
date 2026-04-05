@@ -1336,6 +1336,55 @@ class TestStructuredOverlapError:
         assert detail["conflicting_start_ts"] is not None
         assert detail["conflicting_end_ts"] is not None
 
+    def test_notification_accept_with_overwrite_succeeds(
+        self, client: TestClient
+    ) -> None:
+        """Same range as overlap failure, but overwrite=true applies suggestion."""
+        client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:00:00",
+                "end_ts": "2026-02-27T10:00:00",
+                "label": "Build",
+            },
+        )
+        resp = client.post(
+            "/api/notification/accept",
+            json={
+                "block_start": "2026-02-27T09:30:00",
+                "block_end": "2026-02-27T10:30:00",
+                "label": "Write",
+                "overwrite": True,
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["provenance"] == "suggestion"
+        assert data["label"] == "Write"
+
+    def test_notification_accept_with_allow_overlap_succeeds(
+        self, client: TestClient
+    ) -> None:
+        client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:00:00",
+                "end_ts": "2026-02-27T10:00:00",
+                "label": "Build",
+            },
+        )
+        resp = client.post(
+            "/api/notification/accept",
+            json={
+                "block_start": "2026-02-27T09:30:00",
+                "block_end": "2026-02-27T10:30:00",
+                "label": "Write",
+                "allow_overlap": True,
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.json()["provenance"] == "suggestion"
+
     def test_historical_overlap_does_not_cause_false_409(
         self, client: TestClient
     ) -> None:

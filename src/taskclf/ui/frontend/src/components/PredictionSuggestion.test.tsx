@@ -119,7 +119,7 @@ describe("PredictionSuggestion", () => {
     ).toBeInTheDocument();
   });
 
-  it("saves immediately when Use suggestion is clicked", async () => {
+  it("saves after Use suggestion then Save label", async () => {
     const suggestion = suggestion_make();
     const on_saved = vi.fn();
     const on_dismiss = vi.fn();
@@ -133,6 +133,7 @@ describe("PredictionSuggestion", () => {
     ));
 
     fireEvent.click(screen.getByRole("button", { name: "Use suggestion" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save label" }));
 
     await waitFor(() => {
       expect(vi.mocked(notification_accept)).toHaveBeenCalledWith({
@@ -152,6 +153,7 @@ describe("PredictionSuggestion", () => {
     render(() => <PredictionSuggestion suggestion={() => suggestion} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Use suggestion" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save label" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("save failed");
 
@@ -160,5 +162,111 @@ describe("PredictionSuggestion", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Close error" }));
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("on overlap 409 shows Overwrite All and retries with overwrite", async () => {
+    const suggestion = suggestion_make();
+    const on_saved = vi.fn();
+    const on_dismiss = vi.fn();
+    const body = {
+      detail: {
+        error: "overlap",
+        conflicting_spans: [
+          {
+            start_ts: "2026-04-05T11:00:00+00:00",
+            end_ts: "2026-04-05T14:00:00+00:00",
+            label: "Build",
+          },
+        ],
+      },
+    };
+    vi.mocked(notification_accept)
+      .mockRejectedValueOnce(new Error(`409: ${JSON.stringify(body)}`))
+      .mockResolvedValueOnce({
+        start_ts: suggestion.block_start,
+        end_ts: suggestion.block_end,
+        label: suggestion.suggested,
+        provenance: "suggestion",
+        user_id: null,
+        confidence: null,
+        extend_forward: false,
+      });
+
+    render(() => (
+      <PredictionSuggestion
+        suggestion={() => suggestion}
+        on_saved={on_saved}
+        on_dismiss={on_dismiss}
+      />
+    ));
+
+    fireEvent.click(screen.getByRole("button", { name: "Use suggestion" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save label" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Overwrite All" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Overwrite All" }));
+
+    await waitFor(() => {
+      expect(vi.mocked(notification_accept)).toHaveBeenCalledTimes(2);
+      expect(vi.mocked(notification_accept)).toHaveBeenLastCalledWith({
+        block_start: suggestion.block_start,
+        block_end: suggestion.block_end,
+        label: suggestion.suggested,
+        overwrite: true,
+      });
+    });
+    expect(on_saved).toHaveBeenCalledOnce();
+    expect(on_dismiss).toHaveBeenCalledOnce();
+  });
+
+  it("on overlap 409 Keep All retries with allow_overlap", async () => {
+    const suggestion = suggestion_make();
+    const body = {
+      detail: {
+        error: "overlap",
+        conflicting_spans: [
+          {
+            start_ts: "2026-04-05T11:00:00+00:00",
+            end_ts: "2026-04-05T14:00:00+00:00",
+            label: "Build",
+          },
+        ],
+      },
+    };
+    vi.mocked(notification_accept)
+      .mockRejectedValueOnce(new Error(`409: ${JSON.stringify(body)}`))
+      .mockResolvedValueOnce({
+        start_ts: suggestion.block_start,
+        end_ts: suggestion.block_end,
+        label: suggestion.suggested,
+        provenance: "suggestion",
+        user_id: null,
+        confidence: null,
+        extend_forward: false,
+      });
+
+    render(() => <PredictionSuggestion suggestion={() => suggestion} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Use suggestion" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save label" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Keep All" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Keep All" }));
+
+    await waitFor(() => {
+      expect(vi.mocked(notification_accept)).toHaveBeenCalledTimes(2);
+      expect(vi.mocked(notification_accept)).toHaveBeenLastCalledWith({
+        block_start: suggestion.block_start,
+        block_end: suggestion.block_end,
+        label: suggestion.suggested,
+        allow_overlap: true,
+      });
+    });
   });
 });

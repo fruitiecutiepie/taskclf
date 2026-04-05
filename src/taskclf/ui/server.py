@@ -164,6 +164,16 @@ class NotificationAcceptRequest(BaseModel):
     block_start: str = Field(description="ISO-8601 start of the activity block")
     block_end: str = Field(description="ISO-8601 end of the activity block")
     label: str = Field(description="Suggested label to accept")
+    overwrite: bool = Field(
+        default=False,
+        description="When true, overlapping same-user spans are "
+        "truncated/split/removed to make room for this label.",
+    )
+    allow_overlap: bool = Field(
+        default=False,
+        description="When true, skip overlap checks and allow "
+        "multiple labels to coexist on the same time range.",
+    )
 
 
 class LabelStoppedEventResponse(BaseModel):
@@ -948,15 +958,22 @@ def create_app(
             )
         except (ValueError, Exception) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-        try:
-            append_label_span(span, labels_path)
-        except ValueError as exc:
-            existing = read_label_spans(labels_path) if labels_path.exists() else []
-            detail = _parse_overlap_error(str(exc), span, existing)
-            raise HTTPException(
-                status_code=409,
-                detail=detail.model_dump(),
-            ) from exc
+        if body.overwrite:
+            overwrite_label_span(span, labels_path)
+        else:
+            try:
+                append_label_span(
+                    span,
+                    labels_path,
+                    allow_overlap=body.allow_overlap,
+                )
+            except ValueError as exc:
+                existing = read_label_spans(labels_path) if labels_path.exists() else []
+                detail = _parse_overlap_error(str(exc), span, existing)
+                raise HTTPException(
+                    status_code=409,
+                    detail=detail.model_dump(),
+                ) from exc
 
         if on_label_saved is not None:
             on_label_saved()
@@ -979,6 +996,8 @@ def create_app(
             label=span.label,
             provenance=span.provenance,
             user_id=span.user_id,
+            confidence=span.confidence,
+            extend_forward=span.extend_forward,
         )
 
     # -- REST: tray control ---------------------------------------------------

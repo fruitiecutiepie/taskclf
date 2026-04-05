@@ -137,6 +137,8 @@ export async function notification_accept(body: {
   block_start: string;
   block_end: string;
   label: string;
+  overwrite?: boolean;
+  allow_overlap?: boolean;
 }): Promise<LabelResponse> {
   return api_json(`${BASE}/notification/accept`, {
     method: "POST",
