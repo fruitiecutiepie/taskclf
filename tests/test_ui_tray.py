@@ -2147,6 +2147,163 @@ class TestEditConfig:
         assert "Edit Config" in labels
 
 
+class TestEditInferencePolicy:
+    """Tests for TrayLabeler._edit_inference_policy and policy file bootstrap."""
+
+    def test_no_models_dir_notifies(self, tmp_path: Path) -> None:
+        bus, _ = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+        with patch.object(labeler, "_notify") as mock_notify:
+            labeler._edit_inference_policy()
+        mock_notify.assert_called_once()
+        assert "models directory" in mock_notify.call_args[0][0].lower()
+
+    @patch("taskclf.ui.tray.subprocess.Popen")
+    @patch("taskclf.ui.tray.platform.system", return_value="Darwin")
+    def test_macos_opens_existing_policy(
+        self,
+        _mock_sys: MagicMock,
+        mock_popen: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        bus, _ = _capture_bus()
+        models_dir = tmp_path / "models"
+        models_dir.mkdir()
+        policy_path = models_dir / "inference_policy.json"
+        policy_path.write_text("{}\n")
+
+        labeler = TrayLabeler(
+            data_dir=tmp_path,
+            model_dir=None,
+            models_dir=models_dir,
+            event_bus=bus,
+        )
+        labeler._edit_inference_policy()
+
+        mock_popen.assert_called_once()
+        args = mock_popen.call_args[0][0]
+        assert args[0] == "open"
+        assert "-t" in args
+        assert str(policy_path) in args[-1]
+
+    @patch("taskclf.ui.tray.subprocess.Popen")
+    @patch("taskclf.ui.tray.platform.system", return_value="Darwin")
+    def test_creates_policy_from_loaded_model_dir(
+        self,
+        _mock_sys: MagicMock,
+        _mock_popen: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        import json
+
+        from taskclf.core.defaults import DEFAULT_INFERENCE_POLICY_FILE
+        from taskclf.core.inference_policy import load_inference_policy
+
+        bus, _ = _capture_bus()
+        models_dir = tmp_path / "models"
+        models_dir.mkdir()
+        model_path = models_dir / "run_test"
+        model_path.mkdir()
+        (model_path / "metadata.json").write_text(
+            json.dumps(
+                {
+                    "schema_hash": "abc123",
+                    "label_set": ["Build", "Meet"],
+                }
+            )
+        )
+
+        labeler = TrayLabeler(
+            data_dir=tmp_path,
+            model_dir=model_path,
+            models_dir=models_dir,
+            event_bus=bus,
+        )
+        labeler._edit_inference_policy()
+
+        policy_path = models_dir / DEFAULT_INFERENCE_POLICY_FILE
+        assert policy_path.is_file()
+        loaded = load_inference_policy(models_dir)
+        assert loaded is not None
+        assert loaded.model_schema_hash == "abc123"
+        assert loaded.source == "tray-edit"
+
+    @patch("taskclf.ui.tray.subprocess.Popen")
+    @patch("taskclf.ui.tray.platform.system", return_value="Darwin")
+    def test_creates_placeholder_when_no_model(
+        self,
+        _mock_sys: MagicMock,
+        _mock_popen: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        from taskclf.core.defaults import DEFAULT_INFERENCE_POLICY_FILE
+        from taskclf.core.inference_policy import load_inference_policy
+
+        bus, _ = _capture_bus()
+        models_dir = tmp_path / "models"
+        models_dir.mkdir()
+
+        labeler = TrayLabeler(
+            data_dir=tmp_path,
+            model_dir=None,
+            models_dir=models_dir,
+            event_bus=bus,
+        )
+        with patch.object(labeler, "_notify") as mock_notify:
+            labeler._edit_inference_policy()
+
+        policy_path = models_dir / DEFAULT_INFERENCE_POLICY_FILE
+        assert policy_path.is_file()
+        loaded = load_inference_policy(models_dir)
+        assert loaded is not None
+        assert loaded.source == "tray-template"
+        mock_notify.assert_called_once()
+        assert "placeholder" in mock_notify.call_args[0][0].lower()
+
+    @patch("taskclf.ui.tray.subprocess.Popen", side_effect=OSError("no editor"))
+    @patch("taskclf.ui.tray.platform.system", return_value="Darwin")
+    def test_fallback_notifies_path_on_error(
+        self,
+        _mock_sys: MagicMock,
+        _mock_popen: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        bus, _ = _capture_bus()
+        models_dir = tmp_path / "models"
+        models_dir.mkdir()
+        (models_dir / "inference_policy.json").write_text("{}\n")
+
+        labeler = TrayLabeler(
+            data_dir=tmp_path,
+            model_dir=None,
+            models_dir=models_dir,
+            event_bus=bus,
+        )
+        with patch.object(labeler, "_notify") as mock_notify:
+            labeler._edit_inference_policy()
+
+        mock_notify.assert_called_once()
+        assert "inference_policy.json" in mock_notify.call_args[0][0]
+
+    def test_menu_contains_edit_inference_policy(self, tmp_path: Path) -> None:
+        bus, _ = _capture_bus()
+        labeler = TrayLabeler(
+            data_dir=tmp_path,
+            model_dir=None,
+            models_dir=tmp_path / "models",
+            event_bus=bus,
+        )
+        (tmp_path / "models").mkdir(exist_ok=True)
+        menu = labeler._build_menu()
+        labels = []
+        for item in menu.items:
+            if hasattr(item, "text") and item.text is not None:
+                text = item.text if isinstance(item.text, str) else item.text(None)
+                if text:
+                    labels.append(text)
+        assert "Edit Inference Policy" in labels
+
+
 class TestSettingsPersistence:
     """Verify runtime settings are persisted to config.toml."""
 
@@ -3970,6 +4127,7 @@ class TestMenuStructureSnapshot:
             "Prediction Model",
             "Open Data Folder",
             "Edit Config",
+            "Edit Inference Policy",
             "Report Issue",
             self._SEPARATOR_TEXT,
             "Quit",
@@ -3977,7 +4135,7 @@ class TestMenuStructureSnapshot:
         assert labels_only == expected
 
     def test_separator_positions(self, tmp_path: Path) -> None:
-        """TC-TRAY-MENU-002: separators appear at positions 3, 7, 12."""
+        """TC-TRAY-MENU-002: separators appear at positions 3, 7, 13."""
         bus, _ = _capture_bus()
         labeler = TrayLabeler(
             data_dir=tmp_path,
@@ -3989,7 +4147,7 @@ class TestMenuStructureSnapshot:
         sep_positions = [
             i for i, (text, _) in enumerate(structure) if text == self._SEPARATOR_TEXT
         ]
-        assert sep_positions == [3, 7, 12]
+        assert sep_positions == [3, 7, 13]
 
     def test_model_item_has_submenu(self, tmp_path: Path) -> None:
         """TC-TRAY-MENU-003: 'Prediction Model' is the only item with a submenu."""
@@ -4085,7 +4243,7 @@ class TestMenuStructureSnapshot:
         pytest.fail("Model submenu not found")
 
     def test_menu_item_count_stable(self, tmp_path: Path) -> None:
-        """TC-TRAY-MENU-008: total top-level item count is 14 (11 + 3 separators)."""
+        """TC-TRAY-MENU-008: total top-level item count is 15 (12 + 3 separators)."""
         bus, _ = _capture_bus()
         labeler = TrayLabeler(
             data_dir=tmp_path,
@@ -4094,7 +4252,7 @@ class TestMenuStructureSnapshot:
         )
         (tmp_path / "models").mkdir(exist_ok=True)
         items = labeler._build_menu_items()
-        assert len(items) == 14
+        assert len(items) == 15
 
 
 # ---------------------------------------------------------------------------

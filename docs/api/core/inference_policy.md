@@ -23,6 +23,16 @@ model bundle + calibrator store + reject threshold → InferencePolicy
 The policy file lives at `models/inference_policy.json` and is the
 first thing inference resolution checks.
 
+## Editing from the tray
+
+The tray menu **Edit Inference Policy** opens this file in the default
+editor. If the file is missing, the tray creates it first (preferring
+metadata from the loaded model bundle when available, otherwise a
+placeholder starter). Prefer `taskclf policy create` for a validated
+policy. Hand-edited JSON that fails validation is ignored by
+`load_inference_policy`, so inference falls back to `active.json`
+resolution until the file is fixed.
+
 ## Resolution precedence
 
 When inference starts:
@@ -44,7 +54,7 @@ When inference starts:
 | `calibration_method` | `str \| None` | `"temperature"` or `"isotonic"` |
 | `reject_threshold` | `float` | Tuned on calibrated scores when calibrator is present |
 | `created_at` | `str` | ISO-8601 timestamp |
-| `source` | `str` | `"manual"`, `"tune-reject"`, `"retrain"`, or `"calibrate"` |
+| `source` | `str` | `"manual"`, `"tune-reject"`, `"retrain"`, `"calibrate"`, `"tray-edit"`, `"tray-template"`, etc. |
 | `git_commit` | `str` | Git commit SHA at creation time |
 
 ## Functions

@@ -17,6 +17,7 @@ Runs a pystray icon in the system tray that:
 from __future__ import annotations
 
 import datetime as dt
+import json
 import logging
 import os
 import platform
@@ -40,7 +41,9 @@ from taskclf.core.defaults import (
     DEFAULT_AW_TIMEOUT_SECONDS,
     DEFAULT_DATA_DIR,
     DEFAULT_IDLE_TRANSITION_MINUTES,
+    DEFAULT_INFERENCE_POLICY_FILE,
     DEFAULT_POLL_SECONDS,
+    DEFAULT_REJECT_THRESHOLD,
     DEFAULT_TITLE_SALT,
     DEFAULT_TRANSITION_MINUTES,
 )
@@ -1443,6 +1446,11 @@ class TrayLabeler:
             pystray.MenuItem("Prediction Model", self._build_model_submenu()),
             pystray.MenuItem("Open Data Folder", self._open_data_dir),
             pystray.MenuItem("Edit Config", self._edit_config),
+            pystray.MenuItem(
+                "Edit Inference Policy",
+                self._edit_inference_policy,
+                enabled=lambda _: self._models_dir is not None,
+            ),
             pystray.MenuItem("Report Issue", self._report_issue),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Quit", self._quit),
@@ -1664,7 +1672,7 @@ class TrayLabeler:
             self._notify(f"Data dir: {self._data_dir}")
 
     def _edit_config(self, *_args: Any) -> None:
-        """Open config.json in the default text editor."""
+        """Open ``config.toml`` in the default text editor."""
         config_path = self._config._path
         system = platform.system()
         try:
@@ -1675,6 +1683,100 @@ class TrayLabeler:
         except Exception:
             logger.debug("Could not open config file", exc_info=True)
             self._notify(f"Config: {config_path}")
+
+    def _ensure_inference_policy_file_for_editing(
+        self,
+    ) -> tuple[Path | None, bool]:
+        """Return ``(policy_path, template_warning)`` for editing.
+
+        When ``inference_policy.json`` is missing, creates it: preferring
+        metadata from the active or resolved model bundle, otherwise a
+        placeholder policy the user must fix.
+
+        Returns:
+            ``(None, False)`` when ``models_dir`` is not configured.
+            ``(path, True)`` when a placeholder file was written.
+        """
+        if self._models_dir is None:
+            return None, False
+
+        models_dir = self._models_dir
+        policy_path = models_dir / DEFAULT_INFERENCE_POLICY_FILE
+        if policy_path.is_file():
+            return policy_path, False
+
+        from taskclf.core.inference_policy import (
+            build_inference_policy,
+            save_inference_policy,
+        )
+        from taskclf.infer.resolve import ModelResolutionError, resolve_model_dir
+
+        models_dir.mkdir(parents=True, exist_ok=True)
+
+        model_bundle: Path | None = None
+        if (
+            self._model_dir is not None
+            and (self._model_dir / "metadata.json").is_file()
+        ):
+            model_bundle = self._model_dir
+        else:
+            try:
+                model_bundle = resolve_model_dir(None, models_dir)
+            except ModelResolutionError:
+                model_bundle = None
+
+        if model_bundle is not None:
+            meta_path = model_bundle / "metadata.json"
+            meta = json.loads(meta_path.read_text())
+            policy = build_inference_policy(
+                model_dir=str(model_bundle.relative_to(models_dir.parent)),
+                model_schema_hash=meta["schema_hash"],
+                model_label_set=meta["label_set"],
+                reject_threshold=DEFAULT_REJECT_THRESHOLD,
+                source="tray-edit",
+            )
+            written = save_inference_policy(policy, models_dir)
+            return written, False
+
+        policy = build_inference_policy(
+            model_dir="models/REPLACE_WITH_YOUR_RUN_DIR",
+            model_schema_hash="REPLACE",
+            model_label_set=["REPLACE"],
+            reject_threshold=DEFAULT_REJECT_THRESHOLD,
+            source="tray-template",
+        )
+        written = save_inference_policy(policy, models_dir)
+        return written, True
+
+    def _edit_inference_policy(self, *_args: Any) -> None:
+        """Open ``inference_policy.json`` in the default text editor.
+
+        Creates a starter file when missing (seeded from the active model
+        when possible).
+        """
+        if self._models_dir is None:
+            self._notify("No models directory configured")
+            return
+
+        policy_path, template_warning = self._ensure_inference_policy_file_for_editing()
+        if policy_path is None:
+            return
+
+        if template_warning:
+            self._notify(
+                "Created starter inference_policy.json with placeholders — "
+                "edit paths or run: taskclf policy create --model-dir …"
+            )
+
+        system = platform.system()
+        try:
+            if system == "Darwin":
+                subprocess.Popen(["open", "-t", str(policy_path)])
+            else:
+                subprocess.Popen(["xdg-open", str(policy_path)])
+        except Exception:
+            logger.debug("Could not open inference policy file", exc_info=True)
+            self._notify(f"Inference policy: {policy_path}")
 
     def _reload_model(self, *_args: Any) -> None:
         """Re-read the model bundle from disk without restarting."""
@@ -2064,6 +2166,7 @@ class TrayLabeler:
             "show_status": self._show_status,
             "open_data_dir": self._open_data_dir,
             "edit_config": self._edit_config,
+            "edit_inference_policy": self._edit_inference_policy,
             "report_issue": self._report_issue,
             "quit": self._quit,
         }
@@ -2073,6 +2176,9 @@ class TrayLabeler:
                 "paused": self._monitor.is_paused,
                 "model_dir": str(self._model_dir.resolve())
                 if self._model_dir
+                else None,
+                "models_dir": str(self._models_dir.resolve())
+                if self._models_dir
                 else None,
             }
 

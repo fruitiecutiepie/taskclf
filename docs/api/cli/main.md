@@ -684,7 +684,7 @@ web UI server.  Left-clicking the tray icon opens the web dashboard
 where all labeling is done through the UI.  Right-clicking shows the
 tray menu: **Toggle Dashboard**, **Pause** / **Resume**, **Show Status**;
 **Today's Labels**, **Import Labels**, **Export Labels**; **Prediction Model**
-(submenu), **Open Data Folder**, **Edit Config**, **Report Issue**; **Quit**.
+(submenu), **Open Data Folder**, **Edit Config**, **Edit Inference Policy**, **Report Issue**; **Quit**.
 When `--model-dir` is
 provided, the app suggests labels using the trained model.  To reduce
 cold-start latency, the web UI server starts before the optional model
