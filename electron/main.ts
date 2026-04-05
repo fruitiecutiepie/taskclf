@@ -39,6 +39,7 @@ import {
 } from "./payload_choice";
 import { dashboardWindowActionForTrayInteraction } from "./tray_dashboard";
 import { getAppIconPath, getTrayIconAsset } from "./tray_icon";
+import { getPortListenerInfo, killPidAndWaitForPortFree } from "./port_conflict";
 
 /** Must match `build.productName` in package.json (Finder / .app name, tray, notifications). */
 function readAppDisplayName(): string {
@@ -389,6 +390,83 @@ async function showFatalLaunchError(
 
   isQuitting = true;
   void stopSidecar().finally(() => app.quit());
+}
+
+/**
+ * Before spawning the sidecar, ensure the UI port is free. Stale taskclf sidecars
+ * are stopped automatically; other listeners prompt the user.
+ * @param onStatus Updates the packaged startup progress window (no-op in dev).
+ * @returns false if the user quit or opened the report flow (app is exiting).
+ */
+async function resolveUiPortConflictBeforeSidecar(
+  onStatus: (detail: string) => Promise<void>,
+): Promise<boolean> {
+  const port = uiPort();
+  const info = getPortListenerInfo(port, process.platform);
+  if (info === null) {
+    return true;
+  }
+  const cmdPreview =
+    info.commandLine.length > 500
+      ? `${info.commandLine.slice(0, 500)}…`
+      : info.commandLine;
+  launcherLog(
+    `port preflight: ${port} busy pid=${info.pid} kind=${info.kind} cmd=${cmdPreview}`,
+    "info",
+  );
+
+  if (info.kind === "taskclf") {
+    await onStatus("Stopping previous local backend…");
+    const ok = await killPidAndWaitForPortFree(port, info.pid, process.platform);
+    if (!ok) {
+      throw new Error(
+        `Port ${port} is still in use after stopping a previous taskclf backend (pid ${info.pid}).`,
+      );
+    }
+    launcherLog(`port preflight: ${port} freed (stopped pid ${info.pid})`, "info");
+    return true;
+  }
+
+  const detailLines = [
+    `Port: ${port}`,
+    `PID: ${info.pid}`,
+    `Command: ${info.commandLine || "(unknown)"}`,
+    `Classification: ${info.kind} (not auto-stopped)`,
+  ].join("\n");
+  const combinedDetail = fatalDialogDetail(
+    `Another process is using port ${port}.`,
+    detailLines,
+  );
+  const response = await dialog.showMessageBox({
+    type: "warning",
+    title: "Port Busy",
+    message: `${APP_DISPLAY_NAME} cannot start because port ${port} is already in use.`,
+    detail: combinedDetail,
+    buttons: ["Report Issue", "Kill Port and Start taskclf", "Quit"],
+    defaultId: 2,
+    cancelId: 2,
+    noLink: true,
+  });
+
+  if (response.response === 0) {
+    await shell.openExternal(buildLauncherIssueUrl("Port Busy", combinedDetail));
+    isQuitting = true;
+    app.quit();
+    return false;
+  }
+  if (response.response === 2) {
+    isQuitting = true;
+    app.quit();
+    return false;
+  }
+
+  await onStatus("Freeing port…");
+  const ok = await killPidAndWaitForPortFree(port, info.pid, process.platform);
+  if (!ok) {
+    throw new Error(`Could not free port ${port} (pid ${info.pid}).`);
+  }
+  launcherLog(`port preflight: ${port} freed (user kill pid ${info.pid})`, "info");
+  return true;
 }
 
 /** Models dir for tray: absolute under userData when packaged (GUI apps often have cwd `/`). */
@@ -2228,6 +2306,10 @@ async function start(): Promise<void> {
 
   try {
     await showStartupStatus("Starting local backend…");
+    const portOk = await resolveUiPortConflictBeforeSidecar(showStartupStatus);
+    if (!portOk) {
+      return;
+    }
     spawnSidecar();
 
     const base = shellUrl();

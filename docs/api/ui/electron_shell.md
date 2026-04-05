@@ -170,6 +170,30 @@ Electron's Chromium network stack for packaged-app updater requests) and `electr
   sidecar after spawn (default: `120000` packaged, `30000` dev; PyInstaller
   cold-starts can exceed 30s on slower disks)
 
+## Packaged app: UI port preflight
+
+Before spawning the Python sidecar, the Electron main process checks whether
+`TASKCLF_ELECTRON_UI_PORT` (default `8741`) already has a TCP listener (typically
+`127.0.0.1`). Implementation: [`electron/port_conflict.ts`](../../../electron/port_conflict.ts)
+(see [`electron_port_conflict`](electron_port_conflict.md)), invoked from
+`electron/main.ts` immediately before `spawnSidecar()`.
+
+Behavior:
+
+- **Port free** — startup continues as before.
+- **Listener looks like a stale taskclf sidecar** — for example the packaged
+  PyInstaller binary path (`…/taskclf-electron/…/backend/entry` with the usual
+  `tray --browser --no-tray …` arguments, or `python -m taskclf.cli.main tray`
+  with those flags) — the launcher stops that process, waits until the port is
+  free, then starts the new sidecar.
+- **Listener does not match those patterns (or classification is uncertain)** —
+  a **Port Busy** dialog offers **Report Issue** (opens the GitHub issue URL with
+  context), **Kill Port and Start taskclf** (terminate the listener and
+  continue if the port clears), or **Quit**.
+
+The launcher log records a `port preflight` line with PID, classification, and a
+truncated command line for diagnostics.
+
 ## Packaged app: optional payload version chooser
 
 When more than one compatible payload version exists in the payload index,

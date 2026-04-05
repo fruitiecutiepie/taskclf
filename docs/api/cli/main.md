@@ -784,6 +784,12 @@ taskclf electron --dev
 | `--username` | *(none)* | Display name to persist in `config.toml` |
 | `--retrain-config` | *(none)* | Retrain YAML config path passed through to the tray backend |
 
+In the **packaged** Electron app (installers / `.app`), the main process runs a
+**UI port preflight** on `TASKCLF_ELECTRON_UI_PORT` (default `8741`) before
+starting the sidecar: it can stop a leftover taskclf listener automatically or
+prompt if another process owns the port. See
+[`electron_shell`](../ui/electron_shell.md#packaged-app-ui-port-preflight).
+
 ### ui
 
 Launch the labeling UI as a native floating window with live prediction
