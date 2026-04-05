@@ -12,6 +12,9 @@ Electron launcher.
   `payload-index.json` instead of regenerating it from releases and clobbering a
   just-published payload release.
 - Falls back to GitHub Releases only when no published payload index exists yet.
+- Shares a repository-wide `pages` concurrency group with other Pages publishers
+  so docs deploys and payload metadata updates serialize instead of canceling
+  each other.
 
 That split avoids the race where a `master` docs deploy and a `v*` payload
 release both publish `site/` in close succession.

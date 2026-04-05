@@ -44,7 +44,9 @@ sidecar release.  The payload release workflow is the source of truth for that
 file; ordinary docs deploys preserve the currently published copy so a `master`
 push cannot overwrite a freshly tagged payload release.  The workflow also
 supports a manual index-refresh-only dispatch for repairing stale Pages metadata
-without rebuilding payload archives.
+without rebuilding payload archives.  All Pages publishers share the same
+`pages` concurrency group and queue behind each other so docs deploys and
+payload-metadata deploys serialize instead of canceling each other.
 
 ## Commands
 
