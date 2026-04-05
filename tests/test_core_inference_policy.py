@@ -194,7 +194,7 @@ class TestWriteInferencePolicyStarterTemplate:
         assert path == models_dir / "inference_policy.json"
         loaded = load_inference_policy(models_dir)
         assert loaded is not None
-        assert loaded.source == "tray-template"
+        assert loaded.source == "starter-template"
         raw = json.loads(path.read_text())
         assert raw["_help"]["paths_are_relative_to"] == str(tmp_path)
         assert "canonical_template" in raw["_help"]

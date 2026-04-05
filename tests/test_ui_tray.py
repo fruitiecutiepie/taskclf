@@ -2289,14 +2289,12 @@ class TestEditInferencePolicy:
 
     @patch("taskclf.ui.tray.subprocess.Popen")
     @patch("taskclf.ui.tray.platform.system", return_value="Darwin")
-    def test_creates_placeholder_when_no_model(
+    def test_notifies_in_app_guidance_when_no_model(
         self,
         _mock_sys: MagicMock,
-        _mock_popen: MagicMock,
+        mock_popen: MagicMock,
         tmp_path: Path,
     ) -> None:
-        import json
-
         from taskclf.core.defaults import DEFAULT_INFERENCE_POLICY_FILE
         from taskclf.core.inference_policy import load_inference_policy
 
@@ -2314,18 +2312,14 @@ class TestEditInferencePolicy:
             labeler._edit_inference_policy()
 
         policy_path = models_dir / DEFAULT_INFERENCE_POLICY_FILE
-        assert policy_path.is_file()
-        loaded = load_inference_policy(models_dir)
-        assert loaded is not None
-        assert loaded.source == "tray-template"
-        raw = json.loads(policy_path.read_text())
-        assert raw["_help"]["preferred_command"] == (
-            "taskclf policy create --model-dir models/<run_id>"
-        )
-        assert raw["_help"]["paths_are_relative_to"] == str(tmp_path)
-        assert "github" in raw["_help"]["canonical_template"]
+        assert not policy_path.exists()
+        assert load_inference_policy(models_dir) is None
+        mock_popen.assert_not_called()
         mock_notify.assert_called_once()
-        assert "inline _help" in mock_notify.call_args[0][0].lower()
+        msg = mock_notify.call_args[0][0]
+        assert "Prediction Model" in msg
+        assert "Open Data Folder" in msg
+        assert "taskclf policy create --model-dir models/<run_id>" in msg
 
     @patch("taskclf.ui.tray.subprocess.Popen", side_effect=OSError("no editor"))
     @patch("taskclf.ui.tray.platform.system", return_value="Darwin")

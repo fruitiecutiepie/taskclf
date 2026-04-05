@@ -1754,34 +1754,27 @@ class TrayLabeler:
         _, _, _, _, best_dir, best_method = max(matches, key=lambda item: item[:4])
         return str(best_dir.relative_to(base)), best_method
 
-    def _write_inference_policy_starter_template(self, models_dir: Path) -> Path:
-        """Write a placeholder policy with inline help for manual editing."""
-        from taskclf.core.inference_policy import (
-            write_inference_policy_starter_template,
-        )
-
-        return write_inference_policy_starter_template(models_dir)
-
     def _ensure_inference_policy_file_for_editing(
         self,
-    ) -> tuple[Path | None, bool]:
-        """Return ``(policy_path, template_warning)`` for editing.
+    ) -> tuple[Path | None, str | None]:
+        """Return ``(policy_path, notice)`` for editing.
 
-        When ``inference_policy.json`` is missing, creates it: preferring
-        metadata from the active or resolved model bundle, otherwise a
-        placeholder policy the user must fix.
+        When ``inference_policy.json`` is missing, creates it only when a
+        real model bundle can be resolved and seeded.
 
         Returns:
-            ``(None, False)`` when ``models_dir`` is not configured.
-            ``(path, True)`` when a placeholder file was written.
+            ``(None, None)`` when ``models_dir`` is not configured.
+            ``(path, None)`` when a policy file is ready to edit.
+            ``(None, notice)`` when no resolved model is available; *notice*
+            explains in-app steps first, with an optional CLI hint.
         """
         if self._models_dir is None:
-            return None, False
+            return None, None
 
         models_dir = self._models_dir
         policy_path = models_dir / DEFAULT_INFERENCE_POLICY_FILE
         if policy_path.is_file():
-            return policy_path, False
+            return policy_path, None
 
         from taskclf.core.inference_policy import (
             build_inference_policy,
@@ -1813,7 +1806,7 @@ class TrayLabeler:
                 model_label_set = list(meta["label_set"])
             except KeyError, TypeError, ValueError, json.JSONDecodeError, OSError:
                 logger.debug(
-                    "Could not seed inference policy from %s; using placeholder",
+                    "Could not seed inference policy from %s; use CLI instead",
                     model_bundle,
                     exc_info=True,
                 )
@@ -1858,30 +1851,30 @@ class TrayLabeler:
                             }
                         )
                 written = save_inference_policy(policy, models_dir)
-                return written, False
+                return written, None
 
-        written = self._write_inference_policy_starter_template(models_dir)
-        return written, True
+        return (
+            None,
+            "No model available to seed inference_policy.json. "
+            "Use Prediction Model or Open Data Folder (models/ next to your data folder). "
+            "If you have the CLI: taskclf policy create --model-dir models/<run_id>",
+        )
 
     def _edit_inference_policy(self, *_args: Any) -> None:
         """Open ``inference_policy.json`` in the default text editor.
 
-        Creates a starter file when missing (seeded from the active model
-        when possible).
+        Creates the file when missing only if a resolved model can seed it.
+        Otherwise, notifies the user with in-app guidance and an optional CLI hint.
         """
         if self._models_dir is None:
             self._notify("No models directory configured")
             return
 
-        policy_path, template_warning = self._ensure_inference_policy_file_for_editing()
+        policy_path, notice = self._ensure_inference_policy_file_for_editing()
+        if notice is not None:
+            self._notify(notice)
         if policy_path is None:
             return
-
-        if template_warning:
-            self._notify(
-                "Created starter inference_policy.json with inline _help. "
-                "Prefer: taskclf policy create --model-dir models/<run_id>"
-            )
 
         system = platform.system()
         try:

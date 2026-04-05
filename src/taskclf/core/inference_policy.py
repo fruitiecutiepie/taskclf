@@ -205,7 +205,7 @@ def write_inference_policy_starter_template(models_dir: Path) -> Path:
         model_schema_hash="<schema_hash>",
         model_label_set=["<label>"],
         reject_threshold=DEFAULT_REJECT_THRESHOLD,
-        source="tray-template",
+        source="starter-template",
     )
     data = policy.model_dump()
     data["_help"] = _inference_policy_starter_help(str(models_dir.parent))

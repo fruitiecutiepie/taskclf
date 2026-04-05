@@ -33,20 +33,23 @@ that matches `render_default_inference_policy_template_json()` (fixed
 `created_at` / `git_commit` for reproducibility). See the
 [Inference policy template](../../guide/inference_policy_template.md) guide.
 
-Runtime placeholder files use the same shape via
-`write_inference_policy_starter_template()`, with live provenance and
+The module also exposes a low-level
+`write_inference_policy_starter_template()` helper for code paths that
+explicitly want a placeholder file with live provenance and
 `_help.paths_are_relative_to` set to your install’s TASKCLF_HOME.
 
 ## Editing from the tray
 
 The tray menu **Edit Inference Policy** opens this file in the default
-editor. If the file is missing, the tray creates it first. When a model
-bundle can be resolved, the starter policy is seeded from that bundle's
-`metadata.json`, reusing its advisory `reject_threshold` and attaching a
+editor. If the file is missing, the tray creates it first only when a
+model bundle can be resolved. In that case the seeded policy reuses the
+bundle's `metadata.json` advisory `reject_threshold` and attaches a
 matching calibrator store when `artifacts/**/store.json` explicitly
 binds to the same model/schema. When no model can be resolved, the tray
-writes a placeholder starter with an inline `_help` block showing the
-preferred `taskclf policy create` commands and path conventions. Prefer
+does **not** write a placeholder file; it notifies the user to use
+**Prediction Model** or **Open Data Folder** first, and includes an
+optional CLI hint (`taskclf policy create --model-dir models/<run_id>`)
+for environments where the CLI is installed. Prefer
 `taskclf policy create` for a validated policy. Hand-edited JSON that
 fails validation is ignored by `load_inference_policy`, so inference
 falls back to `active.json` resolution until the file is fixed.
@@ -72,7 +75,7 @@ When inference starts:
 | `calibration_method` | `str \| None` | `"temperature"` or `"isotonic"` |
 | `reject_threshold` | `float` | Tuned on calibrated scores when calibrator is present |
 | `created_at` | `str` | ISO-8601 timestamp |
-| `source` | `str` | `"manual"`, `"tune-reject"`, `"retrain"`, `"calibrate"`, `"tray-edit"`, `"tray-template"`, etc. |
+| `source` | `str` | `"manual"`, `"tune-reject"`, `"retrain"`, `"calibrate"`, `"tray-edit"`, `"starter-template"`, etc. |
 | `git_commit` | `str` | Git commit SHA at creation time |
 
 ## Functions
