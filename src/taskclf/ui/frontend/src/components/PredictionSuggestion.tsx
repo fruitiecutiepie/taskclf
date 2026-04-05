@@ -59,9 +59,8 @@ export const PredictionSuggestion: Component<{
   const s = () => props.suggestion();
   const [error, set_error] = createSignal<string | null>(null);
   const [busy, set_busy] = createSignal(false);
-  const [confirm_pending, set_confirm_pending] = createSignal(false);
 
-  async function suggestion_accept_confirmed() {
+  async function suggestion_accept() {
     const sg = s();
     if (!sg || busy()) {
       return;
@@ -74,7 +73,6 @@ export const PredictionSuggestion: Component<{
         block_end: sg.block_end,
         label: sg.suggested,
       });
-      set_confirm_pending(false);
       props.on_saved?.();
       props.on_dismiss?.();
     } catch (err: unknown) {
@@ -94,7 +92,6 @@ export const PredictionSuggestion: Component<{
     set_error(null);
     try {
       await notification_skip();
-      set_confirm_pending(false);
       props.on_dismiss?.();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to dismiss suggestion";
@@ -176,17 +173,6 @@ export const PredictionSuggestion: Component<{
             >
               {suggestion_range_format(s()?.block_start, s()?.block_end)}
             </div>
-            <Show when={confirm_pending()}>
-              <div
-                style={{
-                  color: "var(--text-muted)",
-                  "font-size": "0.65rem",
-                  "margin-top": "4px",
-                }}
-              >
-                This will save the suggested label for the range above.
-              </div>
-            </Show>
           </div>
           <div
             style={{
@@ -197,89 +183,36 @@ export const PredictionSuggestion: Component<{
               "align-items": "center",
             }}
           >
-            <Show
-              when={confirm_pending()}
-              fallback={
-                <>
-                  <button
-                    type="button"
-                    disabled={busy()}
-                    onClick={() => set_confirm_pending(true)}
-                    style={{
-                      ...btn_base,
-                      border: "1px solid var(--accent, #6366f1)",
-                      background: "var(--accent, #6366f1)",
-                      color: "#fff",
-                      opacity: busy_opacity(),
-                      cursor: busy_cursor(),
-                    }}
-                  >
-                    Use suggestion
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busy()}
-                    onClick={suggestion_dismiss}
-                    style={{
-                      ...btn_base,
-                      border: "1px solid var(--border)",
-                      background: "var(--surface)",
-                      color: "var(--text-muted)",
-                      opacity: busy_opacity(),
-                      cursor: busy_cursor(),
-                    }}
-                  >
-                    Skip
-                  </button>
-                </>
-              }
+            <button
+              type="button"
+              disabled={busy()}
+              onClick={suggestion_accept}
+              style={{
+                ...btn_base,
+                border: "1px solid var(--accent, #6366f1)",
+                background: "var(--accent, #6366f1)",
+                color: "#fff",
+                opacity: busy_opacity(),
+                cursor: busy_cursor(),
+              }}
             >
-              <button
-                type="button"
-                disabled={busy()}
-                onClick={suggestion_accept_confirmed}
-                style={{
-                  ...btn_base,
-                  border: "1px solid var(--accent, #6366f1)",
-                  background: "var(--accent, #6366f1)",
-                  color: "#fff",
-                  opacity: busy_opacity(),
-                  cursor: busy_cursor(),
-                }}
-              >
-                Save label
-              </button>
-              <button
-                type="button"
-                disabled={busy()}
-                onClick={() => set_confirm_pending(false)}
-                style={{
-                  ...btn_base,
-                  border: "1px solid var(--border)",
-                  background: "var(--surface)",
-                  color: "var(--text-muted)",
-                  opacity: busy_opacity(),
-                  cursor: busy_cursor(),
-                }}
-              >
-                Back
-              </button>
-              <button
-                type="button"
-                disabled={busy()}
-                onClick={suggestion_dismiss}
-                style={{
-                  ...btn_base,
-                  border: "1px solid var(--border)",
-                  background: "var(--surface)",
-                  color: "var(--text-muted)",
-                  opacity: busy_opacity(),
-                  cursor: busy_cursor(),
-                }}
-              >
-                Skip
-              </button>
-            </Show>
+              Use suggestion
+            </button>
+            <button
+              type="button"
+              disabled={busy()}
+              onClick={suggestion_dismiss}
+              style={{
+                ...btn_base,
+                border: "1px solid var(--border)",
+                background: "var(--surface)",
+                color: "var(--text-muted)",
+                opacity: busy_opacity(),
+                cursor: busy_cursor(),
+              }}
+            >
+              Skip
+            </button>
           </div>
         </div>
         <ActivitySummary time_range={suggestion_time_range} show_empty />

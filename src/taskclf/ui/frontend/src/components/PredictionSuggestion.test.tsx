@@ -119,6 +119,32 @@ describe("PredictionSuggestion", () => {
     ).toBeInTheDocument();
   });
 
+  it("saves immediately when Use suggestion is clicked", async () => {
+    const suggestion = suggestion_make();
+    const on_saved = vi.fn();
+    const on_dismiss = vi.fn();
+
+    render(() => (
+      <PredictionSuggestion
+        suggestion={() => suggestion}
+        on_saved={on_saved}
+        on_dismiss={on_dismiss}
+      />
+    ));
+
+    fireEvent.click(screen.getByRole("button", { name: "Use suggestion" }));
+
+    await waitFor(() => {
+      expect(vi.mocked(notification_accept)).toHaveBeenCalledWith({
+        block_start: suggestion.block_start,
+        block_end: suggestion.block_end,
+        label: suggestion.suggested,
+      });
+    });
+    expect(on_saved).toHaveBeenCalledOnce();
+    expect(on_dismiss).toHaveBeenCalledOnce();
+  });
+
   it("keeps save errors visible until closed and allows copying them", async () => {
     vi.mocked(notification_accept).mockRejectedValueOnce(new Error("save failed"));
     const suggestion = suggestion_make();
@@ -126,7 +152,6 @@ describe("PredictionSuggestion", () => {
     render(() => <PredictionSuggestion suggestion={() => suggestion} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Use suggestion" }));
-    fireEvent.click(screen.getByRole("button", { name: "Save label" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("save failed");
 
