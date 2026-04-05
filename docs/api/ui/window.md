@@ -40,10 +40,11 @@ drag strip, hover handlers that call `Host.invoke`) — not a separate
 
 A **plain browser tab** (for example Vite alone, with no
 `window.pywebview` or `window.electronHost`) still loads that UI; the
-compact route uses a light solid page background and **in-page** label grid and
-state panel (hover / pin) because `Host.invoke` window calls are no-ops
-there. The separate `?view=label` and `?view=panel` routes match the
-native popups for focused testing; use pywebview or Electron for real
+compact route uses a light solid page background plus right-aligned
+in-page label/panel popups with the same 300 ms delayed-hide feel as the
+native shell because `Host.invoke` window calls are no-ops there. The
+separate `?view=label` and `?view=panel` routes match native popup
+markup for focused testing; use pywebview or Electron for real
 multi-window behavior.
 
 See [`host_window_drag_strip.md`](host_window_drag_strip.md) for the

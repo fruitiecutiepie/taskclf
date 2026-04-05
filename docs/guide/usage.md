@@ -267,6 +267,21 @@ LightGBM multiclass classifier, and saves a model bundle to
 | `--data-dir` | `data/processed` | Processed data directory |
 | `--num-boost-round` | `100` | LightGBM boosting rounds |
 
+### Inspect a trained bundle
+
+See validation metrics stored in the bundle and (optionally) replay held-out
+test evaluation and class distribution:
+
+```bash
+uv run taskclf model inspect --model-dir models/<run_id>
+uv run taskclf model inspect --model-dir models/<run_id> --json
+uv run taskclf model inspect --model-dir models/<run_id> \
+  --from 2026-02-01 --to 2026-02-16 --data-dir data/processed
+```
+
+See [CLI model inspect](../api/cli/main.md#model-inspect) and
+[Model Inspection API](../api/model_inspection.md).
+
 ### Step 5: Run batch inference
 
 ```bash

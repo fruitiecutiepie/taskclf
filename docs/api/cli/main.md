@@ -63,6 +63,7 @@ sidecar release.
 | `taskclf train check-retrain` | Check whether retraining or calibrator update is due |
 | `taskclf train list` | List model bundles with ranking metrics and status |
 | `taskclf model set-active` | Manually set the active model pointer (rollback / override) |
+| `taskclf model inspect` | Inspect bundle metrics and optionally replay held-out test evaluation |
 | `taskclf policy show` | Print the current inference policy |
 | `taskclf policy create` | Create an inference policy binding model + calibrator + threshold |
 | `taskclf policy remove` | Remove the inference policy (falls back to active.json) |
@@ -356,6 +357,55 @@ taskclf train list --schema-hash 740b4db787e9 --eligible
 | `--eligible` | off | Show only eligible bundles (compatible schema + label set) |
 | `--schema-hash` | *(current runtime)* | Filter to bundles matching this schema hash |
 | `--json` | off | Output as JSON instead of a table |
+
+### model inspect
+
+Inspect a trained model bundle: metadata, bundle-saved validation metrics
+(with per-class precision/recall/F1 derived from the saved confusion matrix),
+and a short description of multiclass prediction code paths.  Optionally
+replay **held-out test** evaluation for a date range (same pipeline as
+`taskclf train evaluate`), including test-set class distribution.
+
+Bundle-only (no labeled replay):
+
+```bash
+taskclf model inspect --model-dir models/2026-02-19_013000_run-0042
+```
+
+Machine-readable JSON:
+
+```bash
+taskclf model inspect --model-dir models/run_001 --json
+```
+
+Replay test metrics on synthetic data (no feature parquet required):
+
+```bash
+taskclf model inspect \
+  --model-dir models/run_001 \
+  --from 2026-02-01 --to 2026-02-16 \
+  --synthetic
+```
+
+Replay using processed features under `--data-dir` (omit `--synthetic`):
+
+```bash
+taskclf model inspect \
+  --model-dir models/run_001 \
+  --from 2026-02-01 --to 2026-02-16 \
+  --data-dir data/processed
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--model-dir` | *(required)* | Path to a model run directory |
+| `--json` | off | Emit structured JSON instead of tables |
+| `--from` | *(none)* | Start date for test replay (YYYY-MM-DD); requires `--to` |
+| `--to` | *(none)* | End date for test replay (inclusive); requires `--from` |
+| `--data-dir` | `data/processed` when replaying without `--synthetic` | Processed data directory |
+| `--synthetic` | off | Replay on dummy features + labels |
+| `--holdout-fraction` | `0.0` | Fraction of users held out for unseen-user evaluation |
+| `--reject-threshold` | see defaults | Max probability below which a prediction is rejected |
 
 ### model set-active
 

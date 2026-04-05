@@ -138,6 +138,7 @@ nav:
           - LightGBM Trainer: api/train/lgbm.md
           - Calibrator Fitting: api/train/calibrate.md
           - Model Evaluation: api/train/evaluate.md
+          - Model Inspection: api/model_inspection.md
           - Retrain Pipeline: api/train/retrain.md
       - Inference:
           - Baseline (Rule-Based): api/infer/baseline.md

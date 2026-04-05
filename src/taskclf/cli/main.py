@@ -1916,6 +1916,172 @@ def model_set_active_cmd(
         )
 
 
+@model_app.command("inspect")
+def model_inspect_cmd(
+    model_dir: str = typer.Option(
+        ..., "--model-dir", help="Path to a model run directory"
+    ),
+    json_output: bool = typer.Option(
+        False, "--json", help="Output structured inspection as JSON"
+    ),
+    date_from: str | None = typer.Option(
+        None,
+        "--from",
+        help="Start date for held-out test replay (YYYY-MM-DD); requires --to",
+    ),
+    date_to: str | None = typer.Option(
+        None,
+        "--to",
+        help="End date for held-out test replay (inclusive); requires --from",
+    ),
+    data_dir: str | None = typer.Option(
+        None,
+        "--data-dir",
+        help="Processed data directory for replay (default when omitted: "
+        f"{DEFAULT_DATA_DIR}); not needed with --synthetic",
+    ),
+    synthetic: bool = typer.Option(
+        False,
+        "--synthetic",
+        help="Replay on dummy features + labels (no disk features required)",
+    ),
+    holdout_fraction: float = typer.Option(
+        0.0,
+        "--holdout-fraction",
+        help="Fraction of users held out for unseen-user evaluation (replay)",
+    ),
+    reject_threshold: float = typer.Option(
+        DEFAULT_REJECT_THRESHOLD,
+        "--reject-threshold",
+        help="Max-probability below which prediction is rejected (replay)",
+    ),
+) -> None:
+    """Inspect a model bundle and optionally replay held-out test evaluation."""
+    import json
+
+    from rich.console import Console
+    from rich.table import Table
+
+    from taskclf.model_inspection import inspect_model
+
+    console = Console()
+
+    if (date_from is None) ^ (date_to is None):
+        console.print(
+            "[red]Both --from and --to are required for test replay, or omit both "
+            "for bundle-only inspection.[/red]"
+        )
+        raise typer.Exit(code=1)
+
+    start = dt.date.fromisoformat(date_from) if date_from else None
+    end = dt.date.fromisoformat(date_to) if date_to else None
+    dd = Path(data_dir) if data_dir is not None else None
+    if dd is None and not synthetic and start is not None and end is not None:
+        dd = Path(DEFAULT_DATA_DIR)
+
+    try:
+        result = inspect_model(
+            model_dir,
+            date_from=start,
+            date_to=end,
+            data_dir=dd,
+            synthetic=synthetic,
+            holdout_fraction=holdout_fraction,
+            reject_threshold=reject_threshold,
+        )
+    except (FileNotFoundError, ValueError, OSError) as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+
+    if json_output:
+        console.print_json(json.dumps(result.model_dump(), default=str))
+        raise typer.Exit(code=0)
+
+    console.print("[bold]Model bundle[/bold]")
+    console.print(f"  Path: {result.bundle_path}")
+    meta = result.metadata
+    console.print(
+        f"  Schema: {meta.get('schema_version')}  hash={meta.get('schema_hash')}"
+    )
+    console.print(
+        f"  Train dates: {meta.get('train_date_from')} .. {meta.get('train_date_to')}"
+    )
+    console.print(f"  Dataset hash: {meta.get('dataset_hash')}")
+    console.print(f"  Git commit: {meta.get('git_commit')}")
+
+    bs = result.bundle_saved_validation
+    console.print("\n[bold]Bundle-saved validation metrics[/bold]")
+    console.print(
+        "  [dim](from metrics.json — computed on the validation split at train time, "
+        "not the held-out test split)[/dim]"
+    )
+    console.print(f"  Macro F1: {bs.macro_f1:.4f}  Weighted F1: {bs.weighted_f1:.4f}")
+
+    pc_table = Table(title="Per-class (derived from saved confusion matrix)")
+    pc_table.add_column("Class", style="bold")
+    pc_table.add_column("P", justify="right")
+    pc_table.add_column("R", justify="right")
+    pc_table.add_column("F1", justify="right")
+    for cls in bs.label_names:
+        m = bs.per_class_derived.get(cls, {})
+        pc_table.add_row(
+            cls,
+            f"{m.get('precision', 0):.4f}",
+            f"{m.get('recall', 0):.4f}",
+            f"{m.get('f1', 0):.4f}",
+        )
+    console.print(pc_table)
+
+    pl = result.prediction_logic
+    console.print("\n[bold]Prediction / metrics logic[/bold]")
+    console.print(f"  Problem: {pl.problem_type} (multilabel={pl.multilabel})")
+    console.print(f"  {pl.lightgbm_outputs}")
+    console.print(f"  {pl.argmax_rule}")
+    console.print(f"  {pl.evaluation_reject}")
+    console.print(
+        "  Code: " + ", ".join(f"{k}={v}" for k, v in pl.code_references.items())
+    )
+
+    if result.replayed_test_evaluation is not None:
+        rt = result.replayed_test_evaluation
+        console.print("\n[bold]Replayed held-out test evaluation[/bold]")
+        console.print(
+            f"  Rows: {rt.test_row_count}  holdout users: {len(rt.holdout_users)}"
+        )
+        console.print(
+            f"  Dates: {rt.date_from} .. {rt.date_to}  synthetic={rt.synthetic}"
+        )
+        console.print(f"  data_dir={rt.data_dir}")
+        dist_table = Table(title="Test set class distribution")
+        dist_table.add_column("Class", style="bold")
+        dist_table.add_column("Count", justify="right")
+        dist_table.add_column("Fraction", justify="right")
+        for cls, d in sorted(rt.test_class_distribution.items()):
+            dist_table.add_row(
+                cls,
+                str(int(d.get("count", 0))),
+                f"{float(d.get('fraction', 0)):.4f}",
+            )
+        console.print(dist_table)
+        rep = rt.report
+        console.print(
+            f"  Macro F1: {rep['macro_f1']:.4f}  Weighted F1: {rep['weighted_f1']:.4f}  "
+            f"Reject rate: {rep['reject_rate']:.4f}"
+        )
+        if rep.get("seen_user_f1") is not None:
+            console.print(f"  Seen-user F1: {rep['seen_user_f1']:.4f}")
+        if rep.get("unseen_user_f1") is not None:
+            console.print(f"  Unseen-user F1: {rep['unseen_user_f1']:.4f}")
+    elif result.replay_error:
+        console.print("\n[yellow]Test replay skipped or failed[/yellow]")
+        console.print(f"  {result.replay_error}")
+    elif start is None:
+        console.print(
+            "\n[dim]Tip: pass --from and --to (and --data-dir) to replay held-out "
+            "test metrics and class distribution.[/dim]"
+        )
+
+
 # -- policy -------------------------------------------------------------------
 policy_app = typer.Typer()
 app.add_typer(policy_app, name="policy")
