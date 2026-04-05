@@ -61,80 +61,91 @@ class UserConfigField:
     key: str
     default: Any
     comment: str
+    section_title: str | None = None
 
 
 # Ordered full starter template: identity → notifications → ActivityWatch → privacy →
 # web UI → transition/gap behavior. Same order is used when persisting known keys.
+# Section titles appear as ``# --- Title ---`` on the first key of each group.
 USER_CONFIG_FIELDS: tuple[UserConfigField, ...] = (
-    # -- identity
     UserConfigField(
         "username",
         _DEFAULT_USERNAME,
-        "Display name shown in labels. Does not affect label identity.",
+        "Display name in exported labels; cosmetic only (stable identity is in a separate file).",
+        section_title="Identity",
     ),
-    # -- notifications
     UserConfigField(
         "notifications_enabled",
         True,
-        "Set to false to suppress all desktop notifications.",
+        "If false, suppresses tray desktop notifications.",
+        section_title="Notifications",
     ),
     UserConfigField(
         "privacy_notifications",
         True,
-        "When true, app names are redacted from notifications.",
+        "If true, notification text hides raw app names (recommended for screen sharing).",
     ),
-    # -- ActivityWatch (connection and polling)
     UserConfigField(
         "aw_host",
         DEFAULT_AW_HOST,
-        "ActivityWatch server URL.",
+        "Base URL of your ActivityWatch server (typically http://127.0.0.1:5600).",
+        section_title="ActivityWatch",
     ),
     UserConfigField(
         "poll_seconds",
         DEFAULT_POLL_SECONDS,
-        "Seconds between ActivityWatch polling cycles.",
+        "How often the tray asks ActivityWatch for the active window (seconds).",
     ),
     UserConfigField(
         "aw_timeout_seconds",
         DEFAULT_AW_TIMEOUT_SECONDS,
-        "Seconds to wait for ActivityWatch API responses before timing out.",
+        "HTTP timeout for ActivityWatch API calls (seconds).",
     ),
-    # -- privacy (title hashing)
     UserConfigField(
         "title_salt",
         DEFAULT_TITLE_SALT,
-        "Salt used for hashing window titles (privacy).",
+        "Salt for hashing window titles before features; change if you rotate privacy.",
+        section_title="Privacy",
     ),
-    # -- web UI
     UserConfigField(
         "ui_port",
         _DEFAULT_UI_PORT,
-        "Port for the embedded web UI server.",
+        "TCP port for the embedded labeling dashboard (http://127.0.0.1:this port).",
+        section_title="Web UI",
     ),
     UserConfigField(
         "suggestion_banner_ttl_seconds",
         0,
-        "Seconds before the suggestion banner auto-dismisses; 0 disables auto-dismiss.",
+        "Auto-dismiss the model suggestion banner after N seconds; 0 keeps it until you act.",
     ),
-    # -- transitions and unlabeled-gap behavior
     UserConfigField(
         "transition_minutes",
         DEFAULT_TRANSITION_MINUTES,
-        "Minutes a new app must persist before a transition fires.",
+        "How long a foreground app must stay dominant before a transition is detected.",
+        section_title="Transitions and gaps",
     ),
     UserConfigField(
         "idle_transition_minutes",
         DEFAULT_IDLE_TRANSITION_MINUTES,
-        "Minutes lockscreen/idle apps must persist before a transition fires (BreakIdle).",
+        "Shorter threshold for lockscreen/idle apps (BreakIdle); often below transition_minutes.",
     ),
     UserConfigField(
         "gap_fill_escalation_minutes",
         _DEFAULT_GAP_FILL_ESCALATION_MINUTES,
-        "Minutes of unlabeled time before gap-fill tray escalation (orange icon).",
+        "Unlabeled minutes before the tray shows gap-fill escalation (orange icon).",
     ),
 )
 
 _DEFAULT_STARTER_DICT: dict[str, Any] = {f.key: f.default for f in USER_CONFIG_FIELDS}
+
+# Prepended to generated config.toml and the repo template; points to canonical remote copies.
+_USER_CONFIG_TEMPLATE_REMOTE_HEADER = (
+    "# Canonical template:\n"
+    "#   GitHub: https://github.com/fruitiecutiepie/taskclf/blob/master/configs/user_config.template.toml\n"
+    "#   Download: https://raw.githubusercontent.com/fruitiecutiepie/taskclf/master/configs/user_config.template.toml\n"
+    "#   Guide: https://fruitiecutiepie.github.io/taskclf/guide/config_template/\n"
+    "\n"
+)
 
 
 def default_starter_config_dict() -> dict[str, Any]:
@@ -144,13 +155,22 @@ def default_starter_config_dict() -> dict[str, Any]:
 
 def render_default_user_config_toml() -> str:
     """Return the full commented default ``config.toml`` text (for docs and templates)."""
-    return _to_commented_toml(_DEFAULT_STARTER_DICT)
+    return _USER_CONFIG_TEMPLATE_REMOTE_HEADER + _to_commented_toml(
+        _DEFAULT_STARTER_DICT
+    )
 
 
 def _comment_for_key(key: str) -> str | None:
     for f in USER_CONFIG_FIELDS:
         if f.key == key:
             return f.comment
+    return None
+
+
+def _user_config_field_spec(key: str) -> UserConfigField | None:
+    for f in USER_CONFIG_FIELDS:
+        if f.key == key:
+            return f
     return None
 
 
@@ -321,12 +341,17 @@ class UserConfig:
 
 
 def _to_commented_toml(data: dict[str, Any]) -> str:
-    """Serialize *data* as TOML with ``#`` comments above known settings."""
+    """Serialize *data* as TOML with ``#`` section headers and line comments for known keys."""
     lines: list[str] = []
     for key in _ordered_keys_for_persist(data):
         if key == "user_id":
             continue
         val = data[key]
+        spec = _user_config_field_spec(key)
+        if spec and spec.section_title:
+            if lines:
+                lines.append("")
+            lines.append(f"# --- {spec.section_title} ---")
         comment = _comment_for_key(key)
         if comment:
             lines.append(f"# {comment}")

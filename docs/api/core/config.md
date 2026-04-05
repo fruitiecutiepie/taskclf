@@ -28,57 +28,73 @@ Default: `~/Library/Application Support/taskclf/data/processed/`
 On first run, if `config.toml` is missing, taskclf writes a **full commented starter file** once (see the [User config template](../../guide/config_template.md) guide and [`configs/user_config.template.toml`](https://github.com/fruitiecutiepie/taskclf/blob/master/configs/user_config.template.toml)). The file is not regenerated on later startups.
 
 ```toml
-# Display name shown in labels. Does not affect label identity.
+# Canonical template:
+#   GitHub: https://github.com/fruitiecutiepie/taskclf/blob/master/configs/user_config.template.toml
+#   Download: https://raw.githubusercontent.com/fruitiecutiepie/taskclf/master/configs/user_config.template.toml
+#   Guide: https://fruitiecutiepie.github.io/taskclf/guide/config_template/
+
+# --- Identity ---
+# Display name in exported labels; cosmetic only (stable identity is in a separate file).
 username = "default-user"
 
-# Set to false to suppress all desktop notifications.
+
+# --- Notifications ---
+# If false, suppresses tray desktop notifications.
 notifications_enabled = true
 
-# When true, app names are redacted from notifications.
+# If true, notification text hides raw app names (recommended for screen sharing).
 privacy_notifications = true
 
-# ActivityWatch server URL.
+
+# --- ActivityWatch ---
+# Base URL of your ActivityWatch server (typically http://127.0.0.1:5600).
 aw_host = "http://localhost:5600"
 
-# Seconds between ActivityWatch polling cycles.
+# How often the tray asks ActivityWatch for the active window (seconds).
 poll_seconds = 60
 
-# Seconds to wait for ActivityWatch API responses before timing out.
+# HTTP timeout for ActivityWatch API calls (seconds).
 aw_timeout_seconds = 10
 
-# Salt used for hashing window titles (privacy).
+
+# --- Privacy ---
+# Salt for hashing window titles before features; change if you rotate privacy.
 title_salt = "taskclf-default-salt"
 
-# Port for the embedded web UI server.
+
+# --- Web UI ---
+# TCP port for the embedded labeling dashboard (http://127.0.0.1:this port).
 ui_port = 8741
 
-# Seconds before the suggestion banner auto-dismisses; 0 disables auto-dismiss.
+# Auto-dismiss the model suggestion banner after N seconds; 0 keeps it until you act.
 suggestion_banner_ttl_seconds = 0
 
-# Minutes a new app must persist before a transition fires.
+
+# --- Transitions and gaps ---
+# How long a foreground app must stay dominant before a transition is detected.
 transition_minutes = 2
 
-# Minutes lockscreen/idle apps must persist before a transition fires (BreakIdle).
+# Shorter threshold for lockscreen/idle apps (BreakIdle); often below transition_minutes.
 idle_transition_minutes = 1
 
-# Minutes of unlabeled time before gap-fill tray escalation (orange icon).
+# Unlabeled minutes before the tray shows gap-fill escalation (orange icon).
 gap_fill_escalation_minutes = 480
 ```
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `username` | `str` | `"default-user"` | Display name (cosmetic only) |
-| `notifications_enabled` | `bool` | `true` | Desktop notifications on/off |
-| `privacy_notifications` | `bool` | `true` | Redact app names from notifications |
-| `aw_host` | `str` | `"http://localhost:5600"` | ActivityWatch server URL |
-| `poll_seconds` | `int` | `60` | AW polling interval |
+| `username` | `str` | `"default-user"` | Display name in labels (stable UUID is in `.user_id`) |
+| `notifications_enabled` | `bool` | `true` | Tray desktop notifications on/off |
+| `privacy_notifications` | `bool` | `true` | Hide raw app names in notification text |
+| `aw_host` | `str` | `"http://localhost:5600"` | ActivityWatch server base URL |
+| `poll_seconds` | `int` | `60` | Polling interval for the active window (seconds) |
 | `aw_timeout_seconds` | `int` | `10` | ActivityWatch HTTP timeout (seconds) |
-| `title_salt` | `str` | `"taskclf-default-salt"` | Window title hash salt |
-| `ui_port` | `int` | `8741` | Web UI server port |
-| `suggestion_banner_ttl_seconds` | `int` | `0` | Suggestion banner auto-dismiss after N seconds; `0` keeps the banner until skip/accept/clear |
-| `transition_minutes` | `int` | `2` | App persistence threshold for transitions |
-| `idle_transition_minutes` | `int` | `1` | Lockscreen/idle transition threshold (minutes) |
-| `gap_fill_escalation_minutes` | `int` | `480` | Unlabeled time before gap-fill tray escalation (minutes) |
+| `title_salt` | `str` | `"taskclf-default-salt"` | Salt for hashing window titles in features |
+| `ui_port` | `int` | `8741` | Embedded labeling dashboard TCP port |
+| `suggestion_banner_ttl_seconds` | `int` | `0` | Auto-dismiss suggestion banner after N seconds; `0` until user acts |
+| `transition_minutes` | `int` | `2` | Dominance time before a transition is detected (minutes) |
+| `idle_transition_minutes` | `int` | `1` | Threshold for lockscreen/idle / BreakIdle (minutes) |
+| `gap_fill_escalation_minutes` | `int` | `480` | Unlabeled time before gap-fill escalation (minutes) |
 
 The `user_id` UUID is stored separately in `.user_id` and never appears in `config.toml`.
 

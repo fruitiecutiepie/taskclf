@@ -257,8 +257,9 @@ def test_toml_has_comments(tmp_path):
     cfg = UserConfig(tmp_path)
     cfg.update({"notifications_enabled": True, "poll_seconds": 60})
     text = (tmp_path / "config.toml").read_text()
-    assert "# Set to false to suppress" in text
-    assert "# Seconds between" in text
+    assert "# --- Notifications ---" in text
+    assert "# If false, suppresses tray desktop" in text
+    assert "# --- ActivityWatch ---" in text
     assert "user_id" not in text
 
 

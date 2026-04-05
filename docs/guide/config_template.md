@@ -8,13 +8,19 @@ On first run, if `config.toml` does **not** exist, taskclf writes a **full comme
 
 Tray startup follows the same rule: creating the tray with an empty data directory produces that starter file.
 
-Keys in the starter file follow a fixed order: **identity** (username), **notifications**, **ActivityWatch** (host, poll interval, HTTP timeout), **title hashing**, **web UI** (port, suggestion banner TTL), then **transition and gap-fill** thresholds. The same order is used when taskclf rewrites known keys.
+The starter file groups settings under **section headers** like `# --- Identity ---`, then one line of help text per key. The same order and headings are used when taskclf rewrites known keys.
 
 ## Review the canonical example
 
-- **Published guide (this site):** you are reading it; the authoritative key list is in [User Identity](../api/core/config.md).
-- **Repository template file (raw):** [user_config.template.toml](https://github.com/fruitiecutiepie/taskclf/blob/master/configs/user_config.template.toml)
-- **GitHub Pages:** after docs deploy, this page is available at [https://fruitiecutiepie.github.io/taskclf/guide/config_template/](https://fruitiecutiepie.github.io/taskclf/guide/config_template/)
+The same three **remote URLs** (labeled GitHub, Download, and Guide in the file) are copied into the top of a newly generated `config.toml` as comments, so you can open the live template from your local file.
+
+| | URL |
+|---|---|
+| **Browse on GitHub** (default branch) | [github.com/fruitiecutiepie/taskclf/blob/master/configs/user_config.template.toml](https://github.com/fruitiecutiepie/taskclf/blob/master/configs/user_config.template.toml) |
+| **Raw file** (for curl/wget or “Save link as…”) | [raw.githubusercontent.com/fruitiecutiepie/taskclf/master/configs/user_config.template.toml](https://raw.githubusercontent.com/fruitiecutiepie/taskclf/master/configs/user_config.template.toml) |
+| **This guide on GitHub Pages** | [fruitiecutiepie.github.io/taskclf/guide/config_template/](https://fruitiecutiepie.github.io/taskclf/guide/config_template/) |
+
+Authoritative key reference: [User Identity](../api/core/config.md).
 
 ## What still updates the file
 
