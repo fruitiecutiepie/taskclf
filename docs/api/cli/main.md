@@ -40,9 +40,10 @@ You only need **`bump-patch`** when you want a **`v*`** tag; you only need **`bu
 Payload releases also refresh the GitHub Pages payload index at
 `https://fruitiecutiepie.github.io/taskclf/payload-index.json`, which the
 packaged Electron launcher uses to discover the newest compatible `v*`
-sidecar release.  The payload release workflow is the source of truth for that
-file; ordinary docs deploys preserve the currently published copy so a `master`
-push cannot overwrite a freshly tagged payload release.  The workflow also
+sidecar release.  That file is regenerated from GitHub Releases during both the
+payload release workflow and ordinary docs deploys, so a later `master` push
+refreshes metadata from the same published releases instead of preserving a
+stale GitHub Pages copy.  The payload release workflow also
 supports a manual index-refresh-only dispatch for repairing stale Pages metadata
 without rebuilding payload archives.  All Pages publishers share the same
 `pages` concurrency group and queue behind each other so docs deploys and

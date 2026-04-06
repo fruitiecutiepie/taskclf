@@ -1,10 +1,10 @@
 """Build or preserve the GitHub Pages payload index.
 
-This script intentionally gives ``payload-index.json`` one writer:
+GitHub Releases are the source of truth for ``payload-index.json``.
 
-- payload releases generate a fresh index from GitHub Releases
-- docs deploys preserve the currently published index, falling back to
-  release generation only when no current index exists yet
+Current workflows regenerate a fresh index from published releases for both
+payload-release and docs deploys. ``preserve-current`` remains available as an
+optional/manual mode when an existing published copy should be reused.
 """
 
 from __future__ import annotations

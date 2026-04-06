@@ -29,15 +29,14 @@ jobs:
       - run: pip install zensical mkdocstrings-python
       - run: zensical build
 
-      - name: Preserve payload-index.json
+      - name: Generate payload-index.json from releases
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          python3 scripts/payload_index.py preserve-current \
+          python3 scripts/payload_index.py generate-from-releases \
             --repo "${GITHUB_REPOSITORY}" \
             --token "${GITHUB_TOKEN}" \
-            --output site/payload-index.json \
-            --current-url "https://fruitiecutiepie.github.io/taskclf/payload-index.json"
+            --output site/payload-index.json
           cat site/payload-index.json
 
       - name: Verify Pages artifact
