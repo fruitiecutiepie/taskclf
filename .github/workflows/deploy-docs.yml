@@ -40,6 +40,9 @@ jobs:
             --current-url "https://fruitiecutiepie.github.io/taskclf/payload-index.json"
           cat site/payload-index.json
 
+      - name: Verify Pages artifact
+        run: test -f site/index.html
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site

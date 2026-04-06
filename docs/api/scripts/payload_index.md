@@ -15,6 +15,9 @@ Electron launcher.
 - Shares a repository-wide `pages` concurrency group with other Pages publishers
   so docs deploys and payload metadata updates serialize instead of canceling
   each other.
+- After each `zensical build`, both workflows assert `site/index.html` exists
+  before uploading the Pages artifact so a broken docs build cannot publish a
+  site that 404s at the project URL.
 
 That split avoids the race where a `master` docs deploy and a `v*` payload
 release both publish `site/` in close succession.

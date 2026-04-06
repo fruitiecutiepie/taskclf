@@ -179,6 +179,9 @@ jobs:
             --output site/payload-index.json
           cat site/payload-index.json
 
+      - name: Verify Pages artifact
+        run: test -f site/index.html
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
@@ -217,6 +220,9 @@ jobs:
             --token "${GITHUB_TOKEN}" \
             --output site/payload-index.json
           cat site/payload-index.json
+
+      - name: Verify Pages artifact
+        run: test -f site/index.html
 
       - uses: actions/upload-pages-artifact@v3
         with:

@@ -278,4 +278,4 @@ folder or pre-fill a GitHub bug report.
 - Works alongside the legacy pywebview shell documented in
   [`window.md`](window.md)
 
-:::: taskclf.ui.electron_shell
+::: taskclf.ui.electron_shell
