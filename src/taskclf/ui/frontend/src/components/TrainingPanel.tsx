@@ -11,6 +11,8 @@ import {
 import {
   type DataCheck,
   type ModelBundle,
+  type ModelBundleInspectBody,
+  model_bundle_inspect_by_id,
   models_list,
   training_cancel,
   training_data_check,
@@ -52,6 +54,16 @@ export const TrainingPanel: Component<{
   const [submitting, set_submitting] = createSignal(false);
   const [confirm_pending, set_confirm_pending] = createSignal(false);
   const [dismissed_run_error_key, set_dismissed_run_error_key] = createSignal<
+    string | null
+  >(null);
+
+  const [expanded_bundle_id, set_expanded_bundle_id] = createSignal<string | null>(
+    null,
+  );
+  const [bundle_inspect_by_id, set_bundle_inspect_by_id] = createSignal<
+    Record<string, ModelBundleInspectBody | { error: string }>
+  >({});
+  const [bundle_inspect_loading_id, set_bundle_inspect_loading_id] = createSignal<
     string | null
   >(null);
 
@@ -151,6 +163,30 @@ export const TrainingPanel: Component<{
       set_models(models_sorted(ml));
     } catch {
       /* non-critical */
+    }
+  }
+
+  async function toggle_bundle_inspect(model_id: string) {
+    if (expanded_bundle_id() === model_id) {
+      set_expanded_bundle_id(null);
+      return;
+    }
+    set_expanded_bundle_id(model_id);
+    if (bundle_inspect_by_id()[model_id]) {
+      return;
+    }
+    set_bundle_inspect_loading_id(model_id);
+    try {
+      const r = await model_bundle_inspect_by_id(model_id);
+      set_bundle_inspect_by_id((prev) => ({ ...prev, [model_id]: r }));
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Inspect failed";
+      set_bundle_inspect_by_id((prev) => ({
+        ...prev,
+        [model_id]: { error: msg },
+      }));
+    } finally {
+      set_bundle_inspect_loading_id(null);
     }
   }
 
@@ -605,6 +641,96 @@ export const TrainingPanel: Component<{
                     dim
                     tooltip="When this model was trained"
                   />
+                </Show>
+                <div style={{ "margin-top": "4px" }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void toggle_bundle_inspect(m.model_id);
+                    }}
+                    style={btn_style(
+                      "ghost",
+                      bundle_inspect_loading_id() === m.model_id,
+                    )}
+                  >
+                    {expanded_bundle_id() === m.model_id
+                      ? "Hide bundle metrics"
+                      : "Bundle metrics"}
+                  </button>
+                </div>
+                <Show when={expanded_bundle_id() === m.model_id}>
+                  <Show
+                    when={bundle_inspect_loading_id() === m.model_id}
+                    fallback={
+                      <Show when={bundle_inspect_by_id()[m.model_id]} keyed>
+                        {(entry) => {
+                          const row = entry();
+                          if ("error" in row) {
+                            return (
+                              <StatusRow
+                                label="inspect"
+                                value={row.error}
+                                color="#ef4444"
+                                dim
+                                tooltip="Bundle-saved validation metrics"
+                              />
+                            );
+                          }
+                          const meta = row.metadata as Record<string, string>;
+                          const top_pairs =
+                            row.bundle_saved_validation.top_confusion_pairs.slice(0, 3);
+                          const top_str =
+                            top_pairs.length === 0
+                              ? "—"
+                              : top_pairs
+                                  .map(
+                                    (p) =>
+                                      `${p.true_label}→${p.pred_label} (${p.count})`,
+                                  )
+                                  .join(", ");
+                          return (
+                            <>
+                              <StatusRow
+                                label="val_macro_f1"
+                                value={row.bundle_saved_validation.macro_f1.toFixed(4)}
+                                color="#22c55e"
+                                tooltip="Macro F1 on the validation split in the bundle"
+                              />
+                              <StatusRow
+                                label="val_weighted_f1"
+                                value={row.bundle_saved_validation.weighted_f1.toFixed(
+                                  4,
+                                )}
+                                color="#22c55e"
+                                tooltip="Weighted F1 on the validation split in the bundle"
+                              />
+                              <Show when={meta.train_date_from && meta.train_date_to}>
+                                <StatusRow
+                                  label="trained"
+                                  value={`${meta.train_date_from} — ${meta.train_date_to}`}
+                                  dim
+                                  tooltip="Training date range from bundle metadata"
+                                />
+                              </Show>
+                              <StatusRow
+                                label="top_confusions"
+                                value={top_str}
+                                dim
+                                tooltip="Largest off-diagonal confusion counts (validation)"
+                              />
+                            </>
+                          );
+                        }}
+                      </Show>
+                    }
+                  >
+                    <StatusRow
+                      label="inspect"
+                      value="loading…"
+                      dim
+                      tooltip="Loading bundle inspection"
+                    />
+                  </Show>
                 </Show>
               </div>
             )}

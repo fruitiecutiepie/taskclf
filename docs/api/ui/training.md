@@ -100,6 +100,46 @@ List available model bundles from the models directory.
 ]
 ```
 
+### `GET /api/train/models/current/inspect`
+
+Read-only **bundle-saved validation** metrics for the model currently
+loaded in the tray (same data as `taskclf model inspect` without replay).
+Requires `get_tray_state` from the tray process; otherwise returns
+`{"loaded": false, "reason": "tray_state_unavailable"}`.
+
+When a model path is available but nothing is loaded, returns
+`{"loaded": false, "reason": "no_model_loaded"}`.
+
+When loaded, response shape:
+
+```json
+{
+  "loaded": true,
+  "bundle_path": "/path/to/models/run-id",
+  "metadata": { "...": "..." },
+  "bundle_saved_validation": {
+    "macro_f1": 0.85,
+    "weighted_f1": 0.87,
+    "label_names": ["Build", "..."],
+    "confusion_matrix": [[...]],
+    "per_class_derived": { "...": "..." },
+    "top_confusion_pairs": [
+      {"true_label": "Write", "pred_label": "Build", "count": 12}
+    ]
+  }
+}
+```
+
+Replay / held-out test metrics are **not** included; use the CLI
+`taskclf model inspect` with a date range for that.
+
+### `GET /api/train/models/{model_id}/inspect`
+
+Bundle-saved validation metrics for a **known** bundle id under the
+server’s models directory (same `bundle_path` / `metadata` /
+`bundle_saved_validation` shape as above, without a `loaded` field).
+Returns **404** if the id is unknown, **422** if the bundle is invalid.
+
 ### `GET /api/train/data-check`
 
 Prepare data for a date range.  For any date without an existing

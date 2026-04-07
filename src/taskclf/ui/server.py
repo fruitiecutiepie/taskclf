@@ -267,6 +267,18 @@ class ModelBundleResponse(BaseModel):
     created_at: str | None = None
 
 
+def _bundle_inspect_bundle_only_payload(model_dir: Path) -> dict[str, Any]:
+    """Build JSON-serializable bundle-only inspection (validation metrics from disk)."""
+    from taskclf.model_inspection import inspect_bundle_only
+
+    bundle_path, metadata, section = inspect_bundle_only(model_dir)
+    return {
+        "bundle_path": str(bundle_path),
+        "metadata": metadata.model_dump(),
+        "bundle_saved_validation": section.model_dump(),
+    }
+
+
 class DataCheckResponse(BaseModel):
     date_from: str
     date_to: str
@@ -1496,6 +1508,51 @@ def create_app(
             )
             for b in bundles
         ]
+
+    @app.get("/api/train/models/current/inspect")
+    async def train_current_model_bundle_inspect() -> dict[str, Any]:
+        """Bundle-saved validation metrics for the model currently loaded in the tray."""
+        if get_tray_state is None:
+            return {"loaded": False, "reason": "tray_state_unavailable"}
+        state = get_tray_state()
+        md = state.get("model_dir")
+        if not md:
+            return {"loaded": False, "reason": "no_model_loaded"}
+        path = Path(str(md)).resolve()
+        if not path.is_dir():
+            return {"loaded": False, "reason": "model_dir_missing"}
+        try:
+            payload = _bundle_inspect_bundle_only_payload(path)
+        except (FileNotFoundError, OSError, ValueError, KeyError) as exc:
+            logger.warning("Bundle inspect failed for %s: %s", path, exc)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Could not read bundle inspection: {exc}",
+            ) from exc
+        return {"loaded": True, **payload}
+
+    @app.get("/api/train/models/{model_id}/inspect")
+    async def train_model_bundle_inspect_by_id(model_id: str) -> dict[str, Any]:
+        """Bundle-saved validation metrics for a known model bundle under models_dir."""
+        from taskclf.model_registry import list_bundles
+
+        bundles = list_bundles(effective_models_dir)
+        target = next((b for b in bundles if b.model_id == model_id), None)
+        if target is None:
+            raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
+        if not target.valid:
+            raise HTTPException(
+                status_code=422,
+                detail=target.invalid_reason or "invalid bundle",
+            )
+        try:
+            return _bundle_inspect_bundle_only_payload(target.path)
+        except (FileNotFoundError, OSError, ValueError, KeyError) as exc:
+            logger.warning("Bundle inspect failed for %s: %s", target.path, exc)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Could not read bundle inspection: {exc}",
+            ) from exc
 
     @app.get("/api/train/data-check")
     async def train_data_check(

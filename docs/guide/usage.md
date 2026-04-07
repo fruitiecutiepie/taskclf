@@ -236,6 +236,12 @@ This launches a local web server at `http://127.0.0.1:8741` with a
 SolidJS frontend for labeling, queue management, and live prediction
 streaming.
 
+The **State** panel (System tab) shows bundle-saved validation metrics
+for the loaded model when the tray provides `model_dir`; the **Training**
+tab lists bundles and can expand **Bundle metrics** per run. Both use
+read-only inspection of files on disk (same family as `taskclf model
+inspect` without replay). Held-out test replay remains a CLI concern.
+
 For frontend development with hot module replacement, add `--dev`:
 
 ```bash

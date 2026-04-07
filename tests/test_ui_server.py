@@ -2366,3 +2366,89 @@ class TestImportLabels:
         )
         assert resp.status_code == 200
         assert resp.json()["strategy"] == "merge"
+
+
+class TestModelBundleInspectAPI:
+    """Bundle-only model inspection endpoints for the tray UI."""
+
+    def test_current_inspect_no_tray_returns_unavailable(
+        self, client: TestClient
+    ) -> None:
+        """Without get_tray_state, current inspect reports loaded=false."""
+        resp = client.get("/api/train/models/current/inspect")
+        assert resp.status_code == 200
+        assert resp.json() == {
+            "loaded": False,
+            "reason": "tray_state_unavailable",
+        }
+
+    def test_current_inspect_no_model_loaded(self, data_dir: Path) -> None:
+        """Tray state without model_dir returns no_model_loaded."""
+        app = create_app(
+            data_dir=data_dir,
+            event_bus=EventBus(),
+            get_tray_state=lambda: {"model_dir": None, "paused": False},
+        )
+        tc = TestClient(app)
+        resp = tc.get("/api/train/models/current/inspect")
+        assert resp.status_code == 200
+        assert resp.json() == {"loaded": False, "reason": "no_model_loaded"}
+
+    def test_inspect_by_id_and_current_with_bundle(self, tmp_path: Path) -> None:
+        """Current and by-id inspect return bundle_saved_validation from disk."""
+        from typer.testing import CliRunner
+
+        from taskclf.cli.main import app as cli_app
+
+        data_dir = tmp_path / "pdata"
+        data_dir.mkdir()
+        (data_dir / "labels_v1").mkdir()
+        models_dir = tmp_path / "models"
+        runner = CliRunner()
+        result = runner.invoke(
+            cli_app,
+            [
+                "train",
+                "lgbm",
+                "--from",
+                "2025-06-14",
+                "--to",
+                "2025-06-15",
+                "--synthetic",
+                "--models-dir",
+                str(models_dir),
+                "--num-boost-round",
+                "5",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        run_dir = next(models_dir.iterdir())
+        run_resolved = str(run_dir.resolve())
+
+        app = create_app(
+            data_dir=data_dir,
+            models_dir=models_dir,
+            event_bus=EventBus(),
+            get_tray_state=lambda: {"model_dir": run_resolved, "paused": False},
+        )
+        tc = TestClient(app)
+
+        cur = tc.get("/api/train/models/current/inspect")
+        assert cur.status_code == 200
+        cj = cur.json()
+        assert cj["loaded"] is True
+        assert cj["bundle_path"] == run_resolved
+        assert "macro_f1" in cj["bundle_saved_validation"]
+        assert "metadata" in cj
+
+        by_id = tc.get(f"/api/train/models/{run_dir.name}/inspect")
+        assert by_id.status_code == 200
+        bj = by_id.json()
+        assert bj["bundle_path"] == run_resolved
+        assert (
+            bj["bundle_saved_validation"]["macro_f1"]
+            == cj["bundle_saved_validation"]["macro_f1"]
+        )
+
+        missing = tc.get("/api/train/models/does_not_exist_run/inspect")
+        assert missing.status_code == 404

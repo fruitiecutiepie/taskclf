@@ -250,6 +250,42 @@ export async function models_list(): Promise<ModelBundle[]> {
   return api_json(`${BASE}/train/models`);
 }
 
+/** Bundle-saved validation metrics (same shape as CLI bundle-only inspect). */
+export type BundleSavedValidation = {
+  source: string;
+  description: string;
+  macro_f1: number;
+  weighted_f1: number;
+  label_names: string[];
+  confusion_matrix: number[][];
+  per_class_derived: Record<string, Record<string, number | string>>;
+  top_confusion_pairs: Array<{
+    true_label: string;
+    pred_label: string;
+    count: number;
+  }>;
+};
+
+export type ModelBundleInspectBody = {
+  bundle_path: string;
+  metadata: Record<string, unknown>;
+  bundle_saved_validation: BundleSavedValidation;
+};
+
+export type CurrentModelBundleInspectResponse =
+  | { loaded: false; reason: string }
+  | ({ loaded: true } & ModelBundleInspectBody);
+
+export async function model_bundle_inspect_current(): Promise<CurrentModelBundleInspectResponse> {
+  return api_json(`${BASE}/train/models/current/inspect`);
+}
+
+export async function model_bundle_inspect_by_id(
+  model_id: string,
+): Promise<ModelBundleInspectBody> {
+  return api_json(`${BASE}/train/models/${encodeURIComponent(model_id)}/inspect`);
+}
+
 export async function training_data_check(
   date_from: string,
   date_to: string,
