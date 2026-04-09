@@ -1,5 +1,6 @@
 import type { Component } from "solid-js";
 import { host } from "../lib/host";
+import { transition_prompt_notifications_bind } from "../lib/transitionPromptNotifications";
 import { ws_store_new } from "../lib/ws";
 import { HostWindowDragStrip } from "./HostWindowDragStrip";
 import { StatusPanel } from "./StatusPanel";
@@ -7,6 +8,10 @@ import { StatusPanel } from "./StatusPanel";
 export const StatusPanelWindow: Component = () => {
   const ws = ws_store_new();
   const label_change_count = ws.label_change_count ?? (() => 0);
+
+  transition_prompt_notifications_bind(ws.latest_prompt, () => {
+    host.invoke({ cmd: "showLabelGrid" });
+  });
 
   return (
     <>

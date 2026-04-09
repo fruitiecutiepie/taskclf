@@ -13,10 +13,8 @@ import { StatusPanel } from "./components/StatusPanel";
 import { StatusPanelWindow } from "./components/StatusPanelWindow";
 import { host } from "./lib/host";
 import { frontend_error_handlers_install } from "./lib/log";
-import {
-  notification_permission_ensure,
-  transition_notification_show,
-} from "./lib/notifications";
+import { notification_permission_ensure } from "./lib/notifications";
+import { transition_prompt_notifications_bind } from "./lib/transitionPromptNotifications";
 import { ws_store_new } from "./lib/ws";
 
 /** Light page chrome for plain browser dev (Vite); contrasts with the dark frosted shell. */
@@ -78,6 +76,14 @@ const App: Component = () => {
   let label_hide_timer: ReturnType<typeof setTimeout> | null = null;
   let panel_hide_timer: ReturnType<typeof setTimeout> | null = null;
 
+  const open_label_grid = () => {
+    if (browser_compact) {
+      set_label_pinned(true);
+    } else {
+      host.invoke({ cmd: "showLabelGrid" });
+    }
+  };
+
   const label_hide_cancel = () => {
     if (label_hide_timer !== null) {
       clearTimeout(label_hide_timer);
@@ -127,9 +133,6 @@ const App: Component = () => {
   })();
 
   onMount(() => {
-    if (host.kind !== "electron") {
-      notification_permission_ensure();
-    }
     const cleanup_error_handlers = frontend_error_handlers_install();
     onCleanup(() => {
       label_hide_cancel();
@@ -149,26 +152,7 @@ const App: Component = () => {
     }
   });
 
-  createEffect(() => {
-    const prompt = ws.latest_prompt();
-    if (!prompt) {
-      return;
-    }
-    const open_label_grid = () => {
-      if (browser_compact) {
-        set_label_pinned(true);
-      } else {
-        host.invoke({ cmd: "toggleLabelGrid" });
-      }
-    };
-
-    if (host.kind === "electron") {
-      host.invoke({ cmd: "showTransitionNotification", prompt });
-      return;
-    }
-
-    transition_notification_show(prompt, open_label_grid);
-  });
+  transition_prompt_notifications_bind(ws.latest_prompt, open_label_grid);
 
   return (
     <div
