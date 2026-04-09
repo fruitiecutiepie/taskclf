@@ -1,6 +1,7 @@
 import type { Accessor, Component } from "solid-js";
 import { LABEL_COLORS } from "../lib/labelColors";
 import type {
+  BadgeDisplayOverride,
   ConnectionStatus,
   LabelSuggestion,
   LiveStatusEvent,
@@ -15,6 +16,7 @@ export const PredictionBadge: Component<{
   latest_status: Accessor<StatusEvent>;
   latest_prediction: Accessor<Prediction | null>;
   live_status: Accessor<LiveStatusEvent | null>;
+  badge_display_override?: Accessor<BadgeDisplayOverride>;
   latest_tray_state: Accessor<TrayState>;
   active_suggestion: Accessor<LabelSuggestion | null>;
   label_pinned?: Accessor<boolean>;
@@ -33,7 +35,13 @@ export const PredictionBadge: Component<{
 
   const live_label = () => props.live_status()?.label ?? null;
 
-  const display_label = () => prediction_label() ?? live_label();
+  const display_label = () => {
+    const override = props.badge_display_override?.();
+    if (override?.enabled) {
+      return override.label;
+    }
+    return prediction_label() ?? live_label();
+  };
 
   const no_model = () => !props.latest_tray_state().model_loaded;
 

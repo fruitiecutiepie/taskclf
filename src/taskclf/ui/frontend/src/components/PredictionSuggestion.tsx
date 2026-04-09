@@ -11,7 +11,7 @@ import { time_format } from "../lib/format";
 import { LABEL_COLORS } from "../lib/labelColors";
 import { frontend_log_error } from "../lib/log";
 import { overwrite_pending_from_api_error } from "../lib/overwrite_pending_from_api_error";
-import type { LabelSuggestion } from "../lib/ws";
+import type { LabelSuggestion, SuggestionClearReason } from "../lib/ws";
 import { ActivitySummary } from "./ActivitySummary";
 import { ErrorBanner } from "./ErrorBanner";
 import { LabelOverwrite, type OverwritePending } from "./LabelOverwrite";
@@ -63,7 +63,7 @@ function suggestion_range_format(
 export const PredictionSuggestion: Component<{
   suggestion: Accessor<LabelSuggestion | null>;
   on_saved?: () => void;
-  on_dismiss?: () => void;
+  on_dismiss?: (reason?: SuggestionClearReason) => void;
 }> = (props) => {
   const s = () => props.suggestion();
   const [error, set_error] = createSignal<string | null>(null);
@@ -98,7 +98,7 @@ export const PredictionSuggestion: Component<{
       });
       set_overwrite_pending(null);
       props.on_saved?.();
-      props.on_dismiss?.();
+      props.on_dismiss?.("label_saved");
     } catch (err: unknown) {
       const pending = overwrite_pending_from_api_error(err, {
         label: sg.suggested,
@@ -135,7 +135,7 @@ export const PredictionSuggestion: Component<{
       });
       set_overwrite_pending(null);
       props.on_saved?.();
-      props.on_dismiss?.();
+      props.on_dismiss?.("label_saved");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "overwrite failed";
       frontend_log_error("Failed to overwrite with suggested label", err);
@@ -161,7 +161,7 @@ export const PredictionSuggestion: Component<{
       });
       set_overwrite_pending(null);
       props.on_saved?.();
-      props.on_dismiss?.();
+      props.on_dismiss?.("label_saved");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "keep all failed";
       frontend_log_error("Failed to keep all with suggested label", err);
@@ -180,7 +180,7 @@ export const PredictionSuggestion: Component<{
     try {
       await notification_skip();
       set_overwrite_pending(null);
-      props.on_dismiss?.();
+      props.on_dismiss?.("skipped");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to dismiss suggestion";
       frontend_log_error("Failed to dismiss suggestion", err);

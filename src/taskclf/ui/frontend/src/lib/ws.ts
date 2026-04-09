@@ -134,6 +134,8 @@ export type SuggestionClearedEvent = {
   reason: string;
 };
 
+export type SuggestionClearReason = "label_saved" | "skipped" | string;
+
 export type LabelStoppedEvent = {
   type: "label_stopped";
   ts: string;
@@ -231,11 +233,18 @@ export type WSStats = {
   connected_since: string | null;
 };
 
+export type BadgeDisplayOverride = {
+  enabled: boolean;
+  label: string | null;
+};
+
 export type WebSocketStore = {
   latest_status: StatusEvent;
   latest_prediction: Prediction | null;
   latest_tray_state: TrayState;
   active_suggestion: LabelSuggestion | null;
+  badge_display_override: BadgeDisplayOverride;
+  badge_display_restore_label: string | null;
   latest_prompt: PromptLabelEvent | null;
   live_status: LiveStatusEvent | null;
   label_grid_requested: number;
@@ -251,6 +260,11 @@ export function ws_store_new() {
     latest_prediction: null,
     latest_tray_state: TrayStateDefault,
     active_suggestion: null,
+    badge_display_override: {
+      enabled: false,
+      label: null,
+    },
+    badge_display_restore_label: null,
     latest_prompt: null,
     live_status: null,
     label_grid_requested: 0,
@@ -284,6 +298,66 @@ export function ws_store_new() {
   let reconnect_timer: ReturnType<typeof setTimeout> | null = null;
   let suggestion_timer: ReturnType<typeof setTimeout> | null = null;
   let retry_delay = 1000;
+
+  function badge_explicit_label_get(
+    state: Pick<WebSocketStore, "latest_prediction" | "live_status">,
+  ) {
+    const pred = state.latest_prediction;
+    if (pred) {
+      return pred.mapped_label || pred.label;
+    }
+    return state.live_status?.label ?? null;
+  }
+
+  function badge_display_label_get(
+    state: Pick<
+      WebSocketStore,
+      "latest_prediction" | "live_status" | "badge_display_override"
+    >,
+  ) {
+    if (state.badge_display_override.enabled) {
+      return state.badge_display_override.label;
+    }
+    return badge_explicit_label_get(state);
+  }
+
+  function badge_display_override_clear_if_superseded() {
+    setStore(
+      produce((state) => {
+        if (state.active_suggestion || !state.badge_display_override.enabled) {
+          return;
+        }
+        state.badge_display_override.enabled = false;
+        state.badge_display_override.label = null;
+        state.badge_display_restore_label = null;
+      }),
+    );
+  }
+
+  function suggestion_badge_override_apply(
+    reason?: SuggestionClearReason,
+    suggested_label?: string,
+  ) {
+    setStore(
+      produce((state) => {
+        if (suggested_label != null) {
+          state.badge_display_restore_label = badge_display_label_get(state);
+          state.badge_display_override.enabled = true;
+          state.badge_display_override.label = suggested_label;
+          return;
+        }
+
+        state.active_suggestion = null;
+        if (!state.badge_display_override.enabled || reason == null) {
+          return;
+        }
+        if (reason === "skipped") {
+          state.badge_display_override.label = state.badge_display_restore_label;
+        }
+        state.badge_display_restore_label = null;
+      }),
+    );
+  }
 
   function manual_prediction_clear_if_stale(stop_ts: string) {
     setStore(
@@ -320,7 +394,7 @@ export function ws_store_new() {
     }
     suggestion_timer = setTimeout(() => {
       suggestion_timer = null;
-      setStore("active_suggestion", null);
+      suggestion_badge_override_apply();
     }, ttl_ms);
   }
 
@@ -357,9 +431,11 @@ export function ws_store_new() {
       }
       if (snap.prediction) {
         setStore("latest_prediction", reconcile(snap.prediction as Prediction | null));
+        badge_display_override_clear_if_superseded();
       }
       if (snap.live_status) {
         setStore("live_status", snap.live_status as LiveStatusEvent);
+        badge_display_override_clear_if_superseded();
       }
       if (snap.labels_changed) {
         setStore("label_change_count", (n) => n + 1);
@@ -409,6 +485,7 @@ export function ws_store_new() {
             break;
           case "prediction":
             setStore("latest_prediction", reconcile(data as Prediction | null));
+            badge_display_override_clear_if_superseded();
             ws_stats_bump(now, (s) => {
               s.prediction_count++;
             });
@@ -421,13 +498,14 @@ export function ws_store_new() {
             break;
           case "suggest_label":
             setStore("active_suggestion", data);
+            suggestion_badge_override_apply(undefined, data.suggested);
             suggestion_timer_start();
             ws_stats_bump(now, (s) => {
               s.suggestion_count++;
             });
             break;
           case "suggestion_cleared":
-            setStore("active_suggestion", null);
+            suggestion_badge_override_apply(data.reason);
             suggestion_timer_clear();
             ws_stats_bump(now);
             break;
@@ -459,6 +537,7 @@ export function ws_store_new() {
                 provenance: "manual",
               } as Prediction | null),
             );
+            badge_display_override_clear_if_superseded();
             ws_stats_bump(now, (s) => {
               s.prediction_count++;
             });
@@ -468,6 +547,7 @@ export function ws_store_new() {
             break;
           case "live_status":
             setStore("live_status", data as LiveStatusEvent);
+            badge_display_override_clear_if_superseded();
             ws_stats_bump(now);
             break;
           case "train_progress":
@@ -570,8 +650,8 @@ export function ws_store_new() {
     }
   }
 
-  function suggestion_dismiss() {
-    setStore("active_suggestion", null);
+  function suggestion_dismiss(reason?: SuggestionClearReason) {
+    suggestion_badge_override_apply(reason);
     suggestion_timer_clear();
   }
 
@@ -599,6 +679,7 @@ export function ws_store_new() {
     latest_prediction: () => store.latest_prediction,
     latest_tray_state: () => store.latest_tray_state,
     active_suggestion: () => store.active_suggestion,
+    badge_display_override: () => store.badge_display_override,
     latest_prompt: () => store.latest_prompt,
     live_status: () => store.live_status,
     label_grid_requested: () => store.label_grid_requested,

@@ -232,6 +232,7 @@ const App: Component = () => {
                   latest_status={ws.latest_status}
                   latest_prediction={ws.latest_prediction}
                   live_status={ws.live_status}
+                  badge_display_override={ws.badge_display_override}
                   latest_tray_state={ws.latest_tray_state}
                   active_suggestion={ws.active_suggestion}
                   label_pinned={label_pinned}

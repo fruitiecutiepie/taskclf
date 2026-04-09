@@ -20,7 +20,7 @@ import { label_overwrite_pending_upd_get } from "../lib/label_overwrite_pending_
 import { LABEL_COLORS } from "../lib/labelColors";
 import { label_entry_is_open_ended } from "../lib/labelTimeline";
 import { overwrite_pending_from_api_error } from "../lib/overwrite_pending_from_api_error";
-import type { LabelSuggestion, Prediction } from "../lib/ws";
+import type { LabelSuggestion, Prediction, SuggestionClearReason } from "../lib/ws";
 import { ActivitySummary } from "./ActivitySummary";
 import { ErrorBanner } from "./ErrorBanner";
 import { LabelConfidence } from "./LabelConfidence";
@@ -48,7 +48,7 @@ type LabelRecorderProps = {
   prediction?: Accessor<Prediction | null>;
   suggestion?: Accessor<LabelSuggestion | null>;
   label_change_count?: Accessor<number>;
-  on_suggestion_dismiss?: () => void;
+  on_suggestion_dismiss?: (reason?: SuggestionClearReason) => void;
 };
 
 export const LabelRecorder: Component<LabelRecorderProps> = (props) => {

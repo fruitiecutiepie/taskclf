@@ -42,6 +42,10 @@ describe("PredictionBadge", () => {
       dev_mode: false,
       paused: false,
     }),
+    badge_display_override: () => ({
+      enabled: false,
+      label: null,
+    }),
     active_suggestion: () => null,
   };
 
@@ -84,5 +88,61 @@ describe("PredictionBadge", () => {
     ));
 
     expect(screen.getByRole("button", { name: "Build" })).toBeInTheDocument();
+  });
+
+  it("shows the assumed suggestion ahead of explicit badge signals", () => {
+    render(() => (
+      <PredictionBadge
+        {...base_props}
+        latest_prediction={() => ({
+          type: "prediction",
+          label: "Build",
+          mapped_label: "Build",
+          confidence: 1,
+          ts: "2026-04-05T10:01:00Z",
+          provenance: "manual",
+        })}
+        live_status={() => ({
+          type: "live_status",
+          label: "Write",
+          text: "Now: Write",
+          ts: "2026-04-05T10:00:00Z",
+        })}
+        badge_display_override={() => ({
+          enabled: true,
+          label: "Review",
+        })}
+      />
+    ));
+
+    expect(screen.getByRole("button", { name: "Review" })).toBeInTheDocument();
+  });
+
+  it("shows the restored pre-suggestion label when the override replays it", () => {
+    render(() => (
+      <PredictionBadge
+        {...base_props}
+        latest_prediction={() => ({
+          type: "prediction",
+          label: "Build",
+          mapped_label: "Build",
+          confidence: 1,
+          ts: "2026-04-05T10:01:00Z",
+          provenance: "manual",
+        })}
+        live_status={() => ({
+          type: "live_status",
+          label: "Review",
+          text: "Now: Review",
+          ts: "2026-04-05T10:02:00Z",
+        })}
+        badge_display_override={() => ({
+          enabled: true,
+          label: "Write",
+        })}
+      />
+    ));
+
+    expect(screen.getByRole("button", { name: "Write" })).toBeInTheDocument();
   });
 });

@@ -22,6 +22,10 @@ export function ws_store_stub() {
       last_app_counts: {},
     }),
     latest_prediction: () => null,
+    badge_display_override: () => ({
+      enabled: false,
+      label: null,
+    }),
     latest_tray_state: () => ({
       type: "tray_state" as const,
       model_loaded: false,
