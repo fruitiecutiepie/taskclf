@@ -8,7 +8,13 @@ import {
   on,
   Show,
 } from "solid-js";
-import { core_labels_list, label_create, label_update, labels_list } from "../lib/api";
+import {
+  core_labels_list,
+  current_label_get,
+  label_create,
+  label_update,
+  labels_list,
+} from "../lib/api";
 import { iso_date_parse } from "../lib/date";
 import { label_overwrite_pending_upd_get } from "../lib/label_overwrite_pending_upd_get";
 import { LABEL_COLORS } from "../lib/labelColors";
@@ -48,17 +54,23 @@ type LabelRecorderProps = {
 export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
   const [labels] = createResource(core_labels_list);
   const [label_version, set_label_version] = createSignal(0);
-  const [last_label] = createResource(
-    () => [label_version(), props.label_change_count?.() ?? 0] as const,
-    async () => {
-      try {
-        const rows = await labels_list(1);
-        return rows.length ? rows[0] : null;
-      } catch {
-        return null;
-      }
-    },
-  );
+  const label_refresh_key = () =>
+    [label_version(), props.label_change_count?.() ?? 0] as const;
+  const [last_ended_label] = createResource(label_refresh_key, async () => {
+    try {
+      const rows = await labels_list(1);
+      return rows.length ? rows[0] : null;
+    } catch {
+      return null;
+    }
+  });
+  const [current_label_result] = createResource(label_refresh_key, async () => {
+    try {
+      return await current_label_get();
+    } catch {
+      return null;
+    }
+  });
   const [flash, set_flash] = createSignal<string | null>(null);
   const [error, set_error] = createSignal<string | null>(null);
   const [overwrite_pending, set_overwrite_pending] =
@@ -71,13 +83,15 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
   const [stop_current_busy, set_stop_current_busy] = createSignal(false);
 
   const current_label = () => {
-    const row = last_label();
+    const row = current_label_result();
     return row && label_entry_is_open_ended(row) ? row : null;
   };
 
+  const footer_label = () => current_label() ?? last_ended_label() ?? null;
+
   createEffect(
     on(
-      last_label,
+      () => [last_ended_label(), current_label()] as const,
       () => {
         if (overwrite_pending()) {
           set_overwrite_pending(null);
@@ -104,7 +118,7 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
           {
             selected_minutes: selected_minutes(),
             fill_from_last: fill_from_last(),
-            last_label_end_ts: last_label()?.end_ts ?? null,
+            last_label_end_ts: last_ended_label()?.end_ts ?? null,
             extend_fwd: extend_fwd(),
           },
           new Date(),
@@ -130,7 +144,7 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
     let start: Date;
     let force_extend_fwd = false;
 
-    const last_end_ts = last_label()?.end_ts;
+    const last_end_ts = last_ended_label()?.end_ts;
     if (fill_from_last() && last_end_ts) {
       start = iso_date_parse(last_end_ts);
     } else if (mins === 0) {
@@ -269,7 +283,8 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
         set_selected_minutes={set_selected_minutes}
         fill_from_last={fill_from_last}
         set_fill_from_last={set_fill_from_last}
-        last_label={last_label}
+        has_current_label={() => current_label() != null}
+        last_label={last_ended_label}
       />
 
       <ActivitySummary minutes={selected_minutes} prediction={props.prediction} />
@@ -344,7 +359,7 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
         </For>
       </div>
 
-      <LabelLast last_label={last_label} />
+      <LabelLast last_label={footer_label} />
 
       <Show when={current_label()}>
         <div

@@ -331,6 +331,22 @@ def _utc_iso(ts: dt.datetime) -> str:
     return ts.astimezone(dt.timezone.utc).isoformat()
 
 
+def _label_span_is_open_ended(span: LabelSpan) -> bool:
+    return span.extend_forward and span.end_ts <= span.start_ts
+
+
+def _label_response_from_span(span: LabelSpan) -> LabelResponse:
+    return LabelResponse(
+        start_ts=_utc_iso(span.start_ts),
+        end_ts=_utc_iso(span.end_ts),
+        label=span.label,
+        provenance=span.provenance,
+        user_id=span.user_id,
+        confidence=span.confidence,
+        extend_forward=span.extend_forward,
+    )
+
+
 _ensure_utc = ts_utc_aware_get
 
 
@@ -520,18 +536,19 @@ def create_app(
 
         # Latest-ended first: matches tray gap-fill (max end_ts) and quick-label gap.
         spans.sort(key=lambda s: s.end_ts, reverse=True)
-        return [
-            LabelResponse(
-                start_ts=_utc_iso(s.start_ts),
-                end_ts=_utc_iso(s.end_ts),
-                label=s.label,
-                provenance=s.provenance,
-                user_id=s.user_id,
-                confidence=s.confidence,
-                extend_forward=s.extend_forward,
-            )
-            for s in spans[:limit]
-        ]
+        return [_label_response_from_span(s) for s in spans[:limit]]
+
+    @app.get("/api/labels/current")
+    async def api_op_labels_current_get() -> LabelResponse | None:
+        if not labels_path.exists():
+            return None
+
+        spans = read_label_spans(labels_path)
+        current = [span for span in spans if _label_span_is_open_ended(span)]
+        if not current:
+            return None
+
+        return _label_response_from_span(max(current, key=lambda span: span.start_ts))
 
     @app.post("/api/labels", status_code=201)
     async def api_op_labels_post(body: LabelCreateRequest) -> LabelResponse:
@@ -628,10 +645,8 @@ def create_app(
             )
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
-        was_open_ended = (
-            prior_span is not None
-            and prior_span.extend_forward
-            and prior_span.end_ts <= prior_span.start_ts
+        was_open_ended = prior_span is not None and _label_span_is_open_ended(
+            prior_span
         )
         is_closed = not span.extend_forward and span.end_ts > span.start_ts
         if was_open_ended and is_closed:
@@ -639,15 +654,7 @@ def create_app(
                 LabelStoppedEventResponse(ts=_utc_iso(span.end_ts)).model_dump()
             )
         await publish_labels_changed("updated")
-        return LabelResponse(
-            start_ts=_utc_iso(span.start_ts),
-            end_ts=_utc_iso(span.end_ts),
-            label=span.label,
-            provenance=span.provenance,
-            user_id=span.user_id,
-            confidence=span.confidence,
-            extend_forward=span.extend_forward,
-        )
+        return _label_response_from_span(span)
 
     @app.delete("/api/labels")
     async def api_op_labels_delete(body: LabelDeleteRequest) -> dict[str, str]:
@@ -1736,6 +1743,7 @@ def _create_dev_app_from_env() -> FastAPI:
     """
     import os
 
+    from taskclf.ui.copy import transition_suggestion_text
     from taskclf.ui.runtime import ActivityMonitor, _LabelSuggester
     from taskclf.ui.window import WindowAPI
 
@@ -1770,22 +1778,47 @@ def _create_dev_app_from_env() -> FastAPI:
         start: dt.datetime,
         end: dt.datetime,
     ) -> None:
+        suggested_label: str | None = None
+        confidence: float | None = None
         if suggester is not None:
             result = suggester.suggest(start, end)
             if result is not None:
-                label, confidence = result
-                bus.publish_threadsafe(
-                    {
-                        "type": "suggest_label",
-                        "reason": "app_switch",
-                        "old_label": prev,
-                        "suggested": label,
-                        "confidence": confidence,
-                        "block_start": start.isoformat(),
-                        "block_end": end.isoformat(),
-                    }
-                )
-                return
+                suggested_label, confidence = result
+
+        suggestion_text = None
+        if suggested_label is not None:
+            suggestion_text = transition_suggestion_text(
+                suggested_label,
+                start.astimezone().strftime("%H:%M"),
+                end.astimezone().strftime("%H:%M"),
+            )
+
+        bus.publish_threadsafe(
+            {
+                "type": "prompt_label",
+                "prev_app": prev,
+                "new_app": new,
+                "block_start": start.isoformat(),
+                "block_end": end.isoformat(),
+                "duration_min": max(1, int((end - start).total_seconds() / 60)),
+                "suggested_label": suggested_label,
+                "suggestion_text": suggestion_text,
+            }
+        )
+
+        if suggested_label is not None and confidence is not None:
+            bus.publish_threadsafe(
+                {
+                    "type": "suggest_label",
+                    "reason": "app_switch",
+                    "old_label": prev,
+                    "suggested": suggested_label,
+                    "confidence": confidence,
+                    "block_start": start.isoformat(),
+                    "block_end": end.isoformat(),
+                }
+            )
+            return
         bus.publish_threadsafe(
             {
                 "type": "prediction",

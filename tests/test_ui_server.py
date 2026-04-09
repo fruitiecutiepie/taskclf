@@ -6,18 +6,21 @@ WebSocket broadcast is tested via the EventBus integration.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 import datetime as dt
 import json
 import uuid
 from pathlib import Path
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from taskclf.core.types import LabelSpan
 from taskclf.labels.store import write_label_spans
+from taskclf.ui.copy import transition_suggestion_text
 from taskclf.ui.events import EventBus
-from taskclf.ui.server import create_app
+from taskclf.ui.server import _create_dev_app_from_env, create_app
 
 
 @pytest.fixture()
@@ -104,6 +107,49 @@ class TestLabelsCRUD:
         labels = resp.json()
         assert len(labels) == 3
         assert labels[0]["end_ts"] > labels[1]["end_ts"]
+
+    def test_current_label_empty_returns_null(self, client: TestClient) -> None:
+        resp = client.get("/api/labels/current")
+        assert resp.status_code == 200
+        assert resp.json() is None
+
+    def test_current_label_returns_open_ended_span_even_when_latest_end_differs(
+        self, client: TestClient
+    ) -> None:
+        create_current = client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:00:00",
+                "end_ts": "2026-02-27T09:00:00",
+                "label": "Build",
+                "extend_forward": True,
+            },
+        )
+        assert create_current.status_code == 201
+
+        create_overlap = client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T08:00:00",
+                "end_ts": "2026-02-27T10:00:00",
+                "label": "Write",
+                "allow_overlap": True,
+            },
+        )
+        assert create_overlap.status_code == 201
+
+        latest_ended = client.get("/api/labels", params={"limit": 1})
+        assert latest_ended.status_code == 200
+        assert latest_ended.json()[0]["label"] == "Write"
+
+        current = client.get("/api/labels/current")
+        assert current.status_code == 200
+        data = current.json()
+        assert data["start_ts"] == "2026-02-27T09:00:00+00:00"
+        assert data["end_ts"] == "2026-02-27T09:00:00+00:00"
+        assert data["label"] == "Build"
+        assert data["provenance"] == "manual"
+        assert data["extend_forward"] is True
 
 
 class TestQueue:
@@ -2452,3 +2498,84 @@ class TestModelBundleInspectAPI:
 
         missing = tc.get("/api/train/models/does_not_exist_run/inspect")
         assert missing.status_code == 404
+
+
+class TestDevServerTransitions:
+    def test_suggestion_transition_publishes_prompt_and_suggest_events(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        captured: list[dict[str, object]] = []
+        transition_cb: Callable[[str, str, dt.datetime, dt.datetime], None] | None = (
+            None
+        )
+
+        class FakeBus:
+            def publish_threadsafe(self, event: dict[str, object]) -> None:
+                captured.append(event)
+
+        class FakeMonitor:
+            def __init__(
+                self,
+                *,
+                on_transition: Callable[[str, str, dt.datetime, dt.datetime], None]
+                | None = None,
+                **_: object,
+            ) -> None:
+                nonlocal transition_cb
+                transition_cb = on_transition
+
+            def run(self) -> None:
+                return None
+
+            def stop(self) -> None:
+                return None
+
+        class FakeSuggester:
+            def __init__(self, _path: Path) -> None:
+                self._aw_host = ""
+                self._title_salt = ""
+
+            def suggest(
+                self,
+                _start: dt.datetime,
+                _end: dt.datetime,
+            ) -> tuple[str, float]:
+                return ("Build", 0.85)
+
+        monkeypatch.setenv("TASKCLF_UI_DATA_DIR", str(tmp_path))
+        monkeypatch.setenv("TASKCLF_MODEL_DIR", str(tmp_path / "model"))
+        monkeypatch.setattr("taskclf.ui.server.EventBus", FakeBus)
+        monkeypatch.setattr("taskclf.ui.runtime.ActivityMonitor", FakeMonitor)
+        monkeypatch.setattr("taskclf.ui.runtime._LabelSuggester", FakeSuggester)
+        monkeypatch.setattr("taskclf.ui.server.create_app", lambda **_: FastAPI())
+
+        _create_dev_app_from_env()
+
+        assert transition_cb is not None
+        start = dt.datetime(2026, 4, 5, 9, 0, tzinfo=dt.timezone.utc)
+        end = dt.datetime(2026, 4, 5, 9, 5, tzinfo=dt.timezone.utc)
+
+        transition_cb("Editor", "Browser", start, end)
+
+        assert [event["type"] for event in captured] == [
+            "prompt_label",
+            "suggest_label",
+        ]
+
+        prompt = captured[0]
+        assert prompt["suggested_label"] == "Build"
+        assert prompt["block_start"] == start.isoformat()
+        assert prompt["block_end"] == end.isoformat()
+        assert prompt["suggestion_text"] == transition_suggestion_text(
+            "Build",
+            start.astimezone().strftime("%H:%M"),
+            end.astimezone().strftime("%H:%M"),
+        )
+
+        suggest = captured[1]
+        assert suggest["reason"] == "app_switch"
+        assert suggest["old_label"] == "Editor"
+        assert suggest["suggested"] == "Build"
+        assert suggest["confidence"] == 0.85

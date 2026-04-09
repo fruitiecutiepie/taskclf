@@ -1,10 +1,17 @@
 import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { core_labels_list, label_create, label_update, labels_list } from "../lib/api";
+import {
+  core_labels_list,
+  current_label_get,
+  label_create,
+  label_update,
+  labels_list,
+} from "../lib/api";
 import { LabelRecorder } from "./LabelRecorder";
 
 vi.mock("../lib/api", () => ({
   core_labels_list: vi.fn(),
+  current_label_get: vi.fn(),
   labels_list: vi.fn(),
   label_create: vi.fn(),
   label_update: vi.fn(),
@@ -22,6 +29,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.useRealTimers();
   vi.mocked(core_labels_list).mockResolvedValue(["Build", "Write"]);
+  vi.mocked(current_label_get).mockResolvedValue(null);
 });
 
 describe("LabelRecorder", () => {
@@ -51,6 +59,17 @@ describe("LabelRecorder", () => {
           extend_forward: false,
         },
       ]);
+    vi.mocked(current_label_get)
+      .mockResolvedValueOnce({
+        start_ts: "2026-04-05T09:00:00Z",
+        end_ts: "2026-04-05T09:00:00Z",
+        label: "Build",
+        provenance: "manual",
+        user_id: null,
+        confidence: 1,
+        extend_forward: true,
+      })
+      .mockResolvedValueOnce(null);
     vi.mocked(label_update).mockResolvedValue({
       start_ts: "2026-04-05T09:00:00Z",
       end_ts: "2026-04-05T10:00:00.000Z",
@@ -95,6 +114,37 @@ describe("LabelRecorder", () => {
       ).toBeInTheDocument();
     });
     vi.useRealTimers();
+  });
+
+  it("keeps the stop action visible when the latest-ended label is completed", async () => {
+    vi.mocked(labels_list).mockResolvedValue([
+      {
+        start_ts: "2026-04-05T09:30:00Z",
+        end_ts: "2026-04-05T10:00:00Z",
+        label: "Write",
+        provenance: "manual",
+        user_id: null,
+        confidence: 1,
+        extend_forward: false,
+      },
+    ]);
+    vi.mocked(current_label_get).mockResolvedValue({
+      start_ts: "2026-04-05T09:00:00Z",
+      end_ts: "2026-04-05T09:00:00Z",
+      label: "Build",
+      provenance: "manual",
+      user_id: null,
+      confidence: 1,
+      extend_forward: true,
+    });
+
+    render(() => <LabelRecorder on_collapse={vi.fn()} />);
+
+    expect(await screen.findByText(/^Current:/)).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "Stop current label" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^gap / })).not.toBeInTheDocument();
   });
 
   it("does not show the stop action for completed labels", async () => {

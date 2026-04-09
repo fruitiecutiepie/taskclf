@@ -31,6 +31,7 @@ describe("LabelTimePicker", () => {
         set_selected_minutes={() => {}}
         fill_from_last={() => false}
         set_fill_from_last={() => {}}
+        has_current_label={() => false}
         last_label={last}
       />
     ));
@@ -44,13 +45,13 @@ describe("LabelTimePicker", () => {
     expect(screen.getByRole("button", { name: /^gap 2h/ })).toBeInTheDocument();
   });
 
-  it("hides gap for open-ended label", () => {
+  it("hides gap while a current label is active", () => {
     vi.setSystemTime(new Date("2026-04-05T10:00:00.000Z"));
     const [last] = createSignal({
-      start_ts: "2026-04-05T09:00:00.000Z",
+      start_ts: "2026-04-05T08:00:00.000Z",
       end_ts: "2026-04-05T09:00:00.000Z",
       label: "Build",
-      extend_forward: true,
+      extend_forward: false,
     });
 
     render(() => (
@@ -59,6 +60,7 @@ describe("LabelTimePicker", () => {
         set_selected_minutes={() => {}}
         fill_from_last={() => false}
         set_fill_from_last={() => {}}
+        has_current_label={() => true}
         last_label={last}
       />
     ));
@@ -82,6 +84,7 @@ describe("LabelTimePicker", () => {
         set_selected_minutes={() => {}}
         fill_from_last={() => false}
         set_fill_from_last={set_fill}
+        has_current_label={() => false}
         last_label={last}
       />
     ));

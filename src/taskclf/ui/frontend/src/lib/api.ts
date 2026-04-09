@@ -48,6 +48,10 @@ export async function labels_list(limit = 50): Promise<LabelResponse[]> {
   return api_json(`${BASE}/labels?limit=${limit}`);
 }
 
+export async function current_label_get(): Promise<LabelResponse | null> {
+  return api_json(`${BASE}/labels/current`);
+}
+
 export async function labels_list_by_date(date: string): Promise<LabelResponse[]> {
   const day_start = new Date(`${date}T00:00:00`);
   const day_end = new Date(`${date}T23:59:59.999`);

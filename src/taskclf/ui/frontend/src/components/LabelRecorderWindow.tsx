@@ -1,5 +1,6 @@
 import type { Component } from "solid-js";
 import { host } from "../lib/host";
+import { transition_prompt_notifications_bind } from "../lib/transitionPromptNotifications";
 import { ws_store_new } from "../lib/ws";
 import { HostWindowDragStrip } from "./HostWindowDragStrip";
 import { LabelRecorder } from "./LabelRecorder";
@@ -11,6 +12,10 @@ export const LabelRecorderWindow: Component = () => {
   function window_collapse() {
     host.invoke({ cmd: "toggleLabelGrid" });
   }
+
+  transition_prompt_notifications_bind(ws.latest_prompt, () => {
+    host.invoke({ cmd: "showLabelGrid" });
+  });
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: hover-only container for native window show/hide
