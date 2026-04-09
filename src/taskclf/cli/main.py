@@ -3875,6 +3875,7 @@ def ui_serve_cmd(
             title_salt=title_salt,
             event_bus=bus,
             window_api=win_api,
+            get_activity_provider_status=lambda: monitor.activity_provider_status,
         )
 
         uvicorn_config = uvicorn.Config(

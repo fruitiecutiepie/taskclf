@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 
 from taskclf.core.types import LabelSpan
 from taskclf.labels.store import write_label_spans
+from taskclf.ui.activity_provider import ActivitySummaryAppEntry
 from taskclf.ui.copy import transition_suggestion_text
 from taskclf.ui.events import EventBus
 from taskclf.ui.server import _create_dev_app_from_env, create_app
@@ -178,6 +179,134 @@ class TestAWLive:
         )
         assert resp.status_code == 200
         assert resp.json() == []
+
+
+class TestActivitySummary:
+    def test_provider_unavailable_returns_setup_required(
+        self,
+        data_dir: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            "taskclf.ui.server.ActivityWatchProvider.probe_status",
+            lambda self, timeout_seconds=None: self.setup_required_status(),
+        )
+        client = TestClient(create_app(data_dir=data_dir, event_bus=EventBus()))
+
+        resp = client.get(
+            "/api/activity/summary",
+            params={"start": "2026-02-27T09:00:00", "end": "2026-02-27T10:00:00"},
+        )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["range_state"] == "provider_unavailable"
+        assert data["activity_provider"]["state"] == "setup_required"
+        assert "Manual labeling still works" in data["message"]
+
+    def test_no_data_returns_no_data_range_state(
+        self,
+        data_dir: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            "taskclf.ui.server.ActivityWatchProvider.probe_status",
+            lambda self, timeout_seconds=None: self.ready_status(
+                source_id="aw-window-test"
+            ),
+        )
+        monkeypatch.setattr(
+            "taskclf.ui.server.ActivityWatchProvider.recent_app_summary",
+            lambda self, start, end, source_id=None, timeout_seconds=None: (
+                self.ready_status(source_id=source_id or "aw-window-test"),
+                [],
+            ),
+        )
+        client = TestClient(create_app(data_dir=data_dir, event_bus=EventBus()))
+
+        resp = client.get(
+            "/api/activity/summary",
+            params={"start": "2026-02-27T09:00:00", "end": "2026-02-27T10:00:00"},
+        )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["range_state"] == "no_data"
+        assert data["message"] == "No activity data for this window"
+        assert data["activity_provider"]["state"] == "ready"
+
+    def test_recent_apps_make_summary_available(
+        self,
+        data_dir: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            "taskclf.ui.server.ActivityWatchProvider.probe_status",
+            lambda self, timeout_seconds=None: self.ready_status(
+                source_id="aw-window-test"
+            ),
+        )
+        monkeypatch.setattr(
+            "taskclf.ui.server.ActivityWatchProvider.recent_app_summary",
+            lambda self, start, end, source_id=None, timeout_seconds=None: (
+                self.ready_status(
+                    source_id=source_id or "aw-window-test",
+                    last_sample_count=3,
+                    last_sample_breakdown={
+                        "com.apple.Terminal": 2,
+                        "com.apple.Safari": 1,
+                    },
+                ),
+                [
+                    ActivitySummaryAppEntry(app="com.apple.Terminal", events=2),
+                    ActivitySummaryAppEntry(app="com.apple.Safari", events=1),
+                ],
+            ),
+        )
+        client = TestClient(create_app(data_dir=data_dir, event_bus=EventBus()))
+
+        resp = client.get(
+            "/api/activity/summary",
+            params={"start": "2026-02-27T09:00:00", "end": "2026-02-27T10:00:00"},
+        )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["range_state"] == "ok"
+        assert data["message"] is None
+        assert data["recent_apps"][0] == {"app": "com.apple.Terminal", "events": 2}
+
+    def test_manual_labels_still_work_when_provider_unavailable(
+        self,
+        data_dir: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            "taskclf.ui.server.ActivityWatchProvider.probe_status",
+            lambda self, timeout_seconds=None: self.setup_required_status(),
+        )
+        client = TestClient(create_app(data_dir=data_dir, event_bus=EventBus()))
+
+        resp = client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:00:00",
+                "end_ts": "2026-02-27T10:00:00",
+                "label": "Build",
+            },
+        )
+        assert resp.status_code == 201
+
+        summary = client.get(
+            "/api/activity/summary",
+            params={"start": "2026-02-27T09:00:00", "end": "2026-02-27T10:00:00"},
+        )
+        assert summary.status_code == 200
+        assert summary.json()["range_state"] == "provider_unavailable"
+
+        labels = client.get("/api/labels")
+        assert labels.status_code == 200
+        assert len(labels.json()) == 1
 
 
 class TestWindowControl:

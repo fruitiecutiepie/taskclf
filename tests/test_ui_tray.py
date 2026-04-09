@@ -662,6 +662,9 @@ class TestPublishStatus:
         assert event["poll_seconds"] == 30
         assert event["poll_count"] == 1
         assert isinstance(event["uptime_s"], int)
+        assert event["activity_provider"]["provider_id"] == "activitywatch"
+        assert event["activity_provider"]["provider_name"] == "ActivityWatch"
+        assert event["activity_provider"]["state"] == "checking"
         assert event["aw_connected"] is False
         assert event["aw_host"] is not None
         assert "last_event_count" in event

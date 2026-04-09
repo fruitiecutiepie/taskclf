@@ -145,16 +145,23 @@ export const StatusModel: Component<{
           tooltip="Why bundle inspection is unavailable — e.g. no model path from tray"
         />
       </Show>
-      <Show when={loaded_bundle_inspect}>
+      <Show when={loaded_bundle_inspect()}>
         {(i) => {
-          const row = i as Extract<CurrentModelBundleInspectResponse, { loaded: true }>;
+          const row = i();
           const meta = row.metadata as Record<string, string>;
           const top_pairs = row.bundle_saved_validation.top_confusion_pairs.slice(0, 3);
           const top_str =
             top_pairs.length === 0
               ? "—"
               : top_pairs
-                  .map((p) => `${p.true_label}→${p.pred_label} (${p.count})`)
+                  .map(
+                    (
+                      p: Extract<
+                        CurrentModelBundleInspectResponse,
+                        { loaded: true }
+                      >["bundle_saved_validation"]["top_confusion_pairs"][number],
+                    ) => `${p.true_label}→${p.pred_label} (${p.count})`,
+                  )
                   .join(", ");
           return (
             <>

@@ -5,7 +5,6 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import threading
-from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
@@ -17,6 +16,12 @@ from taskclf.core.defaults import (
     DEFAULT_POLL_SECONDS,
     DEFAULT_TITLE_SALT,
     DEFAULT_TRANSITION_MINUTES,
+)
+from taskclf.ui.activity_provider import (
+    ActivityProviderStatus,
+    ActivityProviderUnavailableError,
+    ActivityWatchProvider,
+    summarize_events_by_app,
 )
 from taskclf.ui.events import EventBus
 
@@ -46,7 +51,7 @@ _LOCKSCREEN_APP_IDS: frozenset[str] = frozenset(
 
 @dataclass(kw_only=True, eq=False)
 class ActivityMonitor:
-    """Poll ActivityWatch and emit transitions when the dominant app changes."""
+    """Poll the configured activity source and emit app transitions."""
 
     aw_host: str = DEFAULT_AW_HOST
     title_salt: str = DEFAULT_TITLE_SALT
@@ -89,6 +94,8 @@ class ActivityMonitor:
     _started_at: dt.datetime | None = field(init=False, default=None)
     _consecutive_failures: int = field(init=False, default=0)
     _backoff_seconds: int = field(init=False, default=0)
+    _provider: ActivityWatchProvider = field(init=False)
+    _provider_status: ActivityProviderStatus = field(init=False)
 
     def __post_init__(self) -> None:
         self._aw_host = self.aw_host
@@ -101,76 +108,78 @@ class ActivityMonitor:
         self._on_poll = self.on_poll
         self._on_initial_app = self.on_initial_app
         self._event_bus = self.event_bus
+        self._provider = ActivityWatchProvider(
+            endpoint=self._aw_host,
+            title_salt=self._title_salt,
+            timeout_seconds=self._aw_timeout_seconds,
+        )
+        self._provider_status = self._provider.initial_status()
 
-    def _discover_bucket(self) -> str:
-        from taskclf.adapters.activitywatch.client import find_window_bucket_id
+    def _discover_bucket(self, *, timeout_seconds: float | int | None = None) -> str:
+        return self._provider.discover_source_id(timeout_seconds=timeout_seconds)
 
-        return find_window_bucket_id(self._aw_host, timeout=self._aw_timeout_seconds)
-
-    def _after_fetch_failure(self, exc: Exception) -> None:
-        """Update retry state after a failed ActivityWatch request."""
-        from taskclf.adapters.activitywatch.client import AWConnectionError
-
+    def _after_fetch_failure(self, exc: ActivityProviderUnavailableError) -> None:
+        """Update retry state after a failed activity-source request."""
         self._consecutive_failures += 1
-        if isinstance(exc, AWConnectionError):
+        if exc.retryable:
             self._backoff_seconds = min(
                 self._poll_seconds * (2**self._consecutive_failures),
                 _MAX_BACKOFF_SECONDS,
             )
         else:
             self._backoff_seconds = 0
+        self._provider_status = self._provider.setup_required_status(
+            source_id=self._bucket_id,
+            last_sample_count=self._last_event_count,
+            last_sample_breakdown=self._last_app_counts,
+        )
 
         if self._consecutive_failures == _WARN_AFTER_FAILURES:
             logger.warning(
-                "ActivityWatch unreachable (%d consecutive failures): %s",
+                "Activity source unreachable (%d consecutive failures): %s",
                 self._consecutive_failures,
                 exc,
             )
-            self._publish_status(self._current_app or "unknown", state="aw_unreachable")
         elif self._consecutive_failures > _WARN_AFTER_FAILURES:
             logger.debug(
-                "ActivityWatch still unreachable (%d failures)",
+                "Activity source still unreachable (%d failures)",
                 self._consecutive_failures,
             )
 
     def _after_fetch_success(self) -> None:
-        """Reset retry state after a successful ActivityWatch request."""
+        """Reset retry state after a successful activity-source request."""
         if self._consecutive_failures >= _WARN_AFTER_FAILURES:
             logger.info(
-                "ActivityWatch connection restored after %d failures",
+                "Activity source connection restored after %d failures",
                 self._consecutive_failures,
             )
         self._consecutive_failures = 0
         self._backoff_seconds = 0
+        self._provider_status = self._provider.ready_status(
+            source_id=self._bucket_id,
+            last_sample_count=self._last_event_count,
+            last_sample_breakdown=self._last_app_counts,
+        )
 
     def _poll_dominant_app(self) -> str | None:
-        """Fetch recent ActivityWatch events and return the most common app id."""
-        from taskclf.adapters.activitywatch.client import (
-            AWConnectionError,
-            AWNotFoundError,
-            AWTimeoutError,
-            fetch_aw_events,
-        )
+        """Fetch recent activity-source events and return the most common app id."""
 
         if self._bucket_id is None:
             try:
-                self._bucket_id = self._discover_bucket()
+                startup_probe_timeout = (
+                    min(2, self._aw_timeout_seconds)
+                    if self._poll_count == 0
+                    else self._aw_timeout_seconds
+                )
+                self._bucket_id = self._discover_bucket(
+                    timeout_seconds=startup_probe_timeout
+                )
                 if self._aw_warned:
                     print(f"Connected to ActivityWatch at {self._aw_host}")
                     self._aw_warned = False
                 self._after_fetch_success()
-            except (AWConnectionError, AWTimeoutError) as exc:
+            except ActivityProviderUnavailableError as exc:
                 self._after_fetch_failure(exc)
-                if not self._aw_warned:
-                    print(
-                        f"Waiting for ActivityWatch at {self._aw_host} "
-                        f"(retrying every {self._poll_seconds}s)..."
-                    )
-                    self._aw_warned = True
-                self._last_event_count = 0
-                self._last_app_counts = {}
-                return None
-            except Exception:
                 if not self._aw_warned:
                     print(
                         f"Waiting for ActivityWatch at {self._aw_host} "
@@ -184,44 +193,37 @@ class ActivityMonitor:
         now = dt.datetime.now(dt.timezone.utc)
         start = now - dt.timedelta(seconds=self._poll_seconds)
         try:
-            events = fetch_aw_events(
-                self._aw_host,
+            events = self._provider.fetch_events(
                 self._bucket_id,
                 start,
                 now,
-                title_salt=self._title_salt,
-                timeout=self._aw_timeout_seconds,
+                timeout_seconds=self._aw_timeout_seconds,
             )
-        except AWNotFoundError as exc:
-            logger.warning("ActivityWatch bucket not found, will rediscover: %s", exc)
-            self._bucket_id = None
-            self._last_event_count = 0
-            self._last_app_counts = {}
-            return None
-        except (AWConnectionError, AWTimeoutError) as exc:
+        except ActivityProviderUnavailableError as exc:
+            if exc.source_lost:
+                logger.warning("Activity source unavailable, will rediscover: %s", exc)
+                self._bucket_id = None
             self._after_fetch_failure(exc)
-            logger.debug("Failed to fetch AW events: %s", exc)
             self._last_event_count = 0
             self._last_app_counts = {}
             return None
         except Exception:
             self._consecutive_failures += 1
-            logger.debug("Failed to fetch AW events", exc_info=True)
+            logger.debug("Failed to fetch activity-source events", exc_info=True)
             self._last_event_count = 0
             self._last_app_counts = {}
             return None
-
-        self._after_fetch_success()
 
         if not events:
             self._last_event_count = 0
             self._last_app_counts = {}
+            self._after_fetch_success()
             return None
 
-        counts = Counter(ev.app_id for ev in events)
         self._last_event_count = len(events)
-        self._last_app_counts = dict(counts.most_common(5))
-        return counts.most_common(1)[0][0]
+        self._last_app_counts = summarize_events_by_app(events)
+        self._after_fetch_success()
+        return max(self._last_app_counts, key=self._last_app_counts.get)
 
     def check_transition(
         self,
@@ -334,10 +336,12 @@ class ActivityMonitor:
         dominant_app: str,
         *,
         state: str = "collecting",
+        count_as_poll: bool = True,
     ) -> None:
         now = dt.datetime.now(dt.timezone.utc)
         self._last_poll_ts = now
-        self._poll_count += 1
+        if count_as_poll:
+            self._poll_count += 1
 
         if self._event_bus is not None:
             uptime_s = (
@@ -360,6 +364,7 @@ class ActivityMonitor:
                     "poll_count": self._poll_count,
                     "last_poll_ts": now.isoformat(),
                     "uptime_s": uptime_s,
+                    "activity_provider": self._provider_status.to_payload(),
                     "aw_connected": self._bucket_id is not None,
                     "aw_bucket_id": self._bucket_id,
                     "aw_host": self._aw_host,
@@ -373,6 +378,11 @@ class ActivityMonitor:
         if self._event_bus is not None and not self._event_bus.wait_ready(timeout=30):
             logger.warning("EventBus loop not bound after 30s, starting anyway")
         self._started_at = dt.datetime.now(dt.timezone.utc)
+        self._publish_status(
+            self._current_app or "unknown",
+            state="idle",
+            count_as_poll=False,
+        )
         while not self._stop.is_set():
             if self._paused.is_set():
                 app = self._current_app or "unknown"
@@ -407,6 +417,11 @@ class ActivityMonitor:
     @property
     def current_app(self) -> str | None:
         return self._current_app
+
+    @property
+    def activity_provider_status(self) -> dict[str, object]:
+        """Return the latest cached activity-source status snapshot."""
+        return self._provider_status.to_payload()
 
 
 @dataclass(eq=False)

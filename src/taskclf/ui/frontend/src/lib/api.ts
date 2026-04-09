@@ -30,9 +30,31 @@ export type FeatureSummary = {
   session_count: number;
 };
 
+export type ActivityProviderStatus = {
+  provider_id: string;
+  provider_name: string;
+  state: "checking" | "ready" | "setup_required";
+  summary_available: boolean;
+  endpoint: string;
+  source_id: string | null;
+  last_sample_count: number;
+  last_sample_breakdown: Record<string, number>;
+  setup_title: string;
+  setup_message: string;
+  setup_steps: string[];
+  help_url: string;
+};
+
 export type AWLiveEntry = {
   app: string;
   events: number;
+};
+
+export type ActivitySummary = FeatureSummary & {
+  activity_provider: ActivityProviderStatus;
+  recent_apps: AWLiveEntry[];
+  range_state: "ok" | "no_data" | "provider_unavailable";
+  message: string | null;
 };
 
 async function api_json<T>(url: string, init?: RequestInit): Promise<T> {
@@ -104,6 +126,15 @@ export async function feature_summary_get(
 export async function aw_live_list(start: string, end: string): Promise<AWLiveEntry[]> {
   return api_json(
     `${BASE}/aw/live?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
+  );
+}
+
+export async function activity_summary_get(
+  start: string,
+  end: string,
+): Promise<ActivitySummary> {
+  return api_json(
+    `${BASE}/activity/summary?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
   );
 }
 

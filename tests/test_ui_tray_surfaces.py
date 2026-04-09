@@ -23,6 +23,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from taskclf.ui.copy import (
+    activity_source_setup_help_url,
+    activity_source_setup_message,
+    activity_source_setup_steps,
+    activity_source_setup_title,
     gap_fill_detail,
     gap_fill_prompt,
     live_status_text,
@@ -107,8 +111,16 @@ class TestCopyStrings:
     def test_gap_fill_detail(self) -> None:
         assert gap_fill_detail("9:00", "11:30") == "Review unlabeled: 9:00\u201311:30"
 
+    def test_activity_source_setup_copy(self) -> None:
+        assert activity_source_setup_title() == "Activity source unavailable"
+        assert "Manual labeling still works" in activity_source_setup_message()
+        assert activity_source_setup_steps("http://localhost:5600")[1] == (
+            "Confirm the local server is reachable at http://localhost:5600."
+        )
+        assert activity_source_setup_help_url() == "https://activitywatch.net/"
+
     def test_srf008_copy_module_is_sole_source(self) -> None:
-        """SRF-008: All four user-facing copy functions live in ui.copy."""
+        """SRF-008: User-facing copy functions live in ui.copy."""
         import taskclf.ui.copy as copy_mod
 
         public = [
@@ -117,6 +129,10 @@ class TestCopyStrings:
             if not name.startswith("_")
         ]
         assert set(public) == {
+            "activity_source_setup_help_url",
+            "activity_source_setup_message",
+            "activity_source_setup_steps",
+            "activity_source_setup_title",
             "transition_suggestion_text",
             "live_status_text",
             "gap_fill_prompt",

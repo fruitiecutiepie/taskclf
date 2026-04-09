@@ -1752,6 +1752,7 @@ class TrayLabeler:
             is_paused=lambda: self._monitor.is_paused,
             tray_actions=tray_actions,
             get_tray_state=get_tray_state,
+            get_activity_provider_status=lambda: self._monitor.activity_provider_status,
         )
 
         uvicorn_config = uvicorn.Config(

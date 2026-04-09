@@ -664,7 +664,7 @@ export const TrainingPanel: Component<{
                     fallback={
                       <Show when={bundle_inspect_by_id()[m.model_id]} keyed>
                         {(entry) => {
-                          const row = entry();
+                          const row = entry;
                           if ("error" in row) {
                             return (
                               <StatusRow
@@ -684,7 +684,9 @@ export const TrainingPanel: Component<{
                               ? "—"
                               : top_pairs
                                   .map(
-                                    (p) =>
+                                    (
+                                      p: ModelBundleInspectBody["bundle_saved_validation"]["top_confusion_pairs"][number],
+                                    ) =>
                                       `${p.true_label}→${p.pred_label} (${p.count})`,
                                   )
                                   .join(", ");

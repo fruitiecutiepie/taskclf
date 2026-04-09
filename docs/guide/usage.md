@@ -236,6 +236,12 @@ This launches a local web server at `http://127.0.0.1:8741` with a
 SolidJS frontend for labeling, queue management, and live prediction
 streaming.
 
+If ActivityWatch is not installed or not running when the UI starts, the
+System panel and activity-summary surfaces show setup guidance instead of
+blocking the rest of the app. Manual labeling, history edits, and suggestion
+accept/skip actions still work; only activity summaries and automatic
+activity-derived context are unavailable until the activity source is set up.
+
 The **State** panel (System tab) shows bundle-saved validation metrics
 for the loaded model when the tray provides `model_dir`; the **Training**
 tab lists bundles and can expand **Bundle metrics** per run. Both use

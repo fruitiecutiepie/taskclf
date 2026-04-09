@@ -1,5 +1,6 @@
 import { type Accessor, type Component, createMemo, For, Show } from "solid-js";
 import type { StatusEvent } from "../../lib/ws";
+import { ActivitySourceSetupCallout } from "../ActivitySourceSetupCallout";
 import { StatusRow } from "../ui/StatusRow";
 import { StatusSection } from "../ui/StatusSection";
 
@@ -7,50 +8,70 @@ export const StatusActivityWatch: Component<{
   status: Accessor<StatusEvent>;
 }> = (props) => {
   const s = () => props.status();
+  const provider = () => s().activity_provider;
 
-  const summary = createMemo(() => (s().aw_connected ? "connected" : "disconnected"));
-  const summary_color = createMemo(() => (s().aw_connected ? "#22c55e" : "#ef4444"));
+  const summary = createMemo(() => provider().state.replace("_", " "));
+  const summary_color = createMemo(() => {
+    if (provider().state === "ready") {
+      return "#22c55e";
+    }
+    if (provider().state === "setup_required") {
+      return "#f59e0b";
+    }
+    return "#a3a3a3";
+  });
 
   const app_counts = createMemo(() => {
-    const v = s();
-    if (!v.last_app_counts) {
+    const breakdown = provider().last_sample_breakdown;
+    if (!breakdown) {
       return [];
     }
-    return Object.entries(v.last_app_counts).sort(([, a], [, b]) => b - a);
+    return Object.entries(breakdown).sort(([, a], [, b]) => b - a);
   });
 
   return (
     <StatusSection
-      title="ActivityWatch"
+      title="Activity Source"
       summary={summary()}
       summary_color={summary_color()}
+      default_open={provider().state !== "ready"}
     >
       <StatusRow
-        label="connection"
-        value={s().aw_connected ? "connected" : "disconnected"}
-        color={s().aw_connected ? "#22c55e" : "#ef4444"}
-        tooltip="Whether ActivityWatch is reachable"
+        label="provider"
+        value={provider().provider_name}
+        tooltip="Configured activity source backing live monitoring"
       />
       <StatusRow
-        label="host"
-        value={s().aw_host || "—"}
+        label="state"
+        value={provider().state}
+        color={summary_color()}
+        tooltip="Whether the configured activity source is ready for live summaries"
+      />
+      <StatusRow
+        label="endpoint"
+        value={provider().endpoint || "—"}
         dim
         mono
-        tooltip="ActivityWatch server hostname"
+        tooltip="Configured endpoint for the current activity source"
       />
       <StatusRow
-        label="bucket_id"
-        value={s().aw_bucket_id ?? "—"}
+        label="source_id"
+        value={provider().source_id ?? "—"}
         dim
         mono
-        tooltip="The ActivityWatch bucket being monitored for events"
+        tooltip="Resolved source identifier used for live monitoring"
       />
       <StatusRow
-        label="last_events"
-        value={String(s().last_event_count)}
+        label="last_sample_count"
+        value={String(provider().last_sample_count)}
         dim
-        tooltip="Number of events returned from the last ActivityWatch poll"
+        tooltip="Number of source events returned from the last successful sample"
       />
+      <Show when={provider().state === "setup_required"}>
+        <div style={{ "margin-top": "6px" }}>
+          <ActivitySourceSetupCallout provider={provider()} compact />
+        </div>
+      </Show>
       <Show when={app_counts().length > 0}>
         <div
           style={{
@@ -65,7 +86,7 @@ export const StatusActivityWatch: Component<{
               "text-transform": "uppercase",
             }}
           >
-            app distribution (last poll)
+            app distribution (last sample)
           </span>
           <For each={app_counts()}>
             {([app, count]) => (

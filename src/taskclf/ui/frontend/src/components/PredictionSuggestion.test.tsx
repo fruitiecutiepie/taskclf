@@ -1,22 +1,59 @@
 import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { aw_live_list, feature_summary_get, notification_accept } from "../lib/api";
+import type { ActivityProviderStatus, ActivitySummary as ActivitySummaryData } from "../lib/api";
+import { activity_summary_get, notification_accept } from "../lib/api";
 import { time_format } from "../lib/format";
 import type { LabelSuggestion } from "../lib/ws";
 import { PredictionSuggestion } from "./PredictionSuggestion";
 
-vi.mock("../lib/api", () => ({
-  notification_accept: vi.fn(),
-  notification_skip: vi.fn(),
-  aw_live_list: vi.fn().mockResolvedValue([]),
-  feature_summary_get: vi.fn().mockResolvedValue({
+function activity_provider_make(
+  overrides: Partial<ActivityProviderStatus> = {},
+): ActivityProviderStatus {
+  return {
+    provider_id: "activitywatch",
+    provider_name: "ActivityWatch",
+    state: "ready",
+    summary_available: true,
+    endpoint: "http://localhost:5600",
+    source_id: "aw-window-test",
+    last_sample_count: 0,
+    last_sample_breakdown: {},
+    setup_title: "Activity source unavailable",
+    setup_message:
+      "Manual labeling still works, but activity summaries and automatic activity tracking are unavailable until this source is set up.",
+    setup_steps: [
+      "Install and start ActivityWatch.",
+      "Confirm the local server is reachable at http://localhost:5600.",
+      "If you use a custom host, update aw_host in config.toml and restart taskclf.",
+    ],
+    help_url: "https://activitywatch.net/",
+    ...overrides,
+  };
+}
+
+function activity_summary_make(
+  overrides: Partial<ActivitySummaryData> = {},
+): ActivitySummaryData {
+  const { activity_provider, ...rest } = overrides;
+  return {
+    activity_provider: activity_provider_make(activity_provider),
+    recent_apps: [],
     top_apps: [],
     mean_keys_per_min: null,
     mean_clicks_per_min: null,
     mean_scroll_per_min: null,
     total_buckets: 0,
     session_count: 0,
-  }),
+    range_state: "no_data",
+    message: "No activity data for this window",
+    ...rest,
+  };
+}
+
+vi.mock("../lib/api", () => ({
+  notification_accept: vi.fn(),
+  notification_skip: vi.fn(),
+  activity_summary_get: vi.fn().mockResolvedValue(activity_summary_make()),
 }));
 
 vi.mock("../lib/log", () => ({
@@ -90,18 +127,43 @@ describe("PredictionSuggestion", () => {
     render(() => <PredictionSuggestion suggestion={() => suggestion} />);
 
     await waitFor(() => {
-      expect(vi.mocked(feature_summary_get)).toHaveBeenCalledWith(
+      expect(vi.mocked(activity_summary_get)).toHaveBeenCalledWith(
         suggestion.block_start,
         suggestion.block_end,
       );
     });
-    expect(vi.mocked(aw_live_list)).toHaveBeenCalledWith(
-      suggestion.block_start,
-      suggestion.block_end,
-    );
     expect(
       await screen.findByText("No activity data for this window"),
     ).toBeInTheDocument();
+  });
+
+  it("shows provider setup guidance without blocking suggestion actions", async () => {
+    vi.mocked(activity_summary_get).mockResolvedValueOnce(
+      activity_summary_make({
+        activity_provider: activity_provider_make({
+          state: "setup_required",
+          summary_available: false,
+          source_id: null,
+        }),
+        range_state: "provider_unavailable",
+        message:
+          "Manual labeling still works, but activity summaries and automatic activity tracking are unavailable until this source is set up.",
+      }),
+    );
+    const suggestion = suggestion_make();
+
+    render(() => <PredictionSuggestion suggestion={() => suggestion} />);
+
+    expect(await screen.findByText("Activity source unavailable")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Use suggestion" }));
+
+    await waitFor(() => {
+      expect(vi.mocked(notification_accept)).toHaveBeenCalledWith({
+        block_start: suggestion.block_start,
+        block_end: suggestion.block_end,
+        label: suggestion.suggested,
+      });
+    });
   });
 
   it("includes dates when the suggestion spans local midnight", () => {

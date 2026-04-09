@@ -13,7 +13,6 @@ import logging
 import re
 import threading
 import uuid
-from collections import Counter
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -36,6 +35,7 @@ from pydantic import BaseModel, Field
 from taskclf.core.config import UserConfig
 from taskclf.core.defaults import (
     DEFAULT_AW_HOST,
+    DEFAULT_AW_TIMEOUT_SECONDS,
     DEFAULT_DATA_DIR,
     DEFAULT_MODELS_DIR,
     DEFAULT_NUM_BOOST_ROUND,
@@ -59,6 +59,10 @@ from taskclf.labels.store import (
     write_label_spans,
 )
 from taskclf.ui.events import EventBus
+from taskclf.ui.activity_provider import (
+    ActivityProviderUnavailableError,
+    ActivityWatchProvider,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -151,6 +155,28 @@ class FeatureSummaryResponse(BaseModel):
 class AWLiveEntry(BaseModel):
     app: str
     events: int
+
+
+class ActivityProviderStatusResponse(BaseModel):
+    provider_id: str
+    provider_name: str
+    state: Literal["checking", "ready", "setup_required"]
+    summary_available: bool
+    endpoint: str
+    source_id: str | None = None
+    last_sample_count: int = 0
+    last_sample_breakdown: dict[str, int] = Field(default_factory=dict)
+    setup_title: str
+    setup_message: str
+    setup_steps: list[str]
+    help_url: str
+
+
+class ActivitySummaryResponse(FeatureSummaryResponse):
+    activity_provider: ActivityProviderStatusResponse
+    recent_apps: list[AWLiveEntry] = Field(default_factory=list)
+    range_state: Literal["ok", "no_data", "provider_unavailable"]
+    message: str | None = None
 
 
 class UserConfigResponse(BaseModel):
@@ -442,6 +468,7 @@ def create_app(
     is_paused: Callable[[], bool] | None = None,
     tray_actions: dict[str, Callable[..., Any]] | None = None,
     get_tray_state: Callable[[], dict[str, Any]] | None = None,
+    get_activity_provider_status: Callable[[], dict[str, Any]] | None = None,
 ) -> FastAPI:
     """Build and return the FastAPI application.
 
@@ -467,6 +494,8 @@ def create_app(
         is_paused: Optional callable returning current paused state.
         tray_actions: Optional mapping of action names to callbacks for the tray menu.
         get_tray_state: Optional callable returning the full tray state dictionary.
+        get_activity_provider_status: Optional callable returning the latest
+            cached activity-source status snapshot from the runtime monitor.
     """
     bus = event_bus or EventBus()
     labels_path = data_dir / "labels_v1" / "labels.parquet"
@@ -474,6 +503,10 @@ def create_app(
     user_config = UserConfig(data_dir)
     effective_models_dir = models_dir or Path(DEFAULT_MODELS_DIR)
     train_job = _TrainJob()
+    activity_provider = ActivityWatchProvider(
+        endpoint=aw_host,
+        title_salt=title_salt,
+    )
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):  # type: ignore[no-untyped-def]
@@ -493,6 +526,85 @@ def create_app(
                 reason=reason,
                 ts=_utc_iso(dt.datetime.now(dt.timezone.utc)),
             ).model_dump()
+        )
+
+    def _empty_feature_summary() -> FeatureSummaryResponse:
+        return FeatureSummaryResponse(
+            top_apps=[],
+            mean_keys_per_min=None,
+            mean_clicks_per_min=None,
+            mean_scroll_per_min=None,
+            total_buckets=0,
+            session_count=0,
+        )
+
+    def _feature_summary_for_range(
+        start_ts: dt.datetime,
+        end_ts: dt.datetime,
+    ) -> FeatureSummaryResponse:
+        import pandas as pd
+
+        from taskclf.core.store import read_parquet
+
+        empty_resp = _empty_feature_summary()
+        frames: list[pd.DataFrame] = []
+        dates_missing_parquet: list[dt.date] = []
+        current = start_ts.date()
+        while current <= end_ts.date():
+            fp = (
+                data_dir
+                / f"features_v1/date={current.isoformat()}"
+                / "features.parquet"
+            )
+            if fp.exists():
+                tmp = read_parquet(fp)
+                if not tmp.empty:
+                    frames.append(tmp)
+                else:
+                    dates_missing_parquet.append(current)
+            else:
+                dates_missing_parquet.append(current)
+            current += dt.timedelta(days=1)
+
+        if dates_missing_parquet:
+            try:
+                from taskclf.features.build import _fetch_aw_features_for_date
+
+                for date_value in dates_missing_parquet:
+                    rows = _fetch_aw_features_for_date(
+                        date_value,
+                        aw_host=aw_host,
+                        title_salt=title_salt,
+                    )
+                    if rows:
+                        frames.append(pd.DataFrame([row.model_dump() for row in rows]))
+            except Exception:
+                logger.debug("AW live feature fallback unavailable", exc_info=True)
+
+        if not frames:
+            return empty_resp
+
+        df = pd.concat(frames, ignore_index=True)
+        if "bucket_start_ts" not in df.columns:
+            return empty_resp
+
+        summary = generate_label_summary(df, start_ts, end_ts)
+        return FeatureSummaryResponse(**summary)
+
+    def _activity_provider_status_snapshot() -> ActivityProviderStatusResponse:
+        snapshot = (
+            get_activity_provider_status() if get_activity_provider_status else None
+        )
+        if snapshot is not None:
+            validated = ActivityProviderStatusResponse.model_validate(snapshot)
+            if validated.state != "checking":
+                return validated
+        probe_timeout = min(
+            2,
+            int(user_config.as_dict().get("aw_timeout_seconds", DEFAULT_AW_TIMEOUT_SECONDS)),
+        )
+        return ActivityProviderStatusResponse.model_validate(
+            activity_provider.probe_status(timeout_seconds=probe_timeout).to_payload()
         )
 
     # -- REST: labels ---------------------------------------------------------
@@ -827,65 +939,80 @@ def create_app(
         start: str = Query(..., description="ISO-8601 start"),
         end: str = Query(..., description="ISO-8601 end"),
     ) -> FeatureSummaryResponse:
-        import pandas as pd
+        start_ts = _ensure_utc(dt.datetime.fromisoformat(start))
+        end_ts = _ensure_utc(dt.datetime.fromisoformat(end))
+        return _feature_summary_for_range(start_ts, end_ts)
 
-        from taskclf.core.store import read_parquet
-
+    @app.get("/api/activity/summary")
+    async def activity_summary(
+        start: str = Query(..., description="ISO-8601 start"),
+        end: str = Query(..., description="ISO-8601 end"),
+    ) -> ActivitySummaryResponse:
         start_ts = _ensure_utc(dt.datetime.fromisoformat(start))
         end_ts = _ensure_utc(dt.datetime.fromisoformat(end))
 
-        empty_resp = FeatureSummaryResponse(
-            top_apps=[],
-            mean_keys_per_min=None,
-            mean_clicks_per_min=None,
-            mean_scroll_per_min=None,
-            total_buckets=0,
-            session_count=0,
-        )
+        provider_status = _activity_provider_status_snapshot()
+        empty_summary = _empty_feature_summary()
 
-        frames: list[pd.DataFrame] = []
-        dates_missing_parquet: list[dt.date] = []
-        current = start_ts.date()
-        while current <= end_ts.date():
-            fp = (
-                data_dir
-                / f"features_v1/date={current.isoformat()}"
-                / "features.parquet"
+        if provider_status.state == "setup_required":
+            return ActivitySummaryResponse(
+                **empty_summary.model_dump(),
+                activity_provider=provider_status,
+                recent_apps=[],
+                range_state="provider_unavailable",
+                message=provider_status.setup_message,
             )
-            if fp.exists():
-                tmp = read_parquet(fp)
-                if not tmp.empty:
-                    frames.append(tmp)
-                else:
-                    dates_missing_parquet.append(current)
-            else:
-                dates_missing_parquet.append(current)
-            current += dt.timedelta(days=1)
 
-        if dates_missing_parquet:
-            try:
-                from taskclf.features.build import _fetch_aw_features_for_date
+        try:
+            provider_snapshot, recent_apps = activity_provider.recent_app_summary(
+                start_ts,
+                end_ts,
+                source_id=provider_status.source_id,
+                timeout_seconds=min(
+                    2,
+                    int(
+                        user_config.as_dict().get(
+                            "aw_timeout_seconds",
+                            DEFAULT_AW_TIMEOUT_SECONDS,
+                        )
+                    ),
+                ),
+            )
+            provider_status = ActivityProviderStatusResponse.model_validate(
+                provider_snapshot.to_payload()
+            )
+        except ActivityProviderUnavailableError:
+            provider_status = ActivityProviderStatusResponse.model_validate(
+                activity_provider.setup_required_status(
+                    source_id=provider_status.source_id,
+                    last_sample_count=provider_status.last_sample_count,
+                    last_sample_breakdown=provider_status.last_sample_breakdown,
+                ).to_payload()
+            )
+            return ActivitySummaryResponse(
+                **empty_summary.model_dump(),
+                activity_provider=provider_status,
+                recent_apps=[],
+                range_state="provider_unavailable",
+                message=provider_status.setup_message,
+            )
 
-                for d in dates_missing_parquet:
-                    rows = _fetch_aw_features_for_date(
-                        d,
-                        aw_host=aw_host,
-                        title_salt=title_salt,
-                    )
-                    if rows:
-                        frames.append(pd.DataFrame([r.model_dump() for r in rows]))
-            except Exception:
-                logger.debug("AW live feature fallback unavailable", exc_info=True)
+        feature_payload = _feature_summary_for_range(start_ts, end_ts)
+        has_context = bool(recent_apps) or feature_payload.total_buckets > 0
+        range_state: Literal["ok", "no_data", "provider_unavailable"] = (
+            "ok" if has_context else "no_data"
+        )
+        message = None if has_context else "No activity data for this window"
 
-        if not frames:
-            return empty_resp
-
-        df = pd.concat(frames, ignore_index=True)
-        if "bucket_start_ts" not in df.columns:
-            return empty_resp
-
-        summary = generate_label_summary(df, start_ts, end_ts)
-        return FeatureSummaryResponse(**summary)
+        return ActivitySummaryResponse(
+            **feature_payload.model_dump(),
+            activity_provider=provider_status,
+            recent_apps=[
+                AWLiveEntry(**entry.to_payload()) for entry in recent_apps
+            ],
+            range_state=range_state,
+            message=message,
+        )
 
     # -- REST: ActivityWatch live proxy ---------------------------------------
 
@@ -895,23 +1022,23 @@ def create_app(
         end: str = Query(...),
     ) -> list[AWLiveEntry]:
         try:
-            from taskclf.adapters.activitywatch.client import (
-                fetch_aw_events,
-                find_window_bucket_id,
-            )
-
             start_ts = _ensure_utc(dt.datetime.fromisoformat(start))
             end_ts = _ensure_utc(dt.datetime.fromisoformat(end))
-
-            bucket_id = find_window_bucket_id(aw_host)
-            events = fetch_aw_events(
-                aw_host, bucket_id, start_ts, end_ts, title_salt=title_salt
+            _, recent_apps = activity_provider.recent_app_summary(
+                start_ts,
+                end_ts,
+                timeout_seconds=min(
+                    2,
+                    int(
+                        user_config.as_dict().get(
+                            "aw_timeout_seconds",
+                            DEFAULT_AW_TIMEOUT_SECONDS,
+                        )
+                    ),
+                ),
             )
-            if not events:
-                return []
-            counts = Counter(ev.app_id for ev in events)
             return [
-                AWLiveEntry(app=app, events=cnt) for app, cnt in counts.most_common(5)
+                AWLiveEntry(**entry.to_payload()) for entry in recent_apps
             ]
         except Exception:
             logger.debug("AW live summary unavailable", exc_info=True)
@@ -1846,6 +1973,7 @@ def _create_dev_app_from_env() -> FastAPI:
         title_salt=title_salt,
         event_bus=bus,
         window_api=win_api,
+        get_activity_provider_status=lambda: monitor.activity_provider_status,
     )
 
     @app.on_event("startup")
