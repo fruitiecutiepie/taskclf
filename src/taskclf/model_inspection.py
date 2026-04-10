@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 from taskclf.core.defaults import DEFAULT_REJECT_THRESHOLD
 from taskclf.core.metrics import class_distribution, top_confusion_pairs
 from taskclf.core.model_io import ModelMetadata, load_model_bundle
+from taskclf.core.schema import resolve_feature_parquet_path
 from taskclf.core.types import LABEL_SET_V1
 from taskclf.features.build import generate_dummy_features
 from taskclf.labels.projection import project_blocks_to_windows
@@ -113,12 +114,8 @@ def build_labeled_dataframe(
             labels = generate_dummy_labels(current, n_rows=60)
             all_labels.extend(labels)
         else:
-            parquet_path = (
-                data_dir
-                / f"features_v1/date={current.isoformat()}"
-                / "features.parquet"
-            )
-            if not parquet_path.exists():
+            parquet_path = resolve_feature_parquet_path(data_dir, current)
+            if parquet_path is None:
                 current += dt.timedelta(days=1)
                 continue
             df = read_parquet(parquet_path)

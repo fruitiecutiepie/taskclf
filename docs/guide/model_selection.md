@@ -15,22 +15,23 @@ This document defines how TaskCLF selects a “default” model for inference (w
 
 A model bundle is **compatible** with the current code if BOTH hold:
 
-1. `metadata.schema_hash == FeatureSchemaV1.SCHEMA_HASH` (exact match)
+1. `metadata.schema_hash` exactly matches the expected hash for `metadata.schema_version`
 2. `sorted(metadata.label_set) == sorted(LABEL_SET_V1)` (exact match)
 
 This matches the behavior of `load_model_bundle(..., validate_schema=True, validate_labels=True)`.
 
 If a bundle is not compatible, it MUST NOT be used as the default model (or auto-selected), and tooling should surface a clear reason.
 
-### Where the current schema hash is sourced
+### Where schema compatibility comes from
 
-The current schema hash is `FeatureSchemaV1.SCHEMA_HASH`, computed at import time from the canonical column registry in `src/taskclf/core/schema.py`. The current label set is `LABEL_SET_V1` from `src/taskclf/core/types.py`. These are the defaults used by `is_compatible()` in `model_registry.py`. CLI commands may accept `--schema-hash` overrides for testing, but production use should rely on the computed values.
+Each supported schema version (`v1`, `v2`, `v3`) has its own deterministic hash computed from the canonical column registry in `src/taskclf/core/schema.py`. The current default feature schema is `v3`, but bundle loading remains schema-version-aware and older supported bundles can still be loaded explicitly.
 
 ## Current state (today)
 
 - The model registry (`model_registry.py`) scans, validates, ranks, and selects bundles.
 - The active model pointer (`active.json`) is implemented: `read_active`, `write_active_atomic`, `append_active_history`, and `resolve_active_model` are available.
 - `resolve_active_model` reads `active.json` if valid, otherwise falls back to `find_best_model` and self-heals the pointer.
+- Automatic best-model selection now prefers `v3` bundles first and falls back to older supported schemas when no valid `v3` bundle exists.
 - Inference auto-resolves the model when `--model-dir` is omitted via `resolve_model_dir()` in `taskclf.infer.resolve`: reads `active.json` if valid, otherwise falls back to best-model selection. Both `infer batch` and `infer online` accept an optional `--models-dir` (default `models/`).
 - The online inference loop watches `active.json` mtime and hot-reloads the model when it changes (swap only after successful load).
 - Retrain resolves the champion via a priority chain: `read_active()` → `find_best_model()` → `find_latest_model()` (legacy fallback). See `_resolve_champion()` in `retrain.py`.

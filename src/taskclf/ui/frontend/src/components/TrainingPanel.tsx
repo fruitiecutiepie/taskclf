@@ -686,8 +686,7 @@ export const TrainingPanel: Component<{
                                   .map(
                                     (
                                       p: ModelBundleInspectBody["bundle_saved_validation"]["top_confusion_pairs"][number],
-                                    ) =>
-                                      `${p.true_label}→${p.pred_label} (${p.count})`,
+                                    ) => `${p.true_label}→${p.pred_label} (${p.count})`,
                                   )
                                   .join(", ");
                           return (

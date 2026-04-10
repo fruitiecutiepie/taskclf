@@ -26,7 +26,7 @@ from taskclf.adapters.activitywatch.types import AWEvent
 from taskclf.cli.main import app
 from taskclf.core.defaults import MIXED_UNKNOWN
 from taskclf.core.model_io import load_model_bundle
-from taskclf.core.types import LABEL_SET_V1, FeatureRow
+from taskclf.core.types import LABEL_SET_V1, FeatureRow, FeatureRowBase
 from taskclf.features.build import (
     build_features_from_aw_events,
     generate_dummy_features,
@@ -220,7 +220,7 @@ class TestOnlineFeatureState:
         keys_per_min: float | None = 40.0,
         clicks_per_min: float | None = 5.0,
         mouse_distance: float | None = 300.0,
-    ) -> FeatureRow:
+    ) -> FeatureRowBase:
         from taskclf.core.schema import FeatureSchemaV1
         from taskclf.core.hashing import stable_hash
         from taskclf.features.text import title_hash_bucket

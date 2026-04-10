@@ -30,6 +30,7 @@ from taskclf.adapters.activitywatch.mapping import normalize_app
 from taskclf.adapters.activitywatch.types import AWEvent, AWInputEvent
 from taskclf.core.defaults import DEFAULT_AW_TIMEOUT_SECONDS
 from taskclf.core.hashing import salted_hash
+from taskclf.features.text import derive_title_sketch_features
 
 
 # ---------------------------------------------------------------------------
@@ -86,12 +87,20 @@ def _raw_event_to_aw_event(raw: dict[str, Any], *, title_salt: str) -> AWEvent:
 
     app_id, is_browser, is_editor, is_terminal, app_category = normalize_app(app_name)
     title_hash = salted_hash(title, salt=title_salt)
+    title_features = derive_title_sketch_features(title, title_salt)
 
     return AWEvent(
         timestamp=_parse_timestamp(raw["timestamp"]),
         duration_seconds=float(raw.get("duration", 0)),
         app_id=app_id,
         window_title_hash=title_hash,
+        title_token_sketch=title_features.title_token_sketch,
+        title_char3_sketch=title_features.title_char3_sketch,
+        title_char_count=title_features.title_char_count,
+        title_token_count=title_features.title_token_count,
+        title_unique_token_ratio=title_features.title_unique_token_ratio,
+        title_digit_ratio=title_features.title_digit_ratio,
+        title_separator_count=title_features.title_separator_count,
         is_browser=is_browser,
         is_editor=is_editor,
         is_terminal=is_terminal,

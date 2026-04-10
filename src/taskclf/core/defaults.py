@@ -27,6 +27,8 @@ DEFAULT_APP_SWITCH_WINDOW_15M: Final[int] = 15
 DEFAULT_ROLLING_WINDOW_5: Final[int] = 5
 DEFAULT_ROLLING_WINDOW_15: Final[int] = 15
 DEFAULT_TITLE_HASH_BUCKETS: Final[int] = 256
+DEFAULT_TITLE_TOKEN_SKETCH_BUCKETS: Final[int] = 128
+DEFAULT_TITLE_CHAR3_SKETCH_BUCKETS: Final[int] = 128
 
 # ── Paths (absolute, derived from TASKCLF_HOME) ──
 DEFAULT_OUT_DIR: Final[str] = str(_HOME / "artifacts")
@@ -40,7 +42,9 @@ DEFAULT_AW_HOST: Final[str] = "http://localhost:5600"
 DEFAULT_AW_TIMEOUT_SECONDS: Final[int] = 10
 
 # ── Privacy / hashing ──
-DEFAULT_TITLE_SALT: Final[str] = "taskclf-default-salt"
+# Empty string means "no explicit process override"; callers should resolve the
+# per-install secret from UserConfig/.title_secret instead.
+DEFAULT_TITLE_SALT: Final[str] = ""
 DEFAULT_TITLE_POLICY: Final[str] = "hash_only"
 
 # ── Aggregation ──

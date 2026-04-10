@@ -5,10 +5,21 @@ from __future__ import annotations
 import math
 from datetime import datetime, timezone
 from enum import StrEnum
-from typing import Final, Protocol, runtime_checkable
+from typing import Any, Final, Protocol, cast, runtime_checkable
 
-from pydantic import BaseModel, Field, ValidationInfo, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    ValidationInfo,
+    create_model,
+    field_validator,
+    model_validator,
+)
 
+from taskclf.core.defaults import (
+    DEFAULT_TITLE_CHAR3_SKETCH_BUCKETS,
+    DEFAULT_TITLE_TOKEN_SKETCH_BUCKETS,
+)
 from taskclf.core.time import ts_utc_aware_get
 
 
@@ -81,9 +92,25 @@ class TitlePolicy(StrEnum):
 
 
 _PROHIBITED_FIELD_PREFIXES = ("raw_",)
+TITLE_TOKEN_SKETCH_FIELDS: Final[tuple[str, ...]] = tuple(
+    f"title_token_sketch_{i:03d}" for i in range(DEFAULT_TITLE_TOKEN_SKETCH_BUCKETS)
+)
+TITLE_CHAR3_SKETCH_FIELDS: Final[tuple[str, ...]] = tuple(
+    f"title_char3_sketch_{i:03d}" for i in range(DEFAULT_TITLE_CHAR3_SKETCH_BUCKETS)
+)
+TITLE_SCALAR_FEATURE_FIELDS: Final[tuple[str, ...]] = (
+    "title_char_count",
+    "title_token_count",
+    "title_unique_token_ratio",
+    "title_digit_ratio",
+    "title_separator_count",
+)
+V3_ONLY_FEATURE_FIELDS: Final[frozenset[str]] = frozenset(
+    TITLE_TOKEN_SKETCH_FIELDS + TITLE_CHAR3_SKETCH_FIELDS + TITLE_SCALAR_FEATURE_FIELDS
+)
 
 
-class FeatureRow(BaseModel, frozen=True):
+class FeatureRowBase(BaseModel, frozen=True):
     """One bucketed observation (typically 60 s).
 
     All persisted feature rows carry schema metadata so downstream
@@ -328,6 +355,93 @@ class FeatureRow(BaseModel, frozen=True):
                             f"'{prefix}' must not appear in a FeatureRow"
                         )
         return values
+
+    def model_dump(self, *args, **kwargs):  # type: ignore[override]
+        exclude = kwargs.pop("exclude", None)
+        if self.schema_version == "v2":
+            if exclude is None:
+                exclude = {"user_id"}
+            elif isinstance(exclude, dict):
+                exclude = {**exclude, "user_id": True}
+            else:
+                exclude = set(exclude) | {"user_id"}
+        if self.schema_version != "v3":
+            if exclude is None:
+                exclude = set(V3_ONLY_FEATURE_FIELDS)
+            elif isinstance(exclude, dict):
+                exclude = {
+                    **exclude,
+                    **{field: True for field in V3_ONLY_FEATURE_FIELDS},
+                }
+            else:
+                exclude = set(exclude) | set(V3_ONLY_FEATURE_FIELDS)
+        return super().model_dump(*args, exclude=exclude, **kwargs)
+
+
+def _feature_row_v3_field_definitions() -> dict[str, tuple[type, object]]:
+    fields: dict[str, tuple[type, object]] = {}
+    for name in TITLE_TOKEN_SKETCH_FIELDS:
+        fields[name] = (
+            float,
+            Field(
+                default=0.0,
+                ge=0.0,
+                le=1.0,
+                description="Keyed token-sketch bucket frequency for the window title.",
+            ),
+        )
+    for name in TITLE_CHAR3_SKETCH_FIELDS:
+        fields[name] = (
+            float,
+            Field(
+                default=0.0,
+                ge=0.0,
+                le=1.0,
+                description="Keyed char-3 sketch bucket frequency for the window title.",
+            ),
+        )
+    fields["title_char_count"] = (
+        int,
+        Field(default=0, ge=0, description="Normalized window-title character count."),
+    )
+    fields["title_token_count"] = (
+        int,
+        Field(default=0, ge=0, description="Normalized window-title token count."),
+    )
+    fields["title_unique_token_ratio"] = (
+        float,
+        Field(
+            default=0.0,
+            ge=0.0,
+            le=1.0,
+            description="Unique-token ratio after title token normalization.",
+        ),
+    )
+    fields["title_digit_ratio"] = (
+        float,
+        Field(
+            default=0.0,
+            ge=0.0,
+            le=1.0,
+            description="Digit-character ratio in the normalized title.",
+        ),
+    )
+    fields["title_separator_count"] = (
+        int,
+        Field(
+            default=0,
+            ge=0,
+            description="Count of common browser-title separator characters.",
+        ),
+    )
+    return fields
+
+
+FeatureRow = create_model(
+    "FeatureRow",
+    __base__=FeatureRowBase,
+    **cast(dict[str, Any], _feature_row_v3_field_definitions()),
+)
 
 
 class LabelSpan(BaseModel, frozen=True):

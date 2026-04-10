@@ -42,6 +42,7 @@ from taskclf.core.model_io import (
     load_model_bundle,
     save_model_bundle,
 )
+from taskclf.core.schema import LATEST_FEATURE_SCHEMA_VERSION
 from taskclf.core.time import ts_utc_aware_get
 from taskclf.core.types import LabelSpan
 from taskclf.model_registry import (
@@ -538,6 +539,12 @@ def run_retrain_pipeline(
     if train_df.empty or val_df.empty:
         raise ValueError("Train or validation split is empty — need more data")
 
+    schema_version = LATEST_FEATURE_SCHEMA_VERSION
+    if "schema_version" in labeled_df.columns and not labeled_df.empty:
+        raw_schema_version = str(labeled_df["schema_version"].iloc[0]).strip()
+        if raw_schema_version:
+            schema_version = raw_schema_version
+
     # Train challenger
     logger.info(
         "Training challenger model (%d train, %d val rows)", len(train_df), len(val_df)
@@ -547,6 +554,7 @@ def run_retrain_pipeline(
         val_df,
         num_boost_round=config.train_params.num_boost_round,
         class_weight=config.train_params.class_weight,
+        schema_version=schema_version,
     )
 
     # Evaluate challenger
@@ -557,7 +565,7 @@ def run_retrain_pipeline(
         cat_encoders=cat_encoders,
         holdout_users=holdout_users,
         reject_threshold=reject_threshold,
-        schema_version="v1",
+        schema_version=schema_version,
     )
 
     # Determine date range from features
@@ -574,6 +582,7 @@ def run_retrain_pipeline(
         data_provenance=data_provenance,
         unknown_category_freq_threshold=params.get("unknown_category_freq_threshold"),
         unknown_category_mask_rate=params.get("unknown_category_mask_rate"),
+        schema_version=schema_version,
     )
 
     # Candidate-only hard gates (no champion needed)

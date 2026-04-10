@@ -1,6 +1,9 @@
 import { render, screen, waitFor } from "@solidjs/testing-library";
 import { describe, expect, it, vi } from "vitest";
-import type { ActivityProviderStatus, ActivitySummary as ActivitySummaryData } from "../lib/api";
+import type {
+  ActivityProviderStatus,
+  ActivitySummary as ActivitySummaryData,
+} from "../lib/api";
 import { activity_summary_get } from "../lib/api";
 import { ActivitySummary } from "./ActivitySummary";
 
@@ -63,7 +66,9 @@ describe("ActivitySummary", () => {
 
     render(() => <ActivitySummary time_range={range} show_empty />);
 
-    expect(await screen.findByText("No activity data for this window")).toBeInTheDocument();
+    expect(
+      await screen.findByText("No activity data for this window"),
+    ).toBeInTheDocument();
   });
 
   it("shows setup guidance when the provider is unavailable", async () => {

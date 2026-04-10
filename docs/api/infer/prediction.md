@@ -26,7 +26,7 @@ core prediction.
 | `mapped_label_name` | `str` | -- | Taxonomy-mapped label |
 | `mapped_probs` | `dict[str, float]` | sums to 1.0 | Bucket-level probabilities |
 | `model_version` | `str` | -- | Schema hash of the model bundle |
-| `schema_version` | `str` | default `features_v1` | Feature schema version |
+| `schema_version` | `str` | runtime-populated | Feature schema version (`features_v1`, `features_v2`, or `features_v3`) |
 | `label_version` | `str` | default `labels_v1` | Label schema version |
 
 ### Validation rules

@@ -41,10 +41,29 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from taskclf.core.model_io import ModelMetadata
-from taskclf.core.schema import FeatureSchemaV1
+from taskclf.core.schema import (
+    LATEST_FEATURE_SCHEMA_VERSION,
+    get_feature_schema,
+    iter_feature_schema_versions,
+)
 from taskclf.core.types import LABEL_SET_V1
 
 logger = logging.getLogger(__name__)
+
+
+def _default_required_schema_hash() -> str:
+    return get_feature_schema(LATEST_FEATURE_SCHEMA_VERSION).SCHEMA_HASH
+
+
+def _matches_declared_schema(bundle: ModelBundle) -> bool:
+    if not bundle.valid or bundle.metadata is None:
+        return False
+    try:
+        expected_hash = get_feature_schema(bundle.metadata.schema_version).SCHEMA_HASH
+    except ValueError:
+        return False
+    return bundle.metadata.schema_hash == expected_hash
+
 
 # ---------------------------------------------------------------------------
 # Data models
@@ -295,7 +314,7 @@ def list_bundles(models_dir: Path) -> list[ModelBundle]:
 
 def is_compatible(
     bundle: ModelBundle,
-    required_schema_hash: str = FeatureSchemaV1.SCHEMA_HASH,
+    required_schema_hash: str = get_feature_schema("v1").SCHEMA_HASH,
     required_label_set: frozenset[str] = LABEL_SET_V1,
 ) -> bool:
     """Check whether *bundle* is compatible with the current runtime.
@@ -415,69 +434,83 @@ def find_best_model(
         the full ranked list of eligible bundles, and exclusion
         records for every bundle that was filtered out.
     """
+    explicit_schema_hash = required_schema_hash is not None
+
     if policy is None:
         policy = SelectionPolicy()
-    if required_schema_hash is None:
-        required_schema_hash = FeatureSchemaV1.SCHEMA_HASH
     if required_label_set is None:
         required_label_set = LABEL_SET_V1
+    if required_schema_hash is not None:
+        schema_hashes: tuple[str, ...] = (required_schema_hash,)
+    else:
+        schema_hashes = tuple(
+            get_feature_schema(version).SCHEMA_HASH
+            for version in iter_feature_schema_versions(LATEST_FEATURE_SCHEMA_VERSION)
+        )
 
-    bundles = list_bundles(models_dir)
+    last_report: SelectionReport | None = None
+    for candidate_schema_hash in schema_hashes:
+        bundles = list_bundles(models_dir)
 
-    excluded: list[ExclusionRecord] = []
-    eligible: list[ModelBundle] = []
+        excluded: list[ExclusionRecord] = []
+        eligible: list[ModelBundle] = []
 
-    for bundle in bundles:
-        if not bundle.valid:
-            excluded.append(
-                ExclusionRecord(
-                    model_id=bundle.model_id,
-                    path=bundle.path,
-                    reason=f"invalid: {bundle.invalid_reason}",
+        for bundle in bundles:
+            if not bundle.valid:
+                excluded.append(
+                    ExclusionRecord(
+                        model_id=bundle.model_id,
+                        path=bundle.path,
+                        reason=f"invalid: {bundle.invalid_reason}",
+                    )
                 )
-            )
-            continue
+                continue
 
-        if not is_compatible(bundle, required_schema_hash, required_label_set):
-            assert bundle.metadata is not None
-            if bundle.metadata.schema_hash != required_schema_hash:
-                detail = "schema_hash mismatch"
-            else:
-                detail = "label_set mismatch"
-            excluded.append(
-                ExclusionRecord(
-                    model_id=bundle.model_id,
-                    path=bundle.path,
-                    reason=f"incompatible: {detail}",
+            if not is_compatible(bundle, candidate_schema_hash, required_label_set):
+                assert bundle.metadata is not None
+                if bundle.metadata.schema_hash != candidate_schema_hash:
+                    detail = "schema_hash mismatch"
+                else:
+                    detail = "label_set mismatch"
+                excluded.append(
+                    ExclusionRecord(
+                        model_id=bundle.model_id,
+                        path=bundle.path,
+                        reason=f"incompatible: {detail}",
+                    )
                 )
-            )
-            continue
+                continue
 
-        if not passes_constraints(bundle, policy):
-            excluded.append(
-                ExclusionRecord(
-                    model_id=bundle.model_id,
-                    path=bundle.path,
-                    reason="constraint: failed policy constraints",
+            if not passes_constraints(bundle, policy):
+                excluded.append(
+                    ExclusionRecord(
+                        model_id=bundle.model_id,
+                        path=bundle.path,
+                        reason="constraint: failed policy constraints",
+                    )
                 )
-            )
-            continue
+                continue
 
-        eligible.append(bundle)
+            eligible.append(bundle)
 
-    ranked = sorted(
-        eligible,
-        key=lambda b: score(b, policy),
-        reverse=True,
-    )
+        ranked = sorted(
+            eligible,
+            key=lambda b: score(b, policy),
+            reverse=True,
+        )
 
-    return SelectionReport(
-        best=ranked[0] if ranked else None,
-        ranked=ranked,
-        excluded=excluded,
-        policy=policy,
-        required_schema_hash=required_schema_hash,
-    )
+        last_report = SelectionReport(
+            best=ranked[0] if ranked else None,
+            ranked=ranked,
+            excluded=excluded,
+            policy=policy,
+            required_schema_hash=candidate_schema_hash,
+        )
+        if ranked or explicit_schema_hash:
+            return last_report
+
+    assert last_report is not None
+    return last_report
 
 
 # ---------------------------------------------------------------------------
@@ -611,8 +644,6 @@ def resolve_active_model(
     """
     if policy is None:
         policy = SelectionPolicy()
-    if required_schema_hash is None:
-        required_schema_hash = FeatureSchemaV1.SCHEMA_HASH
     if required_label_set is None:
         required_label_set = LABEL_SET_V1
 
@@ -621,10 +652,15 @@ def resolve_active_model(
         bundle_path = models_dir.parent / pointer.model_dir
         if bundle_path.is_dir():
             bundle = _parse_bundle(bundle_path)
-            if bundle.valid and is_compatible(
-                bundle, required_schema_hash, required_label_set
-            ):
-                return bundle, None
+            metadata = bundle.metadata
+            if bundle.valid and metadata is not None:
+                if required_schema_hash is None:
+                    if _matches_declared_schema(bundle) and sorted(
+                        metadata.label_set
+                    ) == sorted(required_label_set):
+                        return bundle, None
+                elif is_compatible(bundle, required_schema_hash, required_label_set):
+                    return bundle, None
             logger.warning(
                 "active.json points to invalid/incompatible bundle %s; "
                 "falling back to selection",

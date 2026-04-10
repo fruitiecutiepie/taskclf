@@ -45,6 +45,7 @@ determines the context columns (app ID, category, title hash, flags).
 | `bucket_seconds` | `int` | `DEFAULT_BUCKET_SECONDS` | Width of each time bucket |
 | `session_start` | `datetime \| None` | `None` | Fixed session start (online mode); `None` triggers auto-detection |
 | `idle_gap_seconds` | `float` | `DEFAULT_IDLE_GAP_SECONDS` | Minimum gap that splits sessions (batch mode) |
+| `schema_version` | `str` | `"v3"` | Feature schema to emit (`"v1"`, `"v2"`, or `"v3"`) |
 
 When `input_events` is `None`, all keyboard/mouse feature columns
 (`keys_per_min`, `clicks_per_min`, etc.) are set to `None`.
@@ -62,7 +63,7 @@ Sub-modules invoked per bucket:
 | [`features.windows`](windows.md) | `app_switch_count_last_5m`, `app_switch_count_last_15m`, `app_entropy_5m`, `app_entropy_15m`, `top2_app_concentration_15m` |
 | [`features.sessions`](sessions.md) | `session_id`, `session_length_so_far` |
 | [`features.domain`](domain.md) | `domain_category` |
-| [`features.text`](text.md) | `window_title_bucket`, `title_repeat_count_session` |
+| [`features.text`](text.md) | `window_title_bucket`, `title_repeat_count_session`, keyed title-sketch features (v3) |
 | [`features.dynamics`](dynamics.md) | Rolling means and deltas (7 columns) |
 | *(inline)* | `app_dwell_time_seconds` |
 
@@ -115,7 +116,7 @@ Builds feature rows for a given date and writes them to Parquet using
 the partitioned layout:
 
 ```
-data_dir/features_v1/date=YYYY-MM-DD/features.parquet
+data_dir/features_<schema_version>/date=YYYY-MM-DD/features.parquet
 ```
 
 When `aw_host` is provided (and `synthetic` is `False`), events are
@@ -129,17 +130,19 @@ features are generated for testing.
 | `date` | `date` | -- | Calendar date to build features for |
 | `data_dir` | `Path` | -- | Root of processed data |
 | `aw_host` | `str \| None` | `None` | AW server URL; `None` falls back to dummy generation |
-| `title_salt` | `str \| None` | `None` | Salt for hashing window titles (required when `aw_host` is set) |
+| `title_salt` | `str \| None` | `None` | Optional process override for title hashing; defaults to local `.title_secret` |
 | `user_id` | `str` | `"default-user"` | Pseudonymous user identifier |
 | `device_id` | `str \| None` | `None` | Optional device identifier |
 | `synthetic` | `bool` | `False` | Force dummy feature generation |
+| `schema_version` | `str` | `"v3"` | Output schema version |
 
-Raises `ValueError` if generated data fails schema validation or if
-`aw_host` is set without `title_salt`.
+When `aw_host` is set and `title_salt` is omitted, the builder resolves
+the per-install local secret from `UserConfig(data_dir).title_secret`.
+New builds default to `features_v3/`.
 
 ## See also
 
-- [`core.schema`](../core/schema.md) -- `FeatureSchemaV1` contract validated by this pipeline
+- [`core.schema`](../core/schema.md) -- `FeatureSchemaV3` is the current default contract; `v1` and `v2` remain supported
 - [`core.types`](../core/types.md) -- `FeatureRow` and `Event` models
 - [`adapters.activitywatch`](../adapters/activitywatch.md) -- event normalisation upstream of this pipeline
 

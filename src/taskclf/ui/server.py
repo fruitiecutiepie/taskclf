@@ -43,6 +43,7 @@ from taskclf.core.defaults import (
     DEFAULT_TITLE_SALT,
     DEFAULT_TRANSITION_MINUTES,
 )
+from taskclf.core.schema import resolve_feature_parquet_path
 from taskclf.core.time import ts_utc_aware_get
 from taskclf.core.types import CoreLabel, LabelSpan
 from taskclf.labels.queue import ActiveLabelingQueue
@@ -67,6 +68,10 @@ from taskclf.ui.activity_provider import (
 logger = logging.getLogger(__name__)
 
 _STATIC_DIR = Path(__file__).parent / "static"
+
+
+def _feature_parquet_for_date(data_dir: Path, target_date: dt.date) -> Path | None:
+    return resolve_feature_parquet_path(data_dir, target_date)
 
 
 # ---------------------------------------------------------------------------
@@ -501,11 +506,13 @@ def create_app(
     labels_path = data_dir / "labels_v1" / "labels.parquet"
     queue_path = data_dir / "labels_v1" / "queue.json"
     user_config = UserConfig(data_dir)
+    effective_title_salt = title_salt or user_config.title_secret
+    title_salt = effective_title_salt
     effective_models_dir = models_dir or Path(DEFAULT_MODELS_DIR)
     train_job = _TrainJob()
     activity_provider = ActivityWatchProvider(
         endpoint=aw_host,
-        title_salt=title_salt,
+        title_salt=effective_title_salt,
     )
 
     @asynccontextmanager
@@ -551,12 +558,8 @@ def create_app(
         dates_missing_parquet: list[dt.date] = []
         current = start_ts.date()
         while current <= end_ts.date():
-            fp = (
-                data_dir
-                / f"features_v1/date={current.isoformat()}"
-                / "features.parquet"
-            )
-            if fp.exists():
+            fp = _feature_parquet_for_date(data_dir, current)
+            if fp is not None and fp.exists():
                 tmp = read_parquet(fp)
                 if not tmp.empty:
                     frames.append(tmp)
@@ -601,7 +604,11 @@ def create_app(
                 return validated
         probe_timeout = min(
             2,
-            int(user_config.as_dict().get("aw_timeout_seconds", DEFAULT_AW_TIMEOUT_SECONDS)),
+            int(
+                user_config.as_dict().get(
+                    "aw_timeout_seconds", DEFAULT_AW_TIMEOUT_SECONDS
+                )
+            ),
         )
         return ActivityProviderStatusResponse.model_validate(
             activity_provider.probe_status(timeout_seconds=probe_timeout).to_payload()
@@ -1008,7 +1015,7 @@ def create_app(
             **feature_payload.model_dump(),
             activity_provider=provider_status,
             recent_apps=[
-                AWLiveEntry(**entry.to_payload()) for entry in recent_apps
+                AWLiveEntry(app=entry.app, events=entry.events) for entry in recent_apps
             ],
             range_state=range_state,
             message=message,
@@ -1038,7 +1045,7 @@ def create_app(
                 ),
             )
             return [
-                AWLiveEntry(**entry.to_payload()) for entry in recent_apps
+                AWLiveEntry(app=entry.app, events=entry.events) for entry in recent_apps
             ]
         except Exception:
             logger.debug("AW live summary unavailable", exc_info=True)
@@ -1303,12 +1310,8 @@ def create_app(
                     labels = generate_dummy_labels(current, n_rows=60)
                     all_labels.extend(labels)
                 else:
-                    fp = (
-                        data_dir
-                        / f"features_v1/date={current.isoformat()}"
-                        / "features.parquet"
-                    )
-                    if fp.exists():
+                    fp = _feature_parquet_for_date(data_dir, current)
+                    if fp is not None and fp.exists():
                         df = _read_pq(fp)
                     else:
                         current += dt.timedelta(days=1)
@@ -1704,12 +1707,8 @@ def create_app(
 
         current = start
         while current <= end:
-            fp = (
-                data_dir
-                / f"features_v1/date={current.isoformat()}"
-                / "features.parquet"
-            )
-            if not fp.exists():
+            fp = _feature_parquet_for_date(data_dir, current)
+            if fp is None or not fp.exists():
                 try:
                     build_features_for_date(
                         current,
@@ -1729,12 +1728,8 @@ def create_app(
         total_rows = 0
 
         while current <= end:
-            fp = (
-                data_dir
-                / f"features_v1/date={current.isoformat()}"
-                / "features.parquet"
-            )
-            if fp.exists():
+            fp = _feature_parquet_for_date(data_dir, current)
+            if fp is not None and fp.exists():
                 try:
                     df = read_parquet(fp)
                     n = len(df)
@@ -1778,12 +1773,8 @@ def create_app(
                 feature_frames = []
                 cur = start
                 while cur <= end:
-                    fp = (
-                        data_dir
-                        / f"features_v1/date={cur.isoformat()}"
-                        / "features.parquet"
-                    )
-                    if fp.exists():
+                    fp = _feature_parquet_for_date(data_dir, cur)
+                    if fp is not None and fp.exists():
                         frame = read_parquet(fp)
                         if not frame.empty:
                             feature_frames.append(frame)
@@ -1878,8 +1869,9 @@ def _create_dev_app_from_env() -> FastAPI:
         logging.getLogger("taskclf").setLevel(logging.DEBUG)
 
     data_dir = Path(os.environ.get("TASKCLF_UI_DATA_DIR", DEFAULT_DATA_DIR))
+    user_config = UserConfig(data_dir)
     aw_host = os.environ.get("TASKCLF_AW_HOST", DEFAULT_AW_HOST)
-    title_salt = os.environ.get("TASKCLF_TITLE_SALT", DEFAULT_TITLE_SALT)
+    title_salt = os.environ.get("TASKCLF_TITLE_SALT") or user_config.title_secret
     poll_seconds = _env_int("TASKCLF_POLL_SECONDS", DEFAULT_POLL_SECONDS)
     transition_minutes = _env_int(
         "TASKCLF_TRANSITION_MINUTES",

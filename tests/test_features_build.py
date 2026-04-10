@@ -14,12 +14,11 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pandas as pd
-import pytest
 
 from taskclf.adapters.activitywatch.types import AWInputEvent
 from taskclf.core.defaults import DEFAULT_BUCKET_SECONDS, DEFAULT_DUMMY_ROWS
-from taskclf.core.schema import FeatureSchemaV1
 from taskclf.adapters.activitywatch.types import AWEvent
+from taskclf.core.schema import FeatureSchemaV3, get_feature_storage_dir
 from taskclf.features.build import (
     _aggregate_input_for_bucket,
     build_features_for_date,
@@ -44,10 +43,10 @@ class TestGenerateDummyFeatures:
         assert len(rows) == 5
 
     def test_schema_validation(self) -> None:
-        """TC-FEAT-BUILD-003: all rows pass FeatureSchemaV1 validation."""
+        """TC-FEAT-BUILD-003: all rows pass FeatureSchemaV3 validation."""
         rows = generate_dummy_features(_DATE)
         df = pd.DataFrame([r.model_dump() for r in rows])
-        FeatureSchemaV1.validate_dataframe(df)
+        FeatureSchemaV3.validate_dataframe(df)
 
     def test_timestamps_on_correct_date(self) -> None:
         """TC-FEAT-BUILD-004: bucket_start_ts spans hours 9-17 of the given date."""
@@ -66,11 +65,11 @@ class TestGenerateDummyFeatures:
             assert row.device_id == "dev-99"
 
     def test_schema_version_and_hash(self) -> None:
-        """TC-FEAT-BUILD-006: schema_version and schema_hash match FeatureSchemaV1."""
+        """TC-FEAT-BUILD-006: schema_version and schema_hash match FeatureSchemaV3."""
         rows = generate_dummy_features(_DATE)
         for row in rows:
-            assert row.schema_version == FeatureSchemaV1.VERSION
-            assert row.schema_hash == FeatureSchemaV1.SCHEMA_HASH
+            assert row.schema_version == FeatureSchemaV3.VERSION
+            assert row.schema_hash == FeatureSchemaV3.SCHEMA_HASH
 
     def test_session_id_consistent(self) -> None:
         """TC-FEAT-BUILD-007: session_id is a non-empty hash, same within a call."""
@@ -107,7 +106,10 @@ class TestBuildFeaturesForDate:
         """TC-FEAT-BUILD-011: output path matches expected directory layout."""
         result = build_features_for_date(_DATE, tmp_path)
         expected = (
-            tmp_path / f"features_v1/date={_DATE.isoformat()}" / "features.parquet"
+            tmp_path
+            / get_feature_storage_dir("v3")
+            / f"date={_DATE.isoformat()}"
+            / "features.parquet"
         )
         assert result == expected
 
@@ -115,7 +117,7 @@ class TestBuildFeaturesForDate:
         """TC-FEAT-BUILD-012: parquet readable with all FeatureRow columns."""
         result = build_features_for_date(_DATE, tmp_path)
         df = pd.read_parquet(result)
-        for col in FeatureSchemaV1.COLUMNS:
+        for col in FeatureSchemaV3.COLUMNS:
             assert col in df.columns, f"Missing column: {col}"
 
     def test_row_count_matches_default(self, tmp_path: Path) -> None:
@@ -131,10 +133,13 @@ _AW_PATCH_BASE = "taskclf.features.build"
 class TestBuildFeaturesForDateAW:
     """TC-FEAT-BUILD-AW-001 through TC-FEAT-BUILD-AW-005: AW REST fetch path."""
 
-    def test_aw_host_requires_title_salt(self, tmp_path: Path) -> None:
-        """TC-FEAT-BUILD-AW-001: aw_host without title_salt raises ValueError."""
-        with pytest.raises(ValueError, match="title_salt"):
+    def test_aw_host_uses_local_title_secret(self, tmp_path: Path) -> None:
+        """TC-FEAT-BUILD-AW-001: aw_host without title_salt resolves the local title secret."""
+        with patch(f"{_AW_PATCH_BASE}._fetch_aw_features_for_date") as mock_fetch:
+            mock_fetch.return_value = []
             build_features_for_date(_DATE, tmp_path, aw_host="http://localhost:5600")
+            assert (tmp_path / ".title_secret").exists()
+            assert mock_fetch.call_args.kwargs["title_salt"]
 
     @patch(f"{_AW_PATCH_BASE}._fetch_aw_features_for_date")
     def test_aw_features_written_to_parquet(self, mock_fetch, tmp_path: Path) -> None:

@@ -10,18 +10,27 @@ import pandas as pd
 from pydantic import BaseModel
 
 from taskclf.core.defaults import DEFAULT_BUCKET_SECONDS, MIN_BLOCK_DURATION_SECONDS
-from taskclf.core.schema import FeatureSchemaV1
+from taskclf.core.schema import LATEST_FEATURE_SCHEMA_VERSION
 from taskclf.core.store import write_parquet
 from taskclf.core.types import LabelSpan
 from taskclf.labels.projection import project_blocks_to_windows
 from taskclf.train.dataset import split_by_time
-from taskclf.train.lgbm import FEATURE_COLUMNS
+from taskclf.train.lgbm import get_feature_columns
 
 _ID_COLUMNS = ["user_id", "bucket_start_ts", "session_id"]
 
+
+def _resolve_schema_version(features_df: pd.DataFrame) -> str:
+    if "schema_version" in features_df.columns and not features_df.empty:
+        raw = str(features_df["schema_version"].iloc[0]).strip()
+        if raw:
+            return raw
+    return LATEST_FEATURE_SCHEMA_VERSION
+
+
 _NUMERIC_FEATURES = [
     c
-    for c in FEATURE_COLUMNS
+    for c in get_feature_columns("v2")
     if c
     not in {
         "app_id",
@@ -106,6 +115,13 @@ def build_training_dataset(
     Returns:
         A :class:`DatasetManifest` with paths and summary statistics.
     """
+    features_df = features_df.copy()
+    if "user_id" not in features_df.columns:
+        features_df["user_id"] = "default-user"
+
+    schema_version = _resolve_schema_version(features_df)
+    feature_columns = get_feature_columns(schema_version)
+
     labeled = project_blocks_to_windows(
         features_df, label_spans, bucket_seconds=bucket_seconds
     )
@@ -124,15 +140,16 @@ def build_training_dataset(
         holdout_user_fraction=holdout_user_fraction,
     )
 
-    id_and_meta = _ID_COLUMNS + ["schema_version"]
+    id_and_meta = [c for c in _ID_COLUMNS if c in labeled.columns] + ["schema_version"]
     seen = set(id_and_meta)
     x_cols = id_and_meta + [
-        c for c in FEATURE_COLUMNS if c in labeled.columns and c not in seen
+        c for c in feature_columns if c in labeled.columns and c not in seen
     ]
     x_df = labeled[x_cols]
 
     provenance_col = "provenance"
-    y_cols = ["user_id", "bucket_start_ts", "label"]
+    y_cols = [c for c in ("user_id", "bucket_start_ts") if c in labeled.columns]
+    y_cols.append("label")
     if provenance_col in labeled.columns:
         y_cols.append(provenance_col)
     y_df = labeled[y_cols]
@@ -153,7 +170,7 @@ def build_training_dataset(
         "test": splits["test"],
         "holdout_users": splits["holdout_users"],
         "metadata": {
-            "feature_schema_version": FeatureSchemaV1.VERSION,
+            "feature_schema_version": schema_version,
             "label_schema_version": "labels_v1",
             "total_rows": len(labeled),
             "excluded_rows": excluded,

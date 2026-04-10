@@ -10,7 +10,12 @@ from typing import Any
 import pandas as pd
 import pytest
 
-from taskclf.core.schema import FeatureSchemaV1, FeatureSchemaV2, _build_schema_hash
+from taskclf.core.schema import (
+    FeatureSchemaV1,
+    FeatureSchemaV2,
+    FeatureSchemaV3,
+    _build_schema_hash,
+)
 
 
 class TestSchemaHashStability:
@@ -119,3 +124,19 @@ class TestFeatureSchemaV2:
         h1 = _build_schema_hash(FeatureSchemaV2.COLUMNS)
         h2 = _build_schema_hash(FeatureSchemaV2.COLUMNS)
         assert h1 == h2 == FeatureSchemaV2.SCHEMA_HASH
+
+
+class TestFeatureSchemaV3:
+    def test_schema_hash_differs_from_v1_and_v2(self) -> None:
+        assert FeatureSchemaV3.SCHEMA_HASH != FeatureSchemaV1.SCHEMA_HASH
+        assert FeatureSchemaV3.SCHEMA_HASH != FeatureSchemaV2.SCHEMA_HASH
+
+    def test_v3_includes_user_id_and_title_sketch_fields(self) -> None:
+        assert "user_id" in FeatureSchemaV3.COLUMNS
+        assert "title_token_sketch_000" in FeatureSchemaV3.COLUMNS
+        assert "title_char3_sketch_127" in FeatureSchemaV3.COLUMNS
+
+    def test_v3_hash_deterministic(self) -> None:
+        h1 = _build_schema_hash(FeatureSchemaV3.COLUMNS)
+        h2 = _build_schema_hash(FeatureSchemaV3.COLUMNS)
+        assert h1 == h2 == FeatureSchemaV3.SCHEMA_HASH

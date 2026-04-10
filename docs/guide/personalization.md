@@ -12,10 +12,12 @@ or changing the core label set.
 
 # 1. Approach
 
-Personalization uses two complementary mechanisms:
+Personalization uses two complementary mechanisms. Historically both were
+active in the default schema, but the current default (`v3`) follows the
+schema-v2 model semantics described later in this guide.
 
-1. **user_id as a categorical feature** — LightGBM learns per-user
-   behavioural patterns directly during training.
+1. **user_id as a categorical feature** — legacy v1 behavior where
+   LightGBM learns per-user behavioural patterns directly during training.
 2. **Per-user probability calibration** — post-prediction calibrators
    adjust the raw probability distribution to better reflect each
    user's label distribution.
@@ -24,7 +26,7 @@ Neither mechanism changes the core label set or requires label explosion.
 
 ---
 
-# 2. user_id as a Model Feature
+# 2. user_id as a Model Feature (legacy v1)
 
 `user_id` is included in `FEATURE_COLUMNS` as a categorical feature.
 LightGBM treats it as a native categorical, learning splits on user
@@ -198,7 +200,7 @@ Changes to any of the following require a version bump:
 This section records the long-term direction for personalization and
 the compatibility gate that prevents mixing old and new contracts.
 
-## Schema-v1 bundles (current)
+## Schema-v1 bundles (legacy)
 
 `user_id` serves two roles at inference time:
 
@@ -213,7 +215,7 @@ the compatibility gate that prevents mixing old and new contracts.
 Both roles must receive the correct `user_id` for predictions to be
 accurate.
 
-## Schema-v2 bundles (implemented)
+## Schema-v2 bundles (implemented, and used by the current v3 default model semantics)
 
 `user_id` has been removed from the core model's feature vector in
 schema v2.  Personalization now relies entirely on:

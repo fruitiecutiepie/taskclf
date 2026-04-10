@@ -270,6 +270,39 @@ def test_starter_template_written_on_first_run(tmp_path):
     assert data == default_starter_config_dict()
 
 
+def test_title_secret_generated_and_persisted(tmp_path):
+    """Fresh installs create a local .title_secret that stays out of config.toml."""
+    cfg = UserConfig(tmp_path)
+
+    secret_path = tmp_path / ".title_secret"
+    assert secret_path.exists()
+    assert secret_path.read_text("utf-8").strip() == cfg.title_secret
+    assert cfg.title_salt == cfg.title_secret
+
+    config_text = (tmp_path / "config.toml").read_text("utf-8")
+    assert "title_salt" not in config_text
+    assert cfg.title_secret not in config_text
+
+
+def test_legacy_title_salt_migrated_to_title_secret(tmp_path):
+    """Legacy config.toml title_salt is moved into .title_secret and removed from TOML."""
+    (tmp_path / "config.toml").write_text('title_salt = "legacy-salt"\n', "utf-8")
+
+    cfg = UserConfig(tmp_path)
+
+    assert cfg.title_secret == "legacy-salt"
+    assert (tmp_path / ".title_secret").read_text("utf-8").strip() == "legacy-salt"
+    assert "title_salt" not in (tmp_path / "config.toml").read_text("utf-8")
+
+
+def test_title_secret_not_exposed_in_as_dict(tmp_path):
+    """Runtime config payloads exclude both title_secret and legacy title_salt."""
+    cfg = UserConfig(tmp_path)
+    data = cfg.as_dict()
+    assert "title_secret" not in data
+    assert "title_salt" not in data
+
+
 def test_existing_config_not_regenerated(tmp_path):
     """An existing config.toml is not overwritten on a second UserConfig load."""
     path = tmp_path / "config.toml"

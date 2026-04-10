@@ -6,6 +6,11 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from taskclf.core.defaults import (
+    DEFAULT_TITLE_CHAR3_SKETCH_BUCKETS,
+    DEFAULT_TITLE_TOKEN_SKETCH_BUCKETS,
+)
+
 
 class AWEvent(BaseModel, frozen=True):
     """A single ActivityWatch window event, normalized and privacy-scrubbed.
@@ -21,6 +26,23 @@ class AWEvent(BaseModel, frozen=True):
     duration_seconds: float = Field(ge=0, description="Duration in seconds.")
     app_id: str = Field(description="Reverse-domain app identifier.")
     window_title_hash: str = Field(description="Salted SHA-256 of the window title.")
+    title_token_sketch: tuple[float, ...] = Field(
+        default_factory=lambda: tuple(
+            0.0 for _ in range(DEFAULT_TITLE_TOKEN_SKETCH_BUCKETS)
+        ),
+        description="Keyed token-hash sketch of the window title.",
+    )
+    title_char3_sketch: tuple[float, ...] = Field(
+        default_factory=lambda: tuple(
+            0.0 for _ in range(DEFAULT_TITLE_CHAR3_SKETCH_BUCKETS)
+        ),
+        description="Keyed character 3-gram sketch of the window title.",
+    )
+    title_char_count: int = Field(default=0, ge=0)
+    title_token_count: int = Field(default=0, ge=0)
+    title_unique_token_ratio: float = Field(default=0.0, ge=0.0, le=1.0)
+    title_digit_ratio: float = Field(default=0.0, ge=0.0, le=1.0)
+    title_separator_count: int = Field(default=0, ge=0)
     is_browser: bool = Field(description="True if the app is a web browser.")
     is_editor: bool = Field(description="True if the app is a code editor.")
     is_terminal: bool = Field(description="True if the app is a terminal emulator.")

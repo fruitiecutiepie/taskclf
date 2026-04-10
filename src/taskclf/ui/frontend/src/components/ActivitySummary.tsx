@@ -7,7 +7,10 @@ import {
   onCleanup,
   Show,
 } from "solid-js";
-import { activity_summary_get, type ActivitySummary as ActivitySummaryData } from "../lib/api";
+import {
+  type ActivitySummary as ActivitySummaryData,
+  activity_summary_get,
+} from "../lib/api";
 import type { TimeRange } from "../lib/date";
 import { time_range_minutes } from "../lib/date";
 import { app_name_short, rate_fmt } from "../lib/format";
@@ -184,7 +187,9 @@ export const ActivitySummary: Component<{
             <div style={container_style}>
               <Show when={pred()}>{(p) => <PredictionBadge p={p} />}</Show>
 
-              <Show when={summary()?.range_state === "provider_unavailable" && provider()}>
+              <Show
+                when={summary()?.range_state === "provider_unavailable" && provider()}
+              >
                 {(status) => <ActivitySourceSetupCallout provider={status()} compact />}
               </Show>
 
@@ -217,7 +222,9 @@ export const ActivitySummary: Component<{
                                   color: "var(--text-muted)",
                                 }}
                               >
-                                <span style={{ "font-weight": "600", color: "var(--text)" }}>
+                                <span
+                                  style={{ "font-weight": "600", color: "var(--text)" }}
+                                >
                                   {app_name_short(entry.app_id)}
                                 </span>
                                 {entry.buckets}m
@@ -240,7 +247,9 @@ export const ActivitySummary: Component<{
                                 color: "var(--text-muted)",
                               }}
                             >
-                              <span style={{ "font-weight": "600", color: "var(--text)" }}>
+                              <span
+                                style={{ "font-weight": "600", color: "var(--text)" }}
+                              >
                                 {app_name_short(entry.app)}
                               </span>
                               {entry.events}

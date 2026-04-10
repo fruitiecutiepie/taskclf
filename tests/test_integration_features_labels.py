@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from taskclf.core.schema import FeatureSchemaV1
+from taskclf.core.schema import FeatureSchemaV3, get_feature_storage_dir
 from taskclf.core.store import read_parquet
 from taskclf.features.build import build_features_for_date, generate_dummy_features
 from taskclf.labels.projection import project_blocks_to_windows
@@ -19,7 +19,7 @@ from taskclf.labels.store import generate_dummy_labels
 
 
 class TestFeatureBuildProducesParquet:
-    """TC-INT-010: pipeline produces features_v1 parquet partition for date."""
+    """TC-INT-010: pipeline produces features_v3 parquet partition for date."""
 
     DATE = dt.date(2025, 6, 15)
 
@@ -31,14 +31,17 @@ class TestFeatureBuildProducesParquet:
     def test_parquet_path_follows_partition_convention(self, tmp_path: Path) -> None:
         out = build_features_for_date(self.DATE, tmp_path)
         expected = (
-            tmp_path / f"features_v1/date={self.DATE.isoformat()}" / "features.parquet"
+            tmp_path
+            / get_feature_storage_dir("v3")
+            / f"date={self.DATE.isoformat()}"
+            / "features.parquet"
         )
         assert out == expected
 
     def test_schema_validates(self, tmp_path: Path) -> None:
         out = build_features_for_date(self.DATE, tmp_path)
         df = read_parquet(out)
-        FeatureSchemaV1.validate_dataframe(df)
+        FeatureSchemaV3.validate_dataframe(df)
 
     def test_row_count_matches_default(self, tmp_path: Path) -> None:
         out = build_features_for_date(self.DATE, tmp_path)
@@ -49,8 +52,8 @@ class TestFeatureBuildProducesParquet:
     def test_round_trip_preserves_schema_metadata(self, tmp_path: Path) -> None:
         out = build_features_for_date(self.DATE, tmp_path)
         df = read_parquet(out)
-        assert df["schema_version"].iloc[0] == FeatureSchemaV1.VERSION
-        assert df["schema_hash"].iloc[0] == FeatureSchemaV1.SCHEMA_HASH
+        assert df["schema_version"].iloc[0] == FeatureSchemaV3.VERSION
+        assert df["schema_hash"].iloc[0] == FeatureSchemaV3.SCHEMA_HASH
 
 
 class TestFeaturesLabelsJoin:
@@ -93,5 +96,5 @@ class TestFeaturesLabelsJoin:
         labels = generate_dummy_labels(self.DATE, n_rows=self.N_ROWS)
 
         labeled = project_blocks_to_windows(features_df, labels)
-        for col in FeatureSchemaV1.COLUMNS:
+        for col in FeatureSchemaV3.COLUMNS:
             assert col in labeled.columns, f"Feature column {col!r} lost after join"

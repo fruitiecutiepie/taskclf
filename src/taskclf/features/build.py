@@ -6,7 +6,7 @@ import datetime as dt
 import logging
 from collections import defaultdict
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Sequence, cast
 
 import pandas as pd
 
@@ -21,10 +21,22 @@ from taskclf.core.defaults import (
     DEFAULT_TITLE_HASH_BUCKETS,
 )
 from taskclf.core.hashing import stable_hash
-from taskclf.core.schema import FeatureSchemaV1, coerce_nullable_numeric
+from taskclf.core.schema import (
+    LATEST_FEATURE_SCHEMA_VERSION,
+    coerce_nullable_numeric,
+    get_feature_schema,
+    get_feature_storage_dir,
+)
 from taskclf.core.store import write_parquet
 from taskclf.core.time import align_to_bucket
-from taskclf.core.types import Event, FeatureRow
+from taskclf.core.types import (
+    Event,
+    FeatureRow,
+    FeatureRowBase,
+    TITLE_CHAR3_SKETCH_FIELDS,
+    TITLE_SCALAR_FEATURE_FIELDS,
+    TITLE_TOKEN_SKETCH_FIELDS,
+)
 from taskclf.features.domain import classify_domain
 from taskclf.features.dynamics import DynamicsTracker
 from taskclf.features.sessions import (
@@ -55,13 +67,19 @@ _DUMMY_APPS: list[tuple[str, bool, bool, bool, str]] = [
 ]
 
 
+def _make_feature_row(**data: object) -> FeatureRowBase:
+    """Construct the runtime feature-row model behind a stable typed surface."""
+    return cast(FeatureRowBase, cast(Any, FeatureRow)(**data))
+
+
 def generate_dummy_features(
     date: dt.date,
     n_rows: int = DEFAULT_DUMMY_ROWS,
     *,
     user_id: str = "dummy-user-001",
     device_id: str | None = None,
-) -> list[FeatureRow]:
+    schema_version: str = LATEST_FEATURE_SCHEMA_VERSION,
+) -> list[FeatureRowBase]:
     """Create *n_rows* synthetic FeatureRow instances spanning *date*.
 
     Args:
@@ -73,7 +91,8 @@ def generate_dummy_features(
     Returns:
         Validated ``FeatureRow`` instances with dummy app/keyboard/mouse data.
     """
-    rows: list[FeatureRow] = []
+    rows: list[FeatureRowBase] = []
+    schema = get_feature_schema(schema_version)
     day_of_week = date.weekday()
     session_start = dt.datetime(
         date.year, date.month, date.day, 9, 0, tzinfo=dt.timezone.utc
@@ -103,14 +122,14 @@ def generate_dummy_features(
         dynamics = tracker.update(keys, clicks, mouse_dist)
 
         rows.append(
-            FeatureRow(
+            _make_feature_row(
                 user_id=user_id,
                 device_id=device_id,
                 session_id=sid,
                 bucket_start_ts=ts,
                 bucket_end_ts=end_ts,
-                schema_version=FeatureSchemaV1.VERSION,
-                schema_hash=FeatureSchemaV1.SCHEMA_HASH,
+                schema_version=schema.VERSION,
+                schema_hash=schema.SCHEMA_HASH,
                 source_ids=[f"dummy-{i:03d}"],
                 app_id=app_id,
                 app_category=app_category,
@@ -254,7 +273,8 @@ def build_features_from_aw_events(
     bucket_seconds: int = DEFAULT_BUCKET_SECONDS,
     session_start: dt.datetime | None = None,
     idle_gap_seconds: float = DEFAULT_IDLE_GAP_SECONDS,
-) -> list[FeatureRow]:
+    schema_version: str = LATEST_FEATURE_SCHEMA_VERSION,
+) -> list[FeatureRowBase]:
     """Convert normalised events into per-bucket :class:`FeatureRow` instances.
 
     Events are grouped into fixed-width time buckets.  For each bucket
@@ -294,6 +314,7 @@ def build_features_from_aw_events(
     """
     if not events:
         return []
+    schema = get_feature_schema(schema_version)
 
     bucket_events: dict[dt.datetime, list[Event]] = defaultdict(list)
     for ev in events:
@@ -340,7 +361,7 @@ def build_features_from_aw_events(
     prev_dominant_app: str | None = None
     current_dwell: float = 0.0
 
-    rows: list[FeatureRow] = []
+    rows: list[FeatureRowBase] = []
     for bucket_ts in sorted_buckets:
         evs = bucket_events[bucket_ts]
 
@@ -427,14 +448,14 @@ def build_features_from_aw_events(
             source_ids.append("aw-watcher-input")
 
         rows.append(
-            FeatureRow(
+            _make_feature_row(
                 user_id=user_id,
                 device_id=device_id,
                 session_id=sid,
                 bucket_start_ts=bucket_ts,
                 bucket_end_ts=bucket_ts + dt.timedelta(seconds=bucket_seconds),
-                schema_version=FeatureSchemaV1.VERSION,
-                schema_hash=FeatureSchemaV1.SCHEMA_HASH,
+                schema_version=schema.VERSION,
+                schema_hash=schema.SCHEMA_HASH,
                 source_ids=source_ids,
                 app_id=dominant_app_id,
                 app_category=dominant_ev.app_category,
@@ -477,6 +498,7 @@ def build_features_from_aw_events(
                 hour_of_day=bucket_ts.hour,
                 day_of_week=bucket_ts.weekday(),
                 session_length_so_far=round(elapsed_minutes, 2),
+                **_dominant_title_feature_payload(dominant_ev, schema_version),
             )
         )
 
@@ -490,7 +512,8 @@ def _fetch_aw_features_for_date(
     title_salt: str,
     user_id: str = "default-user",
     device_id: str | None = None,
-) -> list[FeatureRow]:
+    schema_version: str = LATEST_FEATURE_SCHEMA_VERSION,
+) -> list[FeatureRowBase]:
     """Fetch real ActivityWatch events for *date* and build feature rows.
 
     Queries the AW REST API for ``aw-watcher-window`` events spanning
@@ -528,6 +551,7 @@ def _fetch_aw_features_for_date(
         user_id=user_id,
         device_id=device_id,
         input_events=input_events,
+        schema_version=schema_version,
     )
 
 
@@ -540,6 +564,7 @@ def build_features_for_date(
     user_id: str = "default-user",
     device_id: str | None = None,
     synthetic: bool = False,
+    schema_version: str = LATEST_FEATURE_SCHEMA_VERSION,
 ) -> Path:
     """Build feature rows for *date*, validate, and write to parquet.
 
@@ -550,12 +575,13 @@ def build_features_for_date(
     Args:
         date: Calendar date to build features for.
         data_dir: Root of processed data (e.g. ``Path("data/processed")``).
-            Output lands at ``data_dir/features_v1/date=YYYY-MM-DD/features.parquet``.
+            Output lands at
+            ``data_dir/features_<schema_version>/date=YYYY-MM-DD/features.parquet``.
         aw_host: Base URL of a running AW server
             (e.g. ``"http://localhost:5600"``).  When ``None`` or
             *synthetic* is ``True``, dummy features are generated.
-        title_salt: Salt for hashing window titles.  Required when
-            *aw_host* is set.
+        title_salt: Optional process override for title hashing.  When omitted
+            and *aw_host* is set, the local ``.title_secret`` is used.
         user_id: Pseudonymous user identifier.
         device_id: Optional device identifier.
         synthetic: Force dummy feature generation even if *aw_host* is
@@ -565,29 +591,62 @@ def build_features_for_date(
         Path of the written parquet file.
 
     Raises:
-        ValueError: If generated data fails ``FeatureSchemaV1`` validation
-            or if *aw_host* is set but *title_salt* is missing.
+        ValueError: If generated data fails the selected feature-schema validation.
     """
+    schema = get_feature_schema(schema_version)
     if not synthetic and aw_host is not None:
-        if title_salt is None:
-            raise ValueError("title_salt is required when fetching from ActivityWatch")
+        if not title_salt:
+            from taskclf.core.config import UserConfig
+
+            title_salt = UserConfig(data_dir).title_secret
         rows = _fetch_aw_features_for_date(
             date,
             aw_host=aw_host,
             title_salt=title_salt,
             user_id=user_id,
             device_id=device_id,
+            schema_version=schema_version,
         )
         if not rows:
             logger.debug("No AW events found for %s — writing empty parquet", date)
     else:
-        rows = generate_dummy_features(date, user_id=user_id, device_id=device_id)
+        rows = generate_dummy_features(
+            date,
+            user_id=user_id,
+            device_id=device_id,
+            schema_version=schema_version,
+        )
 
     df = pd.DataFrame([r.model_dump() for r in rows])
 
     if not df.empty:
         coerce_nullable_numeric(df)
-        FeatureSchemaV1.validate_dataframe(df)
+        schema.validate_dataframe(df)
 
-    out_path = data_dir / f"features_v1/date={date.isoformat()}" / "features.parquet"
+    out_path = (
+        data_dir
+        / get_feature_storage_dir(schema_version)
+        / f"date={date.isoformat()}"
+        / "features.parquet"
+    )
     return write_parquet(df, out_path)
+
+
+def _dominant_title_feature_payload(
+    event: Event,
+    schema_version: str,
+) -> dict[str, float | int]:
+    if schema_version != "v3":
+        return {}
+
+    payload: dict[str, float | int] = {}
+    token_sketch = getattr(event, "title_token_sketch", ())
+    char3_sketch = getattr(event, "title_char3_sketch", ())
+
+    for name, value in zip(TITLE_TOKEN_SKETCH_FIELDS, token_sketch):
+        payload[name] = float(value)
+    for name, value in zip(TITLE_CHAR3_SKETCH_FIELDS, char3_sketch):
+        payload[name] = float(value)
+    for field_name in TITLE_SCALAR_FEATURE_FIELDS:
+        payload[field_name] = getattr(event, field_name, 0)
+    return payload

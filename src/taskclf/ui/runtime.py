@@ -223,7 +223,7 @@ class ActivityMonitor:
         self._last_event_count = len(events)
         self._last_app_counts = summarize_events_by_app(events)
         self._after_fetch_success()
-        return max(self._last_app_counts, key=self._last_app_counts.get)
+        return max(self._last_app_counts, key=lambda app: self._last_app_counts[app])
 
     def check_transition(
         self,

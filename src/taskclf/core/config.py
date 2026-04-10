@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import logging
+import secrets
 import tomllib
 import uuid
 from dataclasses import dataclass, field
@@ -37,7 +38,6 @@ from taskclf.core.defaults import (
     DEFAULT_DATA_DIR,
     DEFAULT_IDLE_TRANSITION_MINUTES,
     DEFAULT_POLL_SECONDS,
-    DEFAULT_TITLE_SALT,
     DEFAULT_TRANSITION_MINUTES,
 )
 
@@ -46,6 +46,7 @@ logger = logging.getLogger(__name__)
 _DEFAULT_USERNAME = "default-user"
 _CONFIG_FILENAME = "config.toml"
 _USER_ID_FILENAME = ".user_id"
+_TITLE_SECRET_FILENAME = ".title_secret"
 _LEGACY_JSON_FILENAME = "config.json"
 
 # Default UI port (tray / embedded server); kept here so starter template matches runtime.
@@ -63,8 +64,8 @@ class UserConfigField:
     section_title: str | None = None
 
 
-# Ordered full starter template: identity → notifications → ActivityWatch → privacy →
-# web UI → transition/gap behavior. Same order is used when persisting known keys.
+# Ordered full starter template: identity → notifications → ActivityWatch → web UI →
+# transition/gap behavior. Same order is used when persisting known keys.
 # Section titles appear as ``# --- Title ---`` on the first key of each group.
 USER_CONFIG_FIELDS: tuple[UserConfigField, ...] = (
     UserConfigField(
@@ -99,12 +100,6 @@ USER_CONFIG_FIELDS: tuple[UserConfigField, ...] = (
         "aw_timeout_seconds",
         DEFAULT_AW_TIMEOUT_SECONDS,
         "HTTP timeout for ActivityWatch API calls (seconds).",
-    ),
-    UserConfigField(
-        "title_salt",
-        DEFAULT_TITLE_SALT,
-        "Salt for hashing window titles before features; change if you rotate privacy.",
-        section_title="Privacy",
     ),
     UserConfigField(
         "ui_port",
@@ -212,16 +207,20 @@ class UserConfig:
     _dir: Path = field(init=False)
     _path: Path = field(init=False)
     _user_id_path: Path = field(init=False)
+    _title_secret_path: Path = field(init=False)
     _data: dict[str, Any] = field(init=False)
     _uid: str = field(init=False)
+    _title_secret: str = field(init=False)
 
     def __post_init__(self) -> None:
         self._dir = Path(self.data_dir)
         self._path = self._dir / _CONFIG_FILENAME
         self._user_id_path = self._dir / _USER_ID_FILENAME
+        self._title_secret_path = self._dir / _TITLE_SECRET_FILENAME
         self._migrate_json()
         self._data = self._load()
         self._uid = self._load_user_id()
+        self._title_secret = self._load_title_secret()
         self._ensure_starter_config_if_missing()
 
     # -- migration & loading ---------------------------------------------------
@@ -279,6 +278,29 @@ class UserConfig:
         self._dir.mkdir(parents=True, exist_ok=True)
         self._user_id_path.write_text(uid, "utf-8")
 
+    def _load_title_secret(self) -> str:
+        """Read, migrate, or generate the stable per-install title secret."""
+        if self._title_secret_path.exists():
+            secret = self._title_secret_path.read_text("utf-8").strip()
+            if secret:
+                return secret
+
+        legacy = self._data.pop("title_salt", None)
+        if legacy:
+            secret = str(legacy).strip()
+            if secret:
+                self._persist_title_secret(secret)
+                self._persist()
+                return secret
+
+        secret = secrets.token_hex(32)
+        self._persist_title_secret(secret)
+        return secret
+
+    def _persist_title_secret(self, secret: str) -> None:
+        self._dir.mkdir(parents=True, exist_ok=True)
+        self._title_secret_path.write_text(secret, "utf-8")
+
     def _ensure_starter_config_if_missing(self) -> None:
         """Write the full default template only when ``config.toml`` does not exist."""
         if self._path.exists():
@@ -297,6 +319,16 @@ class UserConfig:
     def user_id(self) -> str:
         """Stable UUID assigned to this install.  Never changes."""
         return self._uid
+
+    @property
+    def title_secret(self) -> str:
+        """Stable per-install secret used for privacy-preserving title featurization."""
+        return self._title_secret
+
+    @property
+    def title_salt(self) -> str:
+        """Backward-compatible alias for the local title secret."""
+        return self._title_secret
 
     # -- username (editable display name) --------------------------------------
 
@@ -318,7 +350,11 @@ class UserConfig:
         return {
             "user_id": self.user_id,
             "username": self.username,
-            **{k: v for k, v in self._data.items() if k not in ("user_id", "username")},
+            **{
+                k: v
+                for k, v in self._data.items()
+                if k not in ("user_id", "username", "title_salt", "title_secret")
+            },
         }
 
     def update(self, patch: dict[str, Any]) -> dict[str, Any]:
@@ -332,7 +368,7 @@ class UserConfig:
                 raise ValueError("username must not be empty")
             self._data["username"] = name
         for key, val in patch.items():
-            if key in ("user_id", "username"):
+            if key in ("user_id", "username", "title_salt", "title_secret"):
                 continue
             self._data[key] = val
         self._persist()

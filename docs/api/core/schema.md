@@ -7,6 +7,14 @@ producers (`features.build`) and consumers (`train`, `infer`).  Per
 recorded in a model bundle differs from the hash of the feature
 pipeline that produced the input data.
 
+## Feature schemas
+
+TaskCLF currently supports three persisted feature contracts:
+
+- `FeatureSchemaV1`: original schema, includes `user_id` in persisted rows and model features
+- `FeatureSchemaV2`: removes `user_id` from the schema/model feature contract
+- `FeatureSchemaV3`: current default; keeps `user_id` on persisted rows for joins/evaluation while using v2-style model semantics plus keyed title-sketch features
+
 ## FeatureSchemaV1
 
 Central class that owns the canonical column registry, the schema hash,

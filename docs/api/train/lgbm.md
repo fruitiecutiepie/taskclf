@@ -13,9 +13,11 @@ in a single pipeline:
 features_df → prepare_xy → train_lgbm → (model, metrics, confusion_df, params, cat_encoders)
 ```
 
-Categorical columns (`app_id`, `app_category`, `domain_category`,
-`user_id`) are label-encoded to integers so LightGBM can use them as
-native categoricals.  During training, rare categories (below
+Categorical columns are label-encoded to integers so LightGBM can use
+them as native categoricals.  In the current default schema (`v3`),
+categoricals are `app_id`, `app_category`, and `domain_category`;
+`user_id` remains on persisted rows for joins/evaluation but is not part
+of the default model feature vector. During training, rare categories (below
 `min_category_freq`) and a random fraction (`unknown_mask_rate`) of
 known categories are replaced with `__unknown__` so the model learns
 a meaningful embedding for unseen values.  At inference time, unseen
@@ -81,6 +83,13 @@ Same as `FEATURE_COLUMNS` with `user_id` removed (33 features).
 Used when training schema-v2 models where personalization is handled
 via calibrators and per-user post-processing instead of a model feature.
 
+### FEATURE_COLUMNS_V3
+
+Current default feature set.  Starts from `FEATURE_COLUMNS_V2` and adds
+numeric-only keyed title-sketch features plus scalar title statistics.
+These features increase browser-title learning signal without exporting
+reversible title vocabularies into the model bundle.
+
 ### CATEGORICAL_COLUMNS_V2
 
 Same as `CATEGORICAL_COLUMNS` with `user_id` removed:
@@ -97,7 +106,7 @@ get_categorical_columns(schema_version: str) -> list[str]
 ```
 
 Dispatch helpers that return the appropriate column list for
-`"v1"` or `"v2"`.  Raise `ValueError` for unknown versions.
+`"v1"`, `"v2"`, or `"v3"`.  Raise `ValueError` for unknown versions.
 
 ### Default hyperparameters
 
@@ -143,7 +152,7 @@ two modes:
 | `min_category_freq` | `5` | Minimum count for a category to keep its own code |
 | `unknown_mask_rate` | `0.05` | Fraction of known-category rows randomly masked to `__unknown__` |
 | `random_state` | `None` | Seed for reproducible masking |
-| `schema_version` | `"v1"` | Schema version (`"v1"` or `"v2"`) selecting which categorical columns to encode |
+| `schema_version` | inferred | Schema version selecting which categorical columns to encode |
 
 ### prepare_xy
 
@@ -153,7 +162,7 @@ prepare_xy(
     label_encoder: LabelEncoder | None = None,
     cat_encoders: dict[str, LabelEncoder] | None = None,
     *,
-    schema_version: str = "v1",
+    schema_version: str | None = None,
 ) -> tuple[np.ndarray, np.ndarray, LabelEncoder, dict[str, LabelEncoder]]
 ```
 
@@ -192,7 +201,7 @@ train_lgbm(
     min_category_freq: int = 5,
     unknown_mask_rate: float = 0.05,
     random_state: int | None = None,
-    schema_version: str = "v1",
+    schema_version: str | None = None,
 ) -> tuple[lgb.Booster, dict, pd.DataFrame, dict[str, Any], dict[str, LabelEncoder]]
 ```
 
@@ -213,7 +222,7 @@ set.  Returns a 5-tuple:
 from taskclf.train.lgbm import train_lgbm
 from taskclf.train.dataset import split_by_time
 
-labeled_df = ...  # DataFrame with FEATURE_COLUMNS + "label"
+labeled_df = ...  # DataFrame with the selected schema's feature columns + "label"
 splits = split_by_time(labeled_df)
 train_df = labeled_df.iloc[splits["train"]].reset_index(drop=True)
 val_df = labeled_df.iloc[splits["val"]].reset_index(drop=True)

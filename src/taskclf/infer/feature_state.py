@@ -26,7 +26,7 @@ from taskclf.core.defaults import (
     DEFAULT_ROLLING_WINDOW_5,
     DEFAULT_ROLLING_WINDOW_15,
 )
-from taskclf.core.types import FeatureRow
+from taskclf.core.types import FeatureRowBase
 from taskclf.features.dynamics import DynamicsTracker
 
 
@@ -50,7 +50,7 @@ class OnlineFeatureState:
     idle_gap_seconds: float = DEFAULT_IDLE_GAP_SECONDS
 
     _capacity: int = field(init=False)
-    _buffer: deque[FeatureRow] = field(init=False)
+    _buffer: deque[FeatureRowBase] = field(init=False)
     _dynamics: DynamicsTracker = field(init=False)
     _session_start_ts: datetime | None = field(init=False, default=None)
     _last_dynamics: dict[str, float | None] = field(init=False, default_factory=dict)
@@ -64,7 +64,7 @@ class OnlineFeatureState:
             rolling_15=DEFAULT_ROLLING_WINDOW_15,
         )
 
-    def push(self, row: FeatureRow) -> None:
+    def push(self, row: FeatureRowBase) -> None:
         """Record a newly built feature row.
 
         Feeds the row's input metrics into the internal

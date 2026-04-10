@@ -13,7 +13,11 @@ from __future__ import annotations
 
 import pytest
 
-from taskclf.features.text import featurize_title, title_hash_bucket
+from taskclf.features.text import (
+    derive_title_sketch_features,
+    featurize_title,
+    title_hash_bucket,
+)
 
 
 class TestFeaturizeTitle:
@@ -96,3 +100,31 @@ class TestTitleHashBucket:
         assert title_hash_bucket("aabbccddee00", n_buckets=1) == 0
         assert title_hash_bucket("1234567890ab", n_buckets=1) == 0
         assert title_hash_bucket("not-hex", n_buckets=1) == 0
+
+
+class TestDeriveTitleSketchFeatures:
+    def test_deterministic_for_same_secret(self) -> None:
+        title = "Quarterly Report 2026 | Docs"
+        a = derive_title_sketch_features(title, "secret-a")
+        b = derive_title_sketch_features(title, "secret-a")
+        assert a == b
+
+    def test_changes_with_different_secret(self) -> None:
+        title = "Quarterly Report 2026 | Docs"
+        a = derive_title_sketch_features(title, "secret-a")
+        b = derive_title_sketch_features(title, "secret-b")
+        assert a.title_token_sketch != b.title_token_sketch
+        assert a.title_char3_sketch != b.title_char3_sketch
+
+    def test_no_raw_title_leakage(self) -> None:
+        title = "Secret Payroll 2026 - Browser"
+        features = derive_title_sketch_features(title, "secret-a")
+        payload = repr(features)
+        for fragment in ("Secret", "Payroll", "Browser"):
+            assert fragment not in payload
+
+    def test_unicode_and_digits_handled(self) -> None:
+        features = derive_title_sketch_features("Résumé 2026 • План", "secret-a")
+        assert features.title_char_count > 0
+        assert features.title_token_count >= 0
+        assert 0.0 <= features.title_digit_ratio <= 1.0

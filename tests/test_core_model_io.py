@@ -28,7 +28,7 @@ from taskclf.core.model_io import (
     load_model_bundle,
     save_model_bundle,
 )
-from taskclf.core.schema import FeatureSchemaV1
+from taskclf.core.schema import FeatureSchemaV3
 from taskclf.core.types import LABEL_SET_V1, LabelSpan
 from taskclf.features.build import generate_dummy_features
 from taskclf.labels.projection import project_blocks_to_windows
@@ -142,7 +142,7 @@ class TestSaveModelBundle:
 
     def test_metadata_schema_hash_matches_current(self, trained_bundle) -> None:
         raw = json.loads((trained_bundle["run_dir"] / "metadata.json").read_text())
-        assert raw["schema_hash"] == FeatureSchemaV1.SCHEMA_HASH
+        assert raw["schema_hash"] == FeatureSchemaV3.SCHEMA_HASH
 
     def test_writes_metrics_json(self, trained_bundle) -> None:
         raw = json.loads((trained_bundle["run_dir"] / "metrics.json").read_text())
@@ -159,6 +159,18 @@ class TestSaveModelBundle:
         """Run dirs must not be overwritten (R2 invariant)."""
         run_dir = trained_bundle["run_dir"]
         assert run_dir.is_dir()
+
+    def test_bundle_does_not_leak_title_secret_or_raw_title(
+        self, trained_bundle
+    ) -> None:
+        run_dir = trained_bundle["run_dir"]
+        bundle_text = "\n".join(
+            (run_dir / name).read_text()
+            for name in ("metadata.json", "metrics.json", "categorical_encoders.json")
+            if (run_dir / name).exists()
+        )
+        assert "Secret Document Title" not in bundle_text
+        assert ".title_secret" not in bundle_text
 
 
 class TestLoadModelBundleMissingMetadata:
@@ -213,7 +225,7 @@ class TestLoadModelBundleSchemaHashMismatch:
 
     def test_valid_hash_loads_successfully(self, trained_bundle) -> None:
         model, metadata, _ = load_model_bundle(trained_bundle["run_dir"])
-        assert metadata.schema_hash == FeatureSchemaV1.SCHEMA_HASH
+        assert metadata.schema_hash == FeatureSchemaV3.SCHEMA_HASH
 
 
 class TestLoadModelBundleLabelSetMismatch:

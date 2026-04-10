@@ -248,7 +248,7 @@ def evaluate_model(
         calibrator: Probability calibrator to apply in non-raw modes.
             Required when *eval_mode* is not ``"raw"``.
         smooth_window: Window size for rolling-majority smoothing.
-        schema_version: ``"v1"`` or ``"v2"`` — selects categorical columns for
+        schema_version: ``"v1"``, ``"v2"``, or ``"v3"`` — selects categorical columns for
             unknown-category-rate (see :func:`~taskclf.train.lgbm.get_categorical_columns`).
 
     Returns:
@@ -258,7 +258,12 @@ def evaluate_model(
     le.fit(sorted(LABEL_SET_V1))
     label_names = list(le.classes_)
 
-    y_proba = predict_proba(model, test_df, cat_encoders)
+    y_proba = predict_proba(
+        model,
+        test_df,
+        cat_encoders,
+        schema_version=schema_version,
+    )
 
     if eval_mode != "raw" and calibrator is not None:
         y_proba = calibrator.calibrate(y_proba)
@@ -423,6 +428,7 @@ def tune_reject_threshold(
     reject_rate_min: float = _ACCEPT_REJECT_RATE_MIN,
     reject_rate_max: float = _ACCEPT_REJECT_RATE_MAX,
     calibrator: Calibrator | None = None,
+    schema_version: str = "v1",
 ) -> RejectTuningResult:
     """Sweep reject thresholds and pick the best one.
 
@@ -445,6 +451,7 @@ def tune_reject_threshold(
             before extracting confidences for the threshold sweep.
             This ensures the threshold is tuned on the same probability
             space used at inference time.
+        schema_version: ``"v1"``, ``"v2"``, or ``"v3"``.
 
     Returns:
         A :class:`RejectTuningResult` with the optimal threshold and
@@ -457,7 +464,12 @@ def tune_reject_threshold(
     le.fit(sorted(LABEL_SET_V1))
     label_names = list(le.classes_)
 
-    y_proba = predict_proba(model, val_df, cat_encoders)
+    y_proba = predict_proba(
+        model,
+        val_df,
+        cat_encoders,
+        schema_version=schema_version,
+    )
     if calibrator is not None:
         y_proba = calibrator.calibrate(y_proba)
     y_pred_indices = y_proba.argmax(axis=1)

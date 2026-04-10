@@ -115,7 +115,7 @@ flowchart LR
     AW["ActivityWatch\nexport / API"] --> Ingest
     Ingest --> RawEvents["data/raw/"]
     RawEvents --> Features["features build"]
-    Features --> FeaturesDir["data/processed/\nfeatures_v1/"]
+    Features --> FeaturesDir["data/processed/\nfeatures_v3/"]
     LabelsCSV["labels CSV"] --> LabelsImport["labels import"]
     LabelsImport --> LabelsDir["data/processed/\nlabels_v1/"]
     FeaturesDir --> Train
@@ -166,7 +166,7 @@ uv run taskclf features build --date 2026-02-16
 
 Converts raw events for a single date into per-minute (60 s bucket)
 feature rows and writes them to
-`data/processed/features_v1/date=2026-02-16/features.parquet`.
+`data/processed/features_v3/date=2026-02-16/features.parquet`.
 
 Repeat for every date you have data for.
 

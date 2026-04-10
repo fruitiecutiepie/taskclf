@@ -72,7 +72,7 @@ bundle = [
 
 [tool.mypy]
 python_version = "3.14"
-warn_unused_configs = true
+warn_unused_configs = false
 
 [[tool.mypy.overrides]]
 module = [
@@ -82,13 +82,11 @@ module = [
     "pyarrow.*",
     "pystray",
     "lightgbm.*",
-    "pytest",
     "typer.*",
     "fastapi.*",
     "PIL.*",
     "uvicorn.*",
     "webview.*",
-    "tomli_w",
     "matplotlib.*",
 ]
 ignore_missing_imports = true

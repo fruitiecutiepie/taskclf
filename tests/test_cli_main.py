@@ -20,7 +20,7 @@ from typer.testing import CliRunner
 
 from taskclf.cli.main import app
 from taskclf.core.defaults import MIXED_UNKNOWN
-from taskclf.core.schema import FeatureSchemaV1
+from taskclf.core.schema import FeatureSchemaV3, get_feature_storage_dir
 from taskclf.core.types import LABEL_SET_V1
 
 _VALID_LABELS = set(LABEL_SET_V1) | {MIXED_UNKNOWN}
@@ -231,7 +231,12 @@ class TestFeaturesBuild:
                 "--synthetic",
             ],
         )
-        expected = tmp_path / "features_v1" / "date=2025-06-15" / "features.parquet"
+        expected = (
+            tmp_path
+            / get_feature_storage_dir("v3")
+            / "date=2025-06-15"
+            / "features.parquet"
+        )
         assert expected.exists()
 
     def test_schema_columns_present(self, tmp_path: Path) -> None:
@@ -247,13 +252,18 @@ class TestFeaturesBuild:
                 "--synthetic",
             ],
         )
-        parquet = tmp_path / "features_v1" / "date=2025-06-15" / "features.parquet"
+        parquet = (
+            tmp_path
+            / get_feature_storage_dir("v3")
+            / "date=2025-06-15"
+            / "features.parquet"
+        )
         df = pd.read_parquet(parquet)
 
         assert "schema_version" in df.columns
         assert "schema_hash" in df.columns
-        assert df["schema_version"].iloc[0] == FeatureSchemaV1.VERSION
-        assert df["schema_hash"].iloc[0] == FeatureSchemaV1.SCHEMA_HASH
+        assert df["schema_version"].iloc[0] == FeatureSchemaV3.VERSION
+        assert df["schema_hash"].iloc[0] == FeatureSchemaV3.SCHEMA_HASH
 
     def test_no_forbidden_columns(self, tmp_path: Path) -> None:
         runner.invoke(
@@ -268,7 +278,12 @@ class TestFeaturesBuild:
                 "--synthetic",
             ],
         )
-        parquet = tmp_path / "features_v1" / "date=2025-06-15" / "features.parquet"
+        parquet = (
+            tmp_path
+            / get_feature_storage_dir("v3")
+            / "date=2025-06-15"
+            / "features.parquet"
+        )
         df = pd.read_parquet(parquet)
 
         leaked = FORBIDDEN_COLUMNS & set(df.columns)
@@ -418,8 +433,8 @@ class TestTrainLgbm:
         run_dir = next(models_dir.iterdir())
         meta = json.loads((run_dir / "metadata.json").read_text())
 
-        assert meta["schema_version"] == FeatureSchemaV1.VERSION
-        assert meta["schema_hash"] == FeatureSchemaV1.SCHEMA_HASH
+        assert meta["schema_version"] == FeatureSchemaV3.VERSION
+        assert meta["schema_hash"] == FeatureSchemaV3.SCHEMA_HASH
         assert sorted(meta["label_set"]) == sorted(LABEL_SET_V1)
 
     def test_metrics_contain_macro_f1(self, train_result) -> None:

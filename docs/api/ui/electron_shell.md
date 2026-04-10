@@ -28,7 +28,7 @@ Python CLI to Electron:
 - model selection (`model_dir`, `models_dir`)
 - ActivityWatch connection (`aw_host`)
 - polling and transition timing (`poll_seconds`, `transition_minutes`)
-- privacy-sensitive runtime paths (`data_dir`, `title_salt`)
+- privacy-sensitive runtime paths (`data_dir`, local title secret / `title_salt` override)
 - shell mode (`dev`, `ui_port`)
 - optional user-facing metadata (`username`, `retrain_config`)
 

@@ -19,6 +19,7 @@ freely without affecting label identity or continuity.
 ```
 <data_dir>/config.toml   # user-editable settings
 <data_dir>/.user_id      # stable UUID (auto-generated, do not edit)
+<data_dir>/.title_secret # local-only secret for title hashing/sketching
 ```
 
 Default: `~/Library/Application Support/taskclf/data/processed/`
@@ -57,11 +58,6 @@ poll_seconds = 60
 aw_timeout_seconds = 10
 
 
-# --- Privacy ---
-# Salt for hashing window titles before features; change if you rotate privacy.
-title_salt = "taskclf-default-salt"
-
-
 # --- Web UI ---
 # TCP port for the embedded labeling dashboard (http://127.0.0.1:this port).
 ui_port = 8741
@@ -89,7 +85,6 @@ gap_fill_escalation_minutes = 480
 | `aw_host` | `str` | `"http://localhost:5600"` | ActivityWatch server base URL |
 | `poll_seconds` | `int` | `60` | Polling interval for the active window (seconds) |
 | `aw_timeout_seconds` | `int` | `10` | ActivityWatch HTTP timeout (seconds) |
-| `title_salt` | `str` | `"taskclf-default-salt"` | Salt for hashing window titles in features |
 | `ui_port` | `int` | `8741` | Embedded labeling dashboard TCP port |
 | `suggestion_banner_ttl_seconds` | `int` | `0` | Auto-dismiss suggestion banner after N seconds; `0` until user acts |
 | `transition_minutes` | `int` | `2` | Dominance time before a transition is detected (minutes) |
@@ -97,6 +92,7 @@ gap_fill_escalation_minutes = 480
 | `gap_fill_escalation_minutes` | `int` | `480` | Unlabeled time before gap-fill escalation (minutes) |
 
 The `user_id` UUID is stored separately in `.user_id` and never appears in `config.toml`.
+The title-featurization secret is stored separately in `.title_secret` and is intentionally omitted from `config.toml`, REST payloads, and `UserConfig.as_dict()`.
 
 ## Backward compatibility
 
@@ -106,6 +102,10 @@ goes to `.user_id`, and the original is renamed to `config.json.bak`.
 
 If old code wrote `user_id` into `config.toml`, it is automatically
 moved to `.user_id` and removed from the TOML file.
+
+Legacy `title_salt` values are also migrated out of `config.toml` into
+`.title_secret`.  `UserConfig.title_salt` remains as a read-only
+compatibility alias for code paths that still expect that name.
 
 ## CLI usage
 

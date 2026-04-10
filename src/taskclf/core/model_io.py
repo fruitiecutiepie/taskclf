@@ -15,12 +15,18 @@ import pandas as pd
 from pydantic import BaseModel, Field
 
 from taskclf.core.defaults import DEFAULT_GIT_TIMEOUT_SECONDS
-from taskclf.core.schema import FeatureSchemaV1, FeatureSchemaV2
+from taskclf.core.schema import (
+    FeatureSchemaV1,
+    FeatureSchemaV2,
+    FeatureSchemaV3,
+    LATEST_FEATURE_SCHEMA_VERSION,
+)
 from taskclf.core.types import LABEL_SET_V1
 
 _SCHEMA_HASHES: dict[str, str] = {
     FeatureSchemaV1.VERSION: FeatureSchemaV1.SCHEMA_HASH,
     FeatureSchemaV2.VERSION: FeatureSchemaV2.SCHEMA_HASH,
+    FeatureSchemaV3.VERSION: FeatureSchemaV3.SCHEMA_HASH,
 }
 
 logger = logging.getLogger(__name__)
@@ -139,7 +145,7 @@ def load_model_bundle(
 ) -> tuple[lgb.Booster, ModelMetadata, dict[str, Any]]:
     """Load a model bundle and optionally validate schema hash and label set.
 
-    Schema validation accepts both v1 and v2 bundles: the bundle's
+    Schema validation accepts v1, v2, and v3 bundles: the bundle's
     ``schema_version`` is looked up in the known schema registry and its
     ``schema_hash`` is checked against the corresponding expected hash.
 
@@ -209,7 +215,7 @@ def build_metadata(
     data_provenance: Literal["real", "synthetic", "mixed"] = "real",
     unknown_category_freq_threshold: int | None = None,
     unknown_category_mask_rate: float | None = None,
-    schema_version: str = "v1",
+    schema_version: str = LATEST_FEATURE_SCHEMA_VERSION,
 ) -> ModelMetadata:
     """Convenience builder that fills in schema info and git commit.
 
@@ -227,7 +233,7 @@ def build_metadata(
             used during training (categories below this are ``__unknown__``).
         unknown_category_mask_rate: Fraction of known categories randomly
             masked to ``__unknown__`` during training.
-        schema_version: ``"v1"`` or ``"v2"``.
+        schema_version: ``"v1"``, ``"v2"``, or ``"v3"``.
 
     Returns:
         A populated ``ModelMetadata`` instance.

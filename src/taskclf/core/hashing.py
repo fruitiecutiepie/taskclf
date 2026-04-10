@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 
 _HASH_TRUNCATION = 12
 
@@ -40,3 +41,9 @@ def salted_hash(payload: str, salt: str) -> str:
     """
     digest = hashlib.sha256((salt + payload).encode("utf-8")).hexdigest()
     return digest[:_HASH_TRUNCATION]
+
+
+def keyed_digest(payload: str, secret: str, namespace: str) -> bytes:
+    """Return an HMAC-SHA256 digest for *payload* scoped by *namespace*."""
+    msg = f"{namespace}:{payload}".encode("utf-8")
+    return hmac.new(secret.encode("utf-8"), msg, hashlib.sha256).digest()

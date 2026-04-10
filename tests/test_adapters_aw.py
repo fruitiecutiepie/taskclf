@@ -176,6 +176,19 @@ class TestRawEventToAWEvent:
         assert "Document" not in ev.window_title_hash
         assert len(ev.window_title_hash) == 12
 
+    def test_title_sketch_features_populated_without_raw_title(self) -> None:
+        raw = {
+            "timestamp": "2026-02-23T10:05:00+00:00",
+            "duration": 10.0,
+            "data": {"app": "Firefox", "title": "Secret Document Title 2026"},
+        }
+        ev = _raw_event_to_aw_event(raw, title_salt=SALT)
+        assert sum(ev.title_token_sketch) > 0.0
+        assert sum(ev.title_char3_sketch) > 0.0
+        assert ev.title_char_count > 0
+        assert ev.title_separator_count >= 0
+        assert "Secret" not in repr(ev)
+
     def test_different_salts_produce_different_hashes(self) -> None:
         raw = {
             "timestamp": "2026-02-23T10:05:00+00:00",

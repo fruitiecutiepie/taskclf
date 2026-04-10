@@ -16,12 +16,12 @@ import pytest
 from sklearn.preprocessing import LabelEncoder
 
 from taskclf.core.model_io import build_metadata, load_model_bundle, save_model_bundle
-from taskclf.core.schema import FeatureSchemaV1, FeatureSchemaV2
+from taskclf.core.schema import FeatureSchemaV1, FeatureSchemaV2, FeatureSchemaV3
 from taskclf.core.types import LABEL_SET_V1, LabelSpan
 from taskclf.features.build import generate_dummy_features
 from taskclf.labels.projection import project_blocks_to_windows
 from taskclf.train.dataset import split_by_time
-from taskclf.train.lgbm import FEATURE_COLUMNS, FEATURE_COLUMNS_V2, train_lgbm
+from taskclf.train.lgbm import FEATURE_COLUMNS_V2, FEATURE_COLUMNS_V3, train_lgbm
 
 
 def _build_labeled_df() -> pd.DataFrame:
@@ -124,8 +124,8 @@ class TestTrainProducesBundle:
 
     def test_metadata_schema_matches_current(self, pipeline_artifacts) -> None:
         raw = json.loads((pipeline_artifacts["run_dir"] / "metadata.json").read_text())
-        assert raw["schema_version"] == FeatureSchemaV1.VERSION
-        assert raw["schema_hash"] == FeatureSchemaV1.SCHEMA_HASH
+        assert raw["schema_version"] == FeatureSchemaV3.VERSION
+        assert raw["schema_hash"] == FeatureSchemaV3.SCHEMA_HASH
 
     def test_metadata_label_set_matches_current(self, pipeline_artifacts) -> None:
         raw = json.loads((pipeline_artifacts["run_dir"] / "metadata.json").read_text())
@@ -158,7 +158,11 @@ class TestInferOnSameSchema:
         val_df = pipeline_artifacts["val_df"]
         le = pipeline_artifacts["label_encoder"]
 
-        feat_df, _ = encode_categoricals(val_df[FEATURE_COLUMNS].copy(), cat_encoders)
+        feat_df, _ = encode_categoricals(
+            val_df[FEATURE_COLUMNS_V3].copy(),
+            cat_encoders,
+            schema_version="v3",
+        )
         x = feat_df.fillna(0).to_numpy(dtype=np.float64)
         proba = np.asarray(model.predict(x))
         pred_indices = proba.argmax(axis=1)
@@ -174,7 +178,11 @@ class TestInferOnSameSchema:
         model, _, cat_encoders = load_model_bundle(pipeline_artifacts["run_dir"])
         val_df = pipeline_artifacts["val_df"]
 
-        feat_df, _ = encode_categoricals(val_df[FEATURE_COLUMNS].copy(), cat_encoders)
+        feat_df, _ = encode_categoricals(
+            val_df[FEATURE_COLUMNS_V3].copy(),
+            cat_encoders,
+            schema_version="v3",
+        )
         x = feat_df.fillna(0).to_numpy(dtype=np.float64)
         proba = np.asarray(model.predict(x))
         assert proba.shape[0] == len(val_df)
@@ -185,7 +193,11 @@ class TestInferOnSameSchema:
         model, _, cat_encoders = load_model_bundle(pipeline_artifacts["run_dir"])
         val_df = pipeline_artifacts["val_df"]
 
-        feat_df, _ = encode_categoricals(val_df[FEATURE_COLUMNS].copy(), cat_encoders)
+        feat_df, _ = encode_categoricals(
+            val_df[FEATURE_COLUMNS_V3].copy(),
+            cat_encoders,
+            schema_version="v3",
+        )
         x = feat_df.fillna(0).to_numpy(dtype=np.float64)
         proba = np.asarray(model.predict(x))
         row_sums = proba.sum(axis=1)
@@ -221,7 +233,7 @@ class TestSchemaAlterationRefusesInference:
 
     def test_both_validations_pass_on_valid_bundle(self, pipeline_artifacts) -> None:
         model, metadata, _ = load_model_bundle(pipeline_artifacts["run_dir"])
-        assert metadata.schema_hash == FeatureSchemaV1.SCHEMA_HASH
+        assert metadata.schema_hash == FeatureSchemaV3.SCHEMA_HASH
         assert sorted(metadata.label_set) == sorted(LABEL_SET_V1)
 
 

@@ -1,6 +1,9 @@
 import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ActivityProviderStatus, ActivitySummary as ActivitySummaryData } from "../lib/api";
+import type {
+  ActivityProviderStatus,
+  ActivitySummary as ActivitySummaryData,
+} from "../lib/api";
 import { activity_summary_get, notification_accept } from "../lib/api";
 import { time_format } from "../lib/format";
 import type { LabelSuggestion } from "../lib/ws";

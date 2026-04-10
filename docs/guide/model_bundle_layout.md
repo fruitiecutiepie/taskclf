@@ -43,8 +43,8 @@ Tooling MUST treat `model.txt` as required for a loadable bundle.
 
 ```json
 {
-  "schema_version": "v1",
-  "schema_hash": "<FeatureSchemaV1.SCHEMA_HASH>",
+  "schema_version": "v3",
+  "schema_hash": "<hash for schema_version>",
   "label_set": ["BreakIdle", "..."],
 
   "train_date_from": "YYYY-MM-DD",
@@ -66,7 +66,7 @@ Notes:
 * `created_at` is produced by `datetime.now(UTC).isoformat()` and includes UTC offset and microseconds.
 * Compatibility checks in `load_model_bundle()` require:
 
-  * `schema_hash` exact match vs `FeatureSchemaV1.SCHEMA_HASH`
+  * `schema_hash` exact match vs the expected hash for `schema_version`
   * `label_set` exact match vs `LABEL_SET_V1` (sorted equality)
 
 ## metrics.json contract (current)
@@ -83,7 +83,7 @@ A directory is a valid model bundle if:
 
 A valid bundle is compatible if:
 
-* `metadata.schema_hash` matches current `FeatureSchemaV1.SCHEMA_HASH`
+* `metadata.schema_hash` matches the expected hash for `metadata.schema_version`
 * `metadata.label_set` matches current `LABEL_SET_V1` (sorted equality)
 
 Selection tooling should distinguish:

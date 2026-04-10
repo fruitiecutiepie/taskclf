@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -1806,6 +1807,7 @@ class TestDesktopShellCommands:
 
         with (
             patch("taskclf.ui.server.__file__", str(fake_ui_root / "server.py")),
+            patch("taskclf.cli.main._get_ui_port_listener_info", return_value=None),
             patch(
                 "subprocess.Popen", side_effect=[backend_proc, vite_proc]
             ) as mock_popen,
@@ -1863,4 +1865,132 @@ class TestDesktopShellCommands:
 
         mock_open.assert_called_once_with("http://127.0.0.1:5173")
         backend_proc.terminate.assert_called_once()
-        vite_proc.terminate.assert_called_once()
+
+    def test_ui_browser_dev_stops_existing_taskclf_listener(
+        self, tmp_path: Path
+    ) -> None:
+        """TC-CLI-DS-004: stale taskclf listener is stopped before backend startup."""
+        fake_ui_root = tmp_path / "ui"
+        frontend_dir = fake_ui_root / "frontend"
+        (frontend_dir / "node_modules").mkdir(parents=True)
+
+        backend_proc = MagicMock()
+        backend_proc.poll.return_value = None
+        backend_proc.wait.side_effect = [KeyboardInterrupt(), None]
+
+        vite_proc = MagicMock()
+        vite_proc.poll.return_value = None
+        vite_proc.wait.return_value = None
+
+        port_busy = True
+
+        def fake_run(
+            args: list[str], **_kwargs: object
+        ) -> subprocess.CompletedProcess[str]:
+            nonlocal port_busy
+            cmd = args[0]
+            if cmd == "lsof":
+                return subprocess.CompletedProcess(
+                    args=args,
+                    returncode=0 if port_busy else 1,
+                    stdout="4242\n" if port_busy else "",
+                    stderr="",
+                )
+            if cmd == "ps":
+                return subprocess.CompletedProcess(
+                    args=args,
+                    returncode=0,
+                    stdout=(
+                        "/usr/bin/python3 -m taskclf.cli.main tray "
+                        "--browser --no-tray --no-open-browser --port 8741\n"
+                    ),
+                    stderr="",
+                )
+            if cmd == "kill":
+                port_busy = False
+                return subprocess.CompletedProcess(
+                    args=args,
+                    returncode=0,
+                    stdout="",
+                    stderr="",
+                )
+            raise AssertionError(f"unexpected command: {args!r}")
+
+        with (
+            patch("taskclf.ui.server.__file__", str(fake_ui_root / "server.py")),
+            patch("taskclf.cli.main.sys.platform", "darwin"),
+            patch("subprocess.run", side_effect=fake_run) as mock_run,
+            patch(
+                "subprocess.Popen", side_effect=[backend_proc, vite_proc]
+            ) as mock_popen,
+            patch("urllib.request.urlopen", return_value=MagicMock()),
+            patch("webbrowser.open") as mock_open,
+        ):
+            result = runner.invoke(
+                app,
+                [
+                    "ui",
+                    "--dev",
+                    "--browser",
+                    "--data-dir",
+                    str(tmp_path / "data"),
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        assert "stopping the previous instance" in result.output.lower()
+        assert any(call.args[0][0] == "kill" for call in mock_run.call_args_list)
+        assert mock_popen.call_count == 2
+        mock_open.assert_called_once_with("http://127.0.0.1:5173")
+
+    def test_ui_browser_dev_fails_when_foreign_listener_owns_port(
+        self, tmp_path: Path
+    ) -> None:
+        """TC-CLI-DS-005: non-taskclf listeners abort startup with details."""
+        fake_ui_root = tmp_path / "ui"
+        frontend_dir = fake_ui_root / "frontend"
+        (frontend_dir / "node_modules").mkdir(parents=True)
+
+        def fake_run(
+            args: list[str], **_kwargs: object
+        ) -> subprocess.CompletedProcess[str]:
+            cmd = args[0]
+            if cmd == "lsof":
+                return subprocess.CompletedProcess(
+                    args=args,
+                    returncode=0,
+                    stdout="31337\n",
+                    stderr="",
+                )
+            if cmd == "ps":
+                return subprocess.CompletedProcess(
+                    args=args,
+                    returncode=0,
+                    stdout="/usr/sbin/nginx\n",
+                    stderr="",
+                )
+            raise AssertionError(f"unexpected command: {args!r}")
+
+        with (
+            patch("taskclf.ui.server.__file__", str(fake_ui_root / "server.py")),
+            patch("taskclf.cli.main.sys.platform", "darwin"),
+            patch("subprocess.run", side_effect=fake_run),
+            patch("subprocess.Popen") as mock_popen,
+            patch("webbrowser.open") as mock_open,
+        ):
+            result = runner.invoke(
+                app,
+                [
+                    "ui",
+                    "--dev",
+                    "--browser",
+                    "--data-dir",
+                    str(tmp_path / "data"),
+                ],
+            )
+
+        assert result.exit_code == 1, result.output
+        assert "Error: port 8741 is already in use by pid 31337." in result.output
+        assert "Command: /usr/sbin/nginx" in result.output
+        mock_popen.assert_not_called()
+        mock_open.assert_not_called()

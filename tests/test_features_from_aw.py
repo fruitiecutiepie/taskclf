@@ -15,7 +15,7 @@ from __future__ import annotations
 import datetime as dt
 
 from taskclf.adapters.activitywatch.types import AWEvent, AWInputEvent
-from taskclf.core.schema import FeatureSchemaV1
+from taskclf.core.schema import FeatureSchemaV3
 from taskclf.features.build import build_features_from_aw_events
 
 
@@ -114,8 +114,8 @@ class TestBuildFeaturesFromAWEvents:
     def test_schema_metadata(self) -> None:
         events = [_make_event(dt.datetime(2026, 2, 23, 10, 0, 0))]
         rows = build_features_from_aw_events(events)
-        assert rows[0].schema_version == FeatureSchemaV1.VERSION
-        assert rows[0].schema_hash == FeatureSchemaV1.SCHEMA_HASH
+        assert rows[0].schema_version == FeatureSchemaV3.VERSION
+        assert rows[0].schema_hash == FeatureSchemaV3.SCHEMA_HASH
         assert rows[0].source_ids == ["aw-watcher-window"]
 
     def test_keyboard_mouse_fields_are_none(self) -> None:

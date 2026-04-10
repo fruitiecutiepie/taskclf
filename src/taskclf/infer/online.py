@@ -33,7 +33,7 @@ from taskclf.core.defaults import (
     MIXED_UNKNOWN,
 )
 from taskclf.core.model_io import ModelMetadata, load_model_bundle
-from taskclf.core.types import LABEL_SET_V1, FeatureRow
+from taskclf.core.types import LABEL_SET_V1, FeatureRowBase
 from taskclf.infer.batch import write_segments_json
 from taskclf.infer.calibration import Calibrator, CalibratorStore, IdentityCalibrator
 from taskclf.infer.prediction import WindowPrediction
@@ -44,7 +44,7 @@ from taskclf.infer.smooth import (
     segmentize,
 )
 from taskclf.infer.taxonomy import TaxonomyConfig, TaxonomyResolver
-from taskclf.train.lgbm import CATEGORICAL_COLUMNS, FEATURE_COLUMNS
+from taskclf.train.lgbm import get_categorical_columns, get_feature_columns
 
 logger = logging.getLogger(__name__)
 
@@ -78,10 +78,16 @@ class OnlinePredictor:
     _all_bucket_ts: list[datetime] = field(init=False, default_factory=list)
     _all_raw: list[str] = field(init=False, default_factory=list)
     _all_smoothed: list[str] = field(init=False, default_factory=list)
+    _feature_columns: list[str] = field(init=False)
+    _categorical_columns: set[str] = field(init=False)
 
     def __post_init__(self) -> None:
         self._le = LabelEncoder()
         self._le.fit(_SORTED_LABELS)
+        self._feature_columns = get_feature_columns(self.metadata.schema_version)
+        self._categorical_columns = set(
+            get_categorical_columns(self.metadata.schema_version)
+        )
 
         if self.taxonomy is not None:
             self._resolver = TaxonomyResolver(self.taxonomy)
@@ -92,7 +98,7 @@ class OnlinePredictor:
 
     def _encode_value(self, col: str, value: Any) -> float:
         """Encode a single feature value, handling categoricals and nulls."""
-        if col in CATEGORICAL_COLUMNS:
+        if col in self._categorical_columns:
             le = self.cat_encoders.get(col)
             if le is not None:
                 str_val = str(value)
@@ -103,7 +109,7 @@ class OnlinePredictor:
             return -1.0
         return float(value) if value is not None else 0.0
 
-    def predict_bucket(self, row: FeatureRow) -> WindowPrediction:
+    def predict_bucket(self, row: FeatureRowBase) -> WindowPrediction:
         """Predict a single bucket and return a full :class:`WindowPrediction`.
 
         Pipeline: raw model proba -> calibrate -> reject check ->
@@ -118,7 +124,7 @@ class OnlinePredictor:
             predictions, confidence, and rejection status.
         """
         x = np.array(
-            [[self._encode_value(c, getattr(row, c)) for c in FEATURE_COLUMNS]],
+            [[self._encode_value(c, getattr(row, c)) for c in self._feature_columns]],
             dtype=np.float64,
         )
         raw_proba: np.ndarray = np.asarray(self.model.predict(x))
@@ -181,7 +187,7 @@ class OnlinePredictor:
             mapped_label_name=mapped_label_name,
             mapped_probs=mapped_probs,
             model_version=self.metadata.schema_hash,
-            schema_version="features_v1",
+            schema_version=f"features_{self.metadata.schema_version}",
             label_version="labels_v1",
         )
 
@@ -502,6 +508,7 @@ def run_online_loop(
                 input_events=input_events,
                 bucket_seconds=bucket_seconds,
                 session_start=session_start,
+                schema_version=predictor.metadata.schema_version,
             )
             if not rows:
                 time.sleep(poll_seconds)

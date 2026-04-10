@@ -15,7 +15,7 @@ import pandas as pd
 import pytest
 
 from taskclf.core.model_io import build_metadata, load_model_bundle, save_model_bundle
-from taskclf.core.types import FeatureRow, LabelSpan
+from taskclf.core.types import FeatureRowBase, LabelSpan
 from taskclf.features.build import generate_dummy_features
 from taskclf.infer.online import OnlinePredictor
 from taskclf.labels.projection import project_blocks_to_windows
@@ -25,7 +25,7 @@ from taskclf.train.lgbm import train_lgbm
 
 def _build_labeled_df() -> pd.DataFrame:
     dates = [dt.date(2025, 6, 14), dt.date(2025, 6, 15)]
-    all_rows: list[FeatureRow] = []
+    all_rows: list[FeatureRowBase] = []
     for d in dates:
         all_rows.extend(generate_dummy_features(d, n_rows=30))
 

@@ -27,11 +27,6 @@ poll_seconds = 60
 aw_timeout_seconds = 10
 
 
-# --- Privacy ---
-# Salt for hashing window titles before features; change if you rotate privacy.
-title_salt = "taskclf-default-salt"
-
-
 # --- Web UI ---
 # TCP port for the embedded labeling dashboard (http://127.0.0.1:this port).
 ui_port = 8741

@@ -2,7 +2,12 @@
 
 import datetime as dt
 import logging
+import re
+import subprocess
+import sys
+import time
 import traceback
+from dataclasses import dataclass
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
 from typing import Literal
@@ -38,6 +43,20 @@ from taskclf.core.defaults import (
 from taskclf.core.diagnostics import collect_diagnostics as _collect_diagnostics
 from taskclf.core.diagnostics import format_diagnostics_text as _format_diagnostics_text
 from taskclf.core.paths import ensure_taskclf_dirs
+from taskclf.core.schema import (
+    LATEST_FEATURE_SCHEMA_VERSION,
+    get_feature_schema,
+    get_feature_storage_dir,
+    resolve_feature_parquet_path,
+)
+
+
+def _feature_output_dir(data_path: Path) -> Path:
+    return data_path / get_feature_storage_dir(LATEST_FEATURE_SCHEMA_VERSION)
+
+
+def _feature_parquet_for_date(data_path: Path, target_date: dt.date) -> Path | None:
+    return resolve_feature_parquet_path(data_path, target_date)
 
 
 def _version_callback(value: bool) -> None:
@@ -248,7 +267,7 @@ def features_build(
         current += dt.timedelta(days=1)
 
     total = len(ok_days) + len(empty_days) + len(failed)
-    out_dir = data_path / "features_v1"
+    out_dir = _feature_output_dir(data_path)
     typer.echo(
         f"Done — {total} day(s): {len(ok_days)} ok, "
         f"{len(empty_days)} empty, {len(failed)} failed."
@@ -344,12 +363,8 @@ def labels_add_block_cmd(
     data_path = Path(data_dir)
     current_date = start_ts.date()
     while current_date <= end_ts.date():
-        fp = (
-            data_path
-            / f"features_v1/date={current_date.isoformat()}"
-            / "features.parquet"
-        )
-        if fp.exists():
+        fp = _feature_parquet_for_date(data_path, current_date)
+        if fp is not None and fp.exists():
             features_dfs.append(read_parquet(fp))
         current_date += dt.timedelta(days=1)
 
@@ -489,12 +504,8 @@ def labels_label_now_cmd(
     data_path = Path(data_dir)
     current_date = start_utc.date()
     while current_date <= end_utc.date():
-        fp = (
-            data_path
-            / f"features_v1/date={current_date.isoformat()}"
-            / "features.parquet"
-        )
-        if fp.exists():
+        fp = _feature_parquet_for_date(data_path, current_date)
+        if fp is not None and fp.exists():
             features_dfs.append(read_parquet(fp))
         current_date += dt.timedelta(days=1)
 
@@ -643,12 +654,8 @@ def labels_project_cmd(
     all_features: list[pd.DataFrame] = []
     current = start
     while current <= end:
-        fp = (
-            Path(data_dir)
-            / f"features_v1/date={current.isoformat()}"
-            / "features.parquet"
-        )
-        if fp.exists():
+        fp = _feature_parquet_for_date(Path(data_dir), current)
+        if fp is not None and fp.exists():
             all_features.append(read_parquet(fp))
         else:
             typer.echo(f"  skipping {current} (no features file)")
@@ -748,12 +755,8 @@ def train_build_dataset_cmd(
             labels = generate_dummy_labels(current, n_rows=60)
             all_labels.extend(labels)
         else:
-            parquet_path = (
-                Path(data_dir)
-                / f"features_v1/date={current.isoformat()}"
-                / "features.parquet"
-            )
-            if not parquet_path.exists():
+            parquet_path = _feature_parquet_for_date(Path(data_dir), current)
+            if parquet_path is None or not parquet_path.exists():
                 typer.echo(f"  skipping {current} (no features file)")
                 current += dt.timedelta(days=1)
                 continue
@@ -850,12 +853,8 @@ def train_lgbm_cmd(
             labels = generate_dummy_labels(current, n_rows=60)
             all_labels.extend(labels)
         else:
-            parquet_path = (
-                Path(data_dir)
-                / f"features_v1/date={current.isoformat()}"
-                / "features.parquet"
-            )
-            if not parquet_path.exists():
+            parquet_path = _feature_parquet_for_date(Path(data_dir), current)
+            if parquet_path is None or not parquet_path.exists():
                 typer.echo(f"  skipping {current} (no features file)")
                 current += dt.timedelta(days=1)
                 continue
@@ -889,11 +888,17 @@ def train_lgbm_cmd(
     )
 
     cw: Literal["balanced", "none"] = "none" if class_weight == "none" else "balanced"
+    schema_version = (
+        str(labeled_df["schema_version"].iloc[0]).strip()
+        if "schema_version" in labeled_df.columns and not labeled_df.empty
+        else LATEST_FEATURE_SCHEMA_VERSION
+    )
     model, metrics, cm_df, params, cat_encoders = train_lgbm(
         train_df,
         val_df,
         num_boost_round=num_boost_round,
         class_weight=cw,
+        schema_version=schema_version,
     )
     typer.echo(
         f"Macro F1: {metrics['macro_f1']}  Weighted F1: {metrics['weighted_f1']}"
@@ -913,6 +918,7 @@ def train_lgbm_cmd(
         data_provenance="synthetic" if synthetic else "real",
         unknown_category_freq_threshold=params.get("unknown_category_freq_threshold"),
         unknown_category_mask_rate=params.get("unknown_category_mask_rate"),
+        schema_version=schema_version,
     )
 
     run_dir = save_model_bundle(
@@ -994,12 +1000,8 @@ def train_evaluate_cmd(
             labels = generate_dummy_labels(current, n_rows=60)
             all_labels.extend(labels)
         else:
-            parquet_path = (
-                Path(data_dir)
-                / f"features_v1/date={current.isoformat()}"
-                / "features.parquet"
-            )
-            if not parquet_path.exists():
+            parquet_path = _feature_parquet_for_date(Path(data_dir), current)
+            if parquet_path is None or not parquet_path.exists():
                 typer.echo(f"  skipping {current} (no features file)")
                 current += dt.timedelta(days=1)
                 continue
@@ -1184,12 +1186,8 @@ def train_tune_reject_cmd(
             labels = generate_dummy_labels(current, n_rows=60)
             all_labels.extend(labels)
         else:
-            parquet_path = (
-                Path(data_dir)
-                / f"features_v1/date={current.isoformat()}"
-                / "features.parquet"
-            )
-            if not parquet_path.exists():
+            parquet_path = _feature_parquet_for_date(Path(data_dir), current)
+            if parquet_path is None or not parquet_path.exists():
                 typer.echo(f"  skipping {current} (no features file)")
                 current += dt.timedelta(days=1)
                 continue
@@ -1227,7 +1225,11 @@ def train_tune_reject_cmd(
         )
 
     result = tune_reject_threshold(
-        model, val_df, cat_encoders=cat_encoders, calibrator=cal
+        model,
+        val_df,
+        cat_encoders=cat_encoders,
+        calibrator=cal,
+        schema_version=metadata.schema_version,
     )
 
     sweep_table = Table(title="Reject Threshold Sweep")
@@ -1369,12 +1371,8 @@ def train_calibrate_cmd(
             labels = generate_dummy_labels(current, n_rows=60)
             all_labels.extend(labels)
         else:
-            parquet_path = (
-                Path(data_dir)
-                / f"features_v1/date={current.isoformat()}"
-                / "features.parquet"
-            )
-            if not parquet_path.exists():
+            parquet_path = _feature_parquet_for_date(Path(data_dir), current)
+            if parquet_path is None or not parquet_path.exists():
                 typer.echo(f"  skipping {current} (no features file)")
                 current += dt.timedelta(days=1)
                 continue
@@ -1537,12 +1535,8 @@ def train_retrain_cmd(
             labels = generate_dummy_labels(current, n_rows=60)
             all_labels.extend(labels)
         else:
-            parquet_path = (
-                Path(data_dir)
-                / f"features_v1/date={current.isoformat()}"
-                / "features.parquet"
-            )
-            if not parquet_path.exists():
+            parquet_path = _feature_parquet_for_date(Path(data_dir), current)
+            if parquet_path is None or not parquet_path.exists():
                 typer.echo(f"  skipping {current} (no features file)")
                 current += dt.timedelta(days=1)
                 continue
@@ -1721,7 +1715,6 @@ def train_list_cmd(
     from rich.console import Console
     from rich.table import Table
 
-    from taskclf.core.schema import FeatureSchemaV1
     from taskclf.core.types import LABEL_SET_V1
     from taskclf.model_registry import (
         SelectionPolicy,
@@ -1734,7 +1727,7 @@ def train_list_cmd(
     console = Console()
     models_path = Path(models_dir)
     policy = SelectionPolicy()
-    req_hash = schema_hash or FeatureSchemaV1.SCHEMA_HASH
+    req_hash = schema_hash
 
     bundles = list_bundles(models_path)
     if not bundles:
@@ -1757,9 +1750,17 @@ def train_list_cmd(
 
     rows: list[dict[str, object]] = []
     for b in bundles:
-        elig = is_compatible(b, req_hash, LABEL_SET_V1) and passes_constraints(
-            b, policy
-        )
+        if req_hash is not None:
+            compat = is_compatible(b, req_hash, LABEL_SET_V1)
+        elif b.valid and b.metadata is not None:
+            compat = is_compatible(
+                b,
+                get_feature_schema(b.metadata.schema_version).SCHEMA_HASH,
+                LABEL_SET_V1,
+            )
+        else:
+            compat = False
+        elig = compat and passes_constraints(b, policy)
         if eligible_only and not elig:
             continue
 
@@ -1863,7 +1864,6 @@ def model_set_active_cmd(
     """Manually set the active model pointer (rollback / override)."""
     from rich.console import Console
 
-    from taskclf.core.schema import FeatureSchemaV1
     from taskclf.core.types import LABEL_SET_V1
     from taskclf.model_registry import (
         SelectionPolicy,
@@ -1891,7 +1891,16 @@ def model_set_active_cmd(
         console.print(f"[red]Bundle is invalid: {bundle.invalid_reason}[/red]")
         raise typer.Exit(code=1)
 
-    if not is_compatible(bundle, FeatureSchemaV1.SCHEMA_HASH, LABEL_SET_V1):
+    metadata = bundle.metadata
+    if metadata is None:
+        console.print(f"[red]Bundle metadata is missing: {model_id}[/red]")
+        raise typer.Exit(code=1)
+
+    if not is_compatible(
+        bundle,
+        get_feature_schema(metadata.schema_version).SCHEMA_HASH,
+        LABEL_SET_V1,
+    ):
         console.print("[red]Bundle is incompatible with current schema/labels[/red]")
         raise typer.Exit(code=1)
 
@@ -2487,12 +2496,8 @@ def infer_batch_cmd(
             rows = generate_dummy_features(current, n_rows=60)
             df = pd.DataFrame([r.model_dump() for r in rows])
         else:
-            parquet_path = (
-                Path(data_dir)
-                / f"features_v1/date={current.isoformat()}"
-                / "features.parquet"
-            )
-            if not parquet_path.exists():
+            parquet_path = _feature_parquet_for_date(Path(data_dir), current)
+            if parquet_path is None or not parquet_path.exists():
                 typer.echo(f"  skipping {current} (no features file)")
                 current += dt.timedelta(days=1)
                 continue
@@ -2516,6 +2521,7 @@ def infer_batch_cmd(
         reject_threshold=reject_threshold,
         taxonomy=taxonomy,
         calibrator_store=cal_store,
+        schema_version=metadata.schema_version,
     )
     rr = reject_rate(result.smoothed_labels, MIXED_UNKNOWN)
     typer.echo(
@@ -2700,12 +2706,8 @@ def infer_baseline_cmd(
             rows = generate_dummy_features(current, n_rows=60)
             df = pd.DataFrame([r.model_dump() for r in rows])
         else:
-            parquet_path = (
-                Path(data_dir)
-                / f"features_v1/date={current.isoformat()}"
-                / "features.parquet"
-            )
-            if not parquet_path.exists():
+            parquet_path = _feature_parquet_for_date(Path(data_dir), current)
+            if parquet_path is None or not parquet_path.exists():
                 typer.echo(f"  skipping {current} (no features file)")
                 current += dt.timedelta(days=1)
                 continue
@@ -2803,12 +2805,8 @@ def infer_compare_cmd(
             labels = generate_dummy_labels(current, n_rows=60)
             all_labels.extend(labels)
         else:
-            parquet_path = (
-                Path(data_dir)
-                / f"features_v1/date={current.isoformat()}"
-                / "features.parquet"
-            )
-            if not parquet_path.exists():
+            parquet_path = _feature_parquet_for_date(Path(data_dir), current)
+            if parquet_path is None or not parquet_path.exists():
                 typer.echo(f"  skipping {current} (no features file)")
                 current += dt.timedelta(days=1)
                 continue
@@ -2967,12 +2965,8 @@ def report_daily_cmd(
         feat_base = Path(features_dir)
         if segments:
             report_date = segments[0].start_ts.date()
-            feat_path = (
-                feat_base
-                / f"features_v1/date={report_date.isoformat()}"
-                / "features.parquet"
-            )
-            if feat_path.exists():
+            feat_path = _feature_parquet_for_date(feat_base, report_date)
+            if feat_path is not None and feat_path.exists():
                 feat_df = read_parquet(feat_path)
                 if "app_switch_count_last_5m" in feat_df.columns:
                     app_switch_counts = list(feat_df["app_switch_count_last_5m"].values)
@@ -3648,6 +3642,215 @@ def electron_cmd(
 # -- ui -----------------------------------------------------------------------
 
 
+@dataclass(frozen=True, slots=True)
+class _LocalPortListener:
+    pid: int
+    command_line: str
+    kind: Literal["taskclf", "non-taskclf", "unknown"]
+
+
+def _run_text_command(args: list[str]) -> subprocess.CompletedProcess[str] | None:
+    """Run *args* and return a text-mode completed process, or ``None`` when unavailable."""
+    try:
+        return subprocess.run(
+            args,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return None
+
+
+def _parse_first_pid(stdout: str) -> int | None:
+    for line in stdout.strip().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            pid = int(line)
+        except ValueError:
+            continue
+        if pid > 0:
+            return pid
+    return None
+
+
+def _parse_pid_from_ss_output(stdout: str) -> int | None:
+    match = re.search(r"pid=(\d+)", stdout)
+    if match is None:
+        return None
+    pid = int(match.group(1))
+    return pid if pid > 0 else None
+
+
+def _classify_ui_port_listener(
+    command_line: str,
+) -> Literal["taskclf", "non-taskclf", "unknown"]:
+    """Classify whether an occupied UI port looks like taskclf-owned."""
+    text = command_line.strip()
+    if not text:
+        return "unknown"
+
+    lower = text.lower()
+    has_tray_sidecar = "tray" in lower and (
+        "--browser" in lower or "--no-tray" in lower
+    )
+    has_taskclf_entrypoint = (
+        re.search(r"(?:^|[\\/ ])taskclf(?:\.exe)?(?:\s|$)", lower) is not None
+    )
+
+    if (
+        "taskclf-electron" in lower
+        and "backend" in lower
+        and ("/entry" in lower or "\\entry" in lower)
+    ):
+        return "taskclf"
+    if ("backend/entry" in lower or "backend\\entry" in lower) and (
+        has_tray_sidecar or "taskclf" in lower
+    ):
+        return "taskclf"
+    if "taskclf.app" in lower and has_tray_sidecar:
+        return "taskclf"
+    if "taskclf.ui.server:_create_dev_app_from_env" in lower:
+        return "taskclf"
+    if "uvicorn" in lower and "taskclf.ui.server" in lower:
+        return "taskclf"
+    if (has_taskclf_entrypoint or "taskclf.cli.main" in lower) and re.search(
+        r"(?:^|\s)(?:tray|ui)(?:\s|$)",
+        lower,
+    ):
+        return "taskclf"
+    if "taskclf" in lower:
+        return "unknown"
+    return "non-taskclf"
+
+
+def _get_listening_pid_unix(port: int) -> int | None:
+    lsof = _run_text_command(["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-t"])
+    if lsof is not None:
+        pid = _parse_first_pid(lsof.stdout)
+        if pid is not None:
+            return pid
+
+    if sys.platform.startswith("linux"):
+        ss = _run_text_command(["ss", "-lntp", f"sport = :{port}"])
+        if ss is not None and ss.returncode == 0 and ss.stdout:
+            return _parse_pid_from_ss_output(ss.stdout)
+    return None
+
+
+def _get_listening_pid_windows(port: int) -> int | None:
+    script = (
+        f"(Get-NetTCPConnection -LocalPort {port} -State Listen "
+        "-ErrorAction SilentlyContinue | Select-Object -First 1 "
+        "-ExpandProperty OwningProcess)"
+    )
+    proc = _run_text_command(["powershell.exe", "-NoProfile", "-Command", script])
+    if proc is None or proc.returncode not in (0, None):
+        return None
+    raw = proc.stdout.strip()
+    if not raw:
+        return None
+    try:
+        pid = int(raw)
+    except ValueError:
+        return None
+    return pid if pid > 0 else None
+
+
+def _get_process_command_line(pid: int) -> str:
+    if sys.platform.startswith("win"):
+        script = (
+            f'(Get-CimInstance Win32_Process -Filter "ProcessId = {pid}").CommandLine'
+        )
+        proc = _run_text_command(["powershell.exe", "-NoProfile", "-Command", script])
+        if proc is None or proc.returncode != 0:
+            return ""
+        return proc.stdout.strip()
+
+    field = "args=" if sys.platform.startswith("linux") else "command="
+    proc = _run_text_command(["ps", "-p", str(pid), "-ww", "-o", field])
+    if proc is None or proc.returncode != 0:
+        return ""
+    return proc.stdout.strip()
+
+
+def _get_ui_port_listener_info(port: int) -> _LocalPortListener | None:
+    if sys.platform.startswith("win"):
+        pid = _get_listening_pid_windows(port)
+    else:
+        pid = _get_listening_pid_unix(port)
+    if pid is None:
+        return None
+
+    command_line = _get_process_command_line(pid)
+    return _LocalPortListener(
+        pid=pid,
+        command_line=command_line,
+        kind=_classify_ui_port_listener(command_line),
+    )
+
+
+def _kill_pid_and_wait_for_port_free(
+    port: int,
+    pid: int,
+    *,
+    timeout_seconds: float = 10.0,
+) -> bool:
+    if sys.platform.startswith("win"):
+        _run_text_command(["taskkill.exe", "/PID", str(pid), "/T"])
+    else:
+        _run_text_command(["kill", "-TERM", str(pid)])
+
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        if _get_ui_port_listener_info(port) is None:
+            return True
+        time.sleep(0.2)
+
+    if sys.platform.startswith("win"):
+        _run_text_command(["taskkill.exe", "/PID", str(pid), "/T", "/F"])
+    else:
+        _run_text_command(["kill", "-KILL", str(pid)])
+
+    hard_deadline = time.monotonic() + 3.0
+    while time.monotonic() < hard_deadline:
+        if _get_ui_port_listener_info(port) is None:
+            return True
+        time.sleep(0.2)
+    return _get_ui_port_listener_info(port) is None
+
+
+def _ensure_ui_port_available(port: int) -> None:
+    """Stop stale taskclf listeners on *port* or fail with an actionable error."""
+    info = _get_ui_port_listener_info(port)
+    if info is None:
+        return
+
+    if info.kind == "taskclf":
+        typer.echo(
+            f"Port {port} is already in use by taskclf (pid {info.pid}); "
+            "stopping the previous instance…"
+        )
+        if _kill_pid_and_wait_for_port_free(port, info.pid):
+            return
+        typer.echo(
+            f"Error: port {port} is still busy after stopping taskclf pid {info.pid}.",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    command_line = info.command_line or "(unknown)"
+    typer.echo(
+        f"Error: port {port} is already in use by pid {info.pid}. "
+        "Stop that process or choose another port with --port.",
+        err=True,
+    )
+    typer.echo(f"Command: {command_line}", err=True)
+    raise typer.Exit(1)
+
+
 def _wait_for_local_http(
     url: str,
     *,
@@ -3777,6 +3980,8 @@ def ui_serve_cmd(
         typer.echo(f"Dev mode: using ephemeral data dir → {tmp_dir}")
     else:
         resolved_data_dir = DEFAULT_DATA_DIR
+
+    _ensure_ui_port_available(port)
 
     backend_proc = None
     server_thread = None

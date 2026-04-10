@@ -835,6 +835,12 @@ In browser mode, `--dev` now enables backend auto-reload as well, so
 editing Python files under `src/taskclf/` restarts the FastAPI process
 while Vite keeps frontend HMR active.
 
+Before the backend starts, `taskclf ui` runs a local UI-port preflight on
+`--port` (default `8741`). If the listener on that port confidently looks like
+another `taskclf` UI or tray backend, the CLI stops it and continues; if a
+different process owns the port, startup aborts with the PID and command line
+so you can stop it manually or choose another port.
+
 | Option | Default | Description |
 |---|---|---|
 | `--port` | `8741` | Port for the web UI server |

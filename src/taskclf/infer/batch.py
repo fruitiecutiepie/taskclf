@@ -18,8 +18,13 @@ from taskclf.core.defaults import (
     DEFAULT_SMOOTH_WINDOW,
     MIXED_UNKNOWN,
 )
+from taskclf.core.schema import LATEST_FEATURE_SCHEMA_VERSION
 from taskclf.core.time import ts_utc_aware_get
-from taskclf.core.types import LABEL_SET_V1
+from taskclf.core.types import (
+    LABEL_SET_V1,
+    TITLE_CHAR3_SKETCH_FIELDS,
+    TITLE_TOKEN_SKETCH_FIELDS,
+)
 from taskclf.infer.calibration import Calibrator, CalibratorStore, IdentityCalibrator
 from taskclf.infer.smooth import (
     Segment,
@@ -28,7 +33,29 @@ from taskclf.infer.smooth import (
     segmentize,
 )
 from taskclf.infer.taxonomy import TaxonomyConfig, TaxonomyResolver
-from taskclf.train.lgbm import FEATURE_COLUMNS, encode_categoricals
+from taskclf.train.lgbm import encode_categoricals, get_feature_columns
+
+
+def _resolve_schema_version(
+    features_df: pd.DataFrame,
+    schema_version: str | None,
+) -> str:
+    if schema_version is not None:
+        return schema_version
+    if "schema_version" in features_df.columns and not features_df.empty:
+        raw = str(features_df["schema_version"].iloc[0]).strip()
+        if raw:
+            return raw
+    columns = set(features_df.columns)
+    if set(TITLE_TOKEN_SKETCH_FIELDS).issubset(columns) and set(
+        TITLE_CHAR3_SKETCH_FIELDS
+    ).issubset(columns):
+        return "v3"
+    if "user_id" in columns:
+        return "v1"
+    if features_df.columns.size > 0:
+        return "v2"
+    return LATEST_FEATURE_SCHEMA_VERSION
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,19 +81,30 @@ def predict_proba(
     model: lgb.Booster,
     features_df: pd.DataFrame,
     cat_encoders: dict[str, LabelEncoder] | None = None,
+    *,
+    schema_version: str | None = None,
 ) -> np.ndarray:
     """Return raw probability matrix for *features_df*.
 
     Args:
         model: Trained LightGBM booster.
-        features_df: Feature DataFrame with ``FEATURE_COLUMNS``.
+        features_df: Feature DataFrame with the model feature columns for
+            the selected schema.
         cat_encoders: Pre-fitted categorical encoders for string columns.
+        schema_version: ``"v1"``, ``"v2"``, or ``"v3"``. When omitted,
+            inferred from ``features_df.schema_version`` if present.
 
     Returns:
         Probability matrix of shape ``(n_rows, n_classes)``.
     """
-    feat_df = features_df[FEATURE_COLUMNS].copy()
-    feat_df, _ = encode_categoricals(feat_df, cat_encoders)
+    resolved_schema_version = _resolve_schema_version(features_df, schema_version)
+    feature_columns = get_feature_columns(resolved_schema_version)
+    feat_df = features_df[feature_columns].copy()
+    feat_df, _ = encode_categoricals(
+        feat_df,
+        cat_encoders,
+        schema_version=resolved_schema_version,
+    )
     x = feat_df.fillna(0).to_numpy(dtype=np.float64)
     return np.asarray(model.predict(x))
 
@@ -78,6 +116,7 @@ def predict_labels(
     cat_encoders: dict[str, LabelEncoder] | None = None,
     *,
     reject_threshold: float | None = None,
+    schema_version: str | None = None,
 ) -> list[str]:
     """Run the model on *features_df* and return predicted label strings.
 
@@ -87,7 +126,8 @@ def predict_labels(
 
     Args:
         model: Trained LightGBM booster.
-        features_df: Feature DataFrame with ``FEATURE_COLUMNS``.
+        features_df: Feature DataFrame with the model feature columns for
+            the selected schema.
         label_encoder: Encoder fitted on the canonical label vocabulary.
         cat_encoders: Pre-fitted categorical encoders for string columns.
         reject_threshold: If given, predictions with
@@ -96,7 +136,12 @@ def predict_labels(
     Returns:
         Predicted label per row.
     """
-    proba = predict_proba(model, features_df, cat_encoders)
+    proba = predict_proba(
+        model,
+        features_df,
+        cat_encoders,
+        schema_version=schema_version,
+    )
     pred_indices = proba.argmax(axis=1)
     labels = list(label_encoder.inverse_transform(pred_indices))
 
@@ -121,13 +166,14 @@ def run_batch_inference(
     taxonomy: TaxonomyConfig | None = None,
     calibrator: Calibrator | None = None,
     calibrator_store: CalibratorStore | None = None,
+    schema_version: str | None = None,
 ) -> BatchInferenceResult:
     """Predict, smooth, segmentize, and apply hysteresis merging.
 
     Args:
         model: Trained LightGBM booster.
-        features_df: Feature DataFrame (must contain ``FEATURE_COLUMNS``
-            and ``bucket_start_ts``).
+        features_df: Feature DataFrame with the selected schema's feature
+            columns and ``bucket_start_ts``.
         cat_encoders: Pre-fitted categorical encoders for string columns.
         smooth_window: Window size for rolling-majority smoothing.
         bucket_seconds: Width of each time bucket in seconds.
@@ -152,7 +198,13 @@ def run_batch_inference(
     le = LabelEncoder()
     le.fit(sorted(LABEL_SET_V1))
 
-    proba = predict_proba(model, features_df, cat_encoders)
+    resolved_schema_version = _resolve_schema_version(features_df, schema_version)
+    proba = predict_proba(
+        model,
+        features_df,
+        cat_encoders,
+        schema_version=resolved_schema_version,
+    )
 
     if calibrator_store is not None and "user_id" in features_df.columns:
         proba = calibrator_store.calibrate_batch(

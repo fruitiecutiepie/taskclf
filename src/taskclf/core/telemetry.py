@@ -19,6 +19,7 @@ import pandas as pd
 from pydantic import BaseModel, Field
 
 from taskclf.core.defaults import DEFAULT_TELEMETRY_DIR, MIXED_UNKNOWN
+from taskclf.core.schema import LATEST_FEATURE_SCHEMA_VERSION
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +73,7 @@ class TelemetrySnapshot(BaseModel):
     reject_rate: float = 0.0
     mean_entropy: float = 0.0
     class_distribution: dict[str, float] = Field(default_factory=dict)
-    schema_version: str = "features_v1"
+    schema_version: str = f"features_{LATEST_FEATURE_SCHEMA_VERSION}"
     suggestions_per_day: int = 0
 
 
@@ -161,6 +162,11 @@ def compute_telemetry(
         reject_rate=round(rr, 4),
         mean_entropy=round(mean_ent, 6),
         class_distribution=class_dist,
+        schema_version=(
+            f"features_{features_df['schema_version'].iloc[0]}"
+            if "schema_version" in features_df.columns and n > 0
+            else f"features_{LATEST_FEATURE_SCHEMA_VERSION}"
+        ),
     )
 
 
