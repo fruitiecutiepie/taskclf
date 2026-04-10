@@ -48,6 +48,7 @@ from taskclf.core.time import ts_utc_aware_get
 from taskclf.core.types import CoreLabel, LabelSpan
 from taskclf.labels.queue import ActiveLabelingQueue
 from taskclf.labels.store import (
+    _extend_forward_coverage_contains,
     append_label_span,
     delete_label_span,
     export_labels_to_csv,
@@ -1132,7 +1133,10 @@ def create_app(
             )
         except (ValueError, Exception) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-        if body.overwrite:
+        existing = read_label_spans(labels_path) if labels_path.exists() else []
+        auto_resume_active = _extend_forward_coverage_contains(existing, span)
+
+        if body.overwrite or auto_resume_active:
             overwrite_label_span(span, labels_path)
         else:
             try:

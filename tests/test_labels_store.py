@@ -1178,3 +1178,34 @@ class TestOverwriteLabelSpan:
         spans = read_label_spans(path)
         spans.sort(key=lambda s: s.start_ts)
         assert spans[0].end_ts == _utc(2025, 6, 15, 10, 0)
+
+    def test_extend_forward_reopens_after_retroactive_insert(
+        self, tmp_path: Path
+    ) -> None:
+        """A retrospective insert splits a running extend-forward span and reopens it."""
+        path = tmp_path / "labels.parquet"
+        prev = _span((9, 0), (9, 5), label="Build", extend_forward=True)
+        append_label_span(prev, path)
+
+        new = _span((9, 5), (9, 10), label="Write")
+        overwrite_label_span(new, path)
+
+        spans = read_label_spans(path)
+        spans.sort(key=lambda s: (s.start_ts, s.end_ts, s.label))
+
+        assert len(spans) == 3
+
+        assert spans[0].label == "Build"
+        assert spans[0].start_ts == _utc(2025, 6, 15, 9, 0)
+        assert spans[0].end_ts == _utc(2025, 6, 15, 9, 5)
+        assert spans[0].extend_forward is True
+
+        assert spans[1].label == "Write"
+        assert spans[1].start_ts == _utc(2025, 6, 15, 9, 5)
+        assert spans[1].end_ts == _utc(2025, 6, 15, 9, 10)
+        assert spans[1].extend_forward is False
+
+        assert spans[2].label == "Build"
+        assert spans[2].start_ts == _utc(2025, 6, 15, 9, 10)
+        assert spans[2].end_ts == _utc(2025, 6, 15, 9, 10)
+        assert spans[2].extend_forward is True

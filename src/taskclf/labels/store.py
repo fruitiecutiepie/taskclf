@@ -176,6 +176,62 @@ def _same_user(a: LabelSpan, b: LabelSpan) -> bool:
     return a.user_id == b.user_id
 
 
+def _next_same_user_start(
+    existing: Sequence[LabelSpan],
+    span: LabelSpan,
+    *,
+    exclude_idx: int | None = None,
+) -> dt.datetime | None:
+    """Return the next same-user span start after *span*, if any."""
+    later_starts = [
+        other.start_ts
+        for i, other in enumerate(existing)
+        if i != exclude_idx
+        and _same_user(other, span)
+        and other.start_ts > span.start_ts
+    ]
+    if not later_starts:
+        return None
+    return min(later_starts)
+
+
+def _effective_extend_forward_end(
+    existing: Sequence[LabelSpan],
+    idx: int,
+) -> dt.datetime | None:
+    """Return the semantic end of ``existing[idx]``.
+
+    ``extend_forward`` spans implicitly cover the gap until the next same-user
+    span starts. When there is no next same-user span, the interval is treated
+    as open-ended.
+    """
+    span = existing[idx]
+    if not span.extend_forward:
+        return span.end_ts
+
+    next_start = _next_same_user_start(existing, span, exclude_idx=idx)
+    if next_start is None:
+        return None
+    return max(span.end_ts, next_start)
+
+
+def _extend_forward_coverage_contains(
+    existing: Sequence[LabelSpan],
+    span: LabelSpan,
+) -> bool:
+    """Return True when *span* falls within effective extend-forward coverage."""
+    for i, ex in enumerate(existing):
+        if not _same_user(ex, span) or not ex.extend_forward:
+            continue
+        effective_end = _effective_extend_forward_end(existing, i)
+        if ex.start_ts > span.start_ts:
+            continue
+        if effective_end is not None and span.end_ts > effective_end:
+            continue
+        return True
+    return False
+
+
 def _handoff_active_span_for_now_label(
     existing: list[LabelSpan],
     span: LabelSpan,
@@ -361,35 +417,34 @@ def overwrite_label_span(span: LabelSpan, path: Path) -> Path:
         existing[prev_idx] = updated
 
     resolved: list[LabelSpan] = []
-    for ex in existing:
+    for i, ex in enumerate(existing):
         if not _same_user(ex, span):
             resolved.append(ex)
             continue
-        if not (ex.start_ts < span.end_ts and span.start_ts < ex.end_ts):
+        effective_end = _effective_extend_forward_end(existing, i)
+        if not (
+            ex.start_ts < span.end_ts
+            and (effective_end is None or span.start_ts < effective_end)
+        ):
             resolved.append(ex)
             continue
 
-        # Existing fully contained within new span -- drop it.
-        if ex.start_ts >= span.start_ts and ex.end_ts <= span.end_ts:
-            continue
-
-        # Existing fully contains new span -- split into before + after.
-        if ex.start_ts < span.start_ts and ex.end_ts > span.end_ts:
-            resolved.append(ex.model_copy(update={"end_ts": span.start_ts}))
-            resolved.append(ex.model_copy(update={"start_ts": span.end_ts}))
-            continue
-
-        # Partial overlap at start (existing starts before new).
         if ex.start_ts < span.start_ts:
             resolved.append(ex.model_copy(update={"end_ts": span.start_ts}))
+
+        if effective_end is None:
+            resolved.append(
+                ex.model_copy(update={"start_ts": span.end_ts, "end_ts": span.end_ts})
+            )
             continue
 
-        # Partial overlap at end (existing ends after new).
-        if ex.end_ts > span.end_ts:
-            resolved.append(ex.model_copy(update={"start_ts": span.end_ts}))
-            continue
+        if span.end_ts < effective_end:
+            resolved.append(
+                ex.model_copy(update={"start_ts": span.end_ts, "end_ts": effective_end})
+            )
 
     resolved.append(span)
+    resolved.sort(key=lambda s: (s.start_ts, s.end_ts, s.label, s.user_id or ""))
     return write_label_spans(resolved, path)
 
 

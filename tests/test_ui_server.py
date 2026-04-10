@@ -1584,6 +1584,60 @@ class TestStructuredOverlapError:
         assert data["provenance"] == "suggestion"
         assert data["label"] == "Write"
 
+    def test_notification_accept_resumes_active_extend_forward_label(
+        self, client: TestClient
+    ) -> None:
+        """Accepted suggestions split and resume the active extend-forward label."""
+        create = client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:00:00",
+                "end_ts": "2026-02-27T09:05:00",
+                "label": "Build",
+                "extend_forward": True,
+            },
+        )
+        assert create.status_code == 201
+
+        resp = client.post(
+            "/api/notification/accept",
+            json={
+                "block_start": "2026-02-27T09:05:00",
+                "block_end": "2026-02-27T09:10:00",
+                "label": "Write",
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.json()["provenance"] == "suggestion"
+
+        labels = client.get("/api/labels").json()
+        assert len(labels) == 3
+
+        current = client.get("/api/labels/current")
+        assert current.status_code == 200
+        current_data = current.json()
+        assert current_data["label"] == "Build"
+        assert current_data["start_ts"] == "2026-02-27T09:10:00+00:00"
+        assert current_data["end_ts"] == "2026-02-27T09:10:00+00:00"
+        assert current_data["extend_forward"] is True
+
+        build_spans = [
+            rec
+            for rec in labels
+            if rec["label"] == "Build" and rec["provenance"] == "manual"
+        ]
+        assert len(build_spans) == 2
+        assert any(
+            rec["start_ts"] == "2026-02-27T09:00:00+00:00"
+            and rec["end_ts"] == "2026-02-27T09:05:00+00:00"
+            for rec in build_spans
+        )
+        assert any(
+            rec["start_ts"] == "2026-02-27T09:10:00+00:00"
+            and rec["end_ts"] == "2026-02-27T09:10:00+00:00"
+            for rec in build_spans
+        )
+
     def test_notification_accept_with_allow_overlap_succeeds(
         self, client: TestClient
     ) -> None:
