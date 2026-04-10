@@ -345,7 +345,7 @@ class TestOnlinePredictorWindowPrediction:
         assert isinstance(pred.is_rejected, bool)
         assert pred.mapped_label_name
         assert pred.model_version
-        assert pred.schema_version == "features_v1"
+        assert pred.schema_version == f"features_{predictor.metadata.schema_version}"
         assert pred.label_version == "labels_v1"
 
     def test_rejected_prediction(self, trained_model_dir: Path) -> None:

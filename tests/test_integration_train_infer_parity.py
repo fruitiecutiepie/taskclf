@@ -24,17 +24,30 @@ from taskclf.infer.online import OnlinePredictor
 from taskclf.labels.projection import project_blocks_to_windows
 from taskclf.train.dataset import split_by_time
 from taskclf.train.lgbm import (
-    CATEGORICAL_COLUMNS,
-    FEATURE_COLUMNS,
     encode_categoricals,
+    get_categorical_columns,
+    get_feature_columns,
     train_lgbm,
 )
 
-NUMERIC_FEATURE_COLUMNS = [c for c in FEATURE_COLUMNS if c not in CATEGORICAL_COLUMNS]
+TEST_SCHEMA_VERSION = "v3"
+TEST_FEATURE_COLUMNS = get_feature_columns(TEST_SCHEMA_VERSION)
+TEST_CATEGORICAL_COLUMNS = get_categorical_columns(TEST_SCHEMA_VERSION)
+NUMERIC_FEATURE_COLUMNS = [
+    c for c in TEST_FEATURE_COLUMNS if c not in TEST_CATEGORICAL_COLUMNS
+]
 
 _NULLABLE_NUMERIC_COLUMNS = [
     c for c in NUMERIC_FEATURE_COLUMNS if FeatureRow.model_fields[c].default is None
 ]
+
+
+def _row_frame(
+    row: FeatureRowBase,
+    *,
+    feature_columns: list[str],
+) -> pd.DataFrame:
+    return pd.DataFrame([{col: getattr(row, col) for col in feature_columns}])
 
 
 def _build_labeled_df() -> pd.DataFrame:
@@ -130,17 +143,24 @@ class TestMissingNumericParity:
 
         model, metadata, cat_encoders = load_model_bundle(trained_artifacts["run_dir"])
         pred = OnlinePredictor(model, metadata, cat_encoders=cat_encoders)
+        feature_columns = get_feature_columns(metadata.schema_version)
 
         for col in _NULLABLE_NUMERIC_COLUMNS:
             online_val = pred._encode_value(col, getattr(row, col))
             assert online_val == 0.0, f"{col}: online path produced {online_val}"
 
-        df = pd.DataFrame([row.model_dump()])
-        feat_df = df[FEATURE_COLUMNS].copy()
-        feat_df, _ = encode_categoricals(feat_df, cat_encoders)
+        feat_df = _row_frame(
+            row,
+            feature_columns=feature_columns,
+        )
+        feat_df, _ = encode_categoricals(
+            feat_df,
+            cat_encoders,
+            schema_version=metadata.schema_version,
+        )
         x = feat_df.fillna(0).to_numpy(dtype=np.float64)
 
-        for i, col in enumerate(FEATURE_COLUMNS):
+        for i, col in enumerate(feature_columns):
             if col in _NULLABLE_NUMERIC_COLUMNS:
                 assert x[0, i] == 0.0, f"{col}: train path produced {x[0, i]}"
 
@@ -158,14 +178,21 @@ class TestMissingNumericParity:
 
         model, metadata, cat_encoders = load_model_bundle(trained_artifacts["run_dir"])
         pred = OnlinePredictor(model, metadata, cat_encoders=cat_encoders)
+        feature_columns = get_feature_columns(metadata.schema_version)
 
         online_val = pred._encode_value(col, getattr(row, col))
 
-        df = pd.DataFrame([row.model_dump()])
-        feat_df = df[FEATURE_COLUMNS].copy()
-        feat_df, _ = encode_categoricals(feat_df, cat_encoders)
+        feat_df = _row_frame(
+            row,
+            feature_columns=feature_columns,
+        )
+        feat_df, _ = encode_categoricals(
+            feat_df,
+            cat_encoders,
+            schema_version=metadata.schema_version,
+        )
         batch_vec = feat_df.fillna(0).to_numpy(dtype=np.float64)
-        col_idx = FEATURE_COLUMNS.index(col)
+        col_idx = feature_columns.index(col)
         batch_val = batch_vec[0, col_idx]
 
         assert online_val == batch_val, f"{col}: online={online_val}, batch={batch_val}"
@@ -182,9 +209,17 @@ class TestPredictionParity:
         """TSP-002: predict_proba (batch) and predict_bucket (online) agree."""
         model, metadata, cat_encoders = load_model_bundle(trained_artifacts["run_dir"])
         row = FeatureRow(**valid_feature_row_data)
-
-        df = pd.DataFrame([row.model_dump()])
-        batch_proba = predict_proba(model, df, cat_encoders)
+        feature_columns = get_feature_columns(metadata.schema_version)
+        df = _row_frame(
+            row,
+            feature_columns=feature_columns,
+        )
+        batch_proba = predict_proba(
+            model,
+            df,
+            cat_encoders,
+            schema_version=metadata.schema_version,
+        )
 
         pred = OnlinePredictor(
             model,
@@ -216,15 +251,22 @@ class TestPipelineStages:
         model, metadata, cat_encoders = load_model_bundle(trained_artifacts["run_dir"])
         row = FeatureRow(**valid_feature_row_data)
         pred = OnlinePredictor(model, metadata, cat_encoders=cat_encoders)
+        feature_columns = get_feature_columns(metadata.schema_version)
 
         online_vec = np.array(
-            [pred._encode_value(c, getattr(row, c)) for c in FEATURE_COLUMNS],
+            [pred._encode_value(c, getattr(row, c)) for c in feature_columns],
             dtype=np.float64,
         )
 
-        df = pd.DataFrame([row.model_dump()])
-        feat_df = df[FEATURE_COLUMNS].copy()
-        feat_df, _ = encode_categoricals(feat_df, cat_encoders)
+        feat_df = _row_frame(
+            row,
+            feature_columns=feature_columns,
+        )
+        feat_df, _ = encode_categoricals(
+            feat_df,
+            cat_encoders,
+            schema_version=metadata.schema_version,
+        )
         batch_vec = feat_df.fillna(0).to_numpy(dtype=np.float64)[0]
 
         np.testing.assert_array_equal(

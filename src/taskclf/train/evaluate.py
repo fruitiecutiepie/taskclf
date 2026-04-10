@@ -38,6 +38,9 @@ from taskclf.core.metrics import (
 )
 from taskclf.core.types import LABEL_SET_V1
 from taskclf.infer.batch import predict_proba
+from taskclf.train.lgbm import (
+    _resolve_schema_version as resolve_feature_schema_version,
+)
 from taskclf.train.lgbm import get_categorical_columns
 from taskclf.infer.calibration import Calibrator
 from taskclf.infer.smooth import flap_rate, rolling_majority, segmentize
@@ -222,7 +225,7 @@ def evaluate_model(
     ] = "raw",
     calibrator: Calibrator | None = None,
     smooth_window: int = DEFAULT_SMOOTH_WINDOW,
-    schema_version: str = "v1",
+    schema_version: str | None = None,
 ) -> EvaluationReport:
     """Run comprehensive evaluation of a trained model on a test set.
 
@@ -248,8 +251,9 @@ def evaluate_model(
         calibrator: Probability calibrator to apply in non-raw modes.
             Required when *eval_mode* is not ``"raw"``.
         smooth_window: Window size for rolling-majority smoothing.
-        schema_version: ``"v1"``, ``"v2"``, or ``"v3"`` — selects categorical columns for
-            unknown-category-rate (see :func:`~taskclf.train.lgbm.get_categorical_columns`).
+        schema_version: ``"v1"``, ``"v2"``, or ``"v3"``. When omitted, infer from
+            ``test_df`` before selecting categorical columns for unknown-category-rate
+            (see :func:`~taskclf.train.lgbm.get_categorical_columns`).
 
     Returns:
         A frozen :class:`EvaluationReport` with all evaluation artifacts.
@@ -258,11 +262,12 @@ def evaluate_model(
     le.fit(sorted(LABEL_SET_V1))
     label_names = list(le.classes_)
 
+    resolved_schema_version = resolve_feature_schema_version(test_df, schema_version)
     y_proba = predict_proba(
         model,
         test_df,
         cat_encoders,
-        schema_version=schema_version,
+        schema_version=resolved_schema_version,
     )
 
     if eval_mode != "raw" and calibrator is not None:
@@ -333,7 +338,7 @@ def evaluate_model(
         labels_for_metrics,
         label_names,
     )
-    cat_cols = get_categorical_columns(schema_version)
+    cat_cols = get_categorical_columns(resolved_schema_version)
     unknown_rates = unknown_category_rates(test_df, cat_encoders, cat_cols)
 
     pu = per_user_metrics(y_true, labels_for_metrics, user_ids, label_names)
@@ -428,7 +433,7 @@ def tune_reject_threshold(
     reject_rate_min: float = _ACCEPT_REJECT_RATE_MIN,
     reject_rate_max: float = _ACCEPT_REJECT_RATE_MAX,
     calibrator: Calibrator | None = None,
-    schema_version: str = "v1",
+    schema_version: str | None = None,
 ) -> RejectTuningResult:
     """Sweep reject thresholds and pick the best one.
 
@@ -451,7 +456,8 @@ def tune_reject_threshold(
             before extracting confidences for the threshold sweep.
             This ensures the threshold is tuned on the same probability
             space used at inference time.
-        schema_version: ``"v1"``, ``"v2"``, or ``"v3"``.
+        schema_version: ``"v1"``, ``"v2"``, or ``"v3"``. When omitted, infer from
+            ``val_df``.
 
     Returns:
         A :class:`RejectTuningResult` with the optimal threshold and
@@ -464,11 +470,12 @@ def tune_reject_threshold(
     le.fit(sorted(LABEL_SET_V1))
     label_names = list(le.classes_)
 
+    resolved_schema_version = resolve_feature_schema_version(val_df, schema_version)
     y_proba = predict_proba(
         model,
         val_df,
         cat_encoders,
-        schema_version=schema_version,
+        schema_version=resolved_schema_version,
     )
     if calibrator is not None:
         y_proba = calibrator.calibrate(y_proba)
