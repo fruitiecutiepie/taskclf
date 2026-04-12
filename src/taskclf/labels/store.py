@@ -41,6 +41,8 @@ _DUMMY_APPS_ORDER: Final[list[str]] = [
     "com.apple.Notes",
 ]
 
+_ADJACENT_BOUNDARY_TOLERANCE: Final[dt.timedelta] = dt.timedelta(milliseconds=1)
+
 
 def write_label_spans(spans: Sequence[LabelSpan], path: Path) -> Path:
     """Serialize *spans* to a parquet file at *path*.
@@ -174,6 +176,50 @@ def _same_user(a: LabelSpan, b: LabelSpan) -> bool:
     if a.user_id is None or b.user_id is None:
         return True
     return a.user_id == b.user_id
+
+
+def _snap_same_user_adjacent_boundaries(
+    existing: Sequence[LabelSpan],
+    span: LabelSpan,
+) -> LabelSpan:
+    """Snap near-adjacent same-user boundaries to avoid sub-ms UI overlap errors.
+
+    The web UI round-trips timestamps through JavaScript ``Date`` objects, which
+    preserve milliseconds but not Python microseconds.  When a stored span ends
+    at e.g. ``...15.564407`` and the UI sends back ``...15.564000``, two spans
+    that are semantically adjacent appear to overlap by 407 microseconds.
+    """
+    point_extend_forward = span.extend_forward and span.start_ts == span.end_ts
+
+    start = span.start_ts
+    end = span.end_ts
+
+    start_matches = [
+        ex.end_ts
+        for ex in existing
+        if _same_user(ex, span)
+        and abs(ex.end_ts - span.start_ts) <= _ADJACENT_BOUNDARY_TOLERANCE
+    ]
+    if start_matches:
+        start = min(start_matches, key=lambda ts: abs(ts - span.start_ts))
+        if point_extend_forward:
+            end = start
+
+    if not point_extend_forward:
+        end_matches = [
+            ex.start_ts
+            for ex in existing
+            if _same_user(ex, span)
+            and abs(ex.start_ts - span.end_ts) <= _ADJACENT_BOUNDARY_TOLERANCE
+        ]
+        if end_matches:
+            candidate = min(end_matches, key=lambda ts: abs(ts - span.end_ts))
+            if candidate > start:
+                end = candidate
+
+    if start == span.start_ts and end == span.end_ts:
+        return span
+    return span.model_copy(update={"start_ts": start, "end_ts": end})
 
 
 def _next_same_user_start(
@@ -341,6 +387,7 @@ def append_label_span(
     if path.exists():
         existing = read_label_spans(path)
 
+    span = _snap_same_user_adjacent_boundaries(existing, span)
     existing = _handoff_active_span_for_now_label(existing, span)
 
     prev: LabelSpan | None = None
@@ -399,6 +446,8 @@ def overwrite_label_span(span: LabelSpan, path: Path) -> Path:
     existing: list[LabelSpan] = []
     if path.exists():
         existing = read_label_spans(path)
+
+    span = _snap_same_user_adjacent_boundaries(existing, span)
 
     # Extend-forward: stretch the most recent same-user span up to span.start_ts
     prev: LabelSpan | None = None

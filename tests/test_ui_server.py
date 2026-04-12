@@ -17,7 +17,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from taskclf.core.types import LabelSpan
-from taskclf.labels.store import write_label_spans
+from taskclf.labels.store import read_label_spans, write_label_spans
 from taskclf.ui.activity_provider import ActivitySummaryAppEntry
 from taskclf.ui.copy import transition_suggestion_text
 from taskclf.ui.events import EventBus
@@ -1660,6 +1660,45 @@ class TestStructuredOverlapError:
         )
         assert resp.status_code == 200
         assert resp.json()["provenance"] == "suggestion"
+
+    def test_manual_gap_label_snaps_submillisecond_boundaries(
+        self, data_dir: Path
+    ) -> None:
+        labels_path = data_dir / "labels_v1" / "labels.parquet"
+        build = LabelSpan(
+            start_ts=dt.datetime(2026, 4, 9, 2, 38, 51, 295320, tzinfo=dt.timezone.utc),
+            end_ts=dt.datetime(2026, 4, 9, 2, 48, 15, 564407, tzinfo=dt.timezone.utc),
+            label="Build",
+            provenance="manual",
+            user_id="u1",
+        )
+        write = LabelSpan(
+            start_ts=dt.datetime(2026, 4, 9, 4, 29, 9, 202407, tzinfo=dt.timezone.utc),
+            end_ts=dt.datetime(2026, 4, 9, 4, 39, 9, 202407, tzinfo=dt.timezone.utc),
+            label="Write",
+            provenance="suggestion",
+            user_id="u1",
+        )
+        write_label_spans([build, write], labels_path)
+
+        client = TestClient(create_app(data_dir=data_dir, event_bus=EventBus()))
+        resp = client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-04-09T02:48:15.564000+00:00",
+                "end_ts": "2026-04-09T04:29:09.202000+00:00",
+                "label": "Review",
+                "user_id": "u1",
+            },
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["label"] == "Review"
+
+        saved = read_label_spans(labels_path)
+        review = [span for span in saved if span.label == "Review"][0]
+        assert review.start_ts == build.end_ts
+        assert review.end_ts == write.start_ts
 
     def test_historical_overlap_does_not_cause_false_409(
         self, client: TestClient

@@ -194,6 +194,41 @@ class TestAppendLabelSpan:
         assert len(loaded) == 3
         assert any(s.label == "Write" for s in loaded)
 
+    def test_submillisecond_adjacent_boundaries_are_snapped(
+        self, tmp_path: Path
+    ) -> None:
+        path = tmp_path / "labels.parquet"
+        build = LabelSpan(
+            start_ts=dt.datetime(2025, 6, 15, 9, 0, 0, 0),
+            end_ts=dt.datetime(2025, 6, 15, 9, 5, 0, 564407),
+            label="Build",
+            provenance="manual",
+            user_id="u1",
+        )
+        write = LabelSpan(
+            start_ts=dt.datetime(2025, 6, 15, 9, 10, 0, 202407),
+            end_ts=dt.datetime(2025, 6, 15, 9, 20, 0, 0),
+            label="Write",
+            provenance="manual",
+            user_id="u1",
+        )
+        write_label_spans([build, write], path)
+
+        review = LabelSpan(
+            start_ts=dt.datetime(2025, 6, 15, 9, 5, 0, 564000),
+            end_ts=dt.datetime(2025, 6, 15, 9, 10, 0, 202000),
+            label="Review",
+            provenance="manual",
+            user_id="u1",
+        )
+        append_label_span(review, path)
+
+        loaded = read_label_spans(path)
+        loaded.sort(key=lambda s: (s.start_ts, s.end_ts))
+        inserted = [s for s in loaded if s.label == "Review"][0]
+        assert inserted.start_ts == build.end_ts
+        assert inserted.end_ts == write.start_ts
+
     def test_now_label_truncates_active_previous_without_extend_flag(
         self, tmp_path: Path
     ) -> None:
