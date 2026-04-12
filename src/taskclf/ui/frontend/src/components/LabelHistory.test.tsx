@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from "@solidjs/testing-library";
 import { createSignal } from "solid-js";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { core_labels_list, labels_list_by_date } from "../lib/api";
 import { date_today_str } from "../lib/date";
 import { LabelHistory } from "./LabelHistory";
@@ -22,6 +22,10 @@ describe("LabelHistory", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(core_labels_list).mockResolvedValue(["Build", "Write"]);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("refetches the selected day when the label change count increments", async () => {
@@ -74,5 +78,27 @@ describe("LabelHistory", () => {
     await waitFor(() => {
       expect(vi.mocked(labels_list_by_date)).toHaveBeenCalledTimes(2);
     });
+  });
+
+  it("resets a stale today view to the current day when history opens", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 3, 5, 10, 0, 0, 0));
+    const initial_today = date_today_str();
+
+    vi.mocked(labels_list_by_date).mockResolvedValue([]);
+
+    const [visible, set_visible] = createSignal(false);
+
+    render(() => <LabelHistory visible={visible} />);
+
+    vi.setSystemTime(new Date(2026, 3, 6, 10, 0, 0, 0));
+    const next_today = date_today_str();
+
+    set_visible(true);
+
+    await waitFor(() => {
+      expect(vi.mocked(labels_list_by_date)).toHaveBeenCalledWith(next_today);
+    });
+    expect(vi.mocked(labels_list_by_date)).not.toHaveBeenCalledWith(initial_today);
   });
 });

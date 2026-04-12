@@ -1,6 +1,7 @@
 import {
   type Accessor,
   type Component,
+  createEffect,
   createMemo,
   createResource,
   createSignal,
@@ -32,13 +33,46 @@ export const LabelHistory: Component<{
   label_change_count?: Accessor<number>;
 }> = (props) => {
   const [selected_date, set_selected_date] = createSignal(date_today_str());
+  const [known_today, set_known_today] = createSignal(selected_date());
   let date_input_ref: HTMLInputElement | undefined;
+
+  const effective_selected_date = createMemo(() => {
+    const current = selected_date();
+    if (!props.visible()) {
+      return current;
+    }
+
+    const today = date_today_str();
+    const previous_today = known_today();
+    if (current > today) {
+      return today;
+    }
+    if (previous_today !== today && current === previous_today) {
+      return today;
+    }
+    return current;
+  });
+
+  createEffect(() => {
+    if (!props.visible()) {
+      return;
+    }
+
+    const today = date_today_str();
+    const effective = effective_selected_date();
+    if (selected_date() !== effective) {
+      set_selected_date(effective);
+    }
+    if (known_today() !== today) {
+      set_known_today(today);
+    }
+  });
 
   const [labels, { refetch }] = createResource(
     () =>
       props.visible()
         ? {
-            date_str: selected_date(),
+            date_str: effective_selected_date(),
             label_change_count: props.label_change_count?.() ?? 0,
           }
         : null,
@@ -64,7 +98,7 @@ export const LabelHistory: Component<{
       end_ts: r.end_ts,
       extend_forward: r.extend_forward,
     }));
-    return day_timeline_build(entries, selected_date());
+    return day_timeline_build(entries, effective_selected_date());
   });
 
   function row_toggle(item: TimelineItem) {
@@ -145,7 +179,8 @@ export const LabelHistory: Component<{
     }
   }
 
-  const is_future_date = () => selected_date() >= date_shift(date_today_str(), 1);
+  const is_future_date = () =>
+    effective_selected_date() >= date_shift(date_today_str(), 1);
 
   return (
     <div
@@ -168,7 +203,7 @@ export const LabelHistory: Component<{
       >
         <button
           type="button"
-          onClick={() => set_selected_date(date_shift(selected_date(), -1))}
+          onClick={() => set_selected_date(date_shift(effective_selected_date(), -1))}
           style={{
             background: "none",
             border: "none",
@@ -205,12 +240,12 @@ export const LabelHistory: Component<{
               font: "inherit",
             }}
           >
-            {date_label_fmt(selected_date())}
+            {date_label_fmt(effective_selected_date())}
           </button>
           <input
             ref={date_input_ref}
             type="date"
-            value={selected_date()}
+            value={effective_selected_date()}
             max={date_today_str()}
             onInput={(e) => {
               const v = e.currentTarget.value;
@@ -233,7 +268,7 @@ export const LabelHistory: Component<{
           type="button"
           onClick={() => {
             if (!is_future_date()) {
-              set_selected_date(date_shift(selected_date(), 1));
+              set_selected_date(date_shift(effective_selected_date(), 1));
             }
           }}
           disabled={is_future_date()}
@@ -297,7 +332,7 @@ export const LabelHistory: Component<{
               fallback={
                 <LabelHistoryGapRow
                   gap={item as GapItem}
-                  date_str={selected_date()}
+                  date_str={effective_selected_date()}
                   expanded={expanded_key() === item_key(item)}
                   on_toggle={() => row_toggle(item)}
                   on_create={gap_create_submit}
@@ -311,7 +346,7 @@ export const LabelHistory: Component<{
             >
               <LabelHistoryRow
                 label_item={item as LabelItem}
-                date_str={selected_date()}
+                date_str={effective_selected_date()}
                 expanded={expanded_key() === item_key(item)}
                 on_toggle={() => row_toggle(item)}
                 on_update={(new_label, new_start, new_end) =>
