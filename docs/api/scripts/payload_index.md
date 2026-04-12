@@ -10,6 +10,9 @@ Electron launcher.
 - Lets both the **payload release** and **docs deploy** workflows regenerate
   `payload-index.json` from the same published release metadata instead of
   copying whatever GitHub Pages currently serves.
+- Makes the **payload release** workflow the only Pages publisher for commits
+  tagged `v*`; the ordinary docs deploy skips those release-tagged `master`
+  pushes to avoid two GitHub Pages deployments racing on the same commit.
 - Shares a repository-wide `pages` concurrency group with other Pages publishers
   so docs deploys and payload metadata updates serialize instead of canceling
   each other.
@@ -17,8 +20,9 @@ Electron launcher.
   before uploading the Pages artifact so a broken docs build cannot publish a
   site that 404s at the project URL.
 
-That setup avoids preserving a stale GitHub Pages copy when a later `master`
-docs deploy publishes `site/` after a `v*` payload release.
+That setup keeps later ordinary `master` docs deploys refreshing metadata from
+published releases, while avoiding duplicate Pages deployments on the release
+commit itself.
 
 ## Modes
 

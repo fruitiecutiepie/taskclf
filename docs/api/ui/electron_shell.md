@@ -128,8 +128,10 @@ https://fruitiecutiepie.github.io/taskclf/payload-index.json
 
 That index lists available payload versions and the `manifest.json` URL for each
 `v*` payload release. It is regenerated from GitHub Releases during both payload
-release and docs deploy workflows so a later `master` push refreshes metadata
-from published releases instead of preserving a stale Pages copy.
+release and docs deploy workflows. Automatic docs deploys skip `master` commits
+that are also tagged `v*`, so the payload release workflow is the only GitHub
+Pages publisher for the release commit itself, while later ordinary `master`
+pushes still refresh metadata from published releases.
 
 The zip contains a **PyInstaller one-folder** sidecar: after extraction, the
 Electron app runs `backend/entry` (Unix) or `backend/entry.exe` (Windows),

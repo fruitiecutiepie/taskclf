@@ -18,7 +18,35 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  release-scope:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Skip duplicate Pages deploys for payload release commits
+        id: decide
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if git tag --points-at "${GITHUB_SHA}" --list 'v*' | grep -q .; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping docs deploy: payload-release.yml will publish GitHub Pages for this v* release commit."
+            exit 0
+          fi
+
+          echo "run=true" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: release-scope
+    if: needs.release-scope.outputs.run == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -48,6 +76,7 @@ jobs:
 
   deploy:
     needs: build
+    if: needs.build.result == 'success'
     runs-on: ubuntu-latest
     environment:
       name: github-pages

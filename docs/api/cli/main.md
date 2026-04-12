@@ -41,9 +41,11 @@ Payload releases also refresh the GitHub Pages payload index at
 `https://fruitiecutiepie.github.io/taskclf/payload-index.json`, which the
 packaged Electron launcher uses to discover the newest compatible `v*`
 sidecar release.  That file is regenerated from GitHub Releases during both the
-payload release workflow and ordinary docs deploys, so a later `master` push
-refreshes metadata from the same published releases instead of preserving a
-stale GitHub Pages copy.  The payload release workflow also
+payload release workflow and ordinary docs deploys, but the docs workflow now
+skips automatic `master` runs when that commit is also tagged `v*`.  That makes
+the payload release workflow the only GitHub Pages publisher for release
+commits, while later ordinary `master` pushes still refresh metadata from the
+same published releases.  The payload release workflow also
 supports a manual index-refresh-only dispatch for repairing stale Pages metadata
 without rebuilding payload archives.  All Pages publishers share the same
 `pages` concurrency group and queue behind each other so docs deploys and
