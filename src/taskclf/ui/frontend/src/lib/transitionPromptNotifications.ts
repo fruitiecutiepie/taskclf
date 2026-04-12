@@ -36,7 +36,7 @@ export function transition_prompt_notifications_bind(
   on_open_label_grid: () => void,
 ): void {
   onMount(() => {
-    if (host.kind !== "electron") {
+    if (host.kind === "browser") {
       void notification_permission_ensure();
     }
   });
@@ -47,7 +47,7 @@ export function transition_prompt_notifications_bind(
       return;
     }
 
-    if (host.kind === "electron") {
+    if (host.kind !== "browser") {
       void host.invoke({ cmd: "showTransitionNotification", prompt: next_prompt });
       return;
     }

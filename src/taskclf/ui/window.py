@@ -8,7 +8,10 @@ and state-panel child windows.
 
 from __future__ import annotations
 
+import datetime as dt
 import logging
+import platform
+import subprocess
 import threading
 from dataclasses import dataclass, field
 from typing import Any, Callable
@@ -20,6 +23,90 @@ _LABEL_SIZE = (280, 330)
 _PANEL_SIZE = (280, 520)
 _CHILD_HIDE_DELAY_S = 0.3
 _DRAG_TOLERANCE = 10
+_TRANSITION_NOTIFICATION_TITLE = "taskclf — Activity changed"
+
+
+def _iso_dt_parse(value: Any) -> dt.datetime | None:
+    """Parse an ISO datetime string, accepting ``Z`` suffixes."""
+    if not isinstance(value, str) or not value:
+        return None
+    normalized = f"{value[:-1]}+00:00" if value.endswith("Z") else value
+    try:
+        parsed = dt.datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=dt.timezone.utc)
+    return parsed
+
+
+def _display_time_range_exact_local(
+    start: dt.datetime,
+    end: dt.datetime,
+) -> str:
+    """Format an exact local transition range, adding dates if it crosses midnight."""
+    if start.tzinfo is None:
+        start = start.replace(tzinfo=dt.timezone.utc)
+    if end.tzinfo is None:
+        end = end.replace(tzinfo=dt.timezone.utc)
+
+    start_local = start.astimezone()
+    end_local = end.astimezone()
+    if start_local.date() == end_local.date():
+        return (
+            f"{start_local.strftime('%H:%M:%S')}\u2013{end_local.strftime('%H:%M:%S')}"
+        )
+    return (
+        f"{start_local.strftime('%b %d %H:%M:%S')}"
+        f"\u2013{end_local.strftime('%b %d %H:%M:%S')}"
+    )
+
+
+def _transition_notification_body(prompt: Any) -> str:
+    """Build a privacy-safe transition notification body from a prompt payload."""
+    if not isinstance(prompt, dict):
+        return "Activity changed"
+
+    summary = prompt.get("suggestion_text")
+    if not isinstance(summary, str) or not summary.strip():
+        summary = "Activity changed"
+
+    start = _iso_dt_parse(prompt.get("block_start"))
+    end = _iso_dt_parse(prompt.get("block_end"))
+    if start is None or end is None:
+        return summary
+    return f"{summary}\n{_display_time_range_exact_local(start, end)}"
+
+
+def _send_desktop_notification(title: str, message: str, timeout: int = 10) -> None:
+    """Best-effort native desktop notification for the pywebview shell."""
+    if platform.system() == "Darwin":
+        safe_title = title.replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ")
+        safe_message = (
+            message.replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ")
+        )
+        script = f'display notification "{safe_message}" with title "{safe_title}"'
+
+        def _fire() -> None:
+            try:
+                proc = subprocess.Popen(
+                    ["osascript", "-e", script],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                try:
+                    proc.wait(timeout=timeout)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait()
+                    logger.debug("osascript notification timed out after %ds", timeout)
+            except Exception:
+                logger.debug("osascript notification failed", exc_info=True)
+
+        threading.Thread(target=_fire, daemon=True).start()
+        return
+
+    logger.info("[%s] %s", title, message)
 
 
 @dataclass(eq=False)
@@ -200,6 +287,14 @@ class WindowAPI:
     def label_grid_toggle(self) -> None:
         """Toggle pinned state of the label grid."""
         self._label.pin_toggle(self._window)
+
+    def show_transition_notification(self, prompt: dict[str, Any]) -> None:
+        """Show a native desktop notification for a transition prompt."""
+        _send_desktop_notification(
+            _TRANSITION_NOTIFICATION_TITLE,
+            _transition_notification_body(prompt),
+            timeout=10,
+        )
 
     # -- State panel window ----------------------------------------------------
 

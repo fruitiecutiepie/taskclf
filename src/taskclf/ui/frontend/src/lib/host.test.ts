@@ -56,6 +56,40 @@ describe("host", () => {
     expect(dashboard_toggle).toHaveBeenCalledOnce();
   });
 
+  it("forwards transition notifications through the pywebview bridge", async () => {
+    const show_transition_notification = vi.fn().mockResolvedValue(undefined);
+    const prompt = {
+      type: "prompt_label" as const,
+      prev_app: "Editor",
+      new_app: "Browser",
+      block_start: "2026-04-05T00:00:00.000Z",
+      block_end: "2026-04-05T00:05:00.000Z",
+      duration_min: 5,
+      suggested_label: "ReadResearch",
+      suggestion_text: "Was this ReadResearch? 10:00-10:05",
+    };
+    (
+      window as typeof window & {
+        pywebview?: {
+          api?: {
+            show_transition_notification: typeof show_transition_notification;
+          };
+        };
+      }
+    ).pywebview = {
+      api: {
+        show_transition_notification,
+      } as never,
+    };
+
+    const { host } = await import("./host");
+
+    await host.invoke({ cmd: "showTransitionNotification", prompt });
+
+    expect(show_transition_notification).toHaveBeenCalledOnce();
+    expect(show_transition_notification).toHaveBeenCalledWith(prompt);
+  });
+
   it("falls back to browser mode without a native bridge", async () => {
     const { host } = await import("./host");
 

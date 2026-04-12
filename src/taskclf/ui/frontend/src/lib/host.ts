@@ -48,6 +48,7 @@ declare global {
         label_grid_hide(): Promise<void>;
         label_grid_toggle(): Promise<void>;
         label_grid_cancel_hide(): Promise<void>;
+        show_transition_notification(prompt: PromptLabelEvent): Promise<void>;
         window_hide(): Promise<void>;
         dashboard_toggle(): Promise<void>;
         state_panel_toggle(): Promise<void>;
@@ -120,6 +121,7 @@ class AdaptiveHost implements Host {
           await api.label_grid_cancel_hide();
           break;
         case "showTransitionNotification":
+          await api.show_transition_notification(command.prompt);
           break;
         case "hideWindow":
           await api.window_hide();

@@ -96,6 +96,7 @@ Internally, `WindowAPI` delegates to two `WindowChild` instances
 | `window_toggle()` | Toggle the compact pill's visibility |
 | `label_grid_show()` | Show the label grid below the pill (right-aligned) |
 | `label_grid_hide()` | Schedule a delayed hide of the label grid (300 ms) |
+| `show_transition_notification(prompt)` | Show a native desktop notification for a `prompt_label` event using privacy-safe copy plus the exact local time range |
 | `state_panel_toggle()` | Toggle the panel's visibility; positions below the label grid when both are visible |
 | `frontend_debug_log(message)` | Accept frontend debug lines from the webview and forward them to the Python logger at DEBUG level |
 | `frontend_error_log(message)` | Accept frontend error lines from the webview and forward them to the Python logger at ERROR level |

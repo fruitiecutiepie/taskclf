@@ -10,8 +10,10 @@ All tests use mock window objects — no real GUI required.
 
 from __future__ import annotations
 
+import datetime as dt
 from unittest.mock import MagicMock
 
+import taskclf.ui.window as window_mod
 from taskclf.ui.window import WindowAPI
 
 
@@ -852,3 +854,83 @@ class TestBind:
         api.bind_panel(panel)
 
         assert api._panel.window is panel
+
+
+class TestTransitionNotification:
+    def test_uses_suggestion_text_and_exact_local_range(
+        self,
+        monkeypatch,
+    ) -> None:
+        captured: dict[str, object] = {}
+
+        def fake_send(title: str, message: str, timeout: int = 10) -> None:
+            captured["title"] = title
+            captured["message"] = message
+            captured["timeout"] = timeout
+
+        monkeypatch.setattr(window_mod, "_send_desktop_notification", fake_send)
+
+        api = WindowAPI()
+        prompt = {
+            "type": "prompt_label",
+            "prev_app": "Editor",
+            "new_app": "Browser",
+            "block_start": "2026-04-05T00:00:00+00:00",
+            "block_end": "2026-04-05T00:05:00+00:00",
+            "duration_min": 5,
+            "suggested_label": "ReadResearch",
+            "suggestion_text": "Was this ReadResearch? 10:00-10:05",
+        }
+
+        api.show_transition_notification(prompt)
+
+        block_start = prompt["block_start"]
+        block_end = prompt["block_end"]
+        assert isinstance(block_start, str)
+        assert isinstance(block_end, str)
+        expected_range = window_mod._display_time_range_exact_local(
+            dt.datetime.fromisoformat(block_start),
+            dt.datetime.fromisoformat(block_end),
+        )
+        assert captured == {
+            "title": "taskclf — Activity changed",
+            "message": f"{prompt['suggestion_text']}\n{expected_range}",
+            "timeout": 10,
+        }
+
+    def test_falls_back_to_privacy_safe_copy_without_suggestion_text(
+        self,
+        monkeypatch,
+    ) -> None:
+        captured: dict[str, object] = {}
+
+        def fake_send(title: str, message: str, timeout: int = 10) -> None:
+            captured["title"] = title
+            captured["message"] = message
+            captured["timeout"] = timeout
+
+        monkeypatch.setattr(window_mod, "_send_desktop_notification", fake_send)
+
+        api = WindowAPI()
+        prompt = {
+            "type": "prompt_label",
+            "prev_app": "Editor",
+            "new_app": "Browser",
+            "block_start": "2026-04-05T00:00:00Z",
+            "block_end": "2026-04-05T00:05:00Z",
+            "duration_min": 5,
+            "suggested_label": None,
+            "suggestion_text": None,
+        }
+
+        api.show_transition_notification(prompt)
+
+        expected_range = window_mod._display_time_range_exact_local(
+            dt.datetime.fromisoformat("2026-04-05T00:00:00+00:00"),
+            dt.datetime.fromisoformat("2026-04-05T00:05:00+00:00"),
+        )
+        assert captured == {
+            "title": "taskclf — Activity changed",
+            "message": f"Activity changed\n{expected_range}",
+            "timeout": 10,
+        }
