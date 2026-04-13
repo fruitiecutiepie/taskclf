@@ -116,6 +116,36 @@ describe("LabelRecorder", () => {
     vi.useRealTimers();
   });
 
+  it("treats an active extend-forward span with stored duration as current", async () => {
+    vi.mocked(labels_list).mockResolvedValue([
+      {
+        start_ts: "2026-04-05T09:00:00Z",
+        end_ts: "2026-04-05T09:05:00Z",
+        label: "Build",
+        provenance: "manual",
+        user_id: null,
+        confidence: 1,
+        extend_forward: true,
+      },
+    ]);
+    vi.mocked(current_label_get).mockResolvedValue({
+      start_ts: "2026-04-05T09:00:00Z",
+      end_ts: "2026-04-05T09:05:00Z",
+      label: "Build",
+      provenance: "manual",
+      user_id: null,
+      confidence: 1,
+      extend_forward: true,
+    });
+
+    render(() => <LabelRecorder on_collapse={vi.fn()} />);
+
+    expect(await screen.findByText(/^Current:/)).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "Stop current label" }),
+    ).toBeInTheDocument();
+  });
+
   it("keeps the stop action visible when the latest-ended label is completed", async () => {
     vi.mocked(labels_list).mockResolvedValue([
       {

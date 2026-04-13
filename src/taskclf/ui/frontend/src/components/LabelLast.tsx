@@ -14,6 +14,7 @@ type LabelLastProps = {
     | null
     | undefined
   >;
+  is_current?: Accessor<boolean>;
 };
 
 const LabelLastContent: Component<{
@@ -23,8 +24,10 @@ const LabelLastContent: Component<{
     end_ts: string;
     extend_forward?: boolean;
   }>;
+  is_current?: Accessor<boolean>;
 }> = (props) => {
-  const is_current = () => label_entry_is_open_ended(props.ll());
+  const is_current = () =>
+    props.is_current?.() ?? label_entry_is_open_ended(props.ll());
 
   return (
     <>
@@ -62,7 +65,7 @@ export const LabelLast: Component<LabelLastProps> = (props) => (
       when={props.last_label()}
       fallback={<span style={{ color: "var(--text-muted)" }}>No labels yet</span>}
     >
-      {(ll) => <LabelLastContent ll={ll} />}
+      {(ll) => <LabelLastContent ll={ll} is_current={props.is_current} />}
     </Show>
   </div>
 );

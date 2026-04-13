@@ -152,6 +152,29 @@ class TestLabelsCRUD:
         assert data["provenance"] == "manual"
         assert data["extend_forward"] is True
 
+    def test_current_label_returns_active_extend_forward_span_with_stored_duration(
+        self, client: TestClient
+    ) -> None:
+        create_current = client.post(
+            "/api/labels",
+            json={
+                "start_ts": "2026-02-27T09:00:00",
+                "end_ts": "2026-02-27T09:05:00",
+                "label": "Build",
+                "extend_forward": True,
+            },
+        )
+        assert create_current.status_code == 201
+
+        current = client.get("/api/labels/current")
+        assert current.status_code == 200
+        data = current.json()
+        assert data["start_ts"] == "2026-02-27T09:00:00+00:00"
+        assert data["end_ts"] == "2026-02-27T09:05:00+00:00"
+        assert data["label"] == "Build"
+        assert data["provenance"] == "manual"
+        assert data["extend_forward"] is True
+
 
 class TestQueue:
     def test_empty_queue(self, client: TestClient) -> None:
@@ -1960,6 +1983,47 @@ class TestLabelStoppedEvent:
                         json={
                             "start_ts": "2026-02-27T09:00:00",
                             "end_ts": "2026-02-27T09:00:00",
+                            "label": "Build",
+                            "new_end_ts": "2026-02-27T09:30:00",
+                            "extend_forward": False,
+                        },
+                    )
+
+                threading.Thread(target=_put).start()
+                received = ws.receive_json()
+                assert received["type"] == "label_stopped"
+                assert received["ts"] == "2026-02-27T09:30:00+00:00"
+
+    def test_stop_active_extend_forward_label_publishes_label_stopped(
+        self, data_dir: Path
+    ) -> None:
+        import threading
+        import time
+
+        bus = EventBus()
+        app = create_app(data_dir=data_dir, event_bus=bus)
+
+        with TestClient(app) as tc:
+            create_resp = tc.post(
+                "/api/labels",
+                json={
+                    "start_ts": "2026-02-27T09:00:00",
+                    "end_ts": "2026-02-27T09:05:00",
+                    "label": "Build",
+                    "extend_forward": True,
+                },
+            )
+            assert create_resp.status_code == 201
+
+            with tc.websocket_connect("/ws/predictions") as ws:
+
+                def _put() -> None:
+                    time.sleep(0.05)
+                    tc.put(
+                        "/api/labels",
+                        json={
+                            "start_ts": "2026-02-27T09:00:00",
+                            "end_ts": "2026-02-27T09:05:00",
                             "label": "Build",
                             "new_end_ts": "2026-02-27T09:30:00",
                             "extend_forward": False,

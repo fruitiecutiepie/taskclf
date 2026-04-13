@@ -18,7 +18,6 @@ import {
 import { iso_date_parse } from "../lib/date";
 import { label_overwrite_pending_upd_get } from "../lib/label_overwrite_pending_upd_get";
 import { LABEL_COLORS } from "../lib/labelColors";
-import { label_entry_is_open_ended } from "../lib/labelTimeline";
 import { overwrite_pending_from_api_error } from "../lib/overwrite_pending_from_api_error";
 import type { LabelSuggestion, Prediction, SuggestionClearReason } from "../lib/ws";
 import { ActivitySummary } from "./ActivitySummary";
@@ -82,10 +81,7 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
   const [stop_current_pending, set_stop_current_pending] = createSignal(false);
   const [stop_current_busy, set_stop_current_busy] = createSignal(false);
 
-  const current_label = () => {
-    const row = current_label_result();
-    return row && label_entry_is_open_ended(row) ? row : null;
-  };
+  const current_label = () => current_label_result() ?? null;
 
   const footer_label = () => current_label() ?? last_ended_label() ?? null;
 
@@ -359,7 +355,7 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
         </For>
       </div>
 
-      <LabelLast last_label={footer_label} />
+      <LabelLast last_label={footer_label} is_current={() => current_label() != null} />
 
       <Show when={current_label()}>
         <div

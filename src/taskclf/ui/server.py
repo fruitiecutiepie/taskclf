@@ -48,6 +48,7 @@ from taskclf.core.time import ts_utc_aware_get
 from taskclf.core.types import CoreLabel, LabelSpan
 from taskclf.labels.queue import ActiveLabelingQueue
 from taskclf.labels.store import (
+    _effective_extend_forward_end,
     _extend_forward_coverage_contains,
     append_label_span,
     delete_label_span,
@@ -363,8 +364,24 @@ def _utc_iso(ts: dt.datetime) -> str:
     return ts.astimezone(dt.timezone.utc).isoformat()
 
 
-def _label_span_is_open_ended(span: LabelSpan) -> bool:
-    return span.extend_forward and span.end_ts <= span.start_ts
+def _label_span_is_current(
+    spans: list[LabelSpan],
+    idx: int,
+    *,
+    now: dt.datetime | None = None,
+) -> bool:
+    span = spans[idx]
+    if not span.extend_forward:
+        return False
+
+    current_ts = _ensure_utc(now or dt.datetime.now(dt.timezone.utc))
+    if span.start_ts > current_ts:
+        return False
+
+    effective_end = _effective_extend_forward_end(spans, idx)
+    if effective_end is None:
+        return True
+    return current_ts < effective_end
 
 
 def _label_response_from_span(span: LabelSpan) -> LabelResponse:
@@ -664,7 +681,9 @@ def create_app(
             return None
 
         spans = read_label_spans(labels_path)
-        current = [span for span in spans if _label_span_is_open_ended(span)]
+        current = [
+            span for i, span in enumerate(spans) if _label_span_is_current(spans, i)
+        ]
         if not current:
             return None
 
@@ -733,6 +752,7 @@ def create_app(
     @app.put("/api/labels")
     async def api_op_labels_put(body: LabelUpdateRequest) -> LabelResponse:
         prior_span: LabelSpan | None = None
+        existing_spans: list[LabelSpan] = []
         try:
             start = _ensure_utc(dt.datetime.fromisoformat(body.start_ts))
             end = _ensure_utc(dt.datetime.fromisoformat(body.end_ts))
@@ -749,7 +769,8 @@ def create_app(
         except (ValueError, Exception) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         if labels_path.exists():
-            for existing in read_label_spans(labels_path):
+            existing_spans = read_label_spans(labels_path)
+            for existing in existing_spans:
                 if existing.start_ts == start and existing.end_ts == end:
                     prior_span = existing
                     break
@@ -765,11 +786,19 @@ def create_app(
             )
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
-        was_open_ended = prior_span is not None and _label_span_is_open_ended(
-            prior_span
-        )
+        was_current = False
+        if prior_span is not None:
+            for i, existing in enumerate(existing_spans):
+                if (
+                    existing.start_ts == prior_span.start_ts
+                    and existing.end_ts == prior_span.end_ts
+                    and existing.label == prior_span.label
+                    and existing.user_id == prior_span.user_id
+                ):
+                    was_current = _label_span_is_current(existing_spans, i)
+                    break
         is_closed = not span.extend_forward and span.end_ts > span.start_ts
-        if was_open_ended and is_closed:
+        if was_current and is_closed:
             await bus.publish(
                 LabelStoppedEventResponse(ts=_utc_iso(span.end_ts)).model_dump()
             )
