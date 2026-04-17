@@ -98,9 +98,11 @@ specific payload for that step (without changing the tray **Selected** pin; see
 [`electron_shell`](../api/ui/electron_shell.md)).
 
 Packaged builds also expose **Check for Updates** in the tray menu. That action
-checks the latest compatible payload on demand, shows **Up to Date** when the
-active payload is current, and otherwise offers **Update and Restart** (plus
-**Choose Version** when multiple compatible payloads exist).
+checks both the Electron launcher and the latest compatible payload on demand.
+When updates are available, it shows a combined picker where you can choose
+whether to update the **launcher**, the **core**, or both. Core updates still
+apply in-app; launcher updates download the platform installer and reveal it
+for manual installation.
 
 ---
 

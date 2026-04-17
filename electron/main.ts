@@ -17,16 +17,20 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   clearSelectedVersion,
+  downloadLauncherInstaller,
   getActiveVersion,
   getActivePayloadBackendPath,
   getSelectedVersion,
   downloadAndApplyUpdate,
   isPayloadDirPresent,
+  lastLauncherCheckFailure,
   lastManifestCheckFailure,
   listInstalledPayloadVersions,
+  resolveLauncherRelease,
   resolvePayloadRelease,
   setSelectedVersion,
   useInstalledPayloadVersion,
+  type LauncherResolution,
   type Manifest,
   type PayloadResolution,
   type UpdateProgressEvent,
@@ -37,6 +41,13 @@ import {
   orderedCompatiblePayloadVersions,
   payloadChooserOffersMultipleVersions,
 } from "./payload_choice";
+import {
+  combinedUpdateStateHasAnyUpdate,
+  launcherResolutionSummary,
+  manualUpdateDialogDetails,
+  type ManualUpdateChoice,
+  type ManualUpdateState,
+} from "./manual_update";
 import { dashboardWindowActionForTrayInteraction } from "./tray_dashboard";
 import { getAppIconPath, getTrayIconAsset } from "./tray_icon";
 import { getPortListenerInfo, killPidAndWaitForPortFree } from "./port_conflict";
@@ -853,13 +864,20 @@ async function skipTransitionSuggestion(): Promise<void> {
 function showTransitionNotification(
   prompt: NonNullable<HostCommand["prompt"]>,
 ): void {
-  const actions: NotificationAction[] = prompt.suggested_label === null
-    ? [{ type: "button", text: "Review" }]
-    : [
-        { type: "button", text: "Accept" },
-        { type: "button", text: "Review" },
-        { type: "button", text: "Skip" },
-      ];
+  const supportsActions = process.platform !== "darwin";
+  const actions: NotificationAction[] = supportsActions
+    ? prompt.suggested_label === null
+      ? [{ type: "button", text: "Review" }]
+      : [
+          { type: "button", text: "Accept" },
+          { type: "button", text: "Review" },
+          { type: "button", text: "Skip" },
+        ]
+    : [];
+  launcherLog(
+    `transition notification: suggested=${prompt.suggested_label ?? "none"} actions=${actions.length} platform=${process.platform}`,
+    "info",
+  );
 
   const notification = new Notification({
     title: `${APP_DISPLAY_NAME} — Activity changed`,
@@ -867,10 +885,18 @@ function showTransitionNotification(
     actions,
   });
 
+  notification.on("show", () => {
+    launcherLog("transition notification shown", "info");
+  });
+  notification.on("failed", (_event, error) => {
+    launcherLog(`transition notification failed: ${error}`, "error");
+  });
   notification.on("click", () => {
+    launcherLog("transition notification clicked", "info");
     void openLabelGridFromNotification();
   });
   notification.on("action", (_event, index) => {
+    launcherLog(`transition notification action index=${index}`, "info");
     if (prompt.suggested_label === null) {
       void openLabelGridFromNotification();
       return;
@@ -1208,6 +1234,139 @@ async function showUpdateCheckFailureDialog(detail?: string): Promise<void> {
   });
 }
 
+async function resolveManualUpdateState(): Promise<ManualUpdateState | null> {
+  const selectedPayloadVersion = getSelectedVersion();
+  const payload = await resolvePayloadRelease({
+    timeoutMs: manifestFetchTimeoutMs(),
+    ignoreSelectedVersion: true,
+  });
+  if (payload === null) {
+    return null;
+  }
+  const launcher = await resolveLauncherRelease({
+    timeoutMs: manifestFetchTimeoutMs(),
+  });
+  if (launcher === null) {
+    return null;
+  }
+
+  latestPayloadResolution = payload;
+  const selectionIgnoredNote = (
+    selectedPayloadVersion !== null
+    && selectedPayloadVersion !== payload.desiredVersion
+  )
+    ? `Manual update checks compare against the latest compatible core version instead of the pinned selected core version v${selectedPayloadVersion}.`
+    : null;
+  const compatiblePayloadVersions = orderedCompatiblePayloadVersions(
+    payload.payloadIndex.payloads,
+    payload.launcherManifest.compatible_payloads,
+  );
+  return {
+    launcher,
+    payload,
+    activePayloadVersion: getActiveVersion(),
+    selectedPayloadVersion,
+    selectionIgnoredNote,
+    compatiblePayloadVersions,
+  };
+}
+
+function updateFailureDetail(): string | undefined {
+  return lastManifestCheckFailure ?? lastLauncherCheckFailure ?? undefined;
+}
+
+async function showLauncherUpdateReadyDialog(
+  resolution: LauncherResolution,
+  installerPath: string,
+): Promise<void> {
+  await dialog.showMessageBox({
+    type: "info",
+    title: "Launcher Update Ready",
+    message: `${APP_DISPLAY_NAME} downloaded launcher v${resolution.latestVersion}.`,
+    detail: [
+      `Installer: ${installerPath}`,
+      "The installer was revealed in Finder/Explorer.",
+      "Complete the launcher install manually.",
+    ].join("\n"),
+  });
+}
+
+async function applyManualPayloadOnlyUpdate(
+  resolution: PayloadResolution,
+): Promise<void> {
+  await applyPayloadResolutionAndRelaunch(
+    resolution,
+    `Downloading ${APP_DISPLAY_NAME} core`,
+    { clearSelectedVersionBeforeRelaunch: true },
+  );
+}
+
+async function applyManualLauncherOnlyUpdate(
+  resolution: LauncherResolution,
+): Promise<void> {
+  launcherLog(
+    `launcher update download start: current=v${resolution.currentVersion} latest=v${resolution.latestVersion}`,
+    "info",
+  );
+  const installerPath = await downloadLauncherInstaller(resolution);
+  launcherLog(`launcher update downloaded: ${installerPath}`, "info");
+  shell.showItemInFolder(installerPath);
+  launcherLog(`launcher update revealed: ${installerPath}`, "info");
+  await showLauncherUpdateReadyDialog(resolution, installerPath);
+}
+
+async function promptForCombinedRestart(
+  payload: PayloadResolution,
+  launcher: LauncherResolution,
+  installerPath: string,
+): Promise<void> {
+  const res = await dialog.showMessageBox({
+    type: "info",
+    title: "Updates Ready",
+    message: `${APP_DISPLAY_NAME} finished preparing the selected updates.`,
+    detail: [
+      `Core will switch to backend v${payload.desiredVersion} on restart.`,
+      `Launcher installer v${launcher.latestVersion} was downloaded to:`,
+      installerPath,
+      "",
+      "The installer was revealed in Finder/Explorer.",
+    ].join("\n"),
+    buttons: ["Restart Now", "Later"],
+    defaultId: 0,
+    cancelId: 1,
+  });
+  if (res.response === 0) {
+    app.relaunch();
+    app.quit();
+  }
+}
+
+async function applyManualCombinedUpdate(
+  payload: PayloadResolution | null,
+  launcher: LauncherResolution | null,
+): Promise<void> {
+  if (payload !== null) {
+    await applyPayloadResolution(payload, `Downloading ${APP_DISPLAY_NAME} core`);
+    clearSelectedVersion();
+    latestPayloadResolution = payload;
+  }
+  if (launcher !== null) {
+    launcherLog(
+      `launcher update download start: current=v${launcher.currentVersion} latest=v${launcher.latestVersion}`,
+      "info",
+    );
+    const installerPath = await downloadLauncherInstaller(launcher);
+    launcherLog(`launcher update downloaded: ${installerPath}`, "info");
+    shell.showItemInFolder(installerPath);
+    launcherLog(`launcher update revealed: ${installerPath}`, "info");
+    if (payload !== null) {
+      await promptForCombinedRestart(payload, launcher, installerPath);
+      return;
+    }
+    await showLauncherUpdateReadyDialog(launcher, installerPath);
+  }
+}
+
 async function checkForUpdatesManually(): Promise<void> {
   if (!app.isPackaged || isQuitting) {
     await dialog.showMessageBox({
@@ -1227,114 +1386,73 @@ async function checkForUpdatesManually(): Promise<void> {
 
   updateCheckInProgress = true;
   try {
-    const selectedVersion = getSelectedVersion();
-    const resolution = await resolvePayloadRelease({
-      timeoutMs: manifestFetchTimeoutMs(),
-      ignoreSelectedVersion: true,
-    });
-    if (resolution === null) {
-      await showUpdateCheckFailureDialog(lastManifestCheckFailure ?? undefined);
+    launcherLog("combined update check start", "info");
+    const state = await resolveManualUpdateState();
+    if (state === null) {
+      await showUpdateCheckFailureDialog(updateFailureDetail());
       return;
     }
+    launcherLog(
+      `combined update check result: launcher_available=${state.launcher.updateAvailable} core_available=${state.payload.syncPlan.action !== "none"}`,
+      "info",
+    );
 
-    latestPayloadResolution = resolution;
-    const activeVersion = getActiveVersion();
-    const selectionIgnoredNote = (
-      selectedVersion !== null
-      && selectedVersion !== resolution.desiredVersion
-    )
-      ? `Manual update checks compare against the latest compatible backend version instead of the pinned selected backend version v${selectedVersion}.`
-      : null;
-
-    if (resolution.syncPlan.action === "none") {
+    if (!combinedUpdateStateHasAnyUpdate(state)) {
       await dialog.showMessageBox({
         type: "info",
-        title: "Up to Date",
-        message: `${APP_DISPLAY_NAME} is up to date.`,
-        detail: payloadResolutionDetails(resolution, activeVersion, {
-          selectedVersion,
-          note: selectionIgnoredNote,
-        }),
+        title: "No Installable Updates",
+        message: `${APP_DISPLAY_NAME} has no installable launcher or core updates right now.`,
+        detail: manualUpdateDialogDetails(state),
       });
       return;
     }
 
-    const compatible = orderedCompatiblePayloadVersions(
-      resolution.payloadIndex.payloads,
-      resolution.launcherManifest.compatible_payloads,
+    const choice = await promptCombinedUpdateChoice(state);
+    if (choice === null || (!choice.launcher && !choice.core)) {
+      return;
+    }
+    launcherLog(
+      `combined update selection: launcher=${choice.launcher} core=${choice.core} coreVersion=${choice.coreVersion ?? "none"}`,
+      "info",
     );
-    const offerChooser = payloadChooserOffersMultipleVersions(compatible);
-    const buttons = offerChooser
-      ? ["Update and Restart", "Choose Version", "Later"]
-      : ["Update and Restart", "Later"];
-    const prompt = await dialog.showMessageBox({
-      type: "question",
-      title: "Core Update Available",
-      message: `${APP_DISPLAY_NAME} can switch to backend version v${resolution.desiredVersion} on restart.`,
-      detail: payloadResolutionDetails(resolution, activeVersion, {
-        selectedVersion,
-        note: selectionIgnoredNote,
-      }),
-      buttons,
-      defaultId: 0,
-      cancelId: offerChooser ? 2 : 1,
-    });
 
-    const applyManualUpdate = async (toApply: PayloadResolution) => {
-      await applyPayloadResolutionAndRelaunch(
-        toApply,
-        `Downloading ${APP_DISPLAY_NAME} update`,
-        { clearSelectedVersionBeforeRelaunch: true },
-      );
-    };
-
-    if (prompt.response === 0) {
-      try {
-        await applyManualUpdate(resolution);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        launcherLog(`manual update apply failed: ${msg}`, "error");
-        await dialog.showMessageBox({
-          type: "error",
-          title: "Core Update Failed",
-          message: `Failed to update ${APP_DISPLAY_NAME}.`,
-          detail: msg,
+    let chosenPayloadResolution: PayloadResolution | null = null;
+    if (choice.core) {
+      const targetVersion = choice.coreVersion ?? state.payload.defaultVersion;
+      if (targetVersion === state.payload.desiredVersion) {
+        chosenPayloadResolution = state.payload;
+      } else {
+        chosenPayloadResolution = await resolvePayloadRelease({
+          timeoutMs: manifestFetchTimeoutMs(),
+          preferredVersion: targetVersion,
+          ignoreSelectedVersion: true,
         });
+        if (chosenPayloadResolution === null) {
+          await showUpdateCheckFailureDialog(updateFailureDetail());
+          return;
+        }
       }
-      return;
     }
 
-    if (offerChooser && prompt.response === 1) {
-      const picked = await promptPayloadVersionChoice({
-        versions: compatible,
-        recommended: resolution.defaultVersion,
-        title: "Choose Backend Version",
-      });
-      if (picked === null) {
+    try {
+      if (choice.core && !choice.launcher) {
+        await applyManualPayloadOnlyUpdate(chosenPayloadResolution!);
         return;
       }
-      const chosenResolution = await resolvePayloadRelease({
-        timeoutMs: manifestFetchTimeoutMs(),
-        preferredVersion: picked,
-        ignoreSelectedVersion: true,
-      });
-      if (chosenResolution === null) {
-        await showUpdateCheckFailureDialog(lastManifestCheckFailure ?? undefined);
+      if (choice.launcher && !choice.core) {
+        await applyManualLauncherOnlyUpdate(state.launcher);
         return;
       }
-      latestPayloadResolution = chosenResolution;
-      try {
-        await applyManualUpdate(chosenResolution);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        launcherLog(`manual update apply failed: ${msg}`, "error");
-        await dialog.showMessageBox({
-          type: "error",
-          title: "Core Update Failed",
-          message: `Failed to update ${APP_DISPLAY_NAME}.`,
-          detail: msg,
-        });
-      }
+      await applyManualCombinedUpdate(chosenPayloadResolution, state.launcher);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      launcherLog(`manual update apply failed: ${msg}`, "error");
+      await dialog.showMessageBox({
+        type: "error",
+        title: "Update Failed",
+        message: `Failed to update ${APP_DISPLAY_NAME}.`,
+        detail: msg,
+      });
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -1926,6 +2044,175 @@ function promptPayloadVersionChoice(options: {
   });
 }
 
+function updateChooserPreloadPath(): string {
+  return path.join(__dirname, "update_chooser_preload.js");
+}
+
+function promptCombinedUpdateChoice(
+  state: ManualUpdateState,
+): Promise<ManualUpdateChoice | null> {
+  const launcherAvailable = state.launcher.updateAvailable && state.launcher.platformData !== null;
+  const coreAvailable = state.payload.syncPlan.action !== "none";
+  if (!launcherAvailable && !coreAvailable) {
+    return Promise.resolve(null);
+  }
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value: ManualUpdateChoice | null) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      resolve(value);
+    };
+
+    const win = new BrowserWindow({
+      width: 520,
+      height: 320,
+      show: false,
+      center: true,
+      resizable: false,
+      minimizable: false,
+      maximizable: false,
+      title: "Check for Updates",
+      modal: true,
+      parent: mainWindow ?? undefined,
+      icon: getAppIconPath(),
+      webPreferences: {
+        preload: updateChooserPreloadPath(),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+      },
+    });
+
+    const coreOptions = state.compatiblePayloadVersions
+      .map((version) => {
+        const selected = version === state.payload.defaultVersion ? " selected" : "";
+        const escaped = escapeHtmlAttr(version);
+        return `<option value="${escaped}"${selected}>${escaped}</option>`;
+      })
+      .join("");
+    const launcherChecked = launcherAvailable ? " checked" : "";
+    const coreChecked = coreAvailable ? " checked" : "";
+    const launcherDisabled = launcherAvailable ? "" : " disabled";
+    const coreDisabled = coreAvailable ? "" : " disabled";
+    const coreSelectDisabled = coreAvailable ? "" : " disabled";
+    const launcherSummary = launcherAvailable
+      ? `Current v${escapeHtmlAttr(state.launcher.currentVersion)} → latest v${escapeHtmlAttr(state.launcher.latestVersion)}`
+      : escapeHtmlAttr(launcherResolutionSummary(state.launcher));
+    const coreSummary = coreAvailable
+      ? `Active ${escapeHtmlAttr(state.activePayloadVersion ?? "none")} → target ${escapeHtmlAttr(state.payload.defaultVersion)}`
+      : "Core is current.";
+
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Check for Updates</title>
+<style>
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; padding:16px 20px; background:#f5f5f5; color:#111; }
+  h1 { font-size:16px; font-weight:600; margin:0 0 12px; }
+  p { font-size:13px; color:#555; line-height:1.45; margin:0 0 14px; white-space:pre-line; }
+  .option { display:flex; flex-direction:column; gap:4px; border:1px solid #d7d7d7; border-radius:8px; background:#fff; padding:12px; margin-bottom:10px; }
+  .row { display:flex; gap:10px; align-items:center; }
+  .label { font-size:14px; font-weight:600; }
+  .sub { font-size:12px; color:#666; line-height:1.4; }
+  select { width:100%; padding:8px 10px; font-size:13px; border-radius:6px; border:1px solid #ccc; box-sizing:border-box; }
+  .actions { display:flex; gap:10px; justify-content:flex-end; margin-top:14px; }
+  button { padding:8px 16px; font-size:14px; border-radius:6px; border:1px solid #ccc; background:#fff; cursor:pointer; }
+  button.primary { background:#2563eb; color:#fff; border-color:#2563eb; }
+</style>
+</head>
+<body>
+  <h1>Check for Updates</h1>
+  <p>${escapeHtmlAttr(manualUpdateDialogDetails(state))}</p>
+  <div class="option">
+    <label class="row">
+      <input type="checkbox" id="launcherCheckbox"${launcherChecked}${launcherDisabled}>
+      <span class="label">Update launcher</span>
+    </label>
+    <div class="sub">${launcherSummary}</div>
+  </div>
+  <div class="option">
+    <label class="row">
+      <input type="checkbox" id="coreCheckbox"${coreChecked}${coreDisabled}>
+      <span class="label">Update core</span>
+    </label>
+    <div class="sub">${coreSummary}</div>
+    <label for="coreVersion" class="sub">Core version</label>
+    <select id="coreVersion"${coreSelectDisabled}>${coreOptions}</select>
+  </div>
+  <div class="actions">
+    <button type="button" id="cancelBtn">Later</button>
+    <button type="button" class="primary" id="applyBtn">Apply Selected</button>
+  </div>
+  <script>
+    const api = window.taskclfUpdateChooser;
+    if (!api) {
+      document.body.innerText = "Update chooser unavailable.";
+    } else {
+      const launcherCheckbox = document.getElementById("launcherCheckbox");
+      const coreCheckbox = document.getElementById("coreCheckbox");
+      const coreVersion = document.getElementById("coreVersion");
+      const applyBtn = document.getElementById("applyBtn");
+      const sync = () => {
+        coreVersion.disabled = !coreCheckbox.checked || coreCheckbox.disabled;
+        applyBtn.disabled = !launcherCheckbox.checked && !coreCheckbox.checked;
+      };
+      sync();
+      launcherCheckbox.addEventListener("change", sync);
+      coreCheckbox.addEventListener("change", sync);
+      document.getElementById("applyBtn").addEventListener("click", () => {
+        api.submit({
+          launcher: launcherCheckbox.checked,
+          core: coreCheckbox.checked,
+          coreVersion: coreCheckbox.checked ? coreVersion.value : null,
+        });
+      });
+      document.getElementById("cancelBtn").addEventListener("click", () => {
+        api.cancel();
+      });
+    }
+  </script>
+</body>
+</html>`;
+
+    function cleanup() {
+      ipcMain.removeListener("taskclf-update-chooser-submit", onSubmit);
+      ipcMain.removeListener("taskclf-update-chooser-cancel", onCancel);
+    }
+
+    function onSubmit(_e: Electron.IpcMainEvent, payload: ManualUpdateChoice) {
+      cleanup();
+      finish(payload);
+      if (!win.isDestroyed()) {
+        win.destroy();
+      }
+    }
+
+    function onCancel() {
+      cleanup();
+      finish(null);
+      if (!win.isDestroyed()) {
+        win.destroy();
+      }
+    }
+
+    ipcMain.on("taskclf-update-chooser-submit", onSubmit);
+    ipcMain.on("taskclf-update-chooser-cancel", onCancel);
+    win.once("closed", () => {
+      cleanup();
+      finish(null);
+    });
+    win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    win.once("ready-to-show", () => {
+      win.show();
+    });
+  });
+}
+
 function formatBytes(n: number): string {
   if (n < 1024) {
     return `${n} B`;
@@ -2122,6 +2409,10 @@ ipcMain.handle("taskclf-host", async (_event, command: HostCommand) => {
       return;
     case "showTransitionNotification":
       if (command.prompt) {
+        launcherLog(
+          `ipc showTransitionNotification: suggested=${command.prompt.suggested_label ?? "none"} block=${command.prompt.block_start}->${command.prompt.block_end}`,
+          "info",
+        );
         showTransitionNotification(command.prompt);
       }
       return;

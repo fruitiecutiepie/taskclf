@@ -4,6 +4,12 @@ import path from "node:path";
 import crypto from "node:crypto";
 import AdmZip from "adm-zip";
 import {
+  launcherUpdateAvailable,
+  launcherVersionFromTag,
+  selectLatestLauncherReleaseTag,
+  type LauncherReleaseEntry,
+} from "./launcher_choice";
+import {
   isPayloadVersionCompatible,
   manifestUrlForLauncherVersion,
   resolvePayloadSyncPlan,
@@ -31,12 +37,38 @@ export type Manifest = PayloadManifest;
 export interface LauncherManifest {
   kind?: "launcher";
   schema_version?: number;
+  version?: string;
   launcher_version: string;
   payload_index_url: string;
   default_payload_selection?: {
     strategy: "latest-compatible";
   };
   compatible_payloads: CompatiblePayloadRange;
+  platforms?: Record<string, LauncherPlatformData>;
+}
+
+export interface LauncherPlatformData {
+  url: string;
+  sha256: string;
+  filename: string;
+}
+
+export interface GitHubReleaseAsset {
+  name: string;
+  browser_download_url: string;
+}
+
+export interface GitHubRelease extends LauncherReleaseEntry {
+  assets?: GitHubReleaseAsset[];
+}
+
+export interface LauncherResolution {
+  currentVersion: string;
+  latestVersion: string;
+  latestTag: string;
+  latestManifest: LauncherManifest;
+  platformData: LauncherPlatformData | null;
+  updateAvailable: boolean;
 }
 
 export interface PayloadIndexEntry {
@@ -86,6 +118,8 @@ export interface CheckForUpdateOptions {
   preferredVersion?: string;
   ignoreSelectedVersion?: boolean;
 }
+
+const GITHUB_LAUNCHER_RELEASES_API_URL = "https://api.github.com/repos/fruitiecutiepie/taskclf/releases?per_page=100";
 
 async function emitProgress(
   onProgress: DownloadAndApplyOptions["onProgress"],
@@ -282,14 +316,16 @@ export function useInstalledPayloadVersion(version: string): boolean {
 
 /** Set on fetch/parse failures; cleared at the start of each check. For UI / logs only. */
 export let lastManifestCheckFailure: string | null = null;
+export let lastLauncherCheckFailure: string | null = null;
 
 async function fetchWithTimeout(
   input: string,
   purpose: string,
   timeoutMs?: number,
+  init?: NodeFetchInit,
 ): Promise<Response> {
   if (timeoutMs === undefined || timeoutMs <= 0) {
-    return updaterFetch(input, purpose);
+    return updaterFetch(input, purpose, init);
   }
 
   const controller = new AbortController();
@@ -298,7 +334,7 @@ async function fetchWithTimeout(
   }, timeoutMs);
 
   try {
-    return await updaterFetch(input, purpose, { signal: controller.signal });
+    return await updaterFetch(input, purpose, { ...init, signal: controller.signal });
   } finally {
     clearTimeout(timer);
   }
@@ -308,8 +344,9 @@ async function fetchJsonWithTimeout<T>(
   input: string,
   purpose: string,
   timeoutMs?: number,
+  init?: NodeFetchInit,
 ): Promise<T> {
-  const res = await fetchWithTimeout(input, purpose, timeoutMs);
+  const res = await fetchWithTimeout(input, purpose, timeoutMs, init);
   if (!res.ok) {
     throw new Error(`HTTP ${res.status} ${res.statusText} (${input})`);
   }
@@ -335,6 +372,44 @@ function validateLauncherManifest(manifest: LauncherManifest, expectedVersion: s
   if (!manifest.compatible_payloads) {
     throw new Error("Launcher manifest missing compatible_payloads");
   }
+}
+
+function githubApiHeaders(): Record<string, string> {
+  return {
+    accept: "application/vnd.github+json",
+    "user-agent": `taskclf-electron/${app.getVersion()}`,
+  };
+}
+
+function launcherManifestUrlFromRelease(
+  release: GitHubRelease,
+  version: string,
+): string {
+  const assetUrl = release.assets?.find((asset) => asset.name === "manifest.json")?.browser_download_url;
+  if (assetUrl) {
+    return assetUrl;
+  }
+  return manifestUrlForLauncherVersion(version);
+}
+
+function validateLauncherPlatformData(
+  value: unknown,
+): value is LauncherPlatformData {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const candidate = value as Partial<LauncherPlatformData>;
+  return typeof candidate.url === "string"
+    && typeof candidate.sha256 === "string"
+    && typeof candidate.filename === "string";
+}
+
+function launcherPlatformDataForTriple(
+  manifest: LauncherManifest,
+  triple: string,
+): LauncherPlatformData | null {
+  const candidate = manifest.platforms?.[triple];
+  return validateLauncherPlatformData(candidate) ? candidate : null;
 }
 
 function findPayloadIndexEntry(payloadIndex: PayloadIndex, version: string): PayloadIndexEntry | null {
@@ -478,6 +553,64 @@ export async function resolvePayloadRelease(
   }
 }
 
+export async function resolveLauncherRelease(
+  options?: CheckForUpdateOptions,
+): Promise<LauncherResolution | null> {
+  const timeoutMs = options?.timeoutMs;
+  lastLauncherCheckFailure = null;
+
+  try {
+    const releases = await fetchJsonWithTimeout<GitHubRelease[]>(
+      GITHUB_LAUNCHER_RELEASES_API_URL,
+      "launcher releases",
+      timeoutMs,
+      { headers: githubApiHeaders() },
+    );
+    const latestTag = selectLatestLauncherReleaseTag(releases);
+    if (latestTag === null) {
+      throw new Error("No launcher releases were found");
+    }
+    const latestVersion = launcherVersionFromTag(latestTag);
+    if (latestVersion === null) {
+      throw new Error(`Could not parse launcher version from tag ${latestTag}`);
+    }
+    const matchingRelease = releases.find((release) => release.tag_name === latestTag);
+    if (!matchingRelease) {
+      throw new Error(`Launcher release metadata missing for tag ${latestTag}`);
+    }
+
+    const latestManifest = await fetchJsonWithTimeout<LauncherManifest>(
+      launcherManifestUrlFromRelease(matchingRelease, latestVersion),
+      `launcher manifest for ${latestTag}`,
+      timeoutMs,
+      { headers: githubApiHeaders() },
+    );
+    const effectiveLatestVersion = latestManifest.version ?? latestManifest.launcher_version ?? latestVersion;
+    const currentVersion = app.getVersion();
+
+    return {
+      currentVersion,
+      latestVersion: effectiveLatestVersion,
+      latestTag,
+      latestManifest,
+      platformData: launcherPlatformDataForTriple(latestManifest, hostTargetTriple()),
+      updateAvailable: launcherUpdateAvailable(currentVersion, effectiveLatestVersion),
+    };
+  } catch (error) {
+    if (
+      timeoutMs !== undefined
+      && timeoutMs > 0
+      && error instanceof Error
+      && error.name === "AbortError"
+    ) {
+      lastLauncherCheckFailure = `Timed out fetching launcher release metadata after ${timeoutMs} ms`;
+      return null;
+    }
+    lastLauncherCheckFailure = error instanceof Error ? error.message : String(error);
+    return null;
+  }
+}
+
 export async function checkForUpdate(
   options?: CheckForUpdateOptions,
 ): Promise<PayloadResolution | null> {
@@ -500,7 +633,7 @@ export async function checkForUpdate(
 
 async function streamPayloadToFile(
   downloadRes: Response,
-  zipPath: string,
+  filePath: string,
   expectedSha256: string,
   onProgress: DownloadAndApplyOptions["onProgress"],
 ): Promise<void> {
@@ -510,7 +643,7 @@ async function streamPayloadToFile(
 
   const totalBytes = parseContentLength(downloadRes.headers.get("content-length"));
   const hash = crypto.createHash("sha256");
-  const writeStream = fs.createWriteStream(zipPath);
+  const writeStream = fs.createWriteStream(filePath);
   const reader = downloadRes.body.getReader();
   let receivedBytes = 0;
 
@@ -548,7 +681,7 @@ async function streamPayloadToFile(
   } catch (err) {
     writeStream.destroy();
     try {
-      fs.unlinkSync(zipPath);
+      fs.unlinkSync(filePath);
     } catch {
       // ignore
     }
@@ -558,7 +691,7 @@ async function streamPayloadToFile(
   const computedHash = hash.digest("hex");
   if (computedHash !== expectedSha256) {
     try {
-      fs.unlinkSync(zipPath);
+      fs.unlinkSync(filePath);
     } catch {
       // ignore
     }
@@ -630,3 +763,53 @@ export async function downloadAndApplyUpdate(
     throw error;
   }
 }
+
+export async function downloadLauncherInstaller(
+  resolution: LauncherResolution,
+  options?: DownloadAndApplyOptions,
+): Promise<string> {
+  if (!resolution.updateAvailable) {
+    throw new Error(`Launcher v${resolution.currentVersion} is already current`);
+  }
+  if (resolution.platformData === null) {
+    throw new Error(
+      `No launcher installer is available for target ${hostTargetTriple()} in ${resolution.latestTag}`,
+    );
+  }
+
+  const targetDir = path.join(app.getPath("downloads"), APP_NAME_SAFE);
+  fs.mkdirSync(targetDir, { recursive: true });
+  const destinationPath = path.join(targetDir, resolution.platformData.filename);
+  const partialPath = `${destinationPath}.download`;
+  try {
+    if (fs.existsSync(partialPath)) {
+      fs.unlinkSync(partialPath);
+    }
+    const downloadRes = await updaterFetch(
+      resolution.platformData.url,
+      "download launcher installer",
+    );
+    if (!downloadRes.ok) {
+      throw new Error(`Failed to download launcher installer: ${downloadRes.statusText}`);
+    }
+    await streamPayloadToFile(
+      downloadRes,
+      partialPath,
+      resolution.platformData.sha256,
+      options?.onProgress,
+    );
+    fs.renameSync(partialPath, destinationPath);
+    return destinationPath;
+  } catch (error) {
+    try {
+      if (fs.existsSync(partialPath)) {
+        fs.unlinkSync(partialPath);
+      }
+    } catch {
+      // ignore
+    }
+    throw error;
+  }
+}
+
+const APP_NAME_SAFE = "taskclf";

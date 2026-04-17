@@ -9,6 +9,7 @@
     "build:icon": "node scripts/build-icon.js",
     "build": "pnpm run build:icon && tsc -p tsconfig.json",
     "start": "pnpm run build && electron .",
+    "test": "node --test *.test.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "pack": "electron-builder --dir",
     "dist": "pnpm run build:icon && electron-builder"
@@ -29,6 +30,9 @@
     ],
     "mac": {
       "icon": "icon.png",
+      "extendInfo": {
+        "NSUserNotificationAlertStyle": "alert"
+      },
       "target": [
         "dmg"
       ],

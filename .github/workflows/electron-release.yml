@@ -84,11 +84,54 @@ jobs:
         run: pnpm run build
         working-directory: electron
 
+      - name: Clear previous packaged artifacts
+        shell: bash
+        run: rm -f electron/release/*.dmg electron/release/*.AppImage electron/release/*.exe
+
       - name: Package Electron app
         run: pnpm run dist
         working-directory: electron
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Record packaged launcher metadata
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+
+          function hostTriple() {
+            if (process.platform === "darwin") {
+              if (process.arch === "arm64") return "aarch64-apple-darwin";
+              if (process.arch === "x64") return "x86_64-apple-darwin";
+            }
+            if (process.platform === "linux") {
+              if (process.arch === "x64") return "x86_64-unknown-linux-gnu";
+              if (process.arch === "arm64") return "aarch64-unknown-linux-gnu";
+              if (process.arch === "ia32") return "i686-unknown-linux-gnu";
+            }
+            if (process.platform === "win32") {
+              if (process.arch === "x64") return "x86_64-pc-windows-msvc";
+              if (process.arch === "arm64") return "aarch64-pc-windows-msvc";
+              if (process.arch === "ia32") return "i686-pc-windows-msvc";
+            }
+            throw new Error(`Unsupported host ${process.platform}/${process.arch}`);
+          }
+
+          const releaseDir = path.join(process.cwd(), "electron", "release");
+          const candidates = fs.readdirSync(releaseDir)
+            .filter((name) => name.endsWith(".dmg") || name.endsWith(".AppImage") || name.endsWith(".exe"));
+          if (candidates.length !== 1) {
+            throw new Error(`Expected exactly one packaged launcher artifact, found ${candidates.length}: ${candidates.join(", ")}`);
+          }
+          const outputPath = path.join(releaseDir, `launcher-metadata-${hostTriple()}.json`);
+          fs.writeFileSync(outputPath, JSON.stringify({
+            triple: hostTriple(),
+            filename: candidates[0],
+          }, null, 2));
+          console.log(fs.readFileSync(outputPath, "utf8"));
+          NODE
 
       - uses: actions/upload-artifact@v7
         with:
@@ -97,6 +140,7 @@ jobs:
             electron/release/*.dmg
             electron/release/*.AppImage
             electron/release/*.exe
+            electron/release/launcher-metadata-*.json
 
   publish:
     needs: electron-build
@@ -118,9 +162,10 @@ jobs:
       - name: Generate manifest.json
         env:
           MANIFEST_REF: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.target_launcher_tag != '' && format('refs/tags/{0}', github.event.inputs.target_launcher_tag) || github.ref }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           python3 -c "
-          import json, os, pathlib
+          import glob, hashlib, json, os, pathlib
           ref = os.environ.get('MANIFEST_REF') or os.environ.get('GITHUB_REF', '')
           tag = ref.replace('refs/tags/', '')
           if tag.startswith('launcher-v'):
@@ -129,11 +174,26 @@ jobs:
               version = tag[1:]
           else:
               version = tag
+          repo = os.environ['GITHUB_REPOSITORY']
           package_json = json.loads(pathlib.Path('electron/package.json').read_text())
           payload_cfg = package_json['taskclfPayload']
+          metadata_paths = sorted(glob.glob('electron-dist/launcher-metadata-*.json'))
+          platforms = {}
+          for metadata_path in metadata_paths:
+              metadata = json.loads(pathlib.Path(metadata_path).read_text())
+              triple = metadata['triple']
+              filename = metadata['filename']
+              asset_path = pathlib.Path('electron-dist') / filename
+              sha256 = hashlib.sha256(asset_path.read_bytes()).hexdigest()
+              platforms[triple] = {
+                  'url': f'https://github.com/{repo}/releases/download/launcher-v{version}/{filename}',
+                  'sha256': sha256,
+                  'filename': filename,
+              }
           manifest = {
               'kind': 'launcher',
               'schema_version': 1,
+              'version': version,
               'launcher_version': version,
               'payload_index_url': payload_cfg['payloadIndexUrl'],
               'default_payload_selection': {'strategy': 'latest-compatible'},
@@ -141,6 +201,7 @@ jobs:
                   'min_version_inclusive': payload_cfg['compatiblePayloads']['minVersionInclusive'],
                   'max_version_exclusive': payload_cfg['compatiblePayloads']['maxVersionExclusive'],
               },
+              'platforms': platforms,
           }
           with open('manifest.json', 'w') as f:
               json.dump(manifest, f, indent=2)
@@ -151,7 +212,19 @@ jobs:
         shell: bash
         run: |
           mkdir -p release-upload
-          find electron-dist -type f \( -name '*.dmg' -o -name '*.AppImage' -o -name '*.exe' \) -exec cp {} release-upload/ \;
+          python3 - <<'PY'
+          import glob
+          import json
+          import pathlib
+          import shutil
+
+          release_upload = pathlib.Path('release-upload')
+          release_upload.mkdir(exist_ok=True)
+          for metadata_path in glob.glob('electron-dist/launcher-metadata-*.json'):
+              metadata = json.loads(pathlib.Path(metadata_path).read_text())
+              filename = metadata['filename']
+              shutil.copy2(pathlib.Path('electron-dist') / filename, release_upload / filename)
+          PY
           cp manifest.json release-upload/
           ls -la release-upload/
 

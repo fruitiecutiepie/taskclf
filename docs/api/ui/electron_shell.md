@@ -101,10 +101,12 @@ https://github.com/<org>/<repo>/releases/download/launcher-v<appVersion>/manifes
 
 The launcher manifest now declares:
 
+- `version`
 - `launcher_version`
 - `payload_index_url`
 - `default_payload_selection`
 - `compatible_payloads`
+- `platforms`
 
 That keeps compatibility policy with the launcher release while allowing the
 app to boot the **latest compatible** `v*` payload instead of forcing an exact
@@ -238,21 +240,27 @@ See also [`electron_payload_choice`](electron_payload_choice.md).
 ## Packaged app: manual update check
 
 The tray menu includes **Check for Updates** in packaged builds. That action
-fetches the launcher manifest, payload index, and latest compatible payload on
-demand, then:
+checks both the **launcher** and the **core** on demand. It resolves the
+current launcher's payload compatibility via the installed launcher's manifest,
+and separately checks GitHub `launcher-v*` releases for a newer launcher
+installer for the current platform. The combined picker then:
 
-- shows **Up to Date** when the active payload already matches the latest
-  compatible release
-- shows **Core Update Available** with **Update and Restart** (and
-  **Choose Version** when multiple compatible payloads exist) when a newer
-  compatible payload should be activated
+- shows a checkbox for **Update launcher** when a newer launcher installer is
+  available for the current platform
+- shows a checkbox for **Update core** when a newer compatible payload should
+  be activated
+- lets the user choose an alternate compatible core version from the same
+  dialog when multiple payload versions are available
+- downloads and reveals the launcher installer in Finder/Explorer for manual
+  install, while core updates continue to apply in-app
 - shows **Update Check Failed** when release metadata cannot be fetched
 
 Unlike normal startup/background resolution, the manual check compares against
 the latest compatible payload even when the tray **Selected** payload is pinned
 to an older version, so users can explicitly discover and apply newer payload
-releases. Applying the recommended update from this dialog clears the tray
-selection pin and restarts in recommended/auto mode.
+releases. Applying a core update from this dialog clears the tray selection pin
+and restarts in recommended/auto mode. Background hourly checks remain
+core-only.
 
 ## Packaged app: debugging the main process
 
