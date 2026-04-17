@@ -162,6 +162,7 @@ nav:
           - Event Bus: api/ui/events.md
           - Native Window: api/ui/window.md
           - Electron Shell: api/ui/electron_shell.md
+          - Electron Node HTTP: api/ui/electron_node_http.md
           - Electron Port Conflict: api/ui/electron_port_conflict.md
           - Electron Tray Icon: api/ui/electron_tray_icon.md
           - Electron Payload Choice: api/ui/electron_payload_choice.md

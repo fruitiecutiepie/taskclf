@@ -1,4 +1,4 @@
-import { app, net } from "electron";
+import { app } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
@@ -11,6 +11,7 @@ import {
   type CompatiblePayloadRange,
   type PayloadSyncPlan,
 } from "./update_policy";
+import { nodeFetch, type NodeFetchInit } from "./node_http";
 
 export interface PayloadPlatformData {
   url: string;
@@ -86,8 +87,6 @@ export interface CheckForUpdateOptions {
   ignoreSelectedVersion?: boolean;
 }
 
-type UpdaterRequestInit = RequestInit & { bypassCustomProtocolHandlers?: boolean };
-
 async function emitProgress(
   onProgress: DownloadAndApplyOptions["onProgress"],
   event: UpdateProgressEvent,
@@ -128,10 +127,10 @@ function describeFetchError(error: unknown): string {
 async function updaterFetch(
   input: string,
   purpose: string,
-  init?: UpdaterRequestInit,
+  init?: NodeFetchInit,
 ): Promise<Response> {
   try {
-    return await net.fetch(input, {
+    return await nodeFetch(input, {
       cache: "no-store",
       ...init,
     });
