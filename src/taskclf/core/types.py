@@ -148,9 +148,56 @@ class CrossDomainLabel(BaseModel):
     support_state: SupportState
 
 
+class SoftwareLabels(BaseModel):
+    activity: str | None = (
+        None  # e.g. "Implement", "DebugIncident", "Refactor", "ReviewCode", "RunTests", "InspectLogs"
+    )
+    artifact_scope: str | None = (
+        None  # e.g. "LocalFile", "MultiFile", "Service", "Unknown"
+    )
+
+
+class ResearchLabels(BaseModel):
+    activity: str | None = (
+        None  # e.g. "LiteratureReview", "NoteSynthesis", "CitationHunt", "ExperimentReview", "SourceScreening"
+    )
+
+
+class DesignLabels(BaseModel):
+    activity: str | None = (
+        None  # e.g. "InspirationGathering", "Sketch", "IterateVisual", "ReviewVisual", "Prototype"
+    )
+
+
+class EducationLabels(BaseModel):
+    activity: str | None = (
+        None  # e.g. "LectureWatching", "StudyReading", "PracticeExercise", "Revision", "AssessmentWork"
+    )
+
+
+class OperationsLabels(BaseModel):
+    activity: str | None = (
+        None  # e.g. "IncidentMonitoring", "Triage", "RunbookExecution", "SystemCheck", "CapacityReview"
+    )
+
+
+class AnalysisLabels(BaseModel):
+    activity: str | None = (
+        None  # e.g. "SpreadsheetModeling", "DataCleaning", "DashboardInspection", "Reconciliation", "QuantReview"
+    )
+
+
 class PluginPayload(BaseModel):
     namespace: str
-    data: dict[str, Any]
+    data: (
+        SoftwareLabels
+        | ResearchLabels
+        | DesignLabels
+        | EducationLabels
+        | OperationsLabels
+        | AnalysisLabels
+        | dict[str, Any]
+    )
 
 
 class LabelEnvelope(BaseModel):

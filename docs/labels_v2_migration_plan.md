@@ -39,9 +39,9 @@ This document outlines the migration plan to `labels_v2` and highlights relevant
 *The deterministic rules that consume Evidence and output Inference.*
 
 **Tasks:**
-- [ ] Implement the 5-rule `Mode` decision order: Idle → Attend → Coordinate → Produce → Consume.
-- [ ] Implement the tie-break conflict logic (e.g., Produce vs Consume, Coordinate vs Attend).
-- [ ] Add the subtype policy to restrict available subtypes based on the dominant Mode.
+- [x] Implement the 5-rule `Mode` decision order: Idle → Attend → Coordinate → Produce → Consume.
+- [x] Implement the tie-break conflict logic (e.g., Produce vs Consume, Coordinate vs Attend).
+- [x] Add the subtype policy to restrict available subtypes based on the dominant Mode.
 
 **Codebase Touchpoints:**
 - `src/taskclf/infer/baseline.py`: Contains heuristic baseline predictors (`predict_baseline`) which can be adapted to serve as the new deterministic precedence engine.
@@ -53,9 +53,9 @@ This document outlines the migration plan to `labels_v2` and highlights relevant
 *Extensibility for different personas and edge cases.*
 
 **Tasks:**
-- [ ] Define the base `PluginPayload` container for extensibility.
-- [ ] Draft initial empty/placeholder schemas for standard plugins (Software, Research, Design, Education, Operations, Analysis).
-- [ ] Implement the escalation trigger logic for throwing `Unknown` or `MixedUnknown` statuses.
+- [x] Define the base `PluginPayload` container for extensibility.
+- [x] Draft initial empty/placeholder schemas for standard plugins (Software, Research, Design, Education, Operations, Analysis).
+- [x] Implement the escalation trigger logic for throwing `Unknown` or `MixedUnknown` statuses.
 
 **Codebase Touchpoints:**
 - `src/taskclf/core/types.py`: Likely location to define the plugin types (e.g., `SoftwareLabels`, `ResearchLabels`) and `PluginPayload`.
