@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from datetime import datetime, timezone
 from enum import StrEnum
-from typing import Any, Final, Protocol, cast, runtime_checkable
+from typing import Any, Final, Generic, Protocol, TypeVar, cast, runtime_checkable
 
 from pydantic import (
     BaseModel,
@@ -69,6 +69,136 @@ class CoreLabel(StrEnum):
 
 
 LABEL_SET_V1: Final[frozenset[str]] = frozenset(CoreLabel)
+
+
+T = TypeVar("T", bound=str)
+
+
+class Mode(StrEnum):
+    Produce = "Produce"
+    Consume = "Consume"
+    Coordinate = "Coordinate"
+    Attend = "Attend"
+    Idle = "Idle"
+
+
+class Subtype(StrEnum):
+    Build = "Build"
+    Debug = "Debug"
+    Write = "Write"
+    Review = "Review"
+    ReadResearch = "ReadResearch"
+    Communicate = "Communicate"
+    Meet = "Meet"
+    Admin = "Admin"
+    Plan = "Plan"
+    BreakIdle = "BreakIdle"
+    Analyze = "Analyze"
+    Learn = "Learn"
+    ExploreReference = "ExploreReference"
+    Monitor = "Monitor"
+
+
+class InteractionStyle(StrEnum):
+    Active = "Active"
+    Passive = "Passive"
+    Mixed = "Mixed"
+    Idle = "Idle"
+
+
+class CollaborationMode(StrEnum):
+    Solo = "Solo"
+    AsyncCollab = "AsyncCollab"
+    SyncCollab = "SyncCollab"
+    Unknown = "Unknown"
+
+
+class OutputDomain(StrEnum):
+    Code = "Code"
+    Writing = "Writing"
+    Research = "Research"
+    Admin = "Admin"
+    Communication = "Communication"
+    Design = "Design"
+    Analysis = "Analysis"
+    Operations = "Operations"
+    Unknown = "Unknown"
+
+
+class SupportState(StrEnum):
+    Supported = "Supported"
+    WeakEvidence = "WeakEvidence"
+    Rejected = "Rejected"
+    MixedUnknown = "MixedUnknown"
+
+
+class AxisDecision(BaseModel, Generic[T]):
+    value: T
+    confidence: float = Field(ge=0.0, le=1.0)
+    alternatives: list[T] | None = None
+    reason_codes: list[str] | None = None
+
+
+class CrossDomainLabel(BaseModel):
+    mode: AxisDecision[Mode]
+    subtype: AxisDecision[Subtype] | None = None
+    interaction_style: AxisDecision[InteractionStyle] | None = None
+    collaboration_mode: AxisDecision[CollaborationMode] | None = None
+    output_domain: AxisDecision[OutputDomain] | None = None
+    support_state: SupportState
+
+
+class PluginPayload(BaseModel):
+    namespace: str
+    data: dict[str, Any]
+
+
+class LabelEnvelope(BaseModel):
+    taxonomy_version: str = Field(default="labels_v2")
+    rule_version: str
+    generated_at: str
+    evidence_window_ms: int
+    inference_window_ms: int
+    label: CrossDomainLabel
+    plugins: list[PluginPayload] | None = None
+
+
+class EvidenceSnapshot(BaseModel, frozen=True):
+    """Raw observational signals for a short time slice (e.g. 15-60s)."""
+
+    bucket_start_ts: datetime = Field(description="Start of the slice (UTC).")
+    bucket_end_ts: datetime = Field(description="End of the slice (UTC, exclusive).")
+
+    app_ids: list[str] = Field(description="List of app IDs active in this window.")
+    window_title_hashes: list[str] = Field(description="List of window title hashes.")
+    foreground_duration_ms: int = Field(
+        description="Milliseconds of foreground activity."
+    )
+    key_events: int = Field(default=0, description="Number of keystrokes.")
+    pointer_events: int = Field(default=0, description="Number of mouse clicks/moves.")
+    scroll_events: int = Field(default=0, description="Number of scroll events.")
+    app_switch_count: int = Field(default=0, description="Number of app switches.")
+    active_call: bool = Field(
+        default=False, description="True if an active call is detected."
+    )
+    active_mic: bool = Field(default=False, description="True if mic is active.")
+    active_camera: bool = Field(default=False, description="True if camera is active.")
+
+    browser_url_category: str | None = None
+    file_types: list[str] | None = None
+    meeting_signal: bool | None = None
+    build_or_run_signal: bool | None = None
+    test_signal: bool | None = None
+    low_interaction_idle_signal: bool | None = None
+
+    @field_validator("bucket_start_ts", "bucket_end_ts", mode="before")
+    @classmethod
+    def _ensure_aware_utc(cls, v: object) -> object:
+        if isinstance(v, datetime):
+            if v.tzinfo is None:
+                return v.replace(tzinfo=timezone.utc)
+            return v.astimezone(timezone.utc)
+        return v
 
 
 class TitlePolicy(StrEnum):

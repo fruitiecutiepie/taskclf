@@ -8,12 +8,12 @@ This document outlines the migration plan to `labels_v2` and highlights relevant
 *The foundational data model update.*
 
 **Tasks:**
-- [ ] Freeze the existing `Mode` type (Produce, Consume, Coordinate, Attend, Idle).
-- [ ] Add the new `Subtype` values (`Analyze`, `Learn`, `ExploreReference`, `Monitor`, `Design`, `Analysis`, `Operations`).
-- [ ] Explicitly define definitions for `InteractionStyle`, `CollaborationMode`, and `OutputDomain` (distinct from app used).
-- [ ] Introduce `AxisDecision<T>` to wrap axes with `value`, `confidence`, `alternatives`, and `reason_codes`.
-- [ ] Define the explicit `SupportState` semantic enum.
-- [ ] Create the new `LabelEnvelope` and `CrossDomainLabel` interfaces.
+- [x] Freeze the existing `Mode` type (Produce, Consume, Coordinate, Attend, Idle).
+- [x] Add the new `Subtype` values (`Analyze`, `Learn`, `ExploreReference`, `Monitor`, `Design`, `Analysis`, `Operations`).
+- [x] Explicitly define definitions for `InteractionStyle`, `CollaborationMode`, and `OutputDomain` (distinct from app used).
+- [x] Introduce `AxisDecision<T>` to wrap axes with `value`, `confidence`, `alternatives`, and `reason_codes`.
+- [x] Define the explicit `SupportState` semantic enum.
+- [x] Create the new `LabelEnvelope` and `CrossDomainLabel` interfaces.
 
 **Codebase Touchpoints:**
 - `src/taskclf/core/types.py`: Currently defines `CoreLabel` as `StrEnum` and `LABEL_SET_V1`. This is where `Mode`, `Subtype`, `OutputDomain`, `InteractionStyle`, `CollaborationMode`, `AxisDecision`, and `SupportState` need to be defined.
@@ -25,7 +25,7 @@ This document outlines the migration plan to `labels_v2` and highlights relevant
 *Decoupling the raw factual observation from the resulting label.*
 
 **Tasks:**
-- [ ] Define the `EvidenceSnapshot` object with raw observational signals (foreground ms, key events, active mic, etc.).
+- [x] Define the `EvidenceSnapshot` object with raw observational signals (foreground ms, key events, active mic, etc.).
 - [ ] Extract the pipeline responsible for computing 15s–60s "Evidence windows".
 - [ ] Plumb the pipeline that feeds these Evidence windows into 2m–5m "Inference windows" where semantic labeling occurs.
 

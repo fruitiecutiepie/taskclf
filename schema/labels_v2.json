@@ -1,0 +1,82 @@
+{
+  "schema_name": "labels_v2",
+  "version": "2.0",
+  "description": "Core task classification labels with evidence, extensions, and aggregation rules",
+  "axes": {
+    "mode": {
+      "required": true,
+      "options": [
+        "Produce",
+        "Consume",
+        "Coordinate",
+        "Attend",
+        "Idle"
+      ]
+    },
+    "subtype": {
+      "required": false,
+      "options": [
+        "Build",
+        "Debug",
+        "Write",
+        "Review",
+        "ReadResearch",
+        "Communicate",
+        "Meet",
+        "Admin",
+        "Plan",
+        "BreakIdle",
+        "Analyze",
+        "Learn",
+        "ExploreReference",
+        "Monitor"
+      ]
+    },
+    "interaction_style": {
+      "required": false,
+      "options": [
+        "Active",
+        "Passive",
+        "Mixed",
+        "Idle"
+      ]
+    },
+    "collaboration_mode": {
+      "required": false,
+      "options": [
+        "Solo",
+        "AsyncCollab",
+        "SyncCollab",
+        "Unknown"
+      ]
+    },
+    "output_domain": {
+      "required": false,
+      "options": [
+        "Code",
+        "Writing",
+        "Research",
+        "Admin",
+        "Communication",
+        "Design",
+        "Analysis",
+        "Operations",
+        "Unknown"
+      ]
+    },
+    "support_state": {
+      "required": true,
+      "options": [
+        "Supported",
+        "WeakEvidence",
+        "Rejected",
+        "MixedUnknown"
+      ]
+    }
+  },
+  "training_policy": {
+    "mixed_unknown_in_training": false,
+    "reject_threshold_defined_externally": true
+  },
+  "ordering_is_stable": true
+}
