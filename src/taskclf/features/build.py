@@ -14,6 +14,7 @@ from taskclf.adapters.activitywatch.types import AWInputEvent
 from taskclf.core.defaults import (
     DEFAULT_APP_SWITCH_WINDOW_15M,
     DEFAULT_BUCKET_SECONDS,
+    DEFAULT_EVIDENCE_BUCKET_SECONDS,
     DEFAULT_DUMMY_ROWS,
     DEFAULT_IDLE_GAP_SECONDS,
     DEFAULT_ROLLING_WINDOW_5,
@@ -31,6 +32,7 @@ from taskclf.core.store import write_parquet
 from taskclf.core.time import align_to_bucket
 from taskclf.core.types import (
     Event,
+    EvidenceSnapshot,
     FeatureRow,
     FeatureRowBase,
     TITLE_CHAR3_SKETCH_FIELDS,
@@ -193,6 +195,92 @@ _INPUT_NULL_FIELDS: dict[str, None] = {
 }
 
 
+def build_evidence_snapshots(
+    events: Sequence[Event],
+    *,
+    input_events: Sequence[AWInputEvent] | None = None,
+    evidence_bucket_seconds: int = 30,
+) -> list[EvidenceSnapshot]:
+    """Extract raw observational signals into 15s-60s Evidence windows."""
+    if not events:
+        return []
+
+    bucket_events: dict[dt.datetime, list[Event]] = defaultdict(list)
+    for ev in events:
+        bucket_ts = align_to_bucket(ev.timestamp, evidence_bucket_seconds)
+        bucket_events[bucket_ts].append(ev)
+
+    bucket_input_events: dict[dt.datetime, list[AWInputEvent]] = defaultdict(list)
+    if input_events:
+        for ie in input_events:
+            ie_bucket = align_to_bucket(ie.timestamp, evidence_bucket_seconds)
+            bucket_input_events[ie_bucket].append(ie)
+
+    sorted_buckets = sorted(bucket_events.keys())
+    snapshots: list[EvidenceSnapshot] = []
+
+    for bucket_ts in sorted_buckets:
+        evs = bucket_events[bucket_ts]
+        inputs = bucket_input_events.get(bucket_ts, [])
+
+        app_ids = list({ev.app_id for ev in evs})
+        window_title_hashes = list({ev.window_title_hash for ev in evs})
+
+        foreground_duration_ms = int(sum(ev.duration_seconds for ev in evs) * 1000)
+
+        key_events = sum(ie.presses for ie in inputs)
+        pointer_events = sum(ie.clicks for ie in inputs) + sum(
+            abs(ie.delta_x) + abs(ie.delta_y) for ie in inputs
+        )
+        scroll_events = sum(abs(ie.scroll_x) + abs(ie.scroll_y) for ie in inputs)
+
+        sorted_evs = sorted(evs, key=lambda e: e.timestamp)
+        app_switch_count = sum(
+            1 for a, b in zip(sorted_evs, sorted_evs[1:]) if a.app_id != b.app_id
+        )
+
+        meeting_app = any(
+            "zoom" in app.lower() or "meet" in app.lower() or "teams" in app.lower()
+            for app in app_ids
+        )
+
+        browser_urls = [
+            classify_domain(None, is_browser=ev.is_browser)
+            for ev in evs
+            if ev.is_browser
+        ]
+        browser_url_category = next(
+            (cat for cat in browser_urls if cat and cat != "unknown"), None
+        )
+
+        low_interaction = (key_events + pointer_events + scroll_events) == 0
+
+        snapshots.append(
+            EvidenceSnapshot(
+                bucket_start_ts=bucket_ts,
+                bucket_end_ts=bucket_ts + dt.timedelta(seconds=evidence_bucket_seconds),
+                app_ids=app_ids,
+                window_title_hashes=window_title_hashes,
+                foreground_duration_ms=foreground_duration_ms,
+                key_events=key_events,
+                pointer_events=pointer_events,
+                scroll_events=scroll_events,
+                app_switch_count=app_switch_count,
+                active_call=meeting_app,
+                active_mic=False,
+                active_camera=False,
+                browser_url_category=browser_url_category,
+                file_types=None,
+                meeting_signal=meeting_app,
+                build_or_run_signal=None,
+                test_signal=None,
+                low_interaction_idle_signal=low_interaction,
+            )
+        )
+
+    return snapshots
+
+
 def _aggregate_input_for_bucket(
     bucket_ts: dt.datetime,
     bucket_input: list[AWInputEvent],
@@ -302,7 +390,7 @@ def build_features_from_aw_events(
         input_events: Optional sorted input events from
             ``aw-watcher-input``.  When provided, keyboard/mouse feature
             columns are populated; otherwise they remain ``None``.
-        bucket_seconds: Width of each time bucket in seconds (default 60).
+        bucket_seconds: Width of each time bucket in seconds (default 180 for labels_v2).
         session_start: If provided, used as the session start for every
             bucket (online mode).  When ``None`` (batch mode), sessions
             are detected from idle gaps in *events*.
@@ -315,6 +403,13 @@ def build_features_from_aw_events(
     if not events:
         return []
     schema = get_feature_schema(schema_version)
+
+    # 1. Pre-calculate the fine-grained evidence snapshots (e.g. 30s boundaries)
+    all_evidence = build_evidence_snapshots(
+        events,
+        input_events=input_events,
+        evidence_bucket_seconds=DEFAULT_EVIDENCE_BUCKET_SECONDS,
+    )
 
     bucket_events: dict[dt.datetime, list[Event]] = defaultdict(list)
     for ev in events:
@@ -363,6 +458,7 @@ def build_features_from_aw_events(
 
     rows: list[FeatureRowBase] = []
     for bucket_ts in sorted_buckets:
+        bucket_end = bucket_ts + dt.timedelta(seconds=bucket_seconds)
         evs = bucket_events[bucket_ts]
 
         app_durations: dict[str, float] = defaultdict(float)
@@ -447,13 +543,19 @@ def build_features_from_aw_events(
         if has_input:
             source_ids.append("aw-watcher-input")
 
+        bucket_evidence = [
+            snap
+            for snap in all_evidence
+            if snap.bucket_start_ts >= bucket_ts and snap.bucket_end_ts <= bucket_end
+        ]
+
         rows.append(
             _make_feature_row(
                 user_id=user_id,
                 device_id=device_id,
                 session_id=sid,
                 bucket_start_ts=bucket_ts,
-                bucket_end_ts=bucket_ts + dt.timedelta(seconds=bucket_seconds),
+                bucket_end_ts=bucket_end,
                 schema_version=schema.VERSION,
                 schema_hash=schema.SCHEMA_HASH,
                 source_ids=source_ids,
@@ -498,6 +600,7 @@ def build_features_from_aw_events(
                 hour_of_day=bucket_ts.hour,
                 day_of_week=bucket_ts.weekday(),
                 session_length_so_far=round(elapsed_minutes, 2),
+                evidence_snapshots=bucket_evidence,
                 **_dominant_title_feature_payload(dominant_ev, schema_version),
             )
         )

@@ -18,7 +18,9 @@ from taskclf.core.paths import taskclf_home
 _HOME = taskclf_home()
 
 # ── Timing / buckets ──
-DEFAULT_BUCKET_SECONDS: Final[int] = 60
+DEFAULT_EVIDENCE_BUCKET_SECONDS: Final[int] = 30
+DEFAULT_INFERENCE_BUCKET_SECONDS: Final[int] = 180
+DEFAULT_BUCKET_SECONDS: Final[int] = 180
 DEFAULT_POLL_SECONDS: Final[int] = 60
 DEFAULT_IDLE_GAP_SECONDS: Final[float] = 300.0
 DEFAULT_SMOOTH_WINDOW: Final[int] = 3

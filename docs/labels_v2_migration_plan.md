@@ -26,8 +26,8 @@ This document outlines the migration plan to `labels_v2` and highlights relevant
 
 **Tasks:**
 - [x] Define the `EvidenceSnapshot` object with raw observational signals (foreground ms, key events, active mic, etc.).
-- [ ] Extract the pipeline responsible for computing 15s–60s "Evidence windows".
-- [ ] Plumb the pipeline that feeds these Evidence windows into 2m–5m "Inference windows" where semantic labeling occurs.
+- [x] Extract the pipeline responsible for computing 15s–60s "Evidence windows".
+- [x] Plumb the pipeline that feeds these Evidence windows into 2m–5m "Inference windows" where semantic labeling occurs.
 
 **Codebase Touchpoints:**
 - `src/taskclf/core/types.py`: Defines `FeatureRowBase` and `FeatureRow` which represent bucketed observations (typically 60s). These rows will either map to or serve as the substrate for `EvidenceSnapshot`.

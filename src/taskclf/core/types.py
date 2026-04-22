@@ -456,6 +456,13 @@ class FeatureRowBase(BaseModel, frozen=True):
         description="Raw window title; only accepted when title_policy=RAW_WINDOW_TITLE_OPT_IN.",
     )
 
+    # -- underlying evidence --
+    evidence_snapshots: list[EvidenceSnapshot] | None = Field(
+        default=None,
+        exclude=True,
+        description="The raw 15s-60s evidence slices that compose this 2m-5m inference window.",
+    )
+
     @field_validator("bucket_start_ts", "bucket_end_ts", mode="before")
     @classmethod
     def _ensure_aware_utc(cls, v: object) -> object:
