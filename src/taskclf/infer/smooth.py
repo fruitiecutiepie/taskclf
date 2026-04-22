@@ -124,6 +124,36 @@ def segmentize(
     return segments
 
 
+def aggregate_session_label(
+    segments: Sequence[Segment],
+    session_start_ts: datetime,
+    session_end_ts: datetime,
+    threshold: float = 0.6,
+) -> str:
+    """Aggregate a list of inference-window Segments into a single session label.
+
+    If one mode occupies >= `threshold` (default 60%) of the total time in the session,
+    that mode is returned. Otherwise, "Mixed" is returned.
+    """
+    if not segments:
+        return "Mixed"
+
+    total_buckets = sum(seg.bucket_count for seg in segments)
+    if total_buckets == 0:
+        return "Mixed"
+
+    counts: Counter[str] = Counter()
+    for seg in segments:
+        counts[seg.label] += seg.bucket_count
+
+    most_common_label, count = counts.most_common(1)[0]
+
+    if count / total_buckets >= threshold:
+        return most_common_label
+
+    return "Mixed"
+
+
 def flap_rate(labels: Sequence[str]) -> float:
     """Compute label flap rate: label changes / total windows.
 

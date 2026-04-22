@@ -67,9 +67,9 @@ This document outlines the migration plan to `labels_v2` and highlights relevant
 *Rolling up smaller chunks into reportable sessions.*
 
 **Tasks:**
-- [ ] Implement the logic grouping inference windows into 15m–90m "Session Aggregates".
-- [ ] Apply the `60% dominant mode` aggregation rule (otherwise resolving to `Mixed`).
-- [ ] Evaluate and map alignment of optional axes during aggregation.
+- [x] Implement the logic grouping inference windows into 15m–90m "Session Aggregates".
+- [x] Apply the `60% dominant mode` aggregation rule (otherwise resolving to `Mixed`).
+- [x] Evaluate and map alignment of optional axes during aggregation.
 
 **Codebase Touchpoints:**
 - `src/taskclf/infer/batch.py`: Contains smoothing and merging logic (`rolling_majority`, `segmentize`, `merge_short_segments`) which handles grouping contiguous chunks. This will need to be refactored to implement the 60% dominance rule.

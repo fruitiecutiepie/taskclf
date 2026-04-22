@@ -191,6 +191,17 @@ class OnlinePredictor:
             label_version="labels_v1",
         )
 
+    def get_session_aggregate(self) -> str:
+        """Roll up current segments into a session aggregate."""
+        segments = self.get_segments()
+        if not segments:
+            return "Mixed"
+        start = segments[0].start_ts
+        end = segments[-1].end_ts
+        from taskclf.infer.smooth import aggregate_session_label
+
+        return aggregate_session_label(segments, start, end)
+
     def get_segments(self) -> list[Segment]:
         """Return the running segment list built from all predictions so far.
 
