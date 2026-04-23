@@ -81,8 +81,8 @@ This document outlines the migration plan to `labels_v2` and highlights relevant
 *Tying it together and back-porting existing data.*
 
 **Tasks:**
-- [ ] Draft the "Annotation playbook" containing canonical/boundary examples and the dominance checklist for the team.
-- [ ] Write a data migration/mapping script to convert `v1` datasets to the `labels_v2` envelope, ensuring backward compatibility.
+- [x] Draft the "Annotation playbook" containing canonical/boundary examples and the dominance checklist for the team.
+- [x] Write a data migration/mapping script to convert `v1` datasets to the `labels_v2` envelope, ensuring backward compatibility.
 
 **Codebase Touchpoints:**
 - `docs/guide/labels_v1.md`: Create a new `labels_v2_playbook.md` to serve as the annotation guide.
