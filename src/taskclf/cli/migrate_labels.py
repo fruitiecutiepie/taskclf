@@ -74,6 +74,9 @@ def migrate_row(row: pd.Series, rule_version: str) -> LabelEnvelope:
     if pd.isna(confidence):
         confidence = 1.0
 
+    if v1_label == "Mixed/Unknown":
+        confidence = 0.3  # Do not force false confidence on ambiguous legacy labels
+
     mode, subtype = _V1_MAPPING.get(v1_label, (Mode.Idle, None))
 
     support_state = SupportState.Supported
