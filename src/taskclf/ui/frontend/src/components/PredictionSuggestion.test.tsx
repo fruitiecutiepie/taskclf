@@ -4,7 +4,11 @@ import type {
   ActivityProviderStatus,
   ActivitySummary as ActivitySummaryData,
 } from "../lib/api";
-import { activity_summary_get, notification_accept } from "../lib/api";
+import {
+  activity_summary_get,
+  core_labels_list,
+  notification_accept,
+} from "../lib/api";
 import { time_format } from "../lib/format";
 import type { LabelSuggestion } from "../lib/ws";
 import { PredictionSuggestion } from "./PredictionSuggestion";
@@ -56,6 +60,7 @@ function activity_summary_make(
 vi.mock("../lib/api", () => ({
   notification_accept: vi.fn(),
   notification_skip: vi.fn(),
+  core_labels_list: vi.fn().mockResolvedValue(["Build", "Write", "Debug"]),
   activity_summary_get: vi.fn().mockResolvedValue(activity_summary_make()),
 }));
 
@@ -67,6 +72,7 @@ const clipboard_write = vi.fn().mockResolvedValue(undefined);
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(core_labels_list).mockResolvedValue(["Build", "Write", "Debug"]);
   Object.defineProperty(window.navigator, "clipboard", {
     configurable: true,
     value: { writeText: clipboard_write },
@@ -109,6 +115,23 @@ function suggestion_range_text(block_start: string, block_end: string): string {
     hour: "2-digit",
     minute: "2-digit",
   })}`;
+}
+
+function overlap_error_make(): Error {
+  return new Error(
+    `409: ${JSON.stringify({
+      detail: {
+        error: "overlap",
+        conflicting_spans: [
+          {
+            start_ts: "2026-04-05T11:00:00+00:00",
+            end_ts: "2026-04-05T14:00:00+00:00",
+            label: "Build",
+          },
+        ],
+      },
+    })}`,
+  );
 }
 
 describe("PredictionSuggestion", () => {
@@ -208,6 +231,40 @@ describe("PredictionSuggestion", () => {
     });
     expect(on_saved).toHaveBeenCalledOnce();
     expect(on_dismiss).toHaveBeenCalledOnce();
+  });
+
+  it("opens the correction panel from Change label", async () => {
+    const suggestion = suggestion_make();
+
+    render(() => <PredictionSuggestion suggestion={() => suggestion} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Change label" }));
+
+    expect(
+      screen.getByText("What should this time block be labeled instead?"),
+    ).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Build" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Debug" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save as Write" })).toBeInTheDocument();
+    expect(vi.mocked(core_labels_list)).toHaveBeenCalled();
+  });
+
+  it("saves the selected correction label", async () => {
+    const suggestion = suggestion_make();
+
+    render(() => <PredictionSuggestion suggestion={() => suggestion} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Change label" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Debug" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save as Debug" }));
+
+    await waitFor(() => {
+      expect(vi.mocked(notification_accept)).toHaveBeenCalledWith({
+        block_start: suggestion.block_start,
+        block_end: suggestion.block_end,
+        label: "Debug",
+      });
+    });
   });
 
   it("keeps save errors visible until closed and allows copying them", async () => {
@@ -326,6 +383,80 @@ describe("PredictionSuggestion", () => {
         block_start: suggestion.block_start,
         block_end: suggestion.block_end,
         label: suggestion.suggested,
+        allow_overlap: true,
+      });
+    });
+  });
+
+  it("on changed-label overlap Overwrite All preserves the correction", async () => {
+    const suggestion = suggestion_make();
+    vi.mocked(notification_accept)
+      .mockRejectedValueOnce(overlap_error_make())
+      .mockResolvedValueOnce({
+        start_ts: suggestion.block_start,
+        end_ts: suggestion.block_end,
+        label: "Debug",
+        provenance: "suggestion",
+        user_id: null,
+        confidence: null,
+        extend_forward: false,
+      });
+
+    render(() => <PredictionSuggestion suggestion={() => suggestion} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Change label" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Debug" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save as Debug" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Overwrite All" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Overwrite All" }));
+
+    await waitFor(() => {
+      expect(vi.mocked(notification_accept)).toHaveBeenCalledTimes(2);
+      expect(vi.mocked(notification_accept)).toHaveBeenLastCalledWith({
+        block_start: suggestion.block_start,
+        block_end: suggestion.block_end,
+        label: "Debug",
+        overwrite: true,
+      });
+    });
+  });
+
+  it("on changed-label overlap Keep All preserves the correction", async () => {
+    const suggestion = suggestion_make();
+    vi.mocked(notification_accept)
+      .mockRejectedValueOnce(overlap_error_make())
+      .mockResolvedValueOnce({
+        start_ts: suggestion.block_start,
+        end_ts: suggestion.block_end,
+        label: "Debug",
+        provenance: "suggestion",
+        user_id: null,
+        confidence: null,
+        extend_forward: false,
+      });
+
+    render(() => <PredictionSuggestion suggestion={() => suggestion} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Change label" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Debug" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save as Debug" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Keep All" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Keep All" }));
+
+    await waitFor(() => {
+      expect(vi.mocked(notification_accept)).toHaveBeenCalledTimes(2);
+      expect(vi.mocked(notification_accept)).toHaveBeenLastCalledWith({
+        block_start: suggestion.block_start,
+        block_end: suggestion.block_end,
+        label: "Debug",
         allow_overlap: true,
       });
     });

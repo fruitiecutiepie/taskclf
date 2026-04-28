@@ -18,9 +18,11 @@ import pandas as pd
 
 from taskclf.core.types import (
     AxisDecision,
-    CrossDomainLabel,
+    IntentBasis,
     LabelEnvelope,
     Mode,
+    ModeSource,
+    SemanticLabel,
     Subtype,
     SupportState,
 )
@@ -59,6 +61,7 @@ def migrate_row(row: pd.Series, rule_version: str) -> LabelEnvelope:
     v1_label = str(row.get("label", "Mixed/Unknown"))
     start_ts_str = str(row.get("start_ts", ""))
     end_ts_str = str(row.get("end_ts", ""))
+    provenance = str(row.get("provenance", "")).strip().lower()
 
     # Calculate inference window MS if possible
     inference_ms = 180000  # Default 3 minutes
@@ -97,10 +100,20 @@ def migrate_row(row: pd.Series, rule_version: str) -> LabelEnvelope:
             reason_codes=["v1_legacy_migration"],
         )
 
-    cross_label = CrossDomainLabel(
+    is_user_declared = any(
+        token in provenance for token in ("manual", "user", "annotat")
+    )
+    intent_basis = IntentBasis.UserDeclared if is_user_declared else IntentBasis.Unknown
+    mode_source = (
+        ModeSource.UserOverride if is_user_declared else ModeSource.DeterministicRule
+    )
+
+    semantic_label = SemanticLabel(
         mode=mode_decision,
         subtype=subtype_decision,
         support_state=support_state,
+        intent_basis=intent_basis,
+        mode_source=mode_source,
         # Omit optional axes (interaction, collaboration, domain) for legacy data
     )
 
@@ -110,7 +123,8 @@ def migrate_row(row: pd.Series, rule_version: str) -> LabelEnvelope:
         generated_at=datetime.now(timezone.utc).isoformat(),
         evidence_window_ms=30000,  # Assumption of 30s
         inference_window_ms=inference_ms,
-        label=cross_label,
+        observed=None,
+        semantic=semantic_label,
         plugins=None,
     )
 
@@ -138,7 +152,7 @@ def main() -> None:
         for _, row in df.iterrows():
             try:
                 envelope = migrate_row(row, args.rule_version)
-                f.write(envelope.model_dump_json() + "\n")
+                f.write(envelope.model_dump_json(exclude_none=True) + "\n")
                 success_count += 1
             except Exception as e:
                 logger.warning(f"Skipping malformed row: {e}")

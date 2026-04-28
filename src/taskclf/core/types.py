@@ -132,6 +132,48 @@ class SupportState(StrEnum):
     MixedUnknown = "MixedUnknown"
 
 
+class IntentBasis(StrEnum):
+    ObservedOnly = "ObservedOnly"
+    InferredFromContext = "InferredFromContext"
+    UserDeclared = "UserDeclared"
+    Unknown = "Unknown"
+
+
+class ModeSource(StrEnum):
+    DeterministicRule = "DeterministicRule"
+    ProbabilisticModel = "ProbabilisticModel"
+    UserOverride = "UserOverride"
+
+
+class ActivitySurface(StrEnum):
+    Edit = "Edit"
+    Read = "Read"
+    Watch = "Watch"
+    Message = "Message"
+    Call = "Call"
+    Search = "Search"
+    IdleLike = "IdleLike"
+
+
+class ArtifactTouch(StrEnum):
+    None_ = "None"
+    ReadOnly = "ReadOnly"
+    Modified = "Modified"
+    Created = "Created"
+
+
+class SyncPresence(StrEnum):
+    None_ = "None"
+    LiveHumanSession = "LiveHumanSession"
+    LiveStream = "LiveStream"
+
+
+class CollaborationSurface(StrEnum):
+    None_ = "None"
+    AsyncText = "AsyncText"
+    SyncVoiceVideo = "SyncVoiceVideo"
+
+
 class AxisDecision(BaseModel, Generic[T]):
     value: T
     confidence: float = Field(ge=0.0, le=1.0)
@@ -139,13 +181,30 @@ class AxisDecision(BaseModel, Generic[T]):
     reason_codes: list[str] | None = None
 
 
-class CrossDomainLabel(BaseModel):
+class UserOverride(BaseModel):
+    active: bool = True
+    override_mode: Mode | None = None
+    override_subtype: Subtype | None = None
+    note: str | None = None
+
+
+class ObservedLabel(BaseModel):
+    activity_surface: ActivitySurface
+    artifact_touch: ArtifactTouch
+    sync_presence: SyncPresence
+    collaboration_surface: CollaborationSurface
+
+
+class SemanticLabel(BaseModel):
     mode: AxisDecision[Mode]
     subtype: AxisDecision[Subtype] | None = None
     interaction_style: AxisDecision[InteractionStyle] | None = None
     collaboration_mode: AxisDecision[CollaborationMode] | None = None
     output_domain: AxisDecision[OutputDomain] | None = None
     support_state: SupportState
+    intent_basis: IntentBasis = IntentBasis.Unknown
+    mode_source: ModeSource = ModeSource.DeterministicRule
+    user_override: UserOverride | None = None
 
 
 class SoftwareLabels(BaseModel):
@@ -206,8 +265,23 @@ class LabelEnvelope(BaseModel):
     generated_at: str
     evidence_window_ms: int
     inference_window_ms: int
-    label: CrossDomainLabel
+    observed: ObservedLabel | None = None
+    semantic: SemanticLabel
     plugins: list[PluginPayload] | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _lift_legacy_label_field(cls, values: object) -> object:
+        if isinstance(values, dict) and "semantic" not in values and "label" in values:
+            updated = dict(values)
+            updated["semantic"] = updated.pop("label")
+            return updated
+        return values
+
+    @property
+    def label(self) -> SemanticLabel:
+        """Backward-compatible alias for older callers."""
+        return self.semantic
 
 
 class EvidenceSnapshot(BaseModel, frozen=True):

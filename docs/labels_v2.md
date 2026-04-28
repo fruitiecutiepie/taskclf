@@ -13,7 +13,7 @@ Here is a concrete labels_v2 design that makes ambiguity bounded, extensions sca
 * compatibility with future v3+
 
 The key change is this:
-move from “one flat label set” to “core classification + evidence + extensions + aggregation rules”.
+move from “one flat label set” to “core classification + evidence + observed facts + semantic interpretation + extensions + aggregation rules”.
 
 ---
 
@@ -100,6 +100,18 @@ These cover the most obvious persona gaps without breaking the shape of the syst
 ## 2. Decision protocol for mode
 
 This is the most important part. You need deterministic precedence rules, not just label descriptions.
+
+Deterministic here means procedural, not philosophical:
+given the same evidence vector and the same rule version, the classifier must return the same result.
+
+That does **not** mean semantic interpretation is ground truth.
+Some distinctions remain intent-sensitive even when the rules are stable:
+Consume vs Idle, Produce vs Consume during debugging, and Coordinate vs Produce during collaboration are all examples.
+
+So the contract should separate:
+* raw telemetry
+* deterministic observed facts
+* semantic interpretation that is repeatable, confidence-scored, and overrideable
 
 ### 2.1 Mode decision order
 
@@ -249,9 +261,36 @@ type ModeDecision = AxisDecision<Mode>;
 
 `SupportState` should not be a vague confidence synonym. It should mean something about evidence structure.
 
+### 4.3 Semantic provenance fields
+
+Semantic labels should also carry explicit provenance about how much of the interpretation came from direct observation vs inferred intent.
+
+```typescript
+type IntentBasis =
+  | "ObservedOnly"
+  | "InferredFromContext"
+  | "UserDeclared"
+  | "Unknown";
+
+type ModeSource =
+  | "DeterministicRule"
+  | "ProbabilisticModel"
+  | "UserOverride";
+
+type UserOverride = {
+  active: boolean;
+  override_mode?: Mode;
+  override_subtype?: Subtype;
+  note?: string;
+};
+```
+
+These fields are what keep the system honest.
+The semantic layer remains useful, but it should never pretend an inferred intent is as objective as an observed fact.
+
 ---
 
-## 5. Split “semantic output” from “observed evidence”
+## 5. Split raw evidence, observed facts, and semantic output
 
 This is necessary for scalability and future relabeling.
 
@@ -282,20 +321,72 @@ type EvidenceSnapshot = {
 
 This is not user-facing ontology. It is the factual substrate.
 
-### 5.2 Interpretation layer
+### 5.2 Observed layer
+
+The system should project telemetry into a deterministic observed layer before assigning semantic meaning.
 
 ```typescript
-type CrossDomainLabel = {
+type ObservedLabel = {
+  activity_surface:
+    | "Edit"
+    | "Read"
+    | "Watch"
+    | "Message"
+    | "Call"
+    | "Search"
+    | "IdleLike";
+  artifact_touch:
+    | "None"
+    | "ReadOnly"
+    | "Modified"
+    | "Created";
+  sync_presence:
+    | "None"
+    | "LiveHumanSession"
+    | "LiveStream";
+  collaboration_surface:
+    | "None"
+    | "AsyncText"
+    | "SyncVoiceVideo";
+};
+```
+
+Examples of stable observed facts:
+* live Zoom call in the foreground -> `sync_presence = LiveHumanSession`
+* file changed -> `artifact_touch = Modified`
+* Slack message sent -> `activity_surface = Message`
+* browser reading with no edits -> `artifact_touch = ReadOnly`
+* no input plus disengaged/locked state -> `activity_surface = IdleLike`
+
+This layer is deterministic from telemetry.
+It is safe to debug, aggregate, and persist.
+Additional deterministic fields such as input activity bands or app categories can live here too, but they should not be confused with semantic intent.
+
+### 5.3 Semantic layer
+
+```typescript
+type SemanticLabel = {
   mode: AxisDecision<Mode>;
   subtype?: AxisDecision<Subtype>;
   interaction_style?: AxisDecision<InteractionStyle>;
   collaboration_mode?: AxisDecision<CollaborationMode>;
   output_domain?: AxisDecision<OutputDomain>;
   support_state: SupportState;
+  intent_basis: IntentBasis;
+  mode_source: ModeSource;
+  user_override?: UserOverride;
 };
 ```
 
-Keep them separate.
+This layer is deterministic given:
+* the observed facts
+* the surrounding evidence window
+* the active rule version
+
+But it is still interpretation.
+It is confidence-scored, reversible, and not the only truth.
+
+Keep all three layers separate.
 
 ---
 
@@ -500,7 +591,18 @@ You need controlled escape hatches.
 * **MixedUnknown**: multiple plausible states remain unresolved
 * **(no subtype at all)**: subtype omitted because not useful or not inferable
 
-### 11.2 Escalation rule
+### 11.2 Intent basis semantics
+
+Use `intent_basis` intentionally:
+* **ObservedOnly**: the semantic choice follows directly from stable observed facts
+* **InferredFromContext**: the system needed contextual interpretation to choose between plausible labels
+* **UserDeclared**: the user supplied the intent or corrected the label
+* **Unknown**: the semantic basis cannot be recovered from the current record
+
+Low semantic confidence does not always mean the system failed to observe something.
+It often means the system observed enough to know the activity shape, but not enough to claim intent as hard truth.
+
+### 11.3 Escalation rule
 If Unknown or MixedUnknown exceeds a threshold in production, investigate one of:
 * insufficient raw signals
 * bad decision rules
@@ -522,6 +624,7 @@ For a session made of multiple inference windows:
 * otherwise session mode becomes Mixed
 * optional axes aggregate only if they align with the dominant mode strongly enough
 * if not, omit or mark as mixed
+* keep observed aggregates separate from semantic rollups so later relabeling does not destroy what was actually seen
 
 You may want a session-only label type:
 ```typescript
@@ -555,11 +658,12 @@ Especially:
 
 ### 13.3 Dominance checklist
 Annotator checklist:
-1. Is this task-directed?
+1. What was directly observed?
 2. Is it live synchronous?
 3. Is it mainly workflow/people coordination?
 4. Is an artifact materially advanced?
 5. Otherwise is it intake/understanding?
+6. If intent still matters, is the basis observed, inferred, user-declared, or unknown?
 
 That alone will improve consistency a lot.
 
@@ -576,16 +680,22 @@ type LabelEnvelope = {
   generated_at: string;
   evidence_window_ms: number;
   inference_window_ms: number;
-  label: CrossDomainLabel;
+  observed?: ObservedLabel;
+  semantic: SemanticLabel;
   plugins?: PluginPayload[];
 };
 ```
 
+Native `labels_v2` outputs should populate both `observed` and `semantic`.
+Legacy migrations may temporarily omit `observed` until telemetry backfill exists, but that should be treated as transitional rather than the steady-state contract.
+
 **Migration rules**
 When you later move to v3:
+* preserve observed facts whenever possible
 * preserve mode whenever possible
 * only split subtypes forward, never silently reinterpret old ones
 * keep a migration table
+* never harden old inferred intent into fake deterministic truth
 
 Example:
 * ReadResearch may later split into LiteratureReview and ReferenceReading
@@ -602,7 +712,13 @@ Example:
   "rule_version": "2026-04-13.1",
   "evidence_window_ms": 30000,
   "inference_window_ms": 300000,
-  "label": {
+  "observed": {
+    "activity_surface": "Call",
+    "artifact_touch": "Modified",
+    "sync_presence": "LiveHumanSession",
+    "collaboration_surface": "SyncVoiceVideo"
+  },
+  "semantic": {
     "mode": {
       "value": "Attend",
       "confidence": 0.74,
@@ -626,7 +742,9 @@ Example:
       "value": "Code",
       "confidence": 0.89
     },
-    "support_state": "MixedUnknown"
+    "support_state": "MixedUnknown",
+    "intent_basis": "InferredFromContext",
+    "mode_source": "DeterministicRule"
   },
   "plugins": [
     {
@@ -639,7 +757,8 @@ Example:
   ]
 }
 ```
-This shows why plugins and alternatives matter. The core can admit ambiguity without collapsing.
+This shows why the observed and semantic layers both matter.
+The synchronous call and artifact modification are stable facts; whether the window is primarily Attend or Produce still remains an inferred semantic judgment.
 
 ### Example B — student watching a recorded lecture and taking sparse notes
 ```json
@@ -648,7 +767,13 @@ This shows why plugins and alternatives matter. The core can admit ambiguity wit
   "rule_version": "2026-04-13.1",
   "evidence_window_ms": 30000,
   "inference_window_ms": 300000,
-  "label": {
+  "observed": {
+    "activity_surface": "Watch",
+    "artifact_touch": "Modified",
+    "sync_presence": "None",
+    "collaboration_surface": "None"
+  },
+  "semantic": {
     "mode": {
       "value": "Consume",
       "confidence": 0.91,
@@ -672,7 +797,9 @@ This shows why plugins and alternatives matter. The core can admit ambiguity wit
       "confidence": 0.54,
       "alternatives": ["Unknown"]
     },
-    "support_state": "Supported"
+    "support_state": "Supported",
+    "intent_basis": "InferredFromContext",
+    "mode_source": "DeterministicRule"
   },
   "plugins": [
     {
@@ -692,7 +819,13 @@ This shows why plugins and alternatives matter. The core can admit ambiguity wit
   "rule_version": "2026-04-13.1",
   "evidence_window_ms": 30000,
   "inference_window_ms": 300000,
-  "label": {
+  "observed": {
+    "activity_surface": "Edit",
+    "artifact_touch": "Modified",
+    "sync_presence": "None",
+    "collaboration_surface": "None"
+  },
+  "semantic": {
     "mode": {
       "value": "Produce",
       "confidence": 0.79,
@@ -714,7 +847,9 @@ This shows why plugins and alternatives matter. The core can admit ambiguity wit
       "value": "Analysis",
       "confidence": 0.92
     },
-    "support_state": "Supported"
+    "support_state": "Supported",
+    "intent_basis": "ObservedOnly",
+    "mode_source": "DeterministicRule"
   },
   "plugins": [
     {
@@ -734,16 +869,22 @@ This shows why plugins and alternatives matter. The core can admit ambiguity wit
   "rule_version": "2026-04-13.1",
   "evidence_window_ms": 30000,
   "inference_window_ms": 300000,
-  "label": {
+  "observed": {
+    "activity_surface": "Read",
+    "artifact_touch": "None",
+    "sync_presence": "None",
+    "collaboration_surface": "None"
+  },
+  "semantic": {
     "mode": {
       "value": "Idle",
-      "confidence": 0.76,
+      "confidence": 0.61,
       "alternatives": ["Consume"],
       "reason_codes": ["non_task_context", "social_feed_pattern", "no_artifact_progress"]
     },
     "subtype": {
       "value": "BreakIdle",
-      "confidence": 0.89
+      "confidence": 0.72
     },
     "interaction_style": {
       "value": "Passive",
@@ -757,7 +898,9 @@ This shows why plugins and alternatives matter. The core can admit ambiguity wit
       "value": "Unknown",
       "confidence": 0.98
     },
-    "support_state": "Supported"
+    "support_state": "WeakEvidence",
+    "intent_basis": "InferredFromContext",
+    "mode_source": "DeterministicRule"
   }
 }
 ```
@@ -772,6 +915,7 @@ This `labels_v2` structure makes the system scalable because:
 * ambiguity is recorded, not denied
 * old data can be reinterpreted from evidence
 * annotation disagreements become measurable
+* debugging can distinguish what the system observed from how it interpreted it
 * you can add domains without rewriting the world
 
 ---
@@ -789,9 +933,12 @@ This `labels_v2` structure makes the system scalable because:
 * output_domain
 
 **Add**
+* deterministic observed layer
 * decision protocol
 * uncertainty fields
 * reason codes
+* intent basis
+* mode source / override path
 * plugin namespaces
 * aggregation model
 * taxonomy version / rule version
@@ -802,12 +949,13 @@ This `labels_v2` structure makes the system scalable because:
 
 If you want the smallest strong upgrade, do only this first:
 1. freeze mode
-2. add deterministic precedence rules
-3. add confidence, alternatives, reason_codes
-4. add Analyze, Learn, ExploreReference, Monitor
-5. define output_domain precisely
-6. separate evidence windows from inference windows
-7. reserve plugins field even if mostly empty initially
+2. add an `ObservedLabel` layer with deterministic facts
+3. add deterministic precedence rules from observed facts to semantic labels
+4. add `intent_basis`, `mode_source`, confidence, alternatives, and `reason_codes`
+5. define `output_domain` precisely
+6. persist both `observed` and `semantic`
+7. separate evidence windows from inference windows
+8. reserve plugins field even if mostly empty initially
 
 That already gets you most of the benefit.
 
@@ -819,11 +967,13 @@ The scalable answer is not “invent enough labels that nobody is ever unsure.�
 
 The scalable answer is:
 * small universal core
-* deterministic assignment rules
-* explicit uncertainty
+* deterministic observed layer
+* deterministic rule application
+* explicit semantic uncertainty
 * short-window inference
 * domain plugin extensions
 * versioned schema
-* evidence preserved separately from interpretation
+* evidence and observed facts preserved separately from interpretation
+* explicit user correction path
 
 That is the structure that can handle edge cases without collapsing into taxonomy sprawl.

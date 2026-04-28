@@ -1,8 +1,8 @@
 # Labels v2 Annotation Playbook
 
-Version: 2.0 (Final)
+Version: 2.1 (Final)
 Status: Production
-Last Updated: 2026-04-23
+Last Updated: 2026-04-24
 
 This document is the authoritative contract for assigning labels_v2 to inference windows.
 
@@ -17,16 +17,37 @@ It optimizes for:
 
 ## 0. Core Principles (Non-Negotiable)
 
-1. Always assign mode using the precedence rules.
-2. Do not mix axes.
+1. Start from observed facts before interpreting intent.
+2. Always assign mode using the precedence rules.
+3. Do not mix axes.
     * mode ≠ subtype ≠ output_domain
-3. Label the current window, not the whole session.
-4. Use uncertainty explicitly. Do not guess.
-5. When in doubt, follow tie-break rules, not intuition.
+4. Label the current window, not the whole session.
+5. Use uncertainty explicitly. Do not guess.
+6. When in doubt, follow tie-break rules and `intent_basis`, not intuition.
+7. If a user correction exists, record it as an override rather than pretending the original semantic guess was certain.
 
 ---
 
 ## 1. Axis Semantics (Strict Separation)
+
+Think in two layers:
+
+* **Observed layer**: what was directly seen?
+    * activity surface
+    * artifact touch
+    * sync presence
+    * collaboration surface
+* **Semantic layer**: how should the window be interpreted?
+    * mode
+    * subtype
+    * output_domain
+    * interaction_style
+    * collaboration_mode
+    * support_state
+    * intent_basis
+
+Observed facts are the stable anchor.
+Semantic labels are still deterministic given the same evidence and rule version, but they may be inferred rather than directly known.
 
 Each axis answers a different question:
 
@@ -55,14 +76,15 @@ Example (Code):
 ## 2. Mode Assignment Protocol (Deterministic)
 
 You MUST follow this exact order.
+Apply it to the current window using observed facts first, then use context only when the observed layer does not fully settle the semantic interpretation.
 
 ### Step 1 — Idle
 
 Assign Idle if ALL are true:
 
-* no clear task intent
-* activity is restorative / disengaged / aimless
-* no meaningful artifact or obligation is being advanced
+* observed facts show no meaningful artifact advancement
+* there is no meaningful live or async collaboration dominating the window
+* the activity appears restorative / disengaged / aimless rather than goal-directed
 
 Examples:
 * aimless scrolling between tasks
@@ -73,6 +95,8 @@ DO NOT use Idle for:
 * reading with low interaction
 * watching educational content
 * monitoring systems intentionally
+
+If the window only shows `Read` / `Watch` with no artifact touch and the goal-directedness is unclear, treat this as an intent-sensitive boundary with `WeakEvidence` or `MixedUnknown` rather than forcing Idle.
 
 ---
 
@@ -92,6 +116,11 @@ Use Attend ONLY if:
 * the session defines the structure of the window
 * attention is primarily governed by the live interaction
 
+Observed anchors:
+* live call in foreground
+* shared live presence
+* sync voice/video dominates the window
+
 Do NOT use Attend when:
 * call is background while user works independently
 * watching a live stream passively without participation
@@ -100,7 +129,7 @@ Do NOT use Attend when:
 
 ### Step 3 — Coordinate
 
-Assign Coordinate if the primary purpose is:
+Assign Coordinate if the primary work output is coordination:
 
 * managing tasks
 * handling communication
@@ -114,12 +143,16 @@ Examples:
 * calendar management
 * async collaboration
 
+Observed anchors:
+* message surface dominates
+* async text collaboration dominates
+* artifact modification is absent or secondary
+
 ---
 
 ### Step 4 — Produce
 
-Assign Produce if the primary purpose is:
-materially advancing an artifact/system/deliverable
+Assign Produce if the window materially advances an artifact/system/deliverable.
 
 This includes:
 * creating
@@ -134,12 +167,16 @@ Examples:
 * editing designs
 * transforming data
 
+Observed anchors:
+* edit surface dominates
+* artifact touch is `Modified` or `Created`
+
 ---
 
 ### Step 5 — Consume
 
 Assign Consume if:
-the primary purpose is understanding, inspecting, or gathering information
+the dominant activity is understanding, inspecting, or gathering information without material artifact advancement being dominant
 
 Examples:
 * reading documentation
@@ -147,25 +184,32 @@ Examples:
 * browsing references
 * reviewing dashboards (without acting)
 
+Observed anchors:
+* read / watch / search dominates
+* artifact touch is `None` or `ReadOnly`
+
 ---
 
 ## 3. Tie-Break Rules (Mandatory)
 
 **Produce vs Consume**
-* If artifact advancement dominates → Produce
-* If understanding dominates → Consume
+* If artifact advancement dominates -> Produce
+* If understanding dominates -> Consume
+* If the window alternates between both and neither clearly dominates, keep the observed facts fixed and mark the semantic choice with `intent_basis = InferredFromContext`; escalate to `WeakEvidence` or `MixedUnknown` if needed
 
 **Coordinate vs Attend**
-* Live synchronous interaction → Attend
-* Async or workflow management → Coordinate
+* Live synchronous interaction -> Attend
+* Async or workflow management -> Coordinate
 
 **Consume vs Idle**
-* Goal-directed intake → Consume
-* Non-directed / restorative → Idle
+* Goal-directed intake -> Consume
+* Non-directed / restorative -> Idle
+* If the observed facts only show passive reading/watching with no artifact touch, but the goal-directedness is unclear, do not pretend this is deterministic ground truth
 
 **Produce vs Coordinate**
-* Artifact is the output → Produce
-* Communication/workflow is the output → Coordinate
+* Artifact is the output -> Produce
+* Communication/workflow is the output -> Coordinate
+* If comments, docs, and edits are tightly mixed, keep the observed layer fixed and use uncertainty explicitly
 
 ---
 
@@ -284,13 +328,19 @@ Defined by interaction topology:
 * Customer interaction counts as collaboration
 * External vs internal does not matter
 
+Start from the observed layer:
+* `collaboration_surface = AsyncText` usually maps to `AsyncCollab`
+* `collaboration_surface = SyncVoiceVideo` usually maps to `SyncCollab`
+* semantic `collaboration_mode` may still be `Unknown` if the observed topology is incomplete
+
 ---
 
 ## 8. Boundary Cases (Canonical Rulings)
 
 **Debugging**
-* Active fix loop → Produce + Debug
-* General research → Consume
+* Active fix loop with artifact modification -> Produce + Debug
+* General research -> Consume
+* Search/log reading without clear artifact touch may stay Consume or resolve to `MixedUnknown`; do not force Produce just because the broader session is about fixing something
 
 ---
 
@@ -332,15 +382,16 @@ Defined by interaction topology:
 ---
 
 **Social media**
-* Work-driven → Consume
-* Aimless → Idle
-Use surrounding windows ONLY if ambiguous.
+* Work-driven -> Consume
+* Aimless -> Idle
+* If the observed facts are only `Read` plus `artifact_touch = None`, use surrounding windows only to resolve ambiguity; if ambiguity remains, use `intent_basis = InferredFromContext` with `WeakEvidence` or `MixedUnknown`
 
 ---
 
 **Search queries**
-* Short, tightly coupled → inherit dominant activity
-* Standalone exploration → Consume + ExploreReference
+* Short, tightly coupled -> inherit dominant activity
+* Standalone exploration -> Consume + ExploreReference
+* The observed fact may simply be `activity_surface = Search`; the semantic label should remain reversible if the search intent is not obvious
 
 ---
 
@@ -352,9 +403,10 @@ Use surrounding windows ONLY if ambiguous.
 ---
 
 **Async doc collaboration**
-* replying / triage → Coordinate
-* editing doc → Produce
-* reading feedback → Consume
+* replying / triage -> Coordinate
+* editing doc -> Produce
+* reading feedback -> Consume
+* if comments and edits are tightly interleaved, keep the observed facts stable and use uncertainty instead of inventing a single crisp intent
 
 ---
 
@@ -367,6 +419,13 @@ Use surrounding windows ONLY if ambiguous.
 ## 9. Uncertainty Rules
 
 Use support_state explicitly
+
+Use `intent_basis` explicitly
+
+* **ObservedOnly**: semantic label follows directly from stable observed facts
+* **InferredFromContext**: semantic choice required contextual interpretation
+* **UserDeclared**: user explicitly provided or corrected the intent
+* **Unknown**: the semantic basis cannot be recovered confidently
 
 **Supported**
 Clear, coherent evidence.
@@ -388,15 +447,19 @@ Use MixedUnknown when:
 * two modes are equally plausible
 * window is heavily mixed
 * evidence conflicts
+* observed facts are clear but intent-sensitive interpretation remains unresolved
 
 Use WeakEvidence when:
 * label is plausible but under-supported
+* context breaks a tie, but only weakly
 
 ---
 
 **Do NOT:**
 * force a label with false confidence
 * ignore ambiguity
+* rewrite observed facts to fit a preferred story
+* treat inferred intent as deterministic truth
 
 ---
 
@@ -409,9 +472,11 @@ Always label inference window only
 **Context usage**
 Allowed:
 * resolve ambiguity
+* set `intent_basis = InferredFromContext` when the observed layer alone is insufficient
 
 Not allowed:
 * override clear current evidence
+* collapse uncertainty just because the broader session narrative feels obvious
 
 ---
 
@@ -423,6 +488,8 @@ Not allowed:
 * Ignoring precedence rules
 * Overfitting to session narrative
 * Avoiding uncertainty labeling
+* Treating semantic labels as stronger than observed facts
+* Deleting the override path by hard-coding inferred intent
 
 ---
 
@@ -430,12 +497,14 @@ Not allowed:
 
 Think in layers:
 
-1. What is happening? → mode
-2. What shape? → subtype
-3. What artifact? → output_domain
-4. How engaged? → interaction_style
-5. Who is involved? → collaboration_mode
-6. How sure am I? → support_state
+1. What was directly observed? -> observed layer
+2. What is happening? -> mode
+3. What shape? -> subtype
+4. What artifact? -> output_domain
+5. How engaged? -> interaction_style
+6. Who is involved? -> collaboration_mode
+7. How sure am I? -> support_state
+8. How was intent determined? -> intent_basis / override path
 
 ---
 
@@ -446,6 +515,7 @@ This playbook is deliberately strict.
 If ambiguity remains:
 * use tie-break rules
 * use uncertainty fields
+* preserve the observed facts
 * do not invent interpretations
 
 A good taxonomy does not eliminate ambiguity.

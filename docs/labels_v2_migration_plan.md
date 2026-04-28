@@ -1,6 +1,7 @@
 # Labels v2 Migration Plan
 
 This document outlines the migration plan to `labels_v2` and highlights relevant touchpoints in the codebase for each phase.
+It is aligned to the current contract where raw telemetry flows through `EvidenceSnapshot`, deterministic observed facts (`ObservedLabel`), and then semantic interpretation (`SemanticLabel`) persisted in a `LabelEnvelope`.
 
 ---
 
@@ -9,43 +10,44 @@ This document outlines the migration plan to `labels_v2` and highlights relevant
 
 **Tasks:**
 - [x] Freeze the existing `Mode` type (Produce, Consume, Coordinate, Attend, Idle).
-- [x] Add the new `Subtype` values (`Analyze`, `Learn`, `ExploreReference`, `Monitor`, `Design`, `Analysis`, `Operations`).
-- [x] Explicitly define definitions for `InteractionStyle`, `CollaborationMode`, and `OutputDomain` (distinct from app used).
+- [x] Add the new `Subtype` values (`Analyze`, `Learn`, `ExploreReference`, `Monitor`) and keep persona/domain concepts such as `Design`, `Analysis`, and `Operations` in `OutputDomain` rather than `Subtype`.
+- [x] Explicitly define `InteractionStyle`, `CollaborationMode`, and `OutputDomain` (distinct from app used).
 - [x] Introduce `AxisDecision<T>` to wrap axes with `value`, `confidence`, `alternatives`, and `reason_codes`.
-- [x] Define the explicit `SupportState` semantic enum.
-- [x] Create the new `LabelEnvelope` and `CrossDomainLabel` interfaces.
+- [x] Define the explicit semantic provenance fields: `SupportState`, `IntentBasis`, `ModeSource`, and the override path.
+- [x] Create the new `ObservedLabel`, `SemanticLabel`, and `LabelEnvelope` interfaces, with `LabelEnvelope` carrying `observed?` and `semantic`.
 
 **Codebase Touchpoints:**
-- `src/taskclf/core/types.py`: Currently defines `CoreLabel` as `StrEnum` and `LABEL_SET_V1`. This is where `Mode`, `Subtype`, `OutputDomain`, `InteractionStyle`, `CollaborationMode`, `AxisDecision`, and `SupportState` need to be defined.
+- `src/taskclf/core/types.py`: Currently defines `CoreLabel` as `StrEnum` and `LABEL_SET_V1`. This is where `Mode`, `Subtype`, `OutputDomain`, `InteractionStyle`, `CollaborationMode`, `AxisDecision`, `SupportState`, `IntentBasis`, `ModeSource`, `ObservedLabel`, `SemanticLabel`, and `LabelEnvelope` need to be defined.
 - `schema/labels_v1.json`: The JSON schema for the old labels will need a `labels_v2.json` counterpart.
 
 ---
 
-## Phase 2: Evidence vs. Inference Layer
-*Decoupling the raw factual observation from the resulting label.*
+## Phase 2: Evidence, Observed, and Inference Layers
+*Decoupling raw factual observation, deterministic observed facts, and resulting semantic labels.*
 
 **Tasks:**
 - [x] Define the `EvidenceSnapshot` object with raw observational signals (foreground ms, key events, active mic, etc.).
+- [x] Define the deterministic projection from `EvidenceSnapshot` to `ObservedLabel`.
 - [x] Extract the pipeline responsible for computing 15s–60s "Evidence windows".
-- [x] Plumb the pipeline that feeds these Evidence windows into 2m–5m "Inference windows" where semantic labeling occurs.
+- [x] Plumb the pipeline that feeds these Evidence windows into deterministic `ObservedLabel` records and then into 2m–5m "Inference windows" where semantic labeling occurs.
 
 **Codebase Touchpoints:**
-- `src/taskclf/core/types.py`: Defines `FeatureRowBase` and `FeatureRow` which represent bucketed observations (typically 60s). These rows will either map to or serve as the substrate for `EvidenceSnapshot`.
-- `src/taskclf/infer/batch.py` / `src/taskclf/infer/online.py`: Current inference pipelines operate directly on `FeatureRow`s using LightGBM. These pipelines need to be adapted to separate the Evidence collection from the semantic Inference step.
+- `src/taskclf/core/types.py`: Defines `FeatureRowBase` and `FeatureRow` which represent bucketed observations (typically 60s). These rows will either map to or serve as the substrate for `EvidenceSnapshot`, which then projects deterministically into `ObservedLabel`.
+- `src/taskclf/infer/batch.py` / `src/taskclf/infer/online.py`: Current inference pipelines operate directly on `FeatureRow`s using LightGBM. These pipelines need to be adapted to separate evidence collection, observed-fact projection, and semantic inference.
 
 ---
 
 ## Phase 3: Decision Engine & Precedence Rules
-*The deterministic rules that consume Evidence and output Inference.*
+*The deterministic rules that consume `ObservedLabel` plus `EvidenceSnapshot` context and output `SemanticLabel`.*
 
 **Tasks:**
 - [x] Implement the 5-rule `Mode` decision order: Idle → Attend → Coordinate → Produce → Consume.
-- [x] Implement the tie-break conflict logic (e.g., Produce vs Consume, Coordinate vs Attend).
+- [x] Implement the tie-break conflict logic (e.g., Produce vs Consume, Coordinate vs Attend) and assign semantic provenance such as `intent_basis`, `mode_source`, and `support_state` when the observed layer alone does not settle the choice.
 - [x] Add the subtype policy to restrict available subtypes based on the dominant Mode.
 
 **Codebase Touchpoints:**
 - `src/taskclf/infer/baseline.py`: Contains heuristic baseline predictors (`predict_baseline`) which can be adapted to serve as the new deterministic precedence engine.
-- `src/taskclf/infer/prediction.py`: Contains the `WindowPrediction` models, which will be updated to output the new `CrossDomainLabel` format rather than a flat string.
+- `src/taskclf/infer/prediction.py`: Contains the `WindowPrediction` models, which will be updated to output the new semantic label structure (typically persisted inside `LabelEnvelope` with optional `observed` facts) rather than a flat string.
 
 ---
 
@@ -82,8 +84,9 @@ This document outlines the migration plan to `labels_v2` and highlights relevant
 
 **Tasks:**
 - [x] Draft the "Annotation playbook" containing canonical/boundary examples and the dominance checklist for the team.
-- [x] Write a data migration/mapping script to convert `v1` datasets to the `labels_v2` envelope, ensuring backward compatibility.
+- [x] Write a data migration/mapping script to convert `v1` datasets to `labels_v2` `LabelEnvelope` records, ensuring backward compatibility.
+- [x] Treat migrated records without telemetry backfill as semantic-only legacy records; native `labels_v2` records should carry both `observed` and `semantic`.
 
 **Codebase Touchpoints:**
 - `docs/guide/labels_v1.md`: Create a new `labels_v2_playbook.md` to serve as the annotation guide.
-- New scripts/files needed in `src/taskclf/data/` or `src/taskclf/cli/` to migrate existing datasets containing `LABEL_SET_V1` strings into `LabelEnvelope` structured records.
+- New scripts/files needed in `src/taskclf/data/` or `src/taskclf/cli/` to migrate existing datasets containing `LABEL_SET_V1` strings into `LabelEnvelope` structured records, backfilling `observed` when telemetry exists and otherwise emitting semantic-first legacy records with conservative provenance (`intent_basis`, `mode_source`, `support_state`).

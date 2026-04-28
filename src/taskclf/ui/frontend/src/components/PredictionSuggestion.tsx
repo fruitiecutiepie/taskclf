@@ -2,11 +2,13 @@ import {
   type Accessor,
   type Component,
   createEffect,
+  createResource,
   createSignal,
+  For,
   on,
   Show,
 } from "solid-js";
-import { notification_accept, notification_skip } from "../lib/api";
+import { core_labels_list, notification_accept, notification_skip } from "../lib/api";
 import { time_format } from "../lib/format";
 import { LABEL_COLORS } from "../lib/labelColors";
 import { frontend_log_error } from "../lib/log";
@@ -70,6 +72,9 @@ export const PredictionSuggestion: Component<{
   const [busy, set_busy] = createSignal(false);
   const [overwrite_pending, set_overwrite_pending] =
     createSignal<OverwritePending | null>(null);
+  const [change_label_open, set_change_label_open] = createSignal(false);
+  const [selected_label, set_selected_label] = createSignal<string | null>(null);
+  const [labels] = createResource(core_labels_list);
 
   createEffect(
     on(
@@ -78,14 +83,20 @@ export const PredictionSuggestion: Component<{
         return sg ? `${sg.block_start}:${sg.block_end}:${sg.suggested}` : "";
       },
       () => {
+        const sg = s();
         set_overwrite_pending(null);
+        set_change_label_open(false);
+        set_selected_label(sg?.suggested ?? null);
+        set_error(null);
       },
     ),
   );
 
-  async function suggestion_accept() {
+  const correction_label = () => selected_label() ?? s()?.suggested ?? "";
+
+  async function suggestion_save(label: string) {
     const sg = s();
-    if (!sg || busy()) {
+    if (!sg || busy() || !label) {
       return;
     }
     set_busy(true);
@@ -94,14 +105,15 @@ export const PredictionSuggestion: Component<{
       await notification_accept({
         block_start: sg.block_start,
         block_end: sg.block_end,
-        label: sg.suggested,
+        label,
       });
       set_overwrite_pending(null);
+      set_change_label_open(false);
       props.on_saved?.();
       props.on_dismiss?.("label_saved");
     } catch (err: unknown) {
       const pending = overwrite_pending_from_api_error(err, {
-        label: sg.suggested,
+        label,
         start: sg.block_start,
         end: sg.block_end,
         confidence: sg.confidence ?? 1,
@@ -117,6 +129,14 @@ export const PredictionSuggestion: Component<{
     } finally {
       set_busy(false);
     }
+  }
+
+  async function suggestion_accept() {
+    const sg = s();
+    if (!sg) {
+      return;
+    }
+    await suggestion_save(sg.suggested);
   }
 
   async function overwrite_confirm() {
@@ -180,6 +200,7 @@ export const PredictionSuggestion: Component<{
     try {
       await notification_skip();
       set_overwrite_pending(null);
+      set_change_label_open(false);
       props.on_dismiss?.("skipped");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to dismiss suggestion";
@@ -289,6 +310,26 @@ export const PredictionSuggestion: Component<{
             <button
               type="button"
               disabled={busy()}
+              onClick={() => {
+                const sg = s();
+                set_error(null);
+                set_selected_label(sg?.suggested ?? null);
+                set_change_label_open(true);
+              }}
+              style={{
+                ...btn_base,
+                border: "1px solid var(--border)",
+                background: "var(--surface)",
+                color: "var(--text)",
+                opacity: busy_opacity(),
+                cursor: busy_cursor(),
+              }}
+            >
+              Change label
+            </button>
+            <button
+              type="button"
+              disabled={busy()}
               onClick={suggestion_dismiss}
               style={{
                 ...btn_base,
@@ -303,6 +344,150 @@ export const PredictionSuggestion: Component<{
             </button>
           </div>
         </div>
+        <Show when={change_label_open()}>
+          <div
+            style={{
+              border: "1px solid var(--border)",
+              "border-radius": "var(--radius)",
+              background: "color-mix(in srgb, var(--surface) 92%, var(--warning))",
+              padding: "8px",
+              display: "flex",
+              "flex-direction": "column",
+              gap: "8px",
+            }}
+          >
+            <div
+              style={{
+                color: "var(--text-muted)",
+                "font-size": "0.72rem",
+                "line-height": "1.35",
+              }}
+            >
+              What should this time block be labeled instead?
+            </div>
+            <Show
+              when={!labels.loading}
+              fallback={
+                <div
+                  style={{
+                    color: "var(--text-muted)",
+                    "font-size": "0.68rem",
+                  }}
+                >
+                  Loading label choices...
+                </div>
+              }
+            >
+              <fieldset
+                aria-label="Choose replacement label"
+                style={{
+                  display: "grid",
+                  "grid-template-columns": "repeat(4, minmax(0, 1fr))",
+                  gap: "4px",
+                  border: "0",
+                  margin: "0",
+                  padding: "0",
+                }}
+              >
+                <For each={labels() ?? []}>
+                  {(label_name) => {
+                    const is_selected = () => label_name === correction_label();
+                    const is_suggested = () => label_name === s()?.suggested;
+                    return (
+                      <button
+                        type="button"
+                        aria-pressed={is_selected()}
+                        disabled={busy()}
+                        onClick={() => set_selected_label(label_name)}
+                        style={{
+                          padding: "5px 3px",
+                          "border-radius": "5px",
+                          border: is_selected()
+                            ? `1.5px solid ${LABEL_COLORS[label_name] ?? "var(--accent, #6366f1)"}`
+                            : is_suggested()
+                              ? "1px dashed var(--warning)"
+                              : "1px solid var(--border)",
+                          background: is_selected()
+                            ? "color-mix(in srgb, var(--accent, #6366f1) 14%, var(--surface))"
+                            : "var(--surface)",
+                          color: LABEL_COLORS[label_name] ?? "var(--text)",
+                          cursor: busy_cursor(),
+                          "font-size": "0.62rem",
+                          "font-weight": is_selected() ? "700" : "600",
+                          "text-align": "center",
+                          opacity: busy()
+                            ? "0.5"
+                            : is_selected()
+                              ? "1"
+                              : is_suggested()
+                                ? "0.9"
+                                : "0.78",
+                        }}
+                      >
+                        <span>{label_name}</span>
+                        <Show when={is_suggested()}>
+                          <span
+                            style={{
+                              display: "block",
+                              color: "var(--text-muted)",
+                              "font-size": "0.5rem",
+                              "font-weight": "600",
+                              "margin-top": "1px",
+                            }}
+                          >
+                            suggested
+                          </span>
+                        </Show>
+                      </button>
+                    );
+                  }}
+                </For>
+              </fieldset>
+            </Show>
+            <div
+              style={{
+                display: "flex",
+                "justify-content": "flex-end",
+                gap: "6px",
+                "flex-wrap": "wrap",
+              }}
+            >
+              <button
+                type="button"
+                disabled={busy()}
+                onClick={() => {
+                  set_change_label_open(false);
+                  set_selected_label(s()?.suggested ?? null);
+                }}
+                style={{
+                  ...btn_base,
+                  border: "1px solid var(--border)",
+                  background: "var(--surface)",
+                  color: "var(--text-muted)",
+                  opacity: busy_opacity(),
+                  cursor: busy_cursor(),
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={busy() || !correction_label()}
+                onClick={() => suggestion_save(correction_label())}
+                style={{
+                  ...btn_base,
+                  border: "1px solid var(--accent, #6366f1)",
+                  background: "var(--accent, #6366f1)",
+                  color: "#fff",
+                  opacity: busy_opacity(),
+                  cursor: busy() || !correction_label() ? "not-allowed" : "pointer",
+                }}
+              >
+                Save as {correction_label()}
+              </button>
+            </div>
+          </div>
+        </Show>
         <ActivitySummary time_range={suggestion_time_range} show_empty />
         <Show when={overwrite_pending()}>
           {(pending) => (

@@ -14,7 +14,18 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from taskclf.core.types import CoreLabel, Event, FeatureRow, LabelSpan, TitlePolicy
+from taskclf.core.types import (
+    AxisDecision,
+    CoreLabel,
+    Event,
+    FeatureRow,
+    LabelEnvelope,
+    LabelSpan,
+    Mode,
+    SemanticLabel,
+    SupportState,
+    TitlePolicy,
+)
 
 
 class TestFeatureRowValidation:
@@ -184,6 +195,35 @@ class TestLabelSpanValidation:
                 label="playing_games",
                 provenance="manual",
             )
+
+
+class TestLabelEnvelopeCompatibility:
+    """Legacy payloads should lift `label` into the new semantic field."""
+
+    def test_legacy_label_field_lifts_to_semantic(self) -> None:
+        envelope = LabelEnvelope.model_validate(
+            {
+                "rule_version": "2026-04-25.1",
+                "generated_at": "2026-04-25T00:00:00+00:00",
+                "evidence_window_ms": 30000,
+                "inference_window_ms": 180000,
+                "label": {
+                    "mode": {"value": "Produce", "confidence": 0.9},
+                    "support_state": "Supported",
+                },
+            }
+        )
+
+        assert isinstance(envelope.semantic, SemanticLabel)
+        assert envelope.semantic.mode == AxisDecision[Mode](
+            value=Mode.Produce, confidence=0.9
+        )
+        assert envelope.semantic.support_state == SupportState.Supported
+        assert envelope.label is envelope.semantic
+
+        dumped = envelope.model_dump(mode="json", exclude_none=True)
+        assert "label" not in dumped
+        assert dumped["semantic"]["mode"]["value"] == "Produce"
 
 
 class TestCoreLabelMatchesSchema:
