@@ -390,7 +390,7 @@ def build_features_from_aw_events(
         input_events: Optional sorted input events from
             ``aw-watcher-input``.  When provided, keyboard/mouse feature
             columns are populated; otherwise they remain ``None``.
-        bucket_seconds: Width of each time bucket in seconds (default 180 for labels_v2).
+        bucket_seconds: Width of each feature time bucket in seconds.
         session_start: If provided, used as the session start for every
             bucket (online mode).  When ``None`` (batch mode), sessions
             are detected from idle gaps in *events*.

@@ -15,6 +15,8 @@ class TestDefaultsTypes:
 
     def test_int_constants(self) -> None:
         int_names = [
+            "DEFAULT_EVIDENCE_BUCKET_SECONDS",
+            "DEFAULT_INFERENCE_BUCKET_SECONDS",
             "DEFAULT_BUCKET_SECONDS",
             "DEFAULT_POLL_SECONDS",
             "DEFAULT_SMOOTH_WINDOW",
@@ -114,6 +116,8 @@ class TestDefaultsTypes:
             n for n in dir(defaults) if not n.startswith("_") and n not in _imports
         }
         covered = {
+            "DEFAULT_EVIDENCE_BUCKET_SECONDS",
+            "DEFAULT_INFERENCE_BUCKET_SECONDS",
             "DEFAULT_BUCKET_SECONDS",
             "DEFAULT_POLL_SECONDS",
             "DEFAULT_IDLE_GAP_SECONDS",
