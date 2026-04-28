@@ -155,7 +155,7 @@ class AdaptiveHost implements Host {
           );
           // #endregion
         }
-      } catch {
+      } catch (err: unknown) {
         if (command.cmd === "showTransitionNotification") {
           // #region agent log
           agent_debug_log(
@@ -165,6 +165,19 @@ class AdaptiveHost implements Host {
             "electron transition notification invoke threw",
             {
               href: window.location.href,
+            },
+          );
+          // #endregion
+          // #region agent log
+          agent_debug_log(
+            "pre-fix",
+            "H6,H7,H8",
+            "src/taskclf/ui/frontend/src/lib/host.ts:99",
+            "electron transition notification invoke error detail",
+            {
+              href: window.location.href,
+              error_name: err instanceof Error ? err.name : null,
+              error_message: err instanceof Error ? err.message : String(err),
             },
           );
           // #endregion
