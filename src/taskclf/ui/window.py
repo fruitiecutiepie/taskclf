@@ -9,6 +9,7 @@ and state-panel child windows.
 from __future__ import annotations
 
 import datetime as dt
+import json
 import logging
 import platform
 import subprocess
@@ -24,6 +25,36 @@ _PANEL_SIZE = (280, 520)
 _CHILD_HIDE_DELAY_S = 0.3
 _DRAG_TOLERANCE = 10
 _TRANSITION_NOTIFICATION_TITLE = "taskclf — Activity changed"
+_AGENT_DEBUG_LOG_PATH = (
+    "/Users/audreysantoso/github/fruitiecutiepie/taskclf/.cursor/debug-f37ed4.log"
+)
+
+
+# region agent log
+def _agent_debug_log(
+    run_id: str,
+    hypothesis_id: str,
+    location: str,
+    message: str,
+    data: dict[str, Any],
+) -> None:
+    payload = {
+        "sessionId": "f37ed4",
+        "runId": run_id,
+        "hypothesisId": hypothesis_id,
+        "location": location,
+        "message": message,
+        "data": data,
+        "timestamp": int(dt.datetime.now(tz=dt.timezone.utc).timestamp() * 1000),
+    }
+    try:
+        with open(_AGENT_DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(payload, separators=(",", ":")) + "\n")
+    except OSError:
+        pass
+
+
+# endregion
 
 
 def _iso_dt_parse(value: Any) -> dt.datetime | None:
@@ -290,6 +321,20 @@ class WindowAPI:
 
     def show_transition_notification(self, prompt: dict[str, Any]) -> None:
         """Show a native desktop notification for a transition prompt."""
+        # region agent log
+        _agent_debug_log(
+            "pre-fix",
+            "H4",
+            "src/taskclf/ui/window.py:291",
+            "pywebview api show_transition_notification entered",
+            {
+                "block_start": prompt.get("block_start"),
+                "block_end": prompt.get("block_end"),
+                "suggested_label": prompt.get("suggested_label"),
+                "suggestion_text_present": prompt.get("suggestion_text") is not None,
+            },
+        )
+        # endregion
         _send_desktop_notification(
             _TRANSITION_NOTIFICATION_TITLE,
             _transition_notification_body(prompt),

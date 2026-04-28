@@ -11,6 +11,33 @@
 
 import type { PromptLabelEvent } from "./ws";
 
+// #region agent log
+function agent_debug_log(
+  runId: string,
+  hypothesisId: string,
+  location: string,
+  message: string,
+  data: Record<string, unknown>,
+) {
+  fetch("http://localhost:7434/ingest/307992f9-e352-421f-9c8b-95a59cddc80f", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Debug-Session-Id": "f37ed4",
+    },
+    body: JSON.stringify({
+      sessionId: "f37ed4",
+      runId,
+      hypothesisId,
+      location,
+      message,
+      data,
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+}
+// #endregion
+
 export type WindowMode = "compact" | "label" | "panel" | "dashboard";
 
 export type HostKind = "browser" | "pywebview" | "electron";
@@ -93,10 +120,55 @@ class AdaptiveHost implements Host {
 
   async invoke(command: HostCommand): Promise<void> {
     const electron_api = electron_api_ref();
+    if (command.cmd === "showTransitionNotification") {
+      // #region agent log
+      agent_debug_log(
+        "pre-fix",
+        "H4",
+        "src/taskclf/ui/frontend/src/lib/host.ts:94",
+        "host invoke received transition notification command",
+        {
+          host_kind: this.kind,
+          has_electron_api: electron_api !== null,
+          has_pywebview_api: pywebview_api_ref() !== null,
+          href: window.location.href,
+          block_start: command.prompt.block_start,
+          block_end: command.prompt.block_end,
+          suggested_label: command.prompt.suggested_label,
+        },
+      );
+      // #endregion
+    }
     if (electron_api) {
       try {
         await electron_api.invoke(command);
+        if (command.cmd === "showTransitionNotification") {
+          // #region agent log
+          agent_debug_log(
+            "pre-fix",
+            "H4",
+            "src/taskclf/ui/frontend/src/lib/host.ts:98",
+            "electron transition notification invoke resolved",
+            {
+              href: window.location.href,
+            },
+          );
+          // #endregion
+        }
       } catch {
+        if (command.cmd === "showTransitionNotification") {
+          // #region agent log
+          agent_debug_log(
+            "pre-fix",
+            "H4",
+            "src/taskclf/ui/frontend/src/lib/host.ts:99",
+            "electron transition notification invoke threw",
+            {
+              href: window.location.href,
+            },
+          );
+          // #endregion
+        }
         // Electron IPC can fail transiently while the shell is loading.
       }
       return;
@@ -104,6 +176,20 @@ class AdaptiveHost implements Host {
 
     const api = pywebview_api_ref();
     if (!api) {
+      if (command.cmd === "showTransitionNotification") {
+        // #region agent log
+        agent_debug_log(
+          "pre-fix",
+          "H4",
+          "src/taskclf/ui/frontend/src/lib/host.ts:106",
+          "transition notification command dropped because native api is unavailable",
+          {
+            href: window.location.href,
+            host_kind: this.kind,
+          },
+        );
+        // #endregion
+      }
       return;
     }
     try {
@@ -122,6 +208,17 @@ class AdaptiveHost implements Host {
           break;
         case "showTransitionNotification":
           await api.show_transition_notification(command.prompt);
+          // #region agent log
+          agent_debug_log(
+            "pre-fix",
+            "H4",
+            "src/taskclf/ui/frontend/src/lib/host.ts:124",
+            "pywebview transition notification invoke resolved",
+            {
+              href: window.location.href,
+            },
+          );
+          // #endregion
           break;
         case "hideWindow":
           await api.window_hide();
@@ -151,6 +248,19 @@ class AdaptiveHost implements Host {
           break;
       }
     } catch {
+      if (command.cmd === "showTransitionNotification") {
+        // #region agent log
+        agent_debug_log(
+          "pre-fix",
+          "H4",
+          "src/taskclf/ui/frontend/src/lib/host.ts:153",
+          "pywebview transition notification invoke threw",
+          {
+            href: window.location.href,
+          },
+        );
+        // #endregion
+      }
       // Show/hide may fail transiently; don't block the caller.
     }
   }

@@ -18,6 +18,33 @@ import { ActivitySummary } from "./ActivitySummary";
 import { ErrorBanner } from "./ErrorBanner";
 import { LabelOverwrite, type OverwritePending } from "./LabelOverwrite";
 
+// #region agent log
+function agent_debug_log(
+  runId: string,
+  hypothesisId: string,
+  location: string,
+  message: string,
+  data: Record<string, unknown>,
+) {
+  fetch("http://localhost:7434/ingest/307992f9-e352-421f-9c8b-95a59cddc80f", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Debug-Session-Id": "f37ed4",
+    },
+    body: JSON.stringify({
+      sessionId: "f37ed4",
+      runId,
+      hypothesisId,
+      location,
+      message,
+      data,
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+}
+// #endregion
+
 /** Matches `LabelOverwrite` / recorder control sizing. */
 const btn_base = {
   padding: "2px 10px",
@@ -84,6 +111,22 @@ export const PredictionSuggestion: Component<{
       },
       () => {
         const sg = s();
+        // #region agent log
+        agent_debug_log(
+          "pre-fix",
+          "H5",
+          "src/taskclf/ui/frontend/src/components/PredictionSuggestion.tsx:85",
+          "prediction suggestion state observed by component",
+          {
+            has_suggestion: sg != null,
+            block_start: sg?.block_start ?? null,
+            block_end: sg?.block_end ?? null,
+            suggested: sg?.suggested ?? null,
+            old_label: sg?.old_label ?? null,
+            href: window.location.href,
+          },
+        );
+        // #endregion
         set_overwrite_pending(null);
         set_change_label_open(false);
         set_selected_label(sg?.suggested ?? null);

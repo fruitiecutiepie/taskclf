@@ -3,6 +3,33 @@ import { createStore, produce, reconcile } from "solid-js/store";
 
 import { type ActivityProviderStatus, user_config_get } from "./api";
 
+// #region agent log
+function agent_debug_log(
+  runId: string,
+  hypothesisId: string,
+  location: string,
+  message: string,
+  data: Record<string, unknown>,
+) {
+  fetch("http://localhost:7434/ingest/307992f9-e352-421f-9c8b-95a59cddc80f", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Debug-Session-Id": "f37ed4",
+    },
+    body: JSON.stringify({
+      sessionId: "f37ed4",
+      runId,
+      hypothesisId,
+      location,
+      message,
+      data,
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+}
+// #endregion
+
 /**
  * Maps persisted config seconds to a timer duration; `null` means no auto-dismiss.
  * Exported for unit tests.
@@ -517,6 +544,25 @@ export function ws_store_new() {
             });
             break;
           case "suggest_label":
+            // #region agent log
+            agent_debug_log(
+              "pre-fix",
+              "H1,H5",
+              "src/taskclf/ui/frontend/src/lib/ws.ts:519",
+              "websocket suggest_label received",
+              {
+                block_start: data.block_start,
+                block_end: data.block_end,
+                suggested: data.suggested,
+                old_label: data.old_label,
+                confidence: data.confidence,
+                current_prompt_key: store.latest_prompt
+                  ? `${store.latest_prompt.block_start}|${store.latest_prompt.block_end}|${store.latest_prompt.suggested_label ?? ""}`
+                  : null,
+                href: window.location.href,
+              },
+            );
+            // #endregion
             setStore("active_suggestion", data);
             suggestion_badge_override_apply(undefined, data.suggested);
             suggestion_timer_start();
@@ -542,6 +588,23 @@ export function ws_store_new() {
             ws_stats_bump(now);
             break;
           case "prompt_label":
+            // #region agent log
+            agent_debug_log(
+              "pre-fix",
+              "H1,H2",
+              "src/taskclf/ui/frontend/src/lib/ws.ts:544",
+              "websocket prompt_label received",
+              {
+                block_start: data.block_start,
+                block_end: data.block_end,
+                suggested_label: data.suggested_label,
+                suggestion_text_present: data.suggestion_text != null,
+                prev_app: data.prev_app,
+                new_app: data.new_app,
+                href: window.location.href,
+              },
+            );
+            // #endregion
             setStore("latest_prompt", data);
             ws_stats_bump(now);
             break;
