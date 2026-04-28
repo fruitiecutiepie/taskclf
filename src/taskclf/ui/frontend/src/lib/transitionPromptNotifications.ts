@@ -58,6 +58,19 @@ function transition_prompt_notification_claim(prompt: PromptLabelEvent): boolean
   return true;
 }
 
+function transition_prompt_clone(prompt: PromptLabelEvent): PromptLabelEvent {
+  return {
+    type: "prompt_label",
+    prev_app: prompt.prev_app,
+    new_app: prompt.new_app,
+    block_start: prompt.block_start,
+    block_end: prompt.block_end,
+    duration_min: prompt.duration_min,
+    suggested_label: prompt.suggested_label,
+    suggestion_text: prompt.suggestion_text,
+  };
+}
+
 export function transition_prompt_notifications_bind(
   prompt: Accessor<PromptLabelEvent | null>,
   on_open_label_grid: () => void,
@@ -96,6 +109,22 @@ export function transition_prompt_notifications_bind(
       return;
     }
 
+    const cloneable_prompt = transition_prompt_clone(next_prompt);
+    // #region agent log
+    agent_debug_log(
+      "post-fix",
+      "H6",
+      "src/taskclf/ui/frontend/src/lib/transitionPromptNotifications.ts:98",
+      "transition prompt cloned for notification delivery",
+      {
+        notification_key,
+        cloned_type: cloneable_prompt.type,
+        host_kind: host.kind,
+        href: window.location.href,
+      },
+    );
+    // #endregion
+
     if (host.kind !== "browser") {
       // #region agent log
       agent_debug_log(
@@ -110,7 +139,10 @@ export function transition_prompt_notifications_bind(
         },
       );
       // #endregion
-      void host.invoke({ cmd: "showTransitionNotification", prompt: next_prompt });
+      void host.invoke({
+        cmd: "showTransitionNotification",
+        prompt: cloneable_prompt,
+      });
       return;
     }
 
@@ -128,6 +160,6 @@ export function transition_prompt_notifications_bind(
       },
     );
     // #endregion
-    transition_notification_show(next_prompt, on_open_label_grid);
+    transition_notification_show(cloneable_prompt, on_open_label_grid);
   });
 }

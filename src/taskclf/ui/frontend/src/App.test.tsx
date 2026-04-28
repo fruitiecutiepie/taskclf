@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@solidjs/testing-library";
+import { createStore } from "solid-js/store";
 import { describe, expect, it, vi } from "vitest";
 import { ws_store_stub } from "./test/ws_store_stub";
 
@@ -403,6 +404,7 @@ describe("App drag regions", () => {
       suggested_label: "ReadResearch",
       suggestion_text: "Was this ReadResearch? 10:00–10:05",
     };
+    const [prompt_store] = createStore(prompt);
 
     vi.doMock("./lib/host", () => ({
       host: {
@@ -474,7 +476,7 @@ describe("App drag regions", () => {
           paused: false,
         }),
         active_suggestion: () => null,
-        latest_prompt: () => prompt,
+        latest_prompt: () => prompt_store,
         live_status: () => null,
         label_grid_requested: () => 0,
         connection_status: () => "connected",
@@ -511,6 +513,8 @@ describe("App drag regions", () => {
       cmd: "showTransitionNotification",
       prompt,
     });
+    expect(host_invoke.mock.calls[0]?.[0].prompt).not.toBe(prompt_store);
+    expect(() => structuredClone(host_invoke.mock.calls[0]?.[0])).not.toThrow();
   });
 
   it("routes transition prompts through pywebview native notifications", async () => {
