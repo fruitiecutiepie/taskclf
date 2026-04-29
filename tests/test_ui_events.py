@@ -209,3 +209,44 @@ class TestSnapshot:
 
         snap = _run(_test())
         assert snap["tray_state"]["paused"] is True
+
+    def test_snapshot_retains_pending_suggestions(self) -> None:
+        async def _test() -> dict[str, dict[str, Any]]:
+            bus = EventBus()
+            await bus.publish(
+                {
+                    "type": "suggest_label",
+                    "suggestion_id": "first",
+                    "reason": "app_switch",
+                    "old_label": "Write",
+                    "suggested": "Review",
+                    "confidence": 0.93,
+                    "block_start": "2026-04-05T09:30:00Z",
+                    "block_end": "2026-04-05T10:00:00Z",
+                }
+            )
+            await bus.publish(
+                {
+                    "type": "suggest_label",
+                    "suggestion_id": "second",
+                    "reason": "app_switch",
+                    "old_label": "Review",
+                    "suggested": "Build",
+                    "confidence": 0.88,
+                    "block_start": "2026-04-05T10:00:00Z",
+                    "block_end": "2026-04-05T10:30:00Z",
+                }
+            )
+            await bus.publish(
+                {
+                    "type": "suggestion_cleared",
+                    "reason": "skipped",
+                    "suggestion_id": "first",
+                }
+            )
+            return bus.snapshot()
+
+        snap = _run(_test())
+        pending = snap["pending_suggestions"]["suggestions"]
+        assert [item["suggestion_id"] for item in pending] == ["second"]
+        assert pending[0]["suggested"] == "Build"

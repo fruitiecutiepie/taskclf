@@ -57,6 +57,7 @@ export type Prediction = {
 
 export type LabelSuggestion = {
   type: "suggest_label";
+  suggestion_id?: string;
   reason: string;
   old_label: string;
   suggested: string;
@@ -64,6 +65,30 @@ export type LabelSuggestion = {
   block_start: string;
   block_end: string;
 };
+
+type LabelSuggestionIdentity = Pick<
+  LabelSuggestion,
+  "block_start" | "block_end" | "suggestion_id"
+>;
+
+export function label_suggestion_key(suggestion: LabelSuggestionIdentity): string {
+  return (
+    suggestion.suggestion_id ?? `${suggestion.block_start}|${suggestion.block_end}`
+  );
+}
+
+function label_suggestion_time_ms(value: string): number {
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? ms : Number.MAX_SAFE_INTEGER;
+}
+
+function label_suggestion_compare(a: LabelSuggestion, b: LabelSuggestion): number {
+  return (
+    label_suggestion_time_ms(a.block_start) - label_suggestion_time_ms(b.block_start)
+    || label_suggestion_time_ms(a.block_end) - label_suggestion_time_ms(b.block_end)
+    || label_suggestion_key(a).localeCompare(label_suggestion_key(b))
+  );
+}
 
 export type StatusEvent = {
   type: "status";
@@ -179,9 +204,15 @@ export type PromptLabelEvent = {
 export type SuggestionClearedEvent = {
   type: "suggestion_cleared";
   reason: string;
+  suggestion_id?: string;
 };
 
 export type SuggestionClearReason = "label_saved" | "skipped" | string;
+
+export type PendingSuggestionsEvent = {
+  type: "pending_suggestions";
+  suggestions: LabelSuggestion[];
+};
 
 export type LabelStoppedEvent = {
   type: "label_stopped";
@@ -247,6 +278,7 @@ export type WSEvent =
   | ShowLabelGridEvent
   | PromptLabelEvent
   | SuggestionClearedEvent
+  | PendingSuggestionsEvent
   | LabelStoppedEvent
   | LabelsChangedEvent
   | NoModelTransitionEvent
@@ -290,6 +322,7 @@ export type WebSocketStore = {
   latest_prediction: Prediction | null;
   latest_tray_state: TrayState;
   active_suggestion: LabelSuggestion | null;
+  pending_suggestions: LabelSuggestion[];
   badge_display_override: BadgeDisplayOverride;
   badge_display_restore_label: string | null;
   latest_prompt: PromptLabelEvent | null;
@@ -307,6 +340,7 @@ export function ws_store_new() {
     latest_prediction: null,
     latest_tray_state: TrayStateDefault,
     active_suggestion: null,
+    pending_suggestions: [],
     badge_display_override: {
       enabled: false,
       label: null,
@@ -356,18 +390,6 @@ export function ws_store_new() {
     return state.live_status?.label ?? null;
   }
 
-  function badge_display_label_get(
-    state: Pick<
-      WebSocketStore,
-      "latest_prediction" | "live_status" | "badge_display_override"
-    >,
-  ) {
-    if (state.badge_display_override.enabled) {
-      return state.badge_display_override.label;
-    }
-    return badge_explicit_label_get(state);
-  }
-
   function badge_display_override_clear_if_superseded() {
     setStore(
       produce((state) => {
@@ -381,20 +403,99 @@ export function ws_store_new() {
     );
   }
 
-  function suggestion_badge_override_apply(
+  function suggestion_badge_override_apply_for_active(state: WebSocketStore) {
+    const active = state.active_suggestion;
+    if (!active) {
+      return;
+    }
+    if (
+      !state.badge_display_override.enabled
+      || state.badge_display_restore_label == null
+    ) {
+      state.badge_display_restore_label = badge_explicit_label_get(state);
+    }
+    state.badge_display_override.enabled = true;
+    state.badge_display_override.label = active.suggested;
+  }
+
+  function suggestion_active_set_in_state(
+    state: WebSocketStore,
+    preferred_key?: string | null,
+  ) {
+    const current_key = state.active_suggestion
+      ? label_suggestion_key(state.active_suggestion)
+      : null;
+    const key = preferred_key ?? current_key;
+    const next =
+      (key
+        ? state.pending_suggestions.find((item) => label_suggestion_key(item) === key)
+        : null)
+      ?? state.pending_suggestions[0]
+      ?? null;
+
+    state.active_suggestion = next;
+    suggestion_badge_override_apply_for_active(state);
+  }
+
+  function suggestion_queue_upsert(suggestion: LabelSuggestion) {
+    setStore(
+      produce((state) => {
+        const suggestion_key = label_suggestion_key(suggestion);
+        const active_key = state.active_suggestion
+          ? label_suggestion_key(state.active_suggestion)
+          : null;
+        const existing_index = state.pending_suggestions.findIndex(
+          (item) => label_suggestion_key(item) === suggestion_key,
+        );
+
+        if (existing_index >= 0) {
+          state.pending_suggestions[existing_index] = suggestion;
+        } else {
+          state.pending_suggestions.push(suggestion);
+        }
+        state.pending_suggestions.sort(label_suggestion_compare);
+        suggestion_active_set_in_state(state, active_key ?? suggestion_key);
+      }),
+    );
+  }
+
+  function suggestion_queue_replace(suggestions: LabelSuggestion[]) {
+    setStore(
+      produce((state) => {
+        state.pending_suggestions = [...suggestions].sort(label_suggestion_compare);
+        suggestion_active_set_in_state(state);
+      }),
+    );
+  }
+
+  function suggestion_queue_remove(
     reason?: SuggestionClearReason,
-    suggested_label?: string,
+    suggestion_id?: string | null,
   ) {
     setStore(
       produce((state) => {
-        if (suggested_label != null) {
-          state.badge_display_restore_label = badge_display_label_get(state);
-          state.badge_display_override.enabled = true;
-          state.badge_display_override.label = suggested_label;
-          return;
+        const active_key = state.active_suggestion
+          ? label_suggestion_key(state.active_suggestion)
+          : null;
+        const clear_key = suggestion_id ?? active_key;
+        const cleared_active =
+          active_key != null && clear_key != null && active_key === clear_key;
+
+        if (clear_key != null) {
+          state.pending_suggestions = state.pending_suggestions.filter(
+            (item) => label_suggestion_key(item) !== clear_key,
+          );
+        } else {
+          state.pending_suggestions = [];
         }
 
-        state.active_suggestion = null;
+        if (cleared_active) {
+          state.active_suggestion = null;
+        }
+        suggestion_active_set_in_state(state);
+        if (state.active_suggestion) {
+          return;
+        }
         if (!state.badge_display_override.enabled || reason == null) {
           return;
         }
@@ -402,6 +503,14 @@ export function ws_store_new() {
           state.badge_display_override.label = state.badge_display_restore_label;
         }
         state.badge_display_restore_label = null;
+      }),
+    );
+  }
+
+  function suggestion_select(suggestion: LabelSuggestion) {
+    setStore(
+      produce((state) => {
+        suggestion_active_set_in_state(state, label_suggestion_key(suggestion));
       }),
     );
   }
@@ -441,7 +550,7 @@ export function ws_store_new() {
     }
     suggestion_timer = setTimeout(() => {
       suggestion_timer = null;
-      suggestion_badge_override_apply();
+      suggestion_queue_remove();
     }, ttl_ms);
   }
 
@@ -492,6 +601,15 @@ export function ws_store_new() {
       }
       if (snap.tray_state) {
         setStore("latest_tray_state", snap.tray_state as TrayState);
+      }
+      if (snap.pending_suggestions) {
+        suggestion_queue_replace(
+          (snap.pending_suggestions as PendingSuggestionsEvent).suggestions,
+        );
+        suggestion_timer_start();
+      } else if (snap.suggest_label) {
+        suggestion_queue_upsert(snap.suggest_label as LabelSuggestion);
+        suggestion_timer_start();
       }
     } catch {
       // hydration is best-effort; the next push will update us
@@ -563,16 +681,20 @@ export function ws_store_new() {
               },
             );
             // #endregion
-            setStore("active_suggestion", data);
-            suggestion_badge_override_apply(undefined, data.suggested);
+            suggestion_queue_upsert(data);
             suggestion_timer_start();
             ws_stats_bump(now, (s) => {
               s.suggestion_count++;
             });
             break;
           case "suggestion_cleared":
-            suggestion_badge_override_apply(data.reason);
+            suggestion_queue_remove(data.reason, data.suggestion_id);
             suggestion_timer_clear();
+            ws_stats_bump(now);
+            break;
+          case "pending_suggestions":
+            suggestion_queue_replace(data.suggestions);
+            suggestion_timer_start();
             ws_stats_bump(now);
             break;
           case "label_stopped":
@@ -733,8 +855,14 @@ export function ws_store_new() {
     }
   }
 
-  function suggestion_dismiss(reason?: SuggestionClearReason) {
-    suggestion_badge_override_apply(reason);
+  function suggestion_dismiss(
+    reason?: SuggestionClearReason,
+    suggestion?: LabelSuggestion | null,
+  ) {
+    suggestion_queue_remove(
+      reason,
+      suggestion ? label_suggestion_key(suggestion) : null,
+    );
     suggestion_timer_clear();
   }
 
@@ -762,6 +890,7 @@ export function ws_store_new() {
     latest_prediction: () => store.latest_prediction,
     latest_tray_state: () => store.latest_tray_state,
     active_suggestion: () => store.active_suggestion,
+    pending_suggestions: () => store.pending_suggestions,
     badge_display_override: () => store.badge_display_override,
     latest_prompt: () => store.latest_prompt,
     live_status: () => store.live_status,
@@ -771,5 +900,6 @@ export function ws_store_new() {
     ws_stats: () => store.ws_stats,
     train_state: () => store.train_state,
     suggestion_dismiss,
+    suggestion_select,
   };
 }

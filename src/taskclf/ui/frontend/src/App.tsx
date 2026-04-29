@@ -358,8 +358,10 @@ const App: Component = () => {
               }}
               prediction={ws.latest_prediction}
               suggestion={ws.active_suggestion}
+              suggestions={ws.pending_suggestions}
               label_change_count={label_change_count}
               on_suggestion_dismiss={ws.suggestion_dismiss}
+              on_suggestion_select={ws.suggestion_select}
             />
           </div>
         </Show>
@@ -388,6 +390,7 @@ const App: Component = () => {
               latest_prediction={ws.latest_prediction}
               latest_tray_state={ws.latest_tray_state}
               active_suggestion={ws.active_suggestion}
+              pending_suggestions={ws.pending_suggestions}
               label_change_count={label_change_count}
               ws_stats={ws.ws_stats}
               train_state={ws.train_state}

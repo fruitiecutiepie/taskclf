@@ -1243,6 +1243,29 @@ class TestNotificationSkip:
         assert resp.status_code == 200
         assert resp.json() == {"status": "skipped"}
 
+    def test_skip_publishes_suggestion_id(self, data_dir: Path) -> None:
+        import threading
+
+        bus = EventBus()
+        app = create_app(data_dir=data_dir, event_bus=bus)
+
+        with TestClient(app) as tc, tc.websocket_connect("/ws/predictions") as ws:
+
+            def _post() -> None:
+                import time
+
+                time.sleep(0.05)
+                tc.post(
+                    "/api/notification/skip",
+                    json={"suggestion_id": "suggestion-1"},
+                )
+
+            threading.Thread(target=_post).start()
+            received = ws.receive_json()
+            assert received["type"] == "suggestion_cleared"
+            assert received["reason"] == "skipped"
+            assert received["suggestion_id"] == "suggestion-1"
+
 
 # ---------------------------------------------------------------------------
 # POST /api/window/show-label-grid  (Item 41)
@@ -2091,6 +2114,7 @@ class TestSuggestionCleared:
                 tc.post(
                     "/api/notification/accept",
                     json={
+                        "suggestion_id": "suggestion-1",
                         "block_start": "2026-02-27T09:00:00",
                         "block_end": "2026-02-27T10:00:00",
                         "label": "Build",
@@ -2101,6 +2125,7 @@ class TestSuggestionCleared:
             received = ws.receive_json()
             assert received["type"] == "suggestion_cleared"
             assert received["reason"] == "label_saved"
+            assert received["suggestion_id"] == "suggestion-1"
 
     def test_validation_error_no_suggestion_cleared(self, data_dir: Path) -> None:
         """TC-UI-SC-003: Invalid label does not emit suggestion_cleared."""

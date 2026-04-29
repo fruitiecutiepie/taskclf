@@ -169,6 +169,7 @@ export async function core_labels_list(): Promise<string[]> {
 }
 
 export async function notification_accept(body: {
+  suggestion_id?: string;
   block_start: string;
   block_end: string;
   label: string;
@@ -182,10 +183,13 @@ export async function notification_accept(body: {
   });
 }
 
-export async function notification_skip(): Promise<{ status: string }> {
+export async function notification_skip(body?: {
+  suggestion_id?: string;
+}): Promise<{ status: string }> {
   return api_json(`${BASE}/notification/skip`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined,
   });
 }
 

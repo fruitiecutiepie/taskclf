@@ -20,6 +20,7 @@ from collections.abc import Callable
 from typing import Any, Literal
 
 from fastapi import (
+    Body,
     FastAPI,
     Form,
     HTTPException,
@@ -206,6 +207,10 @@ class UserConfigUpdateRequest(BaseModel):
 
 
 class NotificationAcceptRequest(BaseModel):
+    suggestion_id: str | None = Field(
+        default=None,
+        description="Optional client-visible suggestion identifier to clear after save.",
+    )
     block_start: str = Field(description="ISO-8601 start of the activity block")
     block_end: str = Field(description="ISO-8601 end of the activity block")
     label: str = Field(description="Suggested label to accept")
@@ -218,6 +223,13 @@ class NotificationAcceptRequest(BaseModel):
         default=False,
         description="When true, skip overlap checks and allow "
         "multiple labels to coexist on the same time range.",
+    )
+
+
+class NotificationSkipRequest(BaseModel):
+    suggestion_id: str | None = Field(
+        default=None,
+        description="Optional client-visible suggestion identifier to clear.",
     )
 
 
@@ -1144,8 +1156,13 @@ def create_app(
     # -- REST: notification actions -------------------------------------------
 
     @app.post("/api/notification/skip")
-    async def notification_skip() -> dict[str, str]:
-        await bus.publish({"type": "suggestion_cleared", "reason": "skipped"})
+    async def notification_skip(
+        body: NotificationSkipRequest | None = Body(default=None),
+    ) -> dict[str, str]:
+        event: dict[str, Any] = {"type": "suggestion_cleared", "reason": "skipped"}
+        if body is not None and body.suggestion_id is not None:
+            event["suggestion_id"] = body.suggestion_id
+        await bus.publish(event)
         logger.info("Notification skipped by user (no label change needed)")
         return {"status": "skipped"}
 
@@ -1185,7 +1202,13 @@ def create_app(
         if on_label_saved is not None:
             on_label_saved()
 
-        await bus.publish({"type": "suggestion_cleared", "reason": "label_saved"})
+        event: dict[str, Any] = {
+            "type": "suggestion_cleared",
+            "reason": "label_saved",
+        }
+        if body.suggestion_id is not None:
+            event["suggestion_id"] = body.suggestion_id
+        await bus.publish(event)
         await publish_labels_changed("suggestion_accepted")
 
         if on_suggestion_accepted is not None:
@@ -1962,6 +1985,7 @@ def _create_dev_app_from_env() -> FastAPI:
             bus.publish_threadsafe(
                 {
                     "type": "suggest_label",
+                    "suggestion_id": f"{start.isoformat()}|{end.isoformat()}",
                     "reason": "app_switch",
                     "old_label": prev,
                     "suggested": suggested_label,

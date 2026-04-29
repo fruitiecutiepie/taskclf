@@ -147,6 +147,37 @@ describe("PredictionSuggestion", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows queued suggestions without replacing the focused suggestion", () => {
+    const active = suggestion_make({
+      suggestion_id: "first",
+      block_start: "2026-04-05T12:00:00Z",
+      block_end: "2026-04-05T13:00:00Z",
+      suggested: "Write",
+    });
+    const later = suggestion_make({
+      suggestion_id: "second",
+      block_start: "2026-04-05T13:00:00Z",
+      block_end: "2026-04-05T14:00:00Z",
+      suggested: "Build",
+    });
+    const on_select = vi.fn();
+
+    render(() => (
+      <PredictionSuggestion
+        suggestion={() => active}
+        suggestions={() => [active, later]}
+        on_select={on_select}
+      />
+    ));
+
+    expect(screen.getByText("Model suggestions (2 pending)")).toBeInTheDocument();
+    expect(screen.getByText("1 of 2")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Review suggestion 2: Build" }));
+
+    expect(on_select).toHaveBeenCalledWith(later);
+  });
+
   it("loads activity context for the suggestion block range", async () => {
     const suggestion = suggestion_make();
 

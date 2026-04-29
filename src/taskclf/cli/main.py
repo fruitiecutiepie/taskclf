@@ -4043,6 +4043,7 @@ def ui_serve_cmd(
                     bus.publish_threadsafe(
                         {
                             "type": "suggest_label",
+                            "suggestion_id": f"{start.isoformat()}|{end.isoformat()}",
                             "reason": "app_switch",
                             "old_label": prev,
                             "suggested": label,

@@ -26,6 +26,7 @@ export const StatusPanel: Component<{
   latest_prediction: Accessor<Prediction | null>;
   latest_tray_state: Accessor<TrayState>;
   active_suggestion: Accessor<LabelSuggestion | null>;
+  pending_suggestions?: Accessor<LabelSuggestion[]>;
   label_change_count?: Accessor<number>;
   ws_stats: Accessor<WSStats>;
   train_state: Accessor<TrainState>;
@@ -49,7 +50,10 @@ export const StatusPanel: Component<{
       <StatusPanelTab
         active={tab}
         on_change={set_tab}
-        history_pending={() => props.active_suggestion() !== null}
+        history_pending={() =>
+          (props.pending_suggestions?.().length ?? (props.active_suggestion() ? 1 : 0))
+          > 0
+        }
         on_history_pending_click={props.on_open_label_recorder}
       />
 
@@ -58,7 +62,12 @@ export const StatusPanel: Component<{
         <StatusPrediction prediction={props.latest_prediction} />
         <StatusModel tray_state={props.latest_tray_state} />
         <StatusTransitions tray_state={props.latest_tray_state} />
-        <StatusSuggestion suggestion={props.active_suggestion} />
+        <StatusSuggestion
+          suggestion={props.active_suggestion}
+          pending_count={() =>
+            props.pending_suggestions?.().length ?? (props.active_suggestion() ? 1 : 0)
+          }
+        />
         <StatusActivityWatch status={props.latest_status} />
         <StatusWebSocket status={props.status} ws_stats={props.ws_stats} />
         <StatusConfig tray_state={props.latest_tray_state} />

@@ -61,6 +61,7 @@ export function ws_store_stub() {
       paused: false,
     }),
     active_suggestion: () => null,
+    pending_suggestions: () => [],
     latest_prompt: () => null,
     live_status: () => null,
     label_grid_requested: () => 0,
@@ -87,5 +88,6 @@ export function ws_store_stub() {
       model_dir: null,
     }),
     suggestion_dismiss: vi.fn(),
+    suggestion_select: vi.fn(),
   };
 }

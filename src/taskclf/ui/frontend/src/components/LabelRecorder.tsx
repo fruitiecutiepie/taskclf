@@ -46,8 +46,13 @@ type LabelRecorderProps = {
   on_collapse: () => void;
   prediction?: Accessor<Prediction | null>;
   suggestion?: Accessor<LabelSuggestion | null>;
+  suggestions?: Accessor<LabelSuggestion[]>;
   label_change_count?: Accessor<number>;
-  on_suggestion_dismiss?: (reason?: SuggestionClearReason) => void;
+  on_suggestion_dismiss?: (
+    reason?: SuggestionClearReason,
+    suggestion?: LabelSuggestion | null,
+  ) => void;
+  on_suggestion_select?: (suggestion: LabelSuggestion) => void;
 };
 
 export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
@@ -269,8 +274,10 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
       <Show when={props.suggestion}>
         <PredictionSuggestion
           suggestion={props.suggestion ?? (() => null)}
+          suggestions={props.suggestions}
           on_saved={() => set_label_version((v) => v + 1)}
           on_dismiss={props.on_suggestion_dismiss}
+          on_select={props.on_suggestion_select}
         />
       </Show>
 

@@ -226,4 +226,63 @@ describe("ws_store_new badge display override", () => {
       });
     });
   });
+
+  it("queues distinct suggestions and clears only the targeted item", async () => {
+    const { store, socket } = await ws_store_connect();
+
+    const first = {
+      type: "suggest_label" as const,
+      suggestion_id: "2026-04-05T09:30:00Z|2026-04-05T10:00:00Z",
+      reason: "app_switch",
+      old_label: "Write",
+      suggested: "Review",
+      confidence: 0.93,
+      block_start: "2026-04-05T09:30:00Z",
+      block_end: "2026-04-05T10:00:00Z",
+    };
+    const second = {
+      type: "suggest_label" as const,
+      suggestion_id: "2026-04-05T10:00:00Z|2026-04-05T10:30:00Z",
+      reason: "app_switch",
+      old_label: "Review",
+      suggested: "Build",
+      confidence: 0.88,
+      block_start: "2026-04-05T10:00:00Z",
+      block_end: "2026-04-05T10:30:00Z",
+    };
+
+    socket.emit_message(first);
+    socket.emit_message(second);
+
+    await waitFor(() => {
+      expect(store.pending_suggestions()).toHaveLength(2);
+    });
+    expect(store.active_suggestion()?.suggested).toBe("Review");
+    expect(store.badge_display_override()).toEqual({
+      enabled: true,
+      label: "Review",
+    });
+
+    store.suggestion_select(second);
+    expect(store.active_suggestion()?.suggested).toBe("Build");
+    expect(store.badge_display_override()).toEqual({
+      enabled: true,
+      label: "Build",
+    });
+
+    socket.emit_message({
+      type: "suggestion_cleared",
+      reason: "skipped",
+      suggestion_id: second.suggestion_id,
+    });
+
+    await waitFor(() => {
+      expect(store.pending_suggestions()).toHaveLength(1);
+    });
+    expect(store.active_suggestion()?.suggested).toBe("Review");
+    expect(store.badge_display_override()).toEqual({
+      enabled: true,
+      label: "Review",
+    });
+  });
 });

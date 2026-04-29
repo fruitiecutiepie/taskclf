@@ -7,6 +7,7 @@ import { StatusSection } from "../ui/StatusSection";
 
 export const StatusSuggestion: Component<{
   suggestion: Accessor<LabelSuggestion | null>;
+  pending_count?: Accessor<number>;
 }> = (props) => {
   const sug = () => props.suggestion();
 
@@ -41,6 +42,11 @@ export const StatusSuggestion: Component<{
             label="confidence"
             value={`${Math.round(s().confidence * 100)}%`}
             tooltip="How confident the model is in this suggestion"
+          />
+          <StatusRow
+            label="pending"
+            value={`${props.pending_count?.() ?? 1}`}
+            tooltip="Number of unresolved model suggestions"
           />
           <StatusRow
             label="reason"

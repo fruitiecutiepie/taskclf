@@ -796,6 +796,7 @@ class TrayLabeler:
                 self._event_bus.publish_threadsafe(
                     {
                         "type": "suggest_label",
+                        "suggestion_id": f"{block_start.isoformat()}|{block_end.isoformat()}",
                         "reason": "app_switch",
                         "old_label": prev_app,
                         "suggested": self._suggested_label,

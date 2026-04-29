@@ -34,6 +34,9 @@ class EventBus:
     _loop: asyncio.AbstractEventLoop | None = field(init=False, default=None)
     _ready: threading.Event = field(init=False, default_factory=threading.Event)
     _latest: dict[str, dict[str, Any]] = field(init=False, default_factory=dict)
+    _pending_suggestions: dict[str, dict[str, Any]] = field(
+        init=False, default_factory=dict
+    )
     _latest_lock: threading.Lock = field(init=False, default_factory=threading.Lock)
 
     def bind_loop(self, loop: asyncio.AbstractEventLoop) -> None:
@@ -58,6 +61,30 @@ class EventBus:
         with self._latest_lock:
             return copy.deepcopy(self._latest)
 
+    def _suggestion_key_get(self, event: dict[str, Any]) -> str | None:
+        suggestion_id = event.get("suggestion_id")
+        if isinstance(suggestion_id, str) and suggestion_id:
+            return suggestion_id
+        block_start = event.get("block_start")
+        block_end = event.get("block_end")
+        if isinstance(block_start, str) and isinstance(block_end, str):
+            return f"{block_start}|{block_end}"
+        return None
+
+    def _pending_suggestions_snapshot_get(self) -> dict[str, Any]:
+        suggestions = sorted(
+            self._pending_suggestions.values(),
+            key=lambda item: (
+                str(item.get("block_start", "")),
+                str(item.get("block_end", "")),
+                str(item.get("suggestion_id", "")),
+            ),
+        )
+        return {
+            "type": "pending_suggestions",
+            "suggestions": [copy.deepcopy(item) for item in suggestions],
+        }
+
     async def publish(self, event: dict[str, Any]) -> None:
         """Broadcast *event* to all current subscribers.
 
@@ -68,6 +95,22 @@ class EventBus:
         event_type = event.get("type")
         if event_type:
             with self._latest_lock:
+                if event_type == "suggest_label":
+                    suggestion_key = self._suggestion_key_get(event)
+                    if suggestion_key is not None:
+                        self._pending_suggestions[suggestion_key] = event
+                        self._latest["pending_suggestions"] = (
+                            self._pending_suggestions_snapshot_get()
+                        )
+                elif event_type == "suggestion_cleared":
+                    suggestion_key = self._suggestion_key_get(event)
+                    if suggestion_key is not None:
+                        self._pending_suggestions.pop(suggestion_key, None)
+                    else:
+                        self._pending_suggestions.clear()
+                    self._latest["pending_suggestions"] = (
+                        self._pending_suggestions_snapshot_get()
+                    )
                 self._latest[event_type] = event
         async with self._lock:
             for q in self._subscribers:

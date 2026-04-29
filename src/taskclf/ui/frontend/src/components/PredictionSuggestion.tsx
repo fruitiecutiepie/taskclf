@@ -13,7 +13,11 @@ import { time_format } from "../lib/format";
 import { LABEL_COLORS } from "../lib/labelColors";
 import { frontend_log_error } from "../lib/log";
 import { overwrite_pending_from_api_error } from "../lib/overwrite_pending_from_api_error";
-import type { LabelSuggestion, SuggestionClearReason } from "../lib/ws";
+import {
+  type LabelSuggestion,
+  label_suggestion_key,
+  type SuggestionClearReason,
+} from "../lib/ws";
 import { ActivitySummary } from "./ActivitySummary";
 import { ErrorBanner } from "./ErrorBanner";
 import { LabelOverwrite, type OverwritePending } from "./LabelOverwrite";
@@ -91,8 +95,13 @@ function suggestion_range_format(
 
 export const PredictionSuggestion: Component<{
   suggestion: Accessor<LabelSuggestion | null>;
+  suggestions?: Accessor<LabelSuggestion[]>;
   on_saved?: () => void;
-  on_dismiss?: (reason?: SuggestionClearReason) => void;
+  on_dismiss?: (
+    reason?: SuggestionClearReason,
+    suggestion?: LabelSuggestion | null,
+  ) => void;
+  on_select?: (suggestion: LabelSuggestion) => void;
 }> = (props) => {
   const s = () => props.suggestion();
   const [error, set_error] = createSignal<string | null>(null);
@@ -102,6 +111,28 @@ export const PredictionSuggestion: Component<{
   const [change_label_open, set_change_label_open] = createSignal(false);
   const [selected_label, set_selected_label] = createSignal<string | null>(null);
   const [labels] = createResource(core_labels_list);
+  const pending_suggestions = () => {
+    const sg = s();
+    return props.suggestions?.() ?? (sg ? [sg] : []);
+  };
+  const active_key = () => {
+    const sg = s();
+    return sg ? label_suggestion_key(sg) : null;
+  };
+  const active_index = () => {
+    const key = active_key();
+    if (!key) {
+      return -1;
+    }
+    return pending_suggestions().findIndex(
+      (item) => label_suggestion_key(item) === key,
+    );
+  };
+  const pending_count = () => pending_suggestions().length;
+  const suggestion_position = () => {
+    const idx = active_index();
+    return idx >= 0 ? idx + 1 : 0;
+  };
 
   createEffect(
     on(
@@ -146,6 +177,7 @@ export const PredictionSuggestion: Component<{
     set_error(null);
     try {
       await notification_accept({
+        ...(sg.suggestion_id ? { suggestion_id: sg.suggestion_id } : {}),
         block_start: sg.block_start,
         block_end: sg.block_end,
         label,
@@ -153,7 +185,7 @@ export const PredictionSuggestion: Component<{
       set_overwrite_pending(null);
       set_change_label_open(false);
       props.on_saved?.();
-      props.on_dismiss?.("label_saved");
+      props.on_dismiss?.("label_saved", sg);
     } catch (err: unknown) {
       const pending = overwrite_pending_from_api_error(err, {
         label,
@@ -190,7 +222,9 @@ export const PredictionSuggestion: Component<{
     set_busy(true);
     set_error(null);
     try {
+      const sg = s();
       await notification_accept({
+        ...(sg?.suggestion_id ? { suggestion_id: sg.suggestion_id } : {}),
         block_start: pending.start,
         block_end: pending.end,
         label: pending.label,
@@ -198,7 +232,7 @@ export const PredictionSuggestion: Component<{
       });
       set_overwrite_pending(null);
       props.on_saved?.();
-      props.on_dismiss?.("label_saved");
+      props.on_dismiss?.("label_saved", sg);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "overwrite failed";
       frontend_log_error("Failed to overwrite with suggested label", err);
@@ -216,7 +250,9 @@ export const PredictionSuggestion: Component<{
     set_busy(true);
     set_error(null);
     try {
+      const sg = s();
       await notification_accept({
+        ...(sg?.suggestion_id ? { suggestion_id: sg.suggestion_id } : {}),
         block_start: pending.start,
         block_end: pending.end,
         label: pending.label,
@@ -224,7 +260,7 @@ export const PredictionSuggestion: Component<{
       });
       set_overwrite_pending(null);
       props.on_saved?.();
-      props.on_dismiss?.("label_saved");
+      props.on_dismiss?.("label_saved", sg);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "keep all failed";
       frontend_log_error("Failed to keep all with suggested label", err);
@@ -238,13 +274,16 @@ export const PredictionSuggestion: Component<{
     if (busy()) {
       return;
     }
+    const sg = s();
     set_busy(true);
     set_error(null);
     try {
-      await notification_skip();
+      await notification_skip(
+        sg?.suggestion_id ? { suggestion_id: sg.suggestion_id } : undefined,
+      );
       set_overwrite_pending(null);
       set_change_label_open(false);
-      props.on_dismiss?.("skipped");
+      props.on_dismiss?.("skipped", sg);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to dismiss suggestion";
       frontend_log_error("Failed to dismiss suggestion", err);
@@ -280,6 +319,91 @@ export const PredictionSuggestion: Component<{
           gap: "8px",
         }}
       >
+        <Show when={pending_count() > 1}>
+          <div
+            style={{
+              display: "flex",
+              "flex-direction": "column",
+              gap: "6px",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                "justify-content": "space-between",
+                "align-items": "center",
+                gap: "8px",
+                color: "var(--text-muted)",
+                "font-size": "0.68rem",
+                "font-weight": "700",
+                "letter-spacing": "0.02em",
+                "text-transform": "uppercase",
+              }}
+            >
+              <span>Model suggestions ({pending_count()} pending)</span>
+              <span>
+                {suggestion_position()} of {pending_count()}
+              </span>
+            </div>
+            <ul
+              aria-label="Pending suggestions"
+              style={{
+                display: "grid",
+                "grid-template-columns": "repeat(auto-fit, minmax(96px, 1fr))",
+                gap: "4px",
+                "list-style": "none",
+                margin: "0",
+                padding: "0",
+              }}
+            >
+              <For each={pending_suggestions()}>
+                {(item, index) => {
+                  const is_active = () => label_suggestion_key(item) === active_key();
+                  return (
+                    <li>
+                      <button
+                        type="button"
+                        aria-current={is_active() ? "true" : undefined}
+                        aria-label={`Review suggestion ${index() + 1}: ${item.suggested}`}
+                        disabled={busy()}
+                        onClick={() => props.on_select?.(item)}
+                        style={{
+                          border: is_active()
+                            ? "1.5px solid var(--warning)"
+                            : "1px solid var(--border)",
+                          background: is_active()
+                            ? "color-mix(in srgb, var(--warning) 18%, var(--surface))"
+                            : "var(--surface)",
+                          color: LABEL_COLORS[item.suggested] ?? "var(--text)",
+                          "border-radius": "6px",
+                          padding: "5px 6px",
+                          cursor: busy() ? "not-allowed" : "pointer",
+                          "text-align": "left",
+                          "font-size": "0.62rem",
+                          opacity: busy() ? "0.6" : "1",
+                          width: "100%",
+                        }}
+                      >
+                        <span
+                          style={{
+                            display: "block",
+                            color: "var(--text-muted)",
+                            "font-size": "0.55rem",
+                            "margin-bottom": "1px",
+                          }}
+                        >
+                          {time_format(item.block_start)} →{" "}
+                          {time_format(item.block_end)}
+                        </span>
+                        <span style={{ "font-weight": "700" }}>{item.suggested}</span>
+                      </button>
+                    </li>
+                  );
+                }}
+              </For>
+            </ul>
+          </div>
+        </Show>
         <div
           style={{
             display: "flex",
