@@ -63,33 +63,6 @@ function readAppDisplayName(): string {
 
 const APP_DISPLAY_NAME = readAppDisplayName();
 
-// #region agent log
-function agentDebugLog(
-  runId: string,
-  hypothesisId: string,
-  location: string,
-  message: string,
-  data: Record<string, unknown>,
-): void {
-  fetch("http://localhost:7434/ingest/307992f9-e352-421f-9c8b-95a59cddc80f", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Debug-Session-Id": "f37ed4",
-    },
-    body: JSON.stringify({
-      sessionId: "f37ed4",
-      runId,
-      hypothesisId,
-      location,
-      message,
-      data,
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-}
-// #endregion
-
 type HostCommand = {
   cmd: string;
   mode?: string;
@@ -906,82 +879,17 @@ function showTransitionNotification(
     "info",
   );
 
-  const body = transitionNotificationBody(prompt);
-  // #region agent log
-  agentDebugLog(
-    "pre-fix",
-    "H6,H7,H8",
-    "electron/main.ts:864",
-    "electron showTransitionNotification preparing notification",
-    {
-      platform: process.platform,
-      supports_actions: supportsActions,
-      actions_length: actions.length,
-      title: `${APP_DISPLAY_NAME} — Activity changed`,
-      body,
-      block_start: prompt.block_start,
-      block_end: prompt.block_end,
-      suggested_label: prompt.suggested_label,
-      notification_supported: Notification.isSupported(),
-    },
-  );
-  // #endregion
-
-  let notification: Notification;
-  try {
-    notification = new Notification({
-      title: `${APP_DISPLAY_NAME} — Activity changed`,
-      body,
-      actions,
-    });
-  } catch (err) {
-    // #region agent log
-    agentDebugLog(
-      "pre-fix",
-      "H6,H7,H8",
-      "electron/main.ts:882",
-      "electron notification constructor threw",
-      {
-        error_name: err instanceof Error ? err.name : null,
-        error_message: err instanceof Error ? err.message : String(err),
-        actions_length: actions.length,
-        notification_supported: Notification.isSupported(),
-      },
-    );
-    // #endregion
-    throw err;
-  }
+  const notification = new Notification({
+    title: `${APP_DISPLAY_NAME} — Activity changed`,
+    body: transitionNotificationBody(prompt),
+    actions,
+  });
 
   notification.on("show", () => {
     launcherLog("transition notification shown", "info");
-    // #region agent log
-    agentDebugLog(
-      "pre-fix",
-      "H6,H8",
-      "electron/main.ts:888",
-      "electron notification show event fired",
-      {
-        block_start: prompt.block_start,
-        block_end: prompt.block_end,
-      },
-    );
-    // #endregion
   });
   notification.on("failed", (_event, error) => {
     launcherLog(`transition notification failed: ${error}`, "error");
-    // #region agent log
-    agentDebugLog(
-      "pre-fix",
-      "H6,H8",
-      "electron/main.ts:891",
-      "electron notification failed event fired",
-      {
-        error,
-        block_start: prompt.block_start,
-        block_end: prompt.block_end,
-      },
-    );
-    // #endregion
   });
   notification.on("click", () => {
     launcherLog("transition notification clicked", "info");
@@ -1007,37 +915,7 @@ function showTransitionNotification(
     }
     void openLabelGridFromNotification();
   });
-  try {
-    notification.show();
-    // #region agent log
-    agentDebugLog(
-      "pre-fix",
-      "H6,H8",
-      "electron/main.ts:918",
-      "electron notification show returned",
-      {
-        block_start: prompt.block_start,
-        block_end: prompt.block_end,
-      },
-    );
-    // #endregion
-  } catch (err) {
-    // #region agent log
-    agentDebugLog(
-      "pre-fix",
-      "H6,H8",
-      "electron/main.ts:918",
-      "electron notification show threw",
-      {
-        error_name: err instanceof Error ? err.name : null,
-        error_message: err instanceof Error ? err.message : String(err),
-        block_start: prompt.block_start,
-        block_end: prompt.block_end,
-      },
-    );
-    // #endregion
-    throw err;
-  }
+  notification.show();
 }
 
 function applyDashboardWindowAction(action: "show" | "toggle"): void {
@@ -1397,6 +1275,23 @@ function updateFailureDetail(): string | undefined {
   return lastManifestCheckFailure ?? lastLauncherCheckFailure ?? undefined;
 }
 
+function launcherManualInstallInstructions(installerPath: string): string[] {
+  if (process.platform === "darwin") {
+    return [
+      `Installer: ${installerPath}`,
+      "The installer was revealed in Finder.",
+      `Open the DMG, drag ${APP_DISPLAY_NAME}.app to Applications, and replace the old app if prompted.`,
+      `After installation, quit and reopen ${APP_DISPLAY_NAME} to use the new launcher.`,
+    ];
+  }
+
+  return [
+    `Installer: ${installerPath}`,
+    "The installer was revealed in your file manager.",
+    `Run the installer, replace the old ${APP_DISPLAY_NAME} app if prompted, then quit and reopen ${APP_DISPLAY_NAME}.`,
+  ];
+}
+
 async function showLauncherUpdateReadyDialog(
   resolution: LauncherResolution,
   installerPath: string,
@@ -1405,11 +1300,7 @@ async function showLauncherUpdateReadyDialog(
     type: "info",
     title: "Launcher Update Ready",
     message: `${APP_DISPLAY_NAME} downloaded launcher v${resolution.latestVersion}.`,
-    detail: [
-      `Installer: ${installerPath}`,
-      "The installer was revealed in Finder/Explorer.",
-      "Complete the launcher install manually.",
-    ].join("\n"),
+    detail: launcherManualInstallInstructions(installerPath).join("\n"),
   });
 }
 
@@ -1437,7 +1328,7 @@ async function applyManualLauncherOnlyUpdate(
   await showLauncherUpdateReadyDialog(resolution, installerPath);
 }
 
-async function promptForCombinedRestart(
+async function promptForCombinedUpdateCompletion(
   payload: PayloadResolution,
   launcher: LauncherResolution,
   installerPath: string,
@@ -1445,15 +1336,15 @@ async function promptForCombinedRestart(
   const res = await dialog.showMessageBox({
     type: "info",
     title: "Updates Ready",
-    message: `${APP_DISPLAY_NAME} finished preparing the selected updates.`,
+    message: `${APP_DISPLAY_NAME} finished preparing the selected updates. The launcher still needs to be installed manually.`,
     detail: [
-      `Core will switch to backend v${payload.desiredVersion} on restart.`,
+      `Core can switch to backend v${payload.desiredVersion} on restart.`,
       `Launcher installer v${launcher.latestVersion} was downloaded to:`,
       installerPath,
       "",
-      "The installer was revealed in Finder/Explorer.",
+      ...launcherManualInstallInstructions(installerPath).slice(1),
     ].join("\n"),
-    buttons: ["Restart Now", "Later"],
+    buttons: ["Restart Core Only", "Later"],
     defaultId: 0,
     cancelId: 1,
   });
@@ -1482,7 +1373,7 @@ async function applyManualCombinedUpdate(
     shell.showItemInFolder(installerPath);
     launcherLog(`launcher update revealed: ${installerPath}`, "info");
     if (payload !== null) {
-      await promptForCombinedRestart(payload, launcher, installerPath);
+      await promptForCombinedUpdateCompletion(payload, launcher, installerPath);
       return;
     }
     await showLauncherUpdateReadyDialog(launcher, installerPath);
