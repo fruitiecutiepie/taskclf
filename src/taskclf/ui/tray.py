@@ -339,6 +339,95 @@ class TrayLabeler:
             return cli_val
         return saved.get(key, default)
 
+    def _current_auto_save_suggestion_min_confidence(self) -> float:
+        """Minimum model confidence (exclusive) to persist a suggestion without prompting."""
+        raw = self._config.as_dict().get("auto_save_suggestion_min_confidence", 1.0)
+        try:
+            x = float(raw)
+        except TypeError, ValueError:
+            return 1.0
+        return max(0.0, min(1.0, x))
+
+    def _try_auto_save_high_confidence_suggestion(
+        self,
+        block_start: dt.datetime,
+        block_end: dt.datetime,
+    ) -> bool:
+        """Write the suggested label without user confirmation when confidence is high enough.
+
+        Uses :func:`~taskclf.labels.store.append_label_span` with overlap checks.
+        Returns ``True`` when the span was saved (caller should skip prompts).
+        """
+        if self._suggested_label is None or self._suggested_confidence is None:
+            return False
+        thr = self._current_auto_save_suggestion_min_confidence()
+        if self._suggested_confidence <= thr:
+            return False
+
+        from taskclf.core.types import LabelSpan
+        from taskclf.labels.store import append_label_span
+
+        uid = self._config.user_id
+        span = LabelSpan(
+            start_ts=block_start,
+            end_ts=block_end,
+            label=self._suggested_label,
+            provenance="auto_suggestion",
+            user_id=uid,
+            confidence=self._suggested_confidence,
+        )
+        try:
+            append_label_span(span, self._labels_path, allow_overlap=False)
+        except ValueError:
+            logger.debug(
+                "Auto-save suggestion skipped (overlap): %s → %s",
+                block_start.isoformat(),
+                block_end.isoformat(),
+                exc_info=True,
+            )
+            return False
+        except Exception:
+            logger.warning("Failed to auto-save suggestion label", exc_info=True)
+            return False
+
+        self._on_label_saved()
+        self._on_suggestion_accepted()
+        logger.info(
+            "Auto-saved suggestion label %s (confidence=%.4f): %s → %s",
+            self._suggested_label,
+            self._suggested_confidence,
+            block_start.isoformat(),
+            block_end.isoformat(),
+        )
+
+        if self._event_bus is not None:
+            sid = f"{block_start.isoformat()}|{block_end.isoformat()}"
+            self._event_bus.publish_threadsafe(
+                {
+                    "type": "label_created",
+                    "label": self._suggested_label,
+                    "confidence": self._suggested_confidence,
+                    "ts": block_end.isoformat(),
+                    "start_ts": block_start.isoformat(),
+                    "extend_forward": False,
+                }
+            )
+            self._event_bus.publish_threadsafe(
+                {
+                    "type": "suggestion_cleared",
+                    "reason": "auto_saved_suggestion",
+                    "suggestion_id": sid,
+                }
+            )
+            self._event_bus.publish_threadsafe(
+                {
+                    "type": "labels_changed",
+                    "reason": "auto_saved_suggestion",
+                    "ts": block_end.isoformat(),
+                }
+            )
+        return True
+
     def _get_last_label_end(self) -> dt.datetime | None:
         """Return the latest label ``end_ts``, using a cache keyed on save count."""
         if self._last_label_cache_count == self._labels_saved_count:
@@ -760,6 +849,9 @@ class TrayLabeler:
             if is_lockscreen and idle_duration_min > 5:
                 self._last_label_cache_count = -1
                 self._publish_gap_fill_prompt("idle_return")
+            return
+
+        if self._try_auto_save_high_confidence_suggestion(block_start, block_end):
             return
 
         if self._event_bus is None or not self._event_bus.has_subscribers:

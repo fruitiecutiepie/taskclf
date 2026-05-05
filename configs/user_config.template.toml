@@ -34,6 +34,9 @@ ui_port = 8741
 # Auto-dismiss the model suggestion banner after N seconds; 0 keeps it until you act.
 suggestion_banner_ttl_seconds = 0
 
+# Persist model transition suggestions without clicking when confidence is strictly above this (0.0–1.0); 1.0 disables.
+auto_save_suggestion_min_confidence = 1.0
+
 
 # --- Transitions and gaps ---
 # How long a foreground app must stay dominant before a transition is detected.

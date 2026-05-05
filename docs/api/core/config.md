@@ -65,6 +65,9 @@ ui_port = 8741
 # Auto-dismiss the model suggestion banner after N seconds; 0 keeps it until you act.
 suggestion_banner_ttl_seconds = 0
 
+# Persist model transition suggestions without clicking when confidence is strictly above this (0.0–1.0); 1.0 disables.
+auto_save_suggestion_min_confidence = 1.0
+
 
 # --- Transitions and gaps ---
 # How long a foreground app must stay dominant before a transition is detected.
@@ -87,6 +90,7 @@ gap_fill_escalation_minutes = 480
 | `aw_timeout_seconds` | `int` | `10` | ActivityWatch HTTP timeout (seconds) |
 | `ui_port` | `int` | `8741` | Embedded labeling dashboard TCP port |
 | `suggestion_banner_ttl_seconds` | `int` | `0` | Auto-dismiss suggestion banner after N seconds; `0` until user acts |
+| `auto_save_suggestion_min_confidence` | `float` | `1.0` | Save transition suggestions without confirmation when model confidence is strictly greater than this (`1.0` disables); overlaps fall back to manual accept |
 | `transition_minutes` | `int` | `2` | Dominance time before a transition is detected (minutes) |
 | `idle_transition_minutes` | `int` | `1` | Threshold for lockscreen/idle / BreakIdle (minutes) |
 | `gap_fill_escalation_minutes` | `int` | `480` | Unlabeled time before gap-fill escalation (minutes) |
@@ -119,8 +123,8 @@ taskclf tray --username alice
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/api/config/user` | Read user_id, username, and `suggestion_banner_ttl_seconds` |
-| `PUT` | `/api/config/user` | Update username and/or `suggestion_banner_ttl_seconds` |
+| `GET` | `/api/config/user` | Read user_id, username, `suggestion_banner_ttl_seconds`, and `auto_save_suggestion_min_confidence` |
+| `PUT` | `/api/config/user` | Update username and/or UI-related settings above |
 
 ### `GET /api/config/user`
 
@@ -130,7 +134,8 @@ Returns:
 {
   "user_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "username": "alice",
-  "suggestion_banner_ttl_seconds": 0
+  "suggestion_banner_ttl_seconds": 0,
+  "auto_save_suggestion_min_confidence": 1.0
 }
 ```
 
@@ -139,7 +144,7 @@ Returns:
 Body (`user_id` is ignored -- it is immutable):
 
 ```json
-{"username": "bob", "suggestion_banner_ttl_seconds": 600}
+{"username": "bob", "suggestion_banner_ttl_seconds": 600, "auto_save_suggestion_min_confidence": 0.85}
 ```
 
 Returns the full updated config.

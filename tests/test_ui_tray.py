@@ -555,6 +555,122 @@ class TestHandleTransition:
         mock_notif.assert_called_once()
 
 
+class TestHandleTransitionAutoSave:
+    """High-confidence transition suggestions persisted without manual accept."""
+
+    @patch("taskclf.ui.tray._send_desktop_notification")
+    def test_default_threshold_does_not_auto_save(
+        self, _mock_notif: MagicMock, tmp_path: Path
+    ) -> None:
+        bus, captured = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+        mock_suggester = MagicMock()
+        mock_suggester.suggest.return_value = ("Build", 0.99)
+        labeler._suggester = mock_suggester
+
+        labeler._handle_transition(
+            "com.apple.Terminal",
+            "us.zoom.xos",
+            _BLOCK_START,
+            _BLOCK_END,
+        )
+
+        assert any(e["type"] == "suggest_label" for e in captured)
+        assert not (tmp_path / "labels_v1" / "labels.parquet").exists()
+
+    @patch("taskclf.ui.tray._send_desktop_notification")
+    def test_high_confidence_auto_saves_and_skips_prompt(
+        self, _mock_notif: MagicMock, tmp_path: Path
+    ) -> None:
+        bus, captured = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+        labeler._config.update({"auto_save_suggestion_min_confidence": 0.8})
+        mock_suggester = MagicMock()
+        mock_suggester.suggest.return_value = ("Build", 0.85)
+        labeler._suggester = mock_suggester
+
+        labeler._handle_transition(
+            "com.apple.Terminal",
+            "us.zoom.xos",
+            _BLOCK_START,
+            _BLOCK_END,
+        )
+
+        types = [e["type"] for e in captured]
+        assert "suggest_label" not in types
+        assert "prompt_label" not in types
+        assert "label_created" in types
+        lc = next(e for e in captured if e["type"] == "label_created")
+        assert lc["label"] == "Build"
+        assert lc["confidence"] == 0.85
+        cleared = next(e for e in captured if e["type"] == "suggestion_cleared")
+        assert cleared["reason"] == "auto_saved_suggestion"
+        assert labeler._labels_saved_count == 1
+
+        spans = read_label_spans(tmp_path / "labels_v1" / "labels.parquet")
+        assert len(spans) == 1
+        assert spans[0].label == "Build"
+        assert spans[0].provenance == "auto_suggestion"
+        assert spans[0].confidence == 0.85
+
+    @patch("taskclf.ui.tray._send_desktop_notification")
+    def test_at_threshold_does_not_auto_save(
+        self, _mock_notif: MagicMock, tmp_path: Path
+    ) -> None:
+        bus, captured = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+        labeler._config.update({"auto_save_suggestion_min_confidence": 0.85})
+        mock_suggester = MagicMock()
+        mock_suggester.suggest.return_value = ("Build", 0.85)
+        labeler._suggester = mock_suggester
+
+        labeler._handle_transition(
+            "com.apple.Terminal",
+            "us.zoom.xos",
+            _BLOCK_START,
+            _BLOCK_END,
+        )
+
+        assert any(e["type"] == "suggest_label" for e in captured)
+
+    @patch("taskclf.ui.tray._send_desktop_notification")
+    def test_overlap_falls_back_to_manual_suggestion_flow(
+        self, _mock_notif: MagicMock, tmp_path: Path
+    ) -> None:
+        bus, captured = _capture_bus()
+        labeler = _make_tray_labeler(tmp_path, event_bus=bus)
+        uid = labeler._config.user_id
+        labeler._config.update({"auto_save_suggestion_min_confidence": 0.5})
+        labels_path = tmp_path / "labels_v1" / "labels.parquet"
+        labels_path.parent.mkdir(parents=True, exist_ok=True)
+        append_label_span(
+            LabelSpan(
+                start_ts=_BLOCK_START,
+                end_ts=_BLOCK_END,
+                label="Meet",
+                provenance="manual",
+                user_id=uid,
+            ),
+            labels_path,
+        )
+
+        mock_suggester = MagicMock()
+        mock_suggester.suggest.return_value = ("Build", 0.99)
+        labeler._suggester = mock_suggester
+
+        labeler._handle_transition(
+            "com.apple.Terminal",
+            "us.zoom.xos",
+            _BLOCK_START,
+            _BLOCK_END,
+        )
+
+        assert any(e["type"] == "suggest_label" for e in captured)
+        spans = read_label_spans(labels_path)
+        assert len(spans) == 1
+        assert spans[0].label == "Meet"
+
+
 # ---------------------------------------------------------------------------
 # 46b — TrayLabeler._handle_poll tray_state event
 # ---------------------------------------------------------------------------

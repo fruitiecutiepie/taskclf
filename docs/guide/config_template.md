@@ -26,7 +26,7 @@ Authoritative key reference: [User Identity](../api/core/config.md).
 
 ## What still updates the file
 
-- Editing settings through the web UI where the API persists them (for example username or suggestion banner TTL) merges into `config.toml`.
+- Editing settings through the web UI where the API persists them (for example username, suggestion banner TTL, or auto-save suggestion threshold) merges into `config.toml`.
 - Setting `--username` on `taskclf tray` persists the display name when provided.
 - Any direct edit in a text editor.
 
