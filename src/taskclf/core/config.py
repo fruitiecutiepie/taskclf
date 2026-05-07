@@ -52,6 +52,9 @@ _LEGACY_JSON_FILENAME = "config.json"
 # Default UI port (tray / embedded server); kept here so starter template matches runtime.
 _DEFAULT_UI_PORT: int = 8741
 _DEFAULT_GAP_FILL_ESCALATION_MINUTES: int = 480
+# Auto-save transition suggestions when model confidence is strictly above this (0–1).
+# Default 1.0 disables auto-save (confidences are <= 1.0).
+_DEFAULT_AUTO_SAVE_SUGGESTION_MIN_CONFIDENCE: float = 1.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,6 +114,11 @@ USER_CONFIG_FIELDS: tuple[UserConfigField, ...] = (
         "suggestion_banner_ttl_seconds",
         0,
         "Auto-dismiss the model suggestion banner after N seconds; 0 keeps it until you act.",
+    ),
+    UserConfigField(
+        "auto_save_suggestion_min_confidence",
+        _DEFAULT_AUTO_SAVE_SUGGESTION_MIN_CONFIDENCE,
+        "Persist model transition suggestions without clicking when confidence is strictly above this (0.0–1.0); 1.0 disables.",
     ),
     UserConfigField(
         "transition_minutes",

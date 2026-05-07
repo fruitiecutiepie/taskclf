@@ -195,6 +195,13 @@ class UserConfigResponse(BaseModel):
         ge=0,
         description="0 disables auto-dismiss; positive values set the client timer in seconds.",
     )
+    auto_save_suggestion_min_confidence: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=1.0,
+        description="Save transition suggestions without confirmation when confidence "
+        "is strictly above this; 1.0 disables.",
+    )
 
 
 class UserConfigUpdateRequest(BaseModel):
@@ -203,6 +210,12 @@ class UserConfigUpdateRequest(BaseModel):
         default=None,
         ge=0,
         description="When set, persists suggestion banner TTL (0 = disabled).",
+    )
+    auto_save_suggestion_min_confidence: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="When set, persists auto-save threshold (1.0 = disabled).",
     )
 
 
@@ -1107,12 +1120,21 @@ def create_app(
             return 0
         return max(0, n)
 
+    def _auto_save_suggestion_min_confidence() -> float:
+        raw = user_config.as_dict().get("auto_save_suggestion_min_confidence", 1.0)
+        try:
+            x = float(raw)
+        except TypeError, ValueError:
+            return 1.0
+        return max(0.0, min(1.0, x))
+
     @app.get("/api/config/user")
     async def api_op_config_user_get() -> UserConfigResponse:
         return UserConfigResponse(
             user_id=user_config.user_id,
             username=user_config.username,
             suggestion_banner_ttl_seconds=_suggestion_banner_ttl_seconds(),
+            auto_save_suggestion_min_confidence=_auto_save_suggestion_min_confidence(),
         )
 
     @app.put("/api/config/user")
@@ -1129,6 +1151,7 @@ def create_app(
             user_id=user_config.user_id,
             username=user_config.username,
             suggestion_banner_ttl_seconds=_suggestion_banner_ttl_seconds(),
+            auto_save_suggestion_min_confidence=_auto_save_suggestion_min_confidence(),
         )
 
     # -- REST: window control -------------------------------------------------

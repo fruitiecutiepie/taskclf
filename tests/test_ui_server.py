@@ -1089,6 +1089,8 @@ class TestGetUserConfig:
         assert "suggestion_banner_ttl_seconds" in data
         assert isinstance(data["suggestion_banner_ttl_seconds"], int)
         assert data["suggestion_banner_ttl_seconds"] >= 0
+        assert "auto_save_suggestion_min_confidence" in data
+        assert 0.0 <= float(data["auto_save_suggestion_min_confidence"]) <= 1.0
         uuid.UUID(data["user_id"])  # validates it's a real UUID
 
     def test_user_id_stable_across_requests(self, client: TestClient) -> None:
@@ -1144,6 +1146,21 @@ class TestUpdateUserConfig:
         assert (
             client.get("/api/config/user").json()["suggestion_banner_ttl_seconds"]
             == 600
+        )
+
+    def test_update_auto_save_suggestion_min_confidence(
+        self, client: TestClient
+    ) -> None:
+        """PUT auto_save_suggestion_min_confidence persists and GET returns it."""
+        resp = client.put(
+            "/api/config/user",
+            json={"auto_save_suggestion_min_confidence": 0.75},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["auto_save_suggestion_min_confidence"] == 0.75
+        assert (
+            client.get("/api/config/user").json()["auto_save_suggestion_min_confidence"]
+            == 0.75
         )
 
 

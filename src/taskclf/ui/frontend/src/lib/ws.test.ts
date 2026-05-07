@@ -74,6 +74,7 @@ describe("ws_store_new badge display override", () => {
               user_id: "tester",
               username: "tester",
               suggestion_banner_ttl_seconds: 0,
+              auto_save_suggestion_min_confidence: 1,
             }),
           );
         }

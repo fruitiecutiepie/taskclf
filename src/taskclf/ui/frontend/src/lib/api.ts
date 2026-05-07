@@ -197,6 +197,8 @@ export type UserConfig = {
   user_id: string;
   username: string;
   suggestion_banner_ttl_seconds: number;
+  /** Save transition suggestions without confirmation when confidence > this (0–1); 1 = off */
+  auto_save_suggestion_min_confidence: number;
 };
 
 export async function user_config_get(): Promise<UserConfig> {
@@ -206,6 +208,7 @@ export async function user_config_get(): Promise<UserConfig> {
 export async function user_config_update(patch: {
   username?: string;
   suggestion_banner_ttl_seconds?: number;
+  auto_save_suggestion_min_confidence?: number;
 }): Promise<UserConfig> {
   return api_json(`${BASE}/config/user`, {
     method: "PUT",
