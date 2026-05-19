@@ -40,19 +40,9 @@ function suggestion_range_part_format(d: Date): string {
   });
 }
 
-function suggestion_range_format(
-  block_start: string | null | undefined,
-  block_end: string | null | undefined,
-): string {
-  if (!block_start || !block_end) {
-    return `${time_format(block_start)} → ${time_format(block_end)}`;
-  }
-
+function suggestion_range_format(block_start: string, block_end: string): string {
   const start = new Date(block_start);
   const end = new Date(block_end);
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-    return `${time_format(block_start)} → ${time_format(block_end)}`;
-  }
 
   const crosses_local_day =
     start.getFullYear() !== end.getFullYear()
@@ -257,6 +247,10 @@ export const PredictionSuggestion: Component<{
     const sg = s();
     return sg ? { start: sg.block_start, end: sg.block_end } : null;
   };
+  const active_suggestion_range = () => {
+    const sg = s();
+    return sg ? suggestion_range_format(sg.block_start, sg.block_end) : "";
+  };
 
   return (
     <Show when={s()}>
@@ -403,7 +397,7 @@ export const PredictionSuggestion: Component<{
                 "margin-top": "4px",
               }}
             >
-              {suggestion_range_format(s()?.block_start, s()?.block_end)}
+              {active_suggestion_range()}
             </div>
           </div>
           <div
