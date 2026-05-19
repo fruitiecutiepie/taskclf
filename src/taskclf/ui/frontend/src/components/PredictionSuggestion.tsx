@@ -60,7 +60,7 @@ function suggestion_range_format(
     || start.getDate() !== end.getDate();
 
   if (!crosses_local_day) {
-    return `${time_format(block_start)} → ${time_format(block_end)}`;
+    return `${suggestion_range_part_format(start)} → ${time_format(block_end)}`;
   }
 
   return `${suggestion_range_part_format(start)} → ${suggestion_range_part_format(end)}`;
@@ -349,8 +349,7 @@ export const PredictionSuggestion: Component<{
                             "margin-bottom": "1px",
                           }}
                         >
-                          {time_format(item.block_start)} →{" "}
-                          {time_format(item.block_end)}
+                          {suggestion_range_format(item.block_start, item.block_end)}
                         </span>
                         <span style={{ "font-weight": "700" }}>{item.suggested}</span>
                       </button>
