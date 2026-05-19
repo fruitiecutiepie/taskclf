@@ -92,6 +92,15 @@ function suggestion_make(overrides: Partial<LabelSuggestion> = {}): LabelSuggest
   };
 }
 
+function suggestion_range_part_text(d: Date): string {
+  return d.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function suggestion_range_text(block_start: string, block_end: string): string {
   const start = new Date(block_start);
   const end = new Date(block_end);
@@ -101,20 +110,10 @@ function suggestion_range_text(block_start: string, block_end: string): string {
     || start.getDate() !== end.getDate();
 
   if (!crosses_local_day) {
-    return `${time_format(block_start)} → ${time_format(block_end)}`;
+    return `${suggestion_range_part_text(start)} → ${time_format(block_end)}`;
   }
 
-  return `${start.toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  })} → ${end.toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  })}`;
+  return `${suggestion_range_part_text(start)} → ${suggestion_range_part_text(end)}`;
 }
 
 function overlap_error_make(): Error {
