@@ -75,7 +75,7 @@ export const LabelHistory: Component<{
             date_str: effective_selected_date(),
             label_change_count: props.label_change_count?.() ?? 0,
           }
-        : null,
+        : undefined,
     async (source) => {
       if (!source) {
         return [];
@@ -85,10 +85,10 @@ export const LabelHistory: Component<{
   );
   const [coreLabels] = createResource(core_labels_list);
 
-  const [expanded_key, set_expanded_key] = createSignal<string | null>(null);
+  const [expanded_key, set_expanded_key] = createSignal<string | undefined>(undefined);
   const [busy, set_busy] = createSignal(false);
-  const [flash, set_flash] = createSignal<string | null>(null);
-  const [error, set_error] = createSignal<string | null>(null);
+  const [flash, set_flash] = createSignal<string | undefined>(undefined);
+  const [error, set_error] = createSignal<string | undefined>(undefined);
 
   const day_data = createMemo(() => {
     const l = labels();
@@ -103,9 +103,9 @@ export const LabelHistory: Component<{
 
   function row_toggle(item: TimelineItem) {
     const key = item_key(item);
-    set_expanded_key(expanded_key() === key ? null : key);
-    set_flash(null);
-    set_error(null);
+    set_expanded_key(expanded_key() === key ? undefined : key);
+    set_flash(undefined);
+    set_error(undefined);
   }
 
   async function label_update_submit(
@@ -115,8 +115,8 @@ export const LabelHistory: Component<{
     new_end: string,
   ) {
     set_busy(true);
-    set_flash(null);
-    set_error(null);
+    set_flash(undefined);
+    set_error(undefined);
     try {
       await label_update({
         start_ts: item.start_ts,
@@ -127,8 +127,8 @@ export const LabelHistory: Component<{
       });
       set_flash(new_label);
       setTimeout(() => {
-        set_flash(null);
-        set_expanded_key(null);
+        set_flash(undefined);
+        set_expanded_key(undefined);
         refetch();
       }, 800);
     } catch (err: unknown) {
@@ -140,14 +140,14 @@ export const LabelHistory: Component<{
 
   async function label_delete_submit(item: LabelItem) {
     set_busy(true);
-    set_flash(null);
-    set_error(null);
+    set_flash(undefined);
+    set_error(undefined);
     try {
       await label_delete({
         start_ts: item.start_ts,
         end_ts: item.end_ts,
       });
-      set_expanded_key(null);
+      set_expanded_key(undefined);
       refetch();
     } catch (err: unknown) {
       set_error(err instanceof Error ? err.message : String(err));
@@ -158,8 +158,8 @@ export const LabelHistory: Component<{
 
   async function gap_create_submit(start_ts: string, end_ts: string, label: string) {
     set_busy(true);
-    set_flash(null);
-    set_error(null);
+    set_flash(undefined);
+    set_error(undefined);
     try {
       await label_create({
         start_ts,
@@ -168,8 +168,8 @@ export const LabelHistory: Component<{
       });
       set_flash(label);
       setTimeout(() => {
-        set_flash(null);
-        set_expanded_key(null);
+        set_flash(undefined);
+        set_expanded_key(undefined);
         refetch();
       }, 800);
     } catch (err: unknown) {
@@ -320,9 +320,9 @@ export const LabelHistory: Component<{
               return;
             }
             const key = item_key(item);
-            set_expanded_key(expanded_key() === key ? null : key);
-            set_flash(null);
-            set_error(null);
+            set_expanded_key(expanded_key() === key ? undefined : key);
+            set_flash(undefined);
+            set_error(undefined);
           }}
         />
         <For each={day_data().items}>
@@ -338,9 +338,9 @@ export const LabelHistory: Component<{
                   on_create={gap_create_submit}
                   core_labels={coreLabels() ?? []}
                   busy={busy()}
-                  flash={expanded_key() === item_key(item) ? flash() : null}
-                  error={expanded_key() === item_key(item) ? error() : null}
-                  on_error_close={() => set_error(null)}
+                  flash={expanded_key() === item_key(item) ? flash() : undefined}
+                  error={expanded_key() === item_key(item) ? error() : undefined}
+                  on_error_close={() => set_error(undefined)}
                 />
               }
             >
@@ -355,9 +355,9 @@ export const LabelHistory: Component<{
                 on_delete={() => label_delete_submit(item as LabelItem)}
                 core_labels={coreLabels() ?? []}
                 busy={busy()}
-                flash={expanded_key() === item_key(item) ? flash() : null}
-                error={expanded_key() === item_key(item) ? error() : null}
-                on_error_close={() => set_error(null)}
+                flash={expanded_key() === item_key(item) ? flash() : undefined}
+                error={expanded_key() === item_key(item) ? error() : undefined}
+                on_error_close={() => set_error(undefined)}
               />
             </Show>
           )}

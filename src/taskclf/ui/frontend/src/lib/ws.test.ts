@@ -5,10 +5,12 @@ import { suggestion_banner_ttl_ms_from_seconds, ws_store_new } from "./ws";
 
 describe("suggestion_banner_ttl_ms_from_seconds", () => {
   it("returns null when disabled or invalid", () => {
-    expect(suggestion_banner_ttl_ms_from_seconds(0)).toBeNull();
-    expect(suggestion_banner_ttl_ms_from_seconds(-1)).toBeNull();
-    expect(suggestion_banner_ttl_ms_from_seconds(Number.NaN)).toBeNull();
-    expect(suggestion_banner_ttl_ms_from_seconds(Number.POSITIVE_INFINITY)).toBeNull();
+    expect(suggestion_banner_ttl_ms_from_seconds(0)).toBeUndefined();
+    expect(suggestion_banner_ttl_ms_from_seconds(-1)).toBeUndefined();
+    expect(suggestion_banner_ttl_ms_from_seconds(Number.NaN)).toBeUndefined();
+    expect(
+      suggestion_banner_ttl_ms_from_seconds(Number.POSITIVE_INFINITY),
+    ).toBeUndefined();
   });
 
   it("returns milliseconds for positive seconds", () => {
@@ -27,10 +29,10 @@ class MockWebSocket {
 
   readonly url: string;
   readyState = MockWebSocket.CONNECTING;
-  onopen: ((event: Event) => void) | null = null;
-  onmessage: ((event: MessageEvent) => void) | null = null;
-  onclose: ((event: CloseEvent) => void) | null = null;
-  onerror: ((event: Event) => void) | null = null;
+  onopen: ((event: Event) => void) | undefined = undefined;
+  onmessage: ((event: MessageEvent) => void) | undefined = undefined;
+  onclose: ((event: CloseEvent) => void) | undefined = undefined;
+  onerror: ((event: Event) => void) | undefined = undefined;
 
   constructor(url: string) {
     this.url = url;
@@ -98,7 +100,7 @@ describe("ws_store_new badge display override", () => {
     let store!: ReturnType<typeof ws_store_new>;
     const mounted = render(() => {
       store = ws_store_new();
-      return null;
+      return undefined;
     });
     unmounts.push(mounted.unmount);
     return store;
@@ -151,7 +153,7 @@ describe("ws_store_new badge display override", () => {
       reason: "skipped",
     });
     await waitFor(() => {
-      expect(store.active_suggestion()).toBeNull();
+      expect(store.active_suggestion()).toBeUndefined();
     });
     expect(store.badge_display_override()).toEqual({
       enabled: true,
@@ -168,7 +170,7 @@ describe("ws_store_new badge display override", () => {
     await waitFor(() => {
       expect(store.badge_display_override()).toEqual({
         enabled: false,
-        label: null,
+        label: undefined,
       });
     });
   });
@@ -207,7 +209,7 @@ describe("ws_store_new badge display override", () => {
       reason: "label_saved",
     });
     await waitFor(() => {
-      expect(store.active_suggestion()).toBeNull();
+      expect(store.active_suggestion()).toBeUndefined();
     });
     expect(store.badge_display_override()).toEqual({
       enabled: true,
@@ -223,7 +225,7 @@ describe("ws_store_new badge display override", () => {
     await waitFor(() => {
       expect(store.badge_display_override()).toEqual({
         enabled: false,
-        label: null,
+        label: undefined,
       });
     });
   });

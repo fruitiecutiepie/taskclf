@@ -13,8 +13,8 @@ describe("PredictionBadge", () => {
       type: "status" as const,
       state: "idle" as const,
       current_app: "unknown",
-      current_app_since: null,
-      candidate_app: null,
+      current_app_since: undefined,
+      candidate_app: undefined,
       candidate_duration_s: 0,
       transition_threshold_s: 0,
       poll_seconds: 0,
@@ -27,7 +27,7 @@ describe("PredictionBadge", () => {
         state: "checking" as const,
         summary_available: false,
         endpoint: "http://localhost:5600",
-        source_id: null,
+        source_id: undefined,
         last_sample_count: 0,
         last_sample_breakdown: {},
         setup_title: "Activity source unavailable",
@@ -41,7 +41,7 @@ describe("PredictionBadge", () => {
         help_url: "https://activitywatch.net/",
       },
       aw_connected: false,
-      aw_bucket_id: null,
+      aw_bucket_id: undefined,
       aw_host: "http://localhost:5600",
       last_event_count: 0,
       last_app_counts: {},
@@ -49,12 +49,12 @@ describe("PredictionBadge", () => {
     latest_tray_state: () => ({
       type: "tray_state" as const,
       model_loaded: true,
-      model_dir: null,
-      model_schema_hash: null,
-      suggested_label: null,
-      suggested_confidence: null,
+      model_dir: undefined,
+      model_schema_hash: undefined,
+      suggested_label: undefined,
+      suggested_confidence: undefined,
       transition_count: 0,
-      last_transition: null,
+      last_transition: undefined,
       labels_saved_count: 0,
       data_dir: "~/.taskclf",
       ui_port: 0,
@@ -63,16 +63,16 @@ describe("PredictionBadge", () => {
     }),
     badge_display_override: () => ({
       enabled: false,
-      label: null,
+      label: undefined,
     }),
-    active_suggestion: () => null,
+    active_suggestion: () => undefined,
   };
 
   it("falls back to live status when there is no latest prediction", () => {
     render(() => (
       <PredictionBadge
         {...base_props}
-        latest_prediction={() => null}
+        latest_prediction={() => undefined}
         live_status={() => ({
           type: "live_status",
           label: "Write",

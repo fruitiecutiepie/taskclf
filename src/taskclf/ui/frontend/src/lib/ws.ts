@@ -2,18 +2,21 @@ import { onCleanup, onMount } from "solid-js";
 import { createStore, produce, reconcile } from "solid-js/store";
 
 import { type ActivityProviderStatus, user_config_get } from "./api";
+import { null_to_undefined } from "./nullish";
 
 /**
- * Maps persisted config seconds to a timer duration; `null` means no auto-dismiss.
+ * Maps persisted config seconds to a timer duration; `undefined` means no auto-dismiss.
  * Exported for unit tests.
  */
-export function suggestion_banner_ttl_ms_from_seconds(seconds: number): number | null {
+export function suggestion_banner_ttl_ms_from_seconds(
+  seconds: number,
+): number | undefined {
   if (!Number.isFinite(seconds) || seconds <= 0) {
-    return null;
+    return undefined;
   }
   const ms = Math.floor(seconds) * 1000;
   if (!Number.isFinite(ms) || ms <= 0) {
-    return null;
+    return undefined;
   }
   return Math.min(ms, Number.MAX_SAFE_INTEGER);
 }
@@ -67,8 +70,8 @@ export type StatusEvent = {
   type: "status";
   state: "idle" | "collecting" | "predicting" | "paused";
   current_app: string;
-  current_app_since: string | null;
-  candidate_app: string | null;
+  current_app_since: string | undefined;
+  candidate_app: string | undefined;
   candidate_duration_s: number;
   transition_threshold_s: number;
   poll_seconds: number;
@@ -77,7 +80,7 @@ export type StatusEvent = {
   uptime_s: number;
   activity_provider: ActivityProviderStatus;
   aw_connected: boolean;
-  aw_bucket_id: string | null;
+  aw_bucket_id: string | undefined;
   aw_host: string;
   last_event_count: number;
   last_app_counts: Record<string, number>;
@@ -86,8 +89,8 @@ const StatusEventDefault: StatusEvent = {
   type: "status",
   state: "idle",
   current_app: "unknown",
-  current_app_since: null,
-  candidate_app: null,
+  current_app_since: undefined,
+  candidate_app: undefined,
   candidate_duration_s: 0,
   transition_threshold_s: 0,
   poll_seconds: 0,
@@ -100,7 +103,7 @@ const StatusEventDefault: StatusEvent = {
     state: "checking",
     summary_available: false,
     endpoint: "http://localhost:5600",
-    source_id: null,
+    source_id: undefined,
     last_sample_count: 0,
     last_sample_breakdown: {},
     setup_title: "Activity source unavailable",
@@ -114,7 +117,7 @@ const StatusEventDefault: StatusEvent = {
     help_url: "https://activitywatch.net/",
   },
   aw_connected: false,
-  aw_bucket_id: null,
+  aw_bucket_id: undefined,
   aw_host: "http://localhost:5600",
   last_event_count: 0,
   last_app_counts: {},
@@ -131,12 +134,12 @@ export type TransitionInfo = {
 export type TrayState = {
   type: "tray_state";
   model_loaded: boolean;
-  model_dir: string | null;
-  model_schema_hash: string | null;
-  suggested_label: string | null;
-  suggested_confidence: number | null;
+  model_dir: string | undefined;
+  model_schema_hash: string | undefined;
+  suggested_label: string | undefined;
+  suggested_confidence: number | undefined;
   transition_count: number;
-  last_transition: TransitionInfo | null;
+  last_transition: TransitionInfo | undefined;
   labels_saved_count: number;
   data_dir: string;
   ui_port: number;
@@ -146,12 +149,12 @@ export type TrayState = {
 const TrayStateDefault: TrayState = {
   type: "tray_state",
   model_loaded: false,
-  model_dir: null,
-  model_schema_hash: null,
-  suggested_label: null,
-  suggested_confidence: null,
+  model_dir: undefined,
+  model_schema_hash: undefined,
+  suggested_label: undefined,
+  suggested_confidence: undefined,
   transition_count: 0,
-  last_transition: null,
+  last_transition: undefined,
   labels_saved_count: 0,
   data_dir: "~/.taskclf",
   ui_port: 0,
@@ -170,8 +173,8 @@ export type PromptLabelEvent = {
   block_start: string;
   block_end: string;
   duration_min: number;
-  suggested_label: string | null;
-  suggestion_text: string | null;
+  suggested_label: string | undefined;
+  suggestion_text: string | undefined;
 };
 
 export type SuggestionClearedEvent = {
@@ -226,15 +229,15 @@ export type TrainProgressEvent = {
   type: "train_progress";
   job_id: string;
   step: string;
-  progress_pct: number | null;
-  message: string | null;
+  progress_pct: number | undefined;
+  message: string | undefined;
 };
 
 export type TrainCompleteEvent = {
   type: "train_complete";
   job_id: string;
-  metrics: { macro_f1?: number; weighted_f1?: number } | null;
-  model_dir: string | null;
+  metrics: { macro_f1?: number; weighted_f1?: number } | undefined;
+  model_dir: string | undefined;
 };
 
 export type TrainFailedEvent = {
@@ -264,14 +267,14 @@ export type WSEvent =
 export type ConnectionStatus = "connecting" | "connected" | "disconnected";
 
 export type TrainState = {
-  job_id: string | null;
+  job_id: string | undefined;
   status: "idle" | "running" | "complete" | "failed";
-  step: string | null;
-  progress_pct: number | null;
-  message: string | null;
-  error: string | null;
-  metrics: { macro_f1?: number; weighted_f1?: number } | null;
-  model_dir: string | null;
+  step: string | undefined;
+  progress_pct: number | undefined;
+  message: string | undefined;
+  error: string | undefined;
+  metrics: { macro_f1?: number; weighted_f1?: number } | undefined;
+  model_dir: string | undefined;
 };
 
 export type WSStats = {
@@ -280,26 +283,26 @@ export type WSStats = {
   prediction_count: number;
   tray_state_count: number;
   suggestion_count: number;
-  last_message_at: string | null;
+  last_message_at: string | undefined;
   reconnect_count: number;
-  connected_since: string | null;
+  connected_since: string | undefined;
 };
 
 export type BadgeDisplayOverride = {
   enabled: boolean;
-  label: string | null;
+  label: string | undefined;
 };
 
 export type WebSocketStore = {
   latest_status: StatusEvent;
-  latest_prediction: Prediction | null;
+  latest_prediction: Prediction | undefined;
   latest_tray_state: TrayState;
-  active_suggestion: LabelSuggestion | null;
+  active_suggestion: LabelSuggestion | undefined;
   pending_suggestions: LabelSuggestion[];
   badge_display_override: BadgeDisplayOverride;
-  badge_display_restore_label: string | null;
-  latest_prompt: PromptLabelEvent | null;
-  live_status: LiveStatusEvent | null;
+  badge_display_restore_label: string | undefined;
+  latest_prompt: PromptLabelEvent | undefined;
+  live_status: LiveStatusEvent | undefined;
   label_grid_requested: number;
   label_change_count: number;
   train_state: TrainState;
@@ -310,28 +313,28 @@ export type WebSocketStore = {
 export function ws_store_new() {
   const [store, setStore] = createStore<WebSocketStore>({
     latest_status: StatusEventDefault,
-    latest_prediction: null,
+    latest_prediction: undefined,
     latest_tray_state: TrayStateDefault,
-    active_suggestion: null,
+    active_suggestion: undefined,
     pending_suggestions: [],
     badge_display_override: {
       enabled: false,
-      label: null,
+      label: undefined,
     },
-    badge_display_restore_label: null,
-    latest_prompt: null,
-    live_status: null,
+    badge_display_restore_label: undefined,
+    latest_prompt: undefined,
+    live_status: undefined,
     label_grid_requested: 0,
     label_change_count: 0,
     train_state: {
-      job_id: null,
+      job_id: undefined,
       status: "idle",
-      step: null,
-      progress_pct: null,
-      message: null,
-      error: null,
-      metrics: null,
-      model_dir: null,
+      step: undefined,
+      progress_pct: undefined,
+      message: undefined,
+      error: undefined,
+      metrics: undefined,
+      model_dir: undefined,
     },
     connection_status: "connecting",
     ws_stats: {
@@ -340,17 +343,17 @@ export function ws_store_new() {
       prediction_count: 0,
       tray_state_count: 0,
       suggestion_count: 0,
-      last_message_at: null,
+      last_message_at: undefined,
       reconnect_count: 0,
-      connected_since: null,
+      connected_since: undefined,
     },
   });
 
   let suggestion_ttl_seconds = 0;
 
-  let ws: WebSocket | null = null;
-  let reconnect_timer: ReturnType<typeof setTimeout> | null = null;
-  let suggestion_timer: ReturnType<typeof setTimeout> | null = null;
+  let ws: WebSocket | undefined;
+  let reconnect_timer: ReturnType<typeof setTimeout> | undefined;
+  let suggestion_timer: ReturnType<typeof setTimeout> | undefined;
   let retry_delay = 1000;
 
   function badge_explicit_label_get(
@@ -360,7 +363,7 @@ export function ws_store_new() {
     if (pred) {
       return pred.mapped_label || pred.label;
     }
-    return state.live_status?.label ?? null;
+    return state.live_status?.label ?? undefined;
   }
 
   function badge_display_override_clear_if_superseded() {
@@ -370,8 +373,8 @@ export function ws_store_new() {
           return;
         }
         state.badge_display_override.enabled = false;
-        state.badge_display_override.label = null;
-        state.badge_display_restore_label = null;
+        state.badge_display_override.label = undefined;
+        state.badge_display_restore_label = undefined;
       }),
     );
   }
@@ -383,7 +386,7 @@ export function ws_store_new() {
     }
     if (
       !state.badge_display_override.enabled
-      || state.badge_display_restore_label == null
+      || state.badge_display_restore_label === undefined
     ) {
       state.badge_display_restore_label = badge_explicit_label_get(state);
     }
@@ -393,18 +396,18 @@ export function ws_store_new() {
 
   function suggestion_active_set_in_state(
     state: WebSocketStore,
-    preferred_key?: string | null,
+    preferred_key?: string | undefined,
   ) {
     const current_key = state.active_suggestion
       ? label_suggestion_key(state.active_suggestion)
-      : null;
+      : undefined;
     const key = preferred_key ?? current_key;
     const next =
       (key
         ? state.pending_suggestions.find((item) => label_suggestion_key(item) === key)
-        : null)
+        : undefined)
       ?? state.pending_suggestions[0]
-      ?? null;
+      ?? undefined;
 
     state.active_suggestion = next;
     suggestion_badge_override_apply_for_active(state);
@@ -416,7 +419,7 @@ export function ws_store_new() {
         const suggestion_key = label_suggestion_key(suggestion);
         const active_key = state.active_suggestion
           ? label_suggestion_key(state.active_suggestion)
-          : null;
+          : undefined;
         const existing_index = state.pending_suggestions.findIndex(
           (item) => label_suggestion_key(item) === suggestion_key,
         );
@@ -443,18 +446,20 @@ export function ws_store_new() {
 
   function suggestion_queue_remove(
     reason?: SuggestionClearReason,
-    suggestion_id?: string | null,
+    suggestion_id?: string | undefined,
   ) {
     setStore(
       produce((state) => {
         const active_key = state.active_suggestion
           ? label_suggestion_key(state.active_suggestion)
-          : null;
+          : undefined;
         const clear_key = suggestion_id ?? active_key;
         const cleared_active =
-          active_key != null && clear_key != null && active_key === clear_key;
+          active_key !== undefined
+          && clear_key !== undefined
+          && active_key === clear_key;
 
-        if (clear_key != null) {
+        if (clear_key !== undefined) {
           state.pending_suggestions = state.pending_suggestions.filter(
             (item) => label_suggestion_key(item) !== clear_key,
           );
@@ -463,19 +468,19 @@ export function ws_store_new() {
         }
 
         if (cleared_active) {
-          state.active_suggestion = null;
+          state.active_suggestion = undefined;
         }
         suggestion_active_set_in_state(state);
         if (state.active_suggestion) {
           return;
         }
-        if (!state.badge_display_override.enabled || reason == null) {
+        if (!state.badge_display_override.enabled || reason === undefined) {
           return;
         }
         if (reason === "skipped") {
           state.badge_display_override.label = state.badge_display_restore_label;
         }
-        state.badge_display_restore_label = null;
+        state.badge_display_restore_label = undefined;
       }),
     );
   }
@@ -502,7 +507,7 @@ export function ws_store_new() {
           || !Number.isFinite(stop_ms)
           || pred_ms <= stop_ms
         ) {
-          state.latest_prediction = null;
+          state.latest_prediction = undefined;
         }
       }),
     );
@@ -511,18 +516,18 @@ export function ws_store_new() {
   function suggestion_timer_clear() {
     if (suggestion_timer) {
       clearTimeout(suggestion_timer);
-      suggestion_timer = null;
+      suggestion_timer = undefined;
     }
   }
 
   function suggestion_timer_start() {
     suggestion_timer_clear();
     const ttl_ms = suggestion_banner_ttl_ms_from_seconds(suggestion_ttl_seconds);
-    if (ttl_ms == null) {
+    if (ttl_ms === undefined) {
       return;
     }
     suggestion_timer = setTimeout(() => {
-      suggestion_timer = null;
+      suggestion_timer = undefined;
       suggestion_queue_remove();
     }, ttl_ms);
   }
@@ -554,12 +559,15 @@ export function ws_store_new() {
       if (!resp.ok) {
         return;
       }
-      const snap: Record<string, WSEvent> = await resp.json();
+      const snap = null_to_undefined<Record<string, WSEvent>>(await resp.json());
       if (snap.status) {
         setStore("latest_status", reconcile(snap.status as StatusEvent));
       }
       if (snap.prediction) {
-        setStore("latest_prediction", reconcile(snap.prediction as Prediction | null));
+        setStore(
+          "latest_prediction",
+          reconcile(snap.prediction as Prediction | undefined),
+        );
         badge_display_override_clear_if_superseded();
       }
       if (snap.live_status) {
@@ -612,7 +620,7 @@ export function ws_store_new() {
 
     ws.onmessage = (event) => {
       try {
-        const data: WSEvent = JSON.parse(event.data);
+        const data = null_to_undefined<WSEvent>(JSON.parse(event.data));
         const now = new Date().toISOString();
         switch (data.type) {
           case "status":
@@ -622,7 +630,7 @@ export function ws_store_new() {
             });
             break;
           case "prediction":
-            setStore("latest_prediction", reconcile(data as Prediction | null));
+            setStore("latest_prediction", reconcile(data as Prediction | undefined));
             badge_display_override_clear_if_superseded();
             ws_stats_bump(now, (s) => {
               s.prediction_count++;
@@ -677,7 +685,7 @@ export function ws_store_new() {
                 ts: data.ts,
                 mapped_label: data.label,
                 provenance: "manual",
-              } as Prediction | null),
+              } as Prediction | undefined),
             );
             badge_display_override_clear_if_superseded();
             ws_stats_bump(now, (s) => {
@@ -713,8 +721,8 @@ export function ws_store_new() {
                 t.status = "complete";
                 t.step = "done";
                 t.progress_pct = 100;
-                t.message = null;
-                t.error = null;
+                t.message = undefined;
+                t.error = undefined;
                 t.metrics = data.metrics;
                 t.model_dir = data.model_dir;
               }),
@@ -727,9 +735,9 @@ export function ws_store_new() {
               produce((t) => {
                 t.job_id = data.job_id;
                 t.status = "failed";
-                t.step = null;
-                t.progress_pct = null;
-                t.message = null;
+                t.step = undefined;
+                t.progress_pct = undefined;
+                t.message = undefined;
                 t.error = data.error;
               }),
             );
@@ -743,7 +751,7 @@ export function ws_store_new() {
 
     ws.onclose = () => {
       setStore("connection_status", "disconnected");
-      setStore("ws_stats", "connected_since", null);
+      setStore("ws_stats", "connected_since", undefined);
       reconnect_schedule();
     };
 
@@ -762,7 +770,7 @@ export function ws_store_new() {
     }
     const jitter = retry_delay * (0.5 + Math.random() * 0.5);
     reconnect_timer = setTimeout(() => {
-      reconnect_timer = null;
+      reconnect_timer = undefined;
       retry_delay = Math.min(retry_delay * 2, 30_000);
       setStore("ws_stats", "reconnect_count", (c) => c + 1);
       ws_connection_open();
@@ -773,7 +781,7 @@ export function ws_store_new() {
     retry_delay = 1000;
     if (reconnect_timer) {
       clearTimeout(reconnect_timer);
-      reconnect_timer = null;
+      reconnect_timer = undefined;
     }
     ws_connection_open();
   }
@@ -786,7 +794,7 @@ export function ws_store_new() {
       retry_delay = 1000;
       if (reconnect_timer) {
         clearTimeout(reconnect_timer);
-        reconnect_timer = null;
+        reconnect_timer = undefined;
       }
       ws_connection_open();
     }
@@ -794,11 +802,11 @@ export function ws_store_new() {
 
   function suggestion_dismiss(
     reason?: SuggestionClearReason,
-    suggestion?: LabelSuggestion | null,
+    suggestion?: LabelSuggestion,
   ) {
     suggestion_queue_remove(
       reason,
-      suggestion ? label_suggestion_key(suggestion) : null,
+      suggestion ? label_suggestion_key(suggestion) : undefined,
     );
     suggestion_timer_clear();
   }

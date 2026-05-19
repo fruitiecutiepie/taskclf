@@ -22,8 +22,8 @@ export const LabelHistoryRow: Component<{
   on_delete: () => void;
   core_labels: string[];
   busy: boolean;
-  flash: string | null;
-  error: string | null;
+  flash: string | undefined;
+  error: string | undefined;
   on_error_close: () => void;
 }> = (props) => {
   const is_open_ended = () => props.label_item.open_ended === true;
@@ -34,7 +34,9 @@ export const LabelHistoryRow: Component<{
       ? "until next label"
       : duration_fmt(end_d().getTime() - start_d().getTime());
   const [confirm_delete, set_confirm_delete] = createSignal(false);
-  const [pending_label, set_pending_label] = createSignal<string | null>(null);
+  const [pending_label, set_pending_label] = createSignal<string | undefined>(
+    undefined,
+  );
 
   const [start_time, set_start_time] = createSignal(time_input_value(start_d()));
   const [end_time, set_end_time] = createSignal(time_input_value(end_d()));
@@ -44,23 +46,23 @@ export const LabelHistoryRow: Component<{
     set_end_time(time_input_value(end_d()));
   });
 
-  const edited_range = (): TimeRange | null => {
+  const edited_range = (): TimeRange | undefined => {
     const start = time_input_date(props.date_str, start_time());
     const end = time_input_date(props.date_str, end_time());
     if (end.getTime() <= start.getTime()) {
-      return null;
+      return undefined;
     }
     return { start: start.toISOString(), end: end.toISOString() };
   };
 
-  const range_valid = () => edited_range() !== null;
+  const range_valid = () => edited_range() !== undefined;
 
   const time_changed = () =>
     start_time() !== time_input_value(start_d())
     || end_time() !== time_input_value(end_d());
 
   const label_changed = () =>
-    pending_label() !== null && pending_label() !== props.label_item.label;
+    pending_label() !== undefined && pending_label() !== props.label_item.label;
   const effective_label = () => pending_label() ?? props.label_item.label;
   const has_changes = () => label_changed() || time_changed();
 
@@ -245,7 +247,7 @@ export const LabelHistoryRow: Component<{
                     onClick={(e) => {
                       e.stopPropagation();
                       if (label_name === props.label_item.label) {
-                        set_pending_label(null);
+                        set_pending_label(undefined);
                       } else {
                         set_pending_label(label_name);
                       }
@@ -335,7 +337,7 @@ export const LabelHistoryRow: Component<{
                   disabled={props.busy}
                   onClick={(e) => {
                     e.stopPropagation();
-                    set_pending_label(null);
+                    set_pending_label(undefined);
                     set_start_time(time_input_value(start_d()));
                     set_end_time(time_input_value(end_d()));
                   }}
@@ -359,7 +361,7 @@ export const LabelHistoryRow: Component<{
                     const r = edited_range();
                     if (r) {
                       const label = effective_label();
-                      set_pending_label(null);
+                      set_pending_label(undefined);
                       props.on_update(label, r.start, r.end);
                     }
                   }}

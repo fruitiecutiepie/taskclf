@@ -11,7 +11,7 @@ type LabelLastProps = {
         end_ts: string;
         extend_forward?: boolean;
       }
-    | null
+    | undefined
     | undefined
   >;
   is_current?: Accessor<boolean>;

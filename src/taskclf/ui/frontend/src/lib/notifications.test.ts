@@ -61,10 +61,10 @@ describe("transition_notification_show", () => {
     const notification_close = vi.fn();
     const notification_ctor = vi.fn(function NotificationMock(this: {
       close: typeof notification_close;
-      onclick: (() => void) | null;
+      onclick: (() => void) | undefined;
     }) {
       this.close = notification_close;
-      this.onclick = null;
+      this.onclick = undefined;
     });
 
     Object.assign(notification_ctor, {
@@ -87,7 +87,7 @@ describe("transition_notification_show", () => {
       renotify: true,
       requireInteraction: true,
     });
-    expect(notification).not.toBeNull();
+    expect(notification).not.toBeUndefined();
 
     notification?.onclick?.(new MouseEvent("click"));
 
@@ -109,7 +109,7 @@ describe("transition_notification_show", () => {
 
     const { transition_notification_show } = await import("./notifications");
 
-    expect(transition_notification_show(prompt, vi.fn())).toBeNull();
+    expect(transition_notification_show(prompt, vi.fn())).toBeUndefined();
     expect(notification_ctor).not.toHaveBeenCalled();
   });
 
@@ -118,8 +118,8 @@ describe("transition_notification_show", () => {
 
     const no_suggestion_prompt: PromptLabelEvent = {
       ...prompt,
-      suggested_label: null,
-      suggestion_text: null,
+      suggested_label: undefined,
+      suggestion_text: undefined,
     };
     const notification_ctor = vi.fn(function NotificationMock() {});
     Object.assign(notification_ctor, {

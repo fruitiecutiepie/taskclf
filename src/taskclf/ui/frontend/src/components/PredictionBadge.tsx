@@ -14,11 +14,11 @@ import { ConnectionDot } from "./ConnectionDot";
 export const PredictionBadge: Component<{
   status: Accessor<ConnectionStatus>;
   latest_status: Accessor<StatusEvent>;
-  latest_prediction: Accessor<Prediction | null>;
-  live_status: Accessor<LiveStatusEvent | null>;
+  latest_prediction: Accessor<Prediction | undefined>;
+  live_status: Accessor<LiveStatusEvent | undefined>;
   badge_display_override?: Accessor<BadgeDisplayOverride>;
   latest_tray_state: Accessor<TrayState>;
-  active_suggestion: Accessor<LabelSuggestion | null>;
+  active_suggestion: Accessor<LabelSuggestion | undefined>;
   label_pinned?: Accessor<boolean>;
   panel_pinned?: Accessor<boolean>;
   on_toggle_panel?: () => void;
@@ -30,10 +30,10 @@ export const PredictionBadge: Component<{
 }> = (props) => {
   const prediction_label = () => {
     const pred = props.latest_prediction();
-    return pred ? pred.mapped_label || pred.label : null;
+    return pred ? pred.mapped_label || pred.label : undefined;
   };
 
-  const live_label = () => props.live_status()?.label ?? null;
+  const live_label = () => props.live_status()?.label ?? undefined;
 
   const display_label = () => {
     const override = props.badge_display_override?.();

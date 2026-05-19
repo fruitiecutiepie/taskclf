@@ -6,7 +6,7 @@ import { StatusRow } from "../ui/StatusRow";
 import { StatusSection } from "../ui/StatusSection";
 
 export const StatusPrediction: Component<{
-  prediction: Accessor<Prediction | null>;
+  prediction: Accessor<Prediction | undefined>;
 }> = (props) => {
   const pred = () => props.prediction();
 

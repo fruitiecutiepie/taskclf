@@ -75,9 +75,9 @@ export async function notification_permission_ensure(): Promise<boolean> {
 export function transition_notification_show(
   prompt: PromptLabelEvent,
   on_click: () => void,
-): Notification | null {
+): Notification | undefined {
   if (!permission_granted || !("Notification" in window)) {
-    return null;
+    return undefined;
   }
 
   const range = notification_range_format(prompt);

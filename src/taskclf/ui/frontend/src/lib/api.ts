@@ -1,3 +1,5 @@
+import { null_to_undefined } from "./nullish";
+
 const BASE = "/api";
 
 export type LabelResponse = {
@@ -5,8 +7,8 @@ export type LabelResponse = {
   end_ts: string;
   label: string;
   provenance: string;
-  user_id: string | null;
-  confidence: number | null;
+  user_id: string | undefined;
+  confidence: number | undefined;
   extend_forward: boolean;
 };
 
@@ -16,16 +18,16 @@ export type QueueItem = {
   bucket_start_ts: string;
   bucket_end_ts: string;
   reason: string;
-  confidence: number | null;
-  predicted_label: string | null;
+  confidence: number | undefined;
+  predicted_label: string | undefined;
   status: string;
 };
 
 export type FeatureSummary = {
   top_apps: { app_id: string; buckets: number }[];
-  mean_keys_per_min: number | null;
-  mean_clicks_per_min: number | null;
-  mean_scroll_per_min: number | null;
+  mean_keys_per_min: number | undefined;
+  mean_clicks_per_min: number | undefined;
+  mean_scroll_per_min: number | undefined;
   total_buckets: number;
   session_count: number;
 };
@@ -36,7 +38,7 @@ export type ActivityProviderStatus = {
   state: "checking" | "ready" | "setup_required";
   summary_available: boolean;
   endpoint: string;
-  source_id: string | null;
+  source_id: string | undefined;
   last_sample_count: number;
   last_sample_breakdown: Record<string, number>;
   setup_title: string;
@@ -54,7 +56,7 @@ export type ActivitySummary = FeatureSummary & {
   activity_provider: ActivityProviderStatus;
   recent_apps: AWLiveEntry[];
   range_state: "ok" | "no_data" | "provider_unavailable";
-  message: string | null;
+  message: string | undefined;
 };
 
 async function api_json<T>(url: string, init?: RequestInit): Promise<T> {
@@ -63,14 +65,14 @@ async function api_json<T>(url: string, init?: RequestInit): Promise<T> {
     const text = await res.text().catch(() => "");
     throw new Error(`${res.status}: ${text}`);
   }
-  return res.json();
+  return null_to_undefined(await res.json());
 }
 
 export async function labels_list(limit = 50): Promise<LabelResponse[]> {
   return api_json(`${BASE}/labels?limit=${limit}`);
 }
 
-export async function current_label_get(): Promise<LabelResponse | null> {
+export async function current_label_get(): Promise<LabelResponse | undefined> {
   return api_json(`${BASE}/labels/current`);
 }
 
@@ -220,26 +222,26 @@ export async function user_config_update(patch: {
 // -- Training ----------------------------------------------------------------
 
 export type TrainStatus = {
-  job_id: string | null;
+  job_id: string | undefined;
   status: "idle" | "running" | "complete" | "failed";
-  step: string | null;
-  progress_pct: number | null;
-  message: string | null;
-  error: string | null;
-  metrics: Record<string, unknown> | null;
-  model_dir: string | null;
-  started_at: string | null;
-  finished_at: string | null;
+  step: string | undefined;
+  progress_pct: number | undefined;
+  message: string | undefined;
+  error: string | undefined;
+  metrics: Record<string, unknown> | undefined;
+  model_dir: string | undefined;
+  started_at: string | undefined;
+  finished_at: string | undefined;
 };
 
 export type ModelBundle = {
   model_id: string;
   path: string;
   valid: boolean;
-  invalid_reason: string | null;
-  macro_f1: number | null;
-  weighted_f1: number | null;
-  created_at: string | null;
+  invalid_reason: string | undefined;
+  macro_f1: number | undefined;
+  weighted_f1: number | undefined;
+  created_at: string | undefined;
 };
 
 export type DataCheck = {

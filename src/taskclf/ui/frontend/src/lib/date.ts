@@ -84,16 +84,16 @@ export function time_input_date(dateStr: string, timeVal: string): Date {
 }
 
 /**
- * Quick-label gap shortcut text from a label's end time, or `null` when the
+ * Quick-label gap shortcut text from a label's end time, or `undefined` when the
  * control should stay hidden (under one rounded minute since end).
  */
 export function gap_shortcut_label_from_end(
   end_ms: number,
   now_ms: number,
-): string | null {
+): string | undefined {
   const ago = Math.round((now_ms - end_ms) / 60_000);
   if (ago < 1) {
-    return null;
+    return undefined;
   }
   if (ago >= 60) {
     return `gap ${Math.floor(ago / 60)}h${ago % 60 ? `${ago % 60}m` : ""}`;
@@ -123,9 +123,9 @@ export type TimeRange = {
   end: string;
 };
 
-export function time_range_minutes(mins: number): TimeRange | null {
+export function time_range_minutes(mins: number): TimeRange | undefined {
   if (mins < 1) {
-    return null;
+    return undefined;
   }
   const now = new Date();
   const start = new Date(now.getTime() - mins * 60_000);

@@ -22,27 +22,28 @@ export const StatusModel: Component<{
 }> = (props) => {
   const t = () => props.tray_state();
 
-  const [bundle_inspect, set_bundle_inspect] =
-    createSignal<CurrentModelBundleInspectResponse | null>(null);
-  const [bundle_inspect_error, set_bundle_inspect_error] = createSignal<string | null>(
-    null,
-  );
+  const [bundle_inspect, set_bundle_inspect] = createSignal<
+    CurrentModelBundleInspectResponse | undefined
+  >(undefined);
+  const [bundle_inspect_error, set_bundle_inspect_error] = createSignal<
+    string | undefined
+  >(undefined);
 
   createEffect(
     on(
       () => [t().model_loaded, t().model_dir] as const,
       async ([loaded, dir]) => {
         if (!loaded || !dir) {
-          set_bundle_inspect(null);
-          set_bundle_inspect_error(null);
+          set_bundle_inspect(undefined);
+          set_bundle_inspect_error(undefined);
           return;
         }
         try {
           const r = await model_bundle_inspect_current();
           set_bundle_inspect(r);
-          set_bundle_inspect_error(null);
+          set_bundle_inspect_error(undefined);
         } catch (e: unknown) {
-          set_bundle_inspect(null);
+          set_bundle_inspect(undefined);
           set_bundle_inspect_error(
             e instanceof Error ? e.message : "Bundle inspect failed",
           );

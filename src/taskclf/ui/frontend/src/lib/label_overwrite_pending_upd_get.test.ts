@@ -31,7 +31,7 @@ function selection_base(overrides: Partial<TimeSelection> = {}): TimeSelection {
   return {
     selected_minutes: 5,
     fill_from_last: false,
-    last_label_end_ts: null,
+    last_label_end_ts: undefined,
     extend_fwd: true,
     ...overrides,
   };
@@ -47,7 +47,7 @@ describe("label_overwrite_pending_upd_get", () => {
       selection_base({ selected_minutes: 5 }),
       now,
     );
-    expect(result).toBeNull();
+    expect(result).toBeUndefined();
   });
 
   it("preserves conflicts that still overlap after time change", () => {
@@ -59,7 +59,7 @@ describe("label_overwrite_pending_upd_get", () => {
       selection_base({ selected_minutes: 15 }),
       now,
     );
-    expect(result).not.toBeNull();
+    expect(result).not.toBeUndefined();
     expect(result?.conflicts).toHaveLength(1);
     expect(result?.conflicts[0].label).toBe("Communicate");
   });
@@ -78,7 +78,7 @@ describe("label_overwrite_pending_upd_get", () => {
       selection_base({ selected_minutes: 5 }),
       now,
     );
-    expect(result).not.toBeNull();
+    expect(result).not.toBeUndefined();
     expect(result?.conflicts).toHaveLength(1);
     expect(result?.conflicts[0].label).toBe("Review");
   });
@@ -93,7 +93,7 @@ describe("label_overwrite_pending_upd_get", () => {
       selection_base({ selected_minutes: 10 }),
       now,
     );
-    if (result === null) {
+    if (result === undefined) {
       throw new Error("expected non-null result");
     }
     expect(new Date(result.start).getUTCMinutes()).toBe(20);
@@ -110,7 +110,7 @@ describe("label_overwrite_pending_upd_get", () => {
       selection_base({ fill_from_last: true, last_label_end_ts: iso(10, 45) }),
       now,
     );
-    if (result === null) {
+    if (result === undefined) {
       throw new Error("expected non-null result");
     }
     expect(new Date(result.start).getUTCMinutes()).toBe(45);
@@ -126,7 +126,7 @@ describe("label_overwrite_pending_upd_get", () => {
       selection_base({ fill_from_last: true, last_label_end_ts: iso(10, 0) }),
       now,
     );
-    expect(result).toBeNull();
+    expect(result).toBeUndefined();
   });
 
   it("forces extend_forward when selected_minutes is 0", () => {
@@ -142,7 +142,7 @@ describe("label_overwrite_pending_upd_get", () => {
       selection_base({ selected_minutes: 0, extend_fwd: false }),
       now,
     );
-    expect(result).not.toBeNull();
+    expect(result).not.toBeUndefined();
     expect(result?.extend_forward).toBe(true);
   });
 
@@ -156,7 +156,7 @@ describe("label_overwrite_pending_upd_get", () => {
       selection_base({ selected_minutes: 5, extend_fwd: false }),
       now,
     );
-    expect(result).not.toBeNull();
+    expect(result).not.toBeUndefined();
     expect(result?.extend_forward).toBe(false);
   });
 
@@ -172,7 +172,7 @@ describe("label_overwrite_pending_upd_get", () => {
       selection_base({ selected_minutes: 5 }),
       now,
     );
-    expect(result).not.toBeNull();
+    expect(result).not.toBeUndefined();
     expect(result?.label).toBe("Communicate");
     expect(result?.confidence).toBe(0.8);
   });

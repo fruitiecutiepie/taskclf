@@ -7,7 +7,9 @@ export const LabelHistoryTimeline: Component<{
   segments: TimelineSegment[];
   on_segment_click?: (seg: TimelineSegment, index: number) => void;
 }> = (props) => {
-  const [tooltip, set_tooltip] = createSignal<{ text: string; x: number } | null>(null);
+  const [tooltip, set_tooltip] = createSignal<{ text: string; x: number } | undefined>(
+    undefined,
+  );
 
   return (
     <div style={{ position: "relative", "margin-top": "3px", "margin-bottom": "4px" }}>
@@ -55,7 +57,7 @@ export const LabelHistoryTimeline: Component<{
                 }
               }}
               onMouseLeave={(e) => {
-                set_tooltip(null);
+                set_tooltip(undefined);
                 if (!seg.label) {
                   e.currentTarget.style.background = "rgba(255,255,255,0.04)";
                 }

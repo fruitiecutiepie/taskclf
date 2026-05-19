@@ -46,9 +46,9 @@ function activity_summary_make(
     activity_provider: activity_provider_make(activity_provider),
     recent_apps: [],
     top_apps: [],
-    mean_keys_per_min: null,
-    mean_clicks_per_min: null,
-    mean_scroll_per_min: null,
+    mean_keys_per_min: undefined,
+    mean_clicks_per_min: undefined,
+    mean_scroll_per_min: undefined,
     total_buckets: 0,
     session_count: 0,
     range_state: "no_data",
@@ -199,7 +199,7 @@ describe("PredictionSuggestion", () => {
         activity_provider: activity_provider_make({
           state: "setup_required",
           summary_available: false,
-          source_id: null,
+          source_id: undefined,
         }),
         range_state: "provider_unavailable",
         message:
@@ -337,8 +337,8 @@ describe("PredictionSuggestion", () => {
         end_ts: suggestion.block_end,
         label: suggestion.suggested,
         provenance: "suggestion",
-        user_id: null,
-        confidence: null,
+        user_id: undefined,
+        confidence: undefined,
         extend_forward: false,
       });
 
@@ -392,8 +392,8 @@ describe("PredictionSuggestion", () => {
         end_ts: suggestion.block_end,
         label: suggestion.suggested,
         provenance: "suggestion",
-        user_id: null,
-        confidence: null,
+        user_id: undefined,
+        confidence: undefined,
         extend_forward: false,
       });
 
@@ -427,8 +427,8 @@ describe("PredictionSuggestion", () => {
         end_ts: suggestion.block_end,
         label: "Debug",
         provenance: "suggestion",
-        user_id: null,
-        confidence: null,
+        user_id: undefined,
+        confidence: undefined,
         extend_forward: false,
       });
 
@@ -464,8 +464,8 @@ describe("PredictionSuggestion", () => {
         end_ts: suggestion.block_end,
         label: "Debug",
         provenance: "suggestion",
-        user_id: null,
-        confidence: null,
+        user_id: undefined,
+        confidence: undefined,
         extend_forward: false,
       });
 

@@ -42,40 +42,43 @@ export const TrainingPanel: Component<{
   );
   const [synthetic, set_synthetic] = createSignal(false);
 
-  const [data_check, set_data_check] = createSignal<DataCheck | null>(null);
-  const [checked_range, set_checked_range] = createSignal<{
-    from: string;
-    to: string;
-  } | null>(null);
+  const [data_check, set_data_check] = createSignal<DataCheck | undefined>(undefined);
+  const [checked_range, set_checked_range] = createSignal<
+    | {
+        from: string;
+        to: string;
+      }
+    | undefined
+  >(undefined);
   const [models, set_models] = createSignal<ModelBundle[]>([]);
   const [checking, set_checking] = createSignal(false);
-  const [check_error, set_check_error] = createSignal<string | null>(null);
-  const [train_error, set_train_error] = createSignal<string | null>(null);
+  const [check_error, set_check_error] = createSignal<string | undefined>(undefined);
+  const [train_error, set_train_error] = createSignal<string | undefined>(undefined);
   const [submitting, set_submitting] = createSignal(false);
   const [confirm_pending, set_confirm_pending] = createSignal(false);
   const [dismissed_run_error_key, set_dismissed_run_error_key] = createSignal<
-    string | null
-  >(null);
+    string | undefined
+  >(undefined);
 
-  const [expanded_bundle_id, set_expanded_bundle_id] = createSignal<string | null>(
-    null,
+  const [expanded_bundle_id, set_expanded_bundle_id] = createSignal<string | undefined>(
+    undefined,
   );
   const [bundle_inspect_by_id, set_bundle_inspect_by_id] = createSignal<
     Record<string, ModelBundleInspectBody | { error: string }>
   >({});
   const [bundle_inspect_loading_id, set_bundle_inspect_loading_id] = createSignal<
-    string | null
-  >(null);
+    string | undefined
+  >(undefined);
 
   const ts = () => props.train_state();
   const is_running = () => ts().status === "running";
   const run_error_key = () =>
-    ts().error ? `${ts().job_id ?? "no-job"}:${ts().error}` : null;
+    ts().error ? `${ts().job_id ?? "no-job"}:${ts().error}` : undefined;
   const visible_run_error = createMemo(() => {
     const error = ts().error;
     const key = run_error_key();
     if (!error || key === dismissed_run_error_key()) {
-      return null;
+      return undefined;
     }
     return error;
   });
@@ -84,9 +87,9 @@ export const TrainingPanel: Component<{
     on(
       () => [date_from(), date_to()],
       () => {
-        set_data_check(null);
-        set_checked_range(null);
-        set_check_error(null);
+        set_data_check(undefined);
+        set_checked_range(undefined);
+        set_check_error(undefined);
       },
       { defer: true },
     ),
@@ -107,8 +110,8 @@ export const TrainingPanel: Component<{
     on(
       run_error_key,
       (key) => {
-        if (key === null) {
-          set_dismissed_run_error_key(null);
+        if (key === undefined) {
+          set_dismissed_run_error_key(undefined);
         }
       },
       { defer: true },
@@ -128,7 +131,7 @@ export const TrainingPanel: Component<{
 
   const train_disabled_reason = createMemo(() => {
     if (synthetic()) {
-      return null;
+      return undefined;
     }
     const dc = data_check();
     if (!dc) {
@@ -143,7 +146,7 @@ export const TrainingPanel: Component<{
     if (dc.trainable_rows === 0) {
       return "Labels don't overlap any feature windows — adjust labels or date range";
     }
-    return null;
+    return undefined;
   });
 
   function models_sorted(ml: ModelBundle[]) {
@@ -168,7 +171,7 @@ export const TrainingPanel: Component<{
 
   async function toggle_bundle_inspect(model_id: string) {
     if (expanded_bundle_id() === model_id) {
-      set_expanded_bundle_id(null);
+      set_expanded_bundle_id(undefined);
       return;
     }
     set_expanded_bundle_id(model_id);
@@ -186,7 +189,7 @@ export const TrainingPanel: Component<{
         [model_id]: { error: msg },
       }));
     } finally {
-      set_bundle_inspect_loading_id(null);
+      set_bundle_inspect_loading_id(undefined);
     }
   }
 
@@ -195,7 +198,7 @@ export const TrainingPanel: Component<{
       return;
     }
     set_checking(true);
-    set_check_error(null);
+    set_check_error(undefined);
     try {
       const [dc, ml] = await Promise.all([
         training_data_check(date_from(), date_to()),
@@ -223,7 +226,7 @@ export const TrainingPanel: Component<{
     }
     set_confirm_pending(false);
     set_submitting(true);
-    set_train_error(null);
+    set_train_error(undefined);
     try {
       await training_start({
         date_from: date_from(),
@@ -367,7 +370,7 @@ export const TrainingPanel: Component<{
         <Show when={check_error()}>
           <ErrorBanner
             message={check_error() ?? ""}
-            on_close={() => set_check_error(null)}
+            on_close={() => set_check_error(undefined)}
           />
         </Show>
       </StatusSection>
@@ -510,7 +513,7 @@ export const TrainingPanel: Component<{
           <Show when={train_error()}>
             <ErrorBanner
               message={train_error() ?? ""}
-              on_close={() => set_train_error(null)}
+              on_close={() => set_train_error(undefined)}
             />
           </Show>
         </div>
@@ -565,7 +568,7 @@ export const TrainingPanel: Component<{
               tooltip="Latest progress message from the trainer"
             />
           </Show>
-          <Show when={ts().progress_pct != null && ts().status === "running"}>
+          <Show when={ts().progress_pct !== undefined && ts().status === "running"}>
             <StatusProgress pct={ts().progress_pct ?? 0} />
           </Show>
           <Show when={visible_run_error()}>
@@ -626,7 +629,7 @@ export const TrainingPanel: Component<{
                   mono
                   tooltip="Unique identifier for this model bundle"
                 />
-                <Show when={m.macro_f1 != null}>
+                <Show when={m.macro_f1 !== undefined}>
                   <StatusRow
                     label="macro_f1"
                     value={m.macro_f1?.toFixed(3) ?? ""}

@@ -12,11 +12,11 @@ export type OverwritePendingParams = {
 export function overwrite_pending_from_api_error(
   err: unknown,
   params: OverwritePendingParams,
-): OverwritePending | null {
+): OverwritePending | undefined {
   const msg = err instanceof Error ? err.message : "";
   const json_match = msg.match(/\{[\s\S]*\}/);
   if (!json_match) {
-    return null;
+    return undefined;
   }
   try {
     const parsed = JSON.parse(json_match[0]);
@@ -35,7 +35,7 @@ export function overwrite_pending_from_api_error(
       });
     }
     if (spans.length === 0) {
-      return null;
+      return undefined;
     }
     return {
       label: params.label,
@@ -46,6 +46,6 @@ export function overwrite_pending_from_api_error(
       extend_forward: params.extend_forward,
     };
   } catch {
-    return null;
+    return undefined;
   }
 }

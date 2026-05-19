@@ -46,22 +46,24 @@ const PredictionBadge: Component<{ p: Accessor<Prediction> }> = (props) => (
 
 export const ActivitySummary: Component<{
   minutes?: Accessor<number>;
-  time_range?: Accessor<TimeRange | null>;
-  prediction?: Accessor<Prediction | null>;
+  time_range?: Accessor<TimeRange | undefined>;
+  prediction?: Accessor<Prediction | undefined>;
   show_empty?: boolean;
 }> = (props) => {
   const range = () =>
     props.time_range?.()
-    ?? (props.minutes ? time_range_minutes(props.minutes()) : null);
+    ?? (props.minutes ? time_range_minutes(props.minutes()) : undefined);
 
-  const [summary, set_summary] = createSignal<ActivitySummaryData | null>(null);
+  const [summary, set_summary] = createSignal<ActivitySummaryData | undefined>(
+    undefined,
+  );
   const [is_loading, set_is_loading] = createSignal(false);
   const [request_failed, set_request_failed] = createSignal(false);
 
   createEffect(() => {
     const r = range();
     if (!r) {
-      set_summary(null);
+      set_summary(undefined);
       set_is_loading(false);
       set_request_failed(false);
       return;
@@ -83,7 +85,7 @@ export const ActivitySummary: Component<{
         if (cancelled) {
           return;
         }
-        set_summary(null);
+        set_summary(undefined);
         set_request_failed(true);
         set_is_loading(false);
       });
@@ -94,7 +96,7 @@ export const ActivitySummary: Component<{
   });
 
   const pred = () => props.prediction?.();
-  const provider = () => summary()?.activity_provider ?? null;
+  const provider = () => summary()?.activity_provider ?? undefined;
   const recent_apps = () => (summary()?.recent_apps ?? []).slice(0, 3);
   const has_recent_apps = () => recent_apps().length > 0;
   const feature_apps = () => (summary()?.top_apps ?? []).slice(0, 5);
@@ -102,7 +104,9 @@ export const ActivitySummary: Component<{
   const has_apps = () => has_recent_apps() || has_feature_apps();
   const has_stats = () => {
     const s = summary();
-    return s && (s.mean_keys_per_min != null || s.mean_clicks_per_min != null);
+    return (
+      s && (s.mean_keys_per_min !== undefined || s.mean_clicks_per_min !== undefined)
+    );
   };
   const has_coverage = () => {
     const s = summary();
@@ -271,13 +275,17 @@ export const ActivitySummary: Component<{
                         "flex-wrap": "wrap",
                       }}
                     >
-                      <Show when={rate_fmt(summary()?.mean_keys_per_min ?? null)}>
+                      <Show when={rate_fmt(summary()?.mean_keys_per_min ?? undefined)}>
                         {(v) => <span>keys {v()}/m</span>}
                       </Show>
-                      <Show when={rate_fmt(summary()?.mean_clicks_per_min ?? null)}>
+                      <Show
+                        when={rate_fmt(summary()?.mean_clicks_per_min ?? undefined)}
+                      >
                         {(v) => <span>clicks {v()}/m</span>}
                       </Show>
-                      <Show when={rate_fmt(summary()?.mean_scroll_per_min ?? null)}>
+                      <Show
+                        when={rate_fmt(summary()?.mean_scroll_per_min ?? undefined)}
+                      >
                         {(v) => <span>scroll {v()}/m</span>}
                       </Show>
                       <Show when={has_coverage()}>

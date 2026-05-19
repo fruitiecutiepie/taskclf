@@ -44,13 +44,13 @@ function extend_forward_pref_read(): boolean {
 type LabelRecorderProps = {
   max_height?: number;
   on_collapse: () => void;
-  prediction?: Accessor<Prediction | null>;
-  suggestion?: Accessor<LabelSuggestion | null>;
+  prediction?: Accessor<Prediction | undefined>;
+  suggestion?: Accessor<LabelSuggestion | undefined>;
   suggestions?: Accessor<LabelSuggestion[]>;
   label_change_count?: Accessor<number>;
   on_suggestion_dismiss?: (
     reason?: SuggestionClearReason,
-    suggestion?: LabelSuggestion | null,
+    suggestion?: LabelSuggestion,
   ) => void;
   on_suggestion_select?: (suggestion: LabelSuggestion) => void;
 };
@@ -63,22 +63,23 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
   const [last_ended_label] = createResource(label_refresh_key, async () => {
     try {
       const rows = await labels_list(1);
-      return rows.length ? rows[0] : null;
+      return rows.length ? rows[0] : undefined;
     } catch {
-      return null;
+      return undefined;
     }
   });
   const [current_label_result] = createResource(label_refresh_key, async () => {
     try {
       return await current_label_get();
     } catch {
-      return null;
+      return undefined;
     }
   });
-  const [flash, set_flash] = createSignal<string | null>(null);
-  const [error, set_error] = createSignal<string | null>(null);
-  const [overwrite_pending, set_overwrite_pending] =
-    createSignal<OverwritePending | null>(null);
+  const [flash, set_flash] = createSignal<string | undefined>(undefined);
+  const [error, set_error] = createSignal<string | undefined>(undefined);
+  const [overwrite_pending, set_overwrite_pending] = createSignal<
+    OverwritePending | undefined
+  >(undefined);
   const [selected_minutes, set_selected_minutes] = createSignal(0);
   const [extend_fwd, set_extend_fwd] = createSignal(extend_forward_pref_read());
   const [fill_from_last, set_fill_from_last] = createSignal(false);
@@ -86,16 +87,16 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
   const [stop_current_pending, set_stop_current_pending] = createSignal(false);
   const [stop_current_busy, set_stop_current_busy] = createSignal(false);
 
-  const current_label = () => current_label_result() ?? null;
+  const current_label = () => current_label_result() ?? undefined;
 
-  const footer_label = () => current_label() ?? last_ended_label() ?? null;
+  const footer_label = () => current_label() ?? last_ended_label() ?? undefined;
 
   createEffect(
     on(
       () => [last_ended_label(), current_label()] as const,
       () => {
         if (overwrite_pending()) {
-          set_overwrite_pending(null);
+          set_overwrite_pending(undefined);
         }
         if (stop_current_pending()) {
           set_stop_current_pending(false);
@@ -119,7 +120,7 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
           {
             selected_minutes: selected_minutes(),
             fill_from_last: fill_from_last(),
-            last_label_end_ts: last_ended_label()?.end_ts ?? null,
+            last_label_end_ts: last_ended_label()?.end_ts ?? undefined,
             extend_fwd: extend_fwd(),
           },
           new Date(),
@@ -155,7 +156,7 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
       start = new Date(now.getTime() - mins * 60_000);
     }
     const effective_extend = force_extend_fwd || extend_fwd();
-    set_error(null);
+    set_error(undefined);
     try {
       await label_create({
         start_ts: start.toISOString(),
@@ -166,7 +167,7 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
       });
       set_flash(label);
       set_label_version((v) => v + 1);
-      setTimeout(() => set_flash(null), 1500);
+      setTimeout(() => set_flash(undefined), 1500);
     } catch (err: unknown) {
       const pending = overwrite_pending_from_api_error(err, {
         label,
@@ -189,8 +190,8 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
     if (!pending) {
       return;
     }
-    set_overwrite_pending(null);
-    set_error(null);
+    set_overwrite_pending(undefined);
+    set_error(undefined);
     try {
       await label_create({
         start_ts: pending.start,
@@ -202,7 +203,7 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
       });
       set_flash(pending.label);
       set_label_version((v) => v + 1);
-      setTimeout(() => set_flash(null), 1500);
+      setTimeout(() => set_flash(undefined), 1500);
     } catch (err: unknown) {
       set_error(err instanceof Error ? err.message : "overwrite failed");
     }
@@ -213,8 +214,8 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
     if (!pending) {
       return;
     }
-    set_overwrite_pending(null);
-    set_error(null);
+    set_overwrite_pending(undefined);
+    set_error(undefined);
     try {
       await label_create({
         start_ts: pending.start,
@@ -226,7 +227,7 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
       });
       set_flash(pending.label);
       set_label_version((v) => v + 1);
-      setTimeout(() => set_flash(null), 1500);
+      setTimeout(() => set_flash(undefined), 1500);
     } catch (err: unknown) {
       set_error(err instanceof Error ? err.message : "keep all failed");
     }
@@ -242,8 +243,8 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
     const stop_ts = new Date(now_ms <= start_ms ? start_ms + 1 : now_ms).toISOString();
 
     set_stop_current_busy(true);
-    set_error(null);
-    set_flash(null);
+    set_error(undefined);
+    set_flash(undefined);
     try {
       await label_update({
         start_ts: current.start_ts,
@@ -266,14 +267,14 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
       style={{
         padding: "8px",
         "border-top": "1px solid var(--border)",
-        ...(props.max_height != null
+        ...(props.max_height !== undefined
           ? { "max-height": `${props.max_height}px`, "overflow-y": "auto" }
           : {}),
       }}
     >
       <Show when={props.suggestion}>
         <PredictionSuggestion
-          suggestion={props.suggestion ?? (() => null)}
+          suggestion={props.suggestion ?? (() => undefined)}
           suggestions={props.suggestions}
           on_saved={() => set_label_version((v) => v + 1)}
           on_dismiss={props.on_suggestion_dismiss}
@@ -286,7 +287,7 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
         set_selected_minutes={set_selected_minutes}
         fill_from_last={fill_from_last}
         set_fill_from_last={set_fill_from_last}
-        has_current_label={() => current_label() != null}
+        has_current_label={() => current_label() !== undefined}
         last_label={last_ended_label}
       />
 
@@ -304,7 +305,7 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
             pending={pending()}
             on_confirm={overwrite_confirm}
             on_keep_all={keep_all_confirm}
-            on_cancel={() => set_overwrite_pending(null)}
+            on_cancel={() => set_overwrite_pending(undefined)}
           />
         )}
       </Show>
@@ -312,7 +313,7 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
       <Show when={flash()}>
         <button
           type="button"
-          onClick={() => set_flash(null)}
+          onClick={() => set_flash(undefined)}
           style={{
             cursor: "pointer",
             background: "none",
@@ -328,7 +329,7 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
       </Show>
 
       <Show when={error()}>
-        <ErrorBanner message={error() ?? ""} on_close={() => set_error(null)} />
+        <ErrorBanner message={error() ?? ""} on_close={() => set_error(undefined)} />
       </Show>
 
       <div
@@ -362,7 +363,10 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
         </For>
       </div>
 
-      <LabelLast last_label={footer_label} is_current={() => current_label() != null} />
+      <LabelLast
+        last_label={footer_label}
+        is_current={() => current_label() !== undefined}
+      />
 
       <Show when={current_label()}>
         <div
@@ -382,8 +386,8 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
                 type="button"
                 disabled={stop_current_busy()}
                 onClick={() => {
-                  set_flash(null);
-                  set_error(null);
+                  set_flash(undefined);
+                  set_error(undefined);
                   set_stop_current_pending(true);
                 }}
                 style={{

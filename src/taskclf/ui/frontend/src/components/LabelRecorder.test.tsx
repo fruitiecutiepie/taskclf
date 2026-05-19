@@ -22,14 +22,14 @@ vi.mock("./ActivitySummary", () => ({
 }));
 
 vi.mock("./PredictionSuggestion", () => ({
-  PredictionSuggestion: () => null,
+  PredictionSuggestion: () => undefined,
 }));
 
 beforeEach(() => {
   vi.clearAllMocks();
   vi.useRealTimers();
   vi.mocked(core_labels_list).mockResolvedValue(["Build", "Write"]);
-  vi.mocked(current_label_get).mockResolvedValue(null);
+  vi.mocked(current_label_get).mockResolvedValue(undefined);
 });
 
 describe("LabelRecorder", () => {
@@ -43,7 +43,7 @@ describe("LabelRecorder", () => {
           end_ts: "2026-04-05T09:00:00Z",
           label: "Build",
           provenance: "manual",
-          user_id: null,
+          user_id: undefined,
           confidence: 1,
           extend_forward: true,
         },
@@ -54,7 +54,7 @@ describe("LabelRecorder", () => {
           end_ts: "2026-04-05T10:00:00.000Z",
           label: "Build",
           provenance: "manual",
-          user_id: null,
+          user_id: undefined,
           confidence: 1,
           extend_forward: false,
         },
@@ -65,17 +65,17 @@ describe("LabelRecorder", () => {
         end_ts: "2026-04-05T09:00:00Z",
         label: "Build",
         provenance: "manual",
-        user_id: null,
+        user_id: undefined,
         confidence: 1,
         extend_forward: true,
       })
-      .mockResolvedValueOnce(null);
+      .mockResolvedValueOnce(undefined);
     vi.mocked(label_update).mockResolvedValue({
       start_ts: "2026-04-05T09:00:00Z",
       end_ts: "2026-04-05T10:00:00.000Z",
       label: "Build",
       provenance: "manual",
-      user_id: null,
+      user_id: undefined,
       confidence: 1,
       extend_forward: false,
     });
@@ -123,7 +123,7 @@ describe("LabelRecorder", () => {
         end_ts: "2026-04-05T09:05:00Z",
         label: "Build",
         provenance: "manual",
-        user_id: null,
+        user_id: undefined,
         confidence: 1,
         extend_forward: true,
       },
@@ -133,7 +133,7 @@ describe("LabelRecorder", () => {
       end_ts: "2026-04-05T09:05:00Z",
       label: "Build",
       provenance: "manual",
-      user_id: null,
+      user_id: undefined,
       confidence: 1,
       extend_forward: true,
     });
@@ -153,7 +153,7 @@ describe("LabelRecorder", () => {
         end_ts: "2026-04-05T10:00:00Z",
         label: "Write",
         provenance: "manual",
-        user_id: null,
+        user_id: undefined,
         confidence: 1,
         extend_forward: false,
       },
@@ -163,7 +163,7 @@ describe("LabelRecorder", () => {
       end_ts: "2026-04-05T09:00:00Z",
       label: "Build",
       provenance: "manual",
-      user_id: null,
+      user_id: undefined,
       confidence: 1,
       extend_forward: true,
     });
@@ -184,7 +184,7 @@ describe("LabelRecorder", () => {
         end_ts: "2026-04-05T09:30:00Z",
         label: "Build",
         provenance: "manual",
-        user_id: null,
+        user_id: undefined,
         confidence: 1,
         extend_forward: false,
       },
@@ -216,7 +216,7 @@ describe("LabelRecorder", () => {
         end_ts: "2026-04-05T09:30:00Z",
         label: "Build",
         provenance: "manual",
-        user_id: null,
+        user_id: undefined,
         confidence: 1,
         extend_forward: false,
       },
@@ -226,7 +226,7 @@ describe("LabelRecorder", () => {
       end_ts: "2026-04-05T11:00:00.000Z",
       label: "Write",
       provenance: "manual",
-      user_id: null,
+      user_id: undefined,
       confidence: 1,
       extend_forward: true,
     });

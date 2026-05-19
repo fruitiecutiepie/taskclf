@@ -21,8 +21,8 @@ export const LabelHistoryGapRow: Component<{
   on_create: (start: string, end: string, label: string) => void;
   core_labels: string[];
   busy: boolean;
-  flash: string | null;
-  error: string | null;
+  flash: string | undefined;
+  error: string | undefined;
   on_error_close: () => void;
 }> = (props) => {
   const gap_start_d = () => date_parse(props.gap.start_ts);
@@ -56,16 +56,16 @@ export const LabelHistoryGapRow: Component<{
     set_end_iso(time_input_date(props.date_str, val).toISOString());
   }
 
-  const selected_range = (): TimeRange | null => {
+  const selected_range = (): TimeRange | undefined => {
     const s = date_parse(start_iso()).getTime();
     const e = date_parse(end_iso()).getTime();
     if (e <= s) {
-      return null;
+      return undefined;
     }
     return { start: start_iso(), end: end_iso() };
   };
 
-  const range_valid = () => selected_range() !== null;
+  const range_valid = () => selected_range() !== undefined;
 
   const time_input_style = {
     background: "#111",

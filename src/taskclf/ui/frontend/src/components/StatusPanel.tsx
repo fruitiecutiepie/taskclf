@@ -23,9 +23,9 @@ import { TrainingPanel } from "./TrainingPanel";
 export const StatusPanel: Component<{
   status: Accessor<ConnectionStatus>;
   latest_status: Accessor<StatusEvent>;
-  latest_prediction: Accessor<Prediction | null>;
+  latest_prediction: Accessor<Prediction | undefined>;
   latest_tray_state: Accessor<TrayState>;
-  active_suggestion: Accessor<LabelSuggestion | null>;
+  active_suggestion: Accessor<LabelSuggestion | undefined>;
   pending_suggestions?: Accessor<LabelSuggestion[]>;
   label_change_count?: Accessor<number>;
   ws_stats: Accessor<WSStats>;

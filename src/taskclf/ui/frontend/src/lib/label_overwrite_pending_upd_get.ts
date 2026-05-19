@@ -4,13 +4,13 @@ import { iso_date_parse } from "./date";
 export type TimeSelection = {
   selected_minutes: number;
   fill_from_last: boolean;
-  last_label_end_ts: string | null;
+  last_label_end_ts: string | undefined;
   extend_fwd: boolean;
 };
 
 /**
  * Recalculate an overwrite-pending state after the user changes the time
- * picker. Returns the updated pending, or `null` if no conflicts remain.
+ * picker. Returns the updated pending, or `undefined` if no conflicts remain.
  *
  * `now` is the current wall-clock time — callers should pass `new Date()`.
  */
@@ -18,7 +18,7 @@ export function label_overwrite_pending_upd_get(
   pending: OverwritePending,
   sel: TimeSelection,
   now: Date,
-): OverwritePending | null {
+): OverwritePending | undefined {
   let start: Date;
   if (sel.fill_from_last && sel.last_label_end_ts) {
     start = iso_date_parse(sel.last_label_end_ts);
@@ -37,7 +37,7 @@ export function label_overwrite_pending_upd_get(
   });
 
   if (remaining.length === 0) {
-    return null;
+    return undefined;
   }
 
   return {

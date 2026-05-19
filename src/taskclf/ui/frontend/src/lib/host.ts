@@ -63,11 +63,11 @@ declare global {
 }
 
 function electron_api_ref() {
-  return window.electronHost ?? null;
+  return window.electronHost ?? undefined;
 }
 
 function pywebview_api_ref() {
-  return window.pywebview?.api ?? null;
+  return window.pywebview?.api ?? undefined;
 }
 
 /**
@@ -78,10 +78,10 @@ function pywebview_api_ref() {
  */
 class AdaptiveHost implements Host {
   get kind(): HostKind {
-    if (electron_api_ref() !== null) {
+    if (electron_api_ref() !== undefined) {
       return "electron";
     }
-    if (pywebview_api_ref() !== null) {
+    if (pywebview_api_ref() !== undefined) {
       return "pywebview";
     }
     return "browser";

@@ -65,20 +65,18 @@ function suggestion_range_format(block_start: string, block_end: string): string
 }
 
 export const PredictionSuggestion: Component<{
-  suggestion: Accessor<LabelSuggestion | null>;
+  suggestion: Accessor<LabelSuggestion | undefined>;
   suggestions?: Accessor<LabelSuggestion[]>;
   on_saved?: () => void;
-  on_dismiss?: (
-    reason?: SuggestionClearReason,
-    suggestion?: LabelSuggestion | null,
-  ) => void;
+  on_dismiss?: (reason?: SuggestionClearReason, suggestion?: LabelSuggestion) => void;
   on_select?: (suggestion: LabelSuggestion) => void;
 }> = (props) => {
   const s = () => props.suggestion();
-  const [error, set_error] = createSignal<string | null>(null);
+  const [error, set_error] = createSignal<string | undefined>(undefined);
   const [busy, set_busy] = createSignal(false);
-  const [overwrite_pending, set_overwrite_pending] =
-    createSignal<OverwritePending | null>(null);
+  const [overwrite_pending, set_overwrite_pending] = createSignal<
+    OverwritePending | undefined
+  >(undefined);
   const [change_label_open, set_change_label_open] = createSignal(false);
   const [selected_label, set_selected_label] = createSignal("");
   const [labels] = createResource(core_labels_list);
@@ -105,7 +103,7 @@ export const PredictionSuggestion: Component<{
   const active_key = () => {
     const sg = s();
     if (!sg) {
-      return null;
+      return undefined;
     }
     return label_suggestion_key(sg);
   };
@@ -138,10 +136,7 @@ export const PredictionSuggestion: Component<{
     }
   }
 
-  function notify_dismiss(
-    reason: SuggestionClearReason,
-    suggestion: LabelSuggestion | null,
-  ) {
+  function notify_dismiss(reason: SuggestionClearReason, suggestion?: LabelSuggestion) {
     if (props.on_dismiss) {
       props.on_dismiss(reason, suggestion);
     }
@@ -154,10 +149,10 @@ export const PredictionSuggestion: Component<{
   }
 
   function reset_for_suggestion(sg: LabelSuggestion) {
-    set_overwrite_pending(null);
+    set_overwrite_pending(undefined);
     set_change_label_open(false);
     set_selected_label(sg.suggested);
-    set_error(null);
+    set_error(undefined);
   }
 
   createEffect(
@@ -186,7 +181,7 @@ export const PredictionSuggestion: Component<{
       return;
     }
     set_busy(true);
-    set_error(null);
+    set_error(undefined);
     try {
       const payload = {
         block_start: sg.block_start,
@@ -195,7 +190,7 @@ export const PredictionSuggestion: Component<{
         ...(sg.suggestion_id ? { suggestion_id: sg.suggestion_id } : {}),
       };
       await notification_accept(payload);
-      set_overwrite_pending(null);
+      set_overwrite_pending(undefined);
       set_change_label_open(false);
       notify_saved();
       notify_dismiss("label_saved", sg);
@@ -233,7 +228,7 @@ export const PredictionSuggestion: Component<{
       return;
     }
     set_busy(true);
-    set_error(null);
+    set_error(undefined);
     try {
       const sg = s();
       const payload = {
@@ -244,7 +239,7 @@ export const PredictionSuggestion: Component<{
         ...(sg && sg.suggestion_id ? { suggestion_id: sg.suggestion_id } : {}),
       };
       await notification_accept(payload);
-      set_overwrite_pending(null);
+      set_overwrite_pending(undefined);
       notify_saved();
       notify_dismiss("label_saved", sg);
     } catch (err: unknown) {
@@ -262,7 +257,7 @@ export const PredictionSuggestion: Component<{
       return;
     }
     set_busy(true);
-    set_error(null);
+    set_error(undefined);
     try {
       const sg = s();
       const payload = {
@@ -273,7 +268,7 @@ export const PredictionSuggestion: Component<{
         ...(sg && sg.suggestion_id ? { suggestion_id: sg.suggestion_id } : {}),
       };
       await notification_accept(payload);
-      set_overwrite_pending(null);
+      set_overwrite_pending(undefined);
       notify_saved();
       notify_dismiss("label_saved", sg);
     } catch (err: unknown) {
@@ -291,14 +286,14 @@ export const PredictionSuggestion: Component<{
     }
     const sg = s();
     set_busy(true);
-    set_error(null);
+    set_error(undefined);
     try {
       if (sg && sg.suggestion_id) {
         await notification_skip({ suggestion_id: sg.suggestion_id });
       } else {
         await notification_skip(undefined);
       }
-      set_overwrite_pending(null);
+      set_overwrite_pending(undefined);
       set_change_label_open(false);
       notify_dismiss("skipped", sg);
     } catch (err: unknown) {
@@ -311,7 +306,7 @@ export const PredictionSuggestion: Component<{
   }
 
   function open_change_label(sg: LabelSuggestion) {
-    set_error(null);
+    set_error(undefined);
     set_selected_label(sg.suggested);
     set_change_label_open(true);
   }
@@ -327,7 +322,7 @@ export const PredictionSuggestion: Component<{
   const suggestion_time_range = () => {
     const sg = s();
     if (!sg) {
-      return null;
+      return undefined;
     }
     return { start: sg.block_start, end: sg.block_end };
   };
@@ -685,13 +680,13 @@ export const PredictionSuggestion: Component<{
                 pending={pending()}
                 on_confirm={overwrite_confirm}
                 on_keep_all={keep_all_confirm}
-                on_cancel={() => set_overwrite_pending(null)}
+                on_cancel={() => set_overwrite_pending(undefined)}
               />
             )}
           </Show>
           <Show when={error()}>
             {(message) => (
-              <ErrorBanner message={message()} on_close={() => set_error(null)} />
+              <ErrorBanner message={message()} on_close={() => set_error(undefined)} />
             )}
           </Show>
         </div>

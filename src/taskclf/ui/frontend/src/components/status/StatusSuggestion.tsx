@@ -6,7 +6,7 @@ import { StatusRow } from "../ui/StatusRow";
 import { StatusSection } from "../ui/StatusSection";
 
 export const StatusSuggestion: Component<{
-  suggestion: Accessor<LabelSuggestion | null>;
+  suggestion: Accessor<LabelSuggestion | undefined>;
   pending_count?: Accessor<number>;
 }> = (props) => {
   const sug = () => props.suggestion();
