@@ -31,7 +31,7 @@ async function error_text_copy(text: string): Promise<void> {
 
 export const ErrorBanner: Component<{
   message: string;
-  on_close?: () => void;
+  on_close: (() => void) | undefined;
 }> = (props) => {
   const [copy_state, set_copy_state] = createSignal<"idle" | "copied" | "failed">(
     "idle",

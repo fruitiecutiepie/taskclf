@@ -39,26 +39,32 @@ export type Host = {
 
 declare global {
   interface Window {
-    electronHost?: {
-      invoke(command: HostCommand): Promise<void>;
-    };
-    pywebview?: {
-      api?: {
-        label_grid_show(): Promise<void>;
-        label_grid_hide(): Promise<void>;
-        label_grid_toggle(): Promise<void>;
-        label_grid_cancel_hide(): Promise<void>;
-        show_transition_notification(prompt: PromptLabelEvent): Promise<void>;
-        window_hide(): Promise<void>;
-        dashboard_toggle(): Promise<void>;
-        state_panel_toggle(): Promise<void>;
-        state_panel_show(): Promise<void>;
-        state_panel_hide(): Promise<void>;
-        state_panel_cancel_hide(): Promise<void>;
-        frontend_debug_log(message: string): Promise<void>;
-        frontend_error_log(message: string): Promise<void>;
-      };
-    };
+    electronHost:
+      | {
+          invoke(command: HostCommand): Promise<void>;
+        }
+      | undefined;
+    pywebview:
+      | {
+          api:
+            | {
+                label_grid_show(): Promise<void>;
+                label_grid_hide(): Promise<void>;
+                label_grid_toggle(): Promise<void>;
+                label_grid_cancel_hide(): Promise<void>;
+                show_transition_notification(prompt: PromptLabelEvent): Promise<void>;
+                window_hide(): Promise<void>;
+                dashboard_toggle(): Promise<void>;
+                state_panel_toggle(): Promise<void>;
+                state_panel_show(): Promise<void>;
+                state_panel_hide(): Promise<void>;
+                state_panel_cancel_hide(): Promise<void>;
+                frontend_debug_log(message: string): Promise<void>;
+                frontend_error_log(message: string): Promise<void>;
+              }
+            | undefined;
+        }
+      | undefined;
   }
 }
 

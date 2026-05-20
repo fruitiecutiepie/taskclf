@@ -30,7 +30,7 @@ import { LabelHistoryTimeline } from "./LabelHistoryTimeline";
 
 export const LabelHistory: Component<{
   visible: Accessor<boolean>;
-  label_change_count?: Accessor<number>;
+  label_change_count: Accessor<number> | undefined;
 }> = (props) => {
   const [selected_date, set_selected_date] = createSignal(date_today_str());
   const [known_today, set_known_today] = createSignal(selected_date());
@@ -124,6 +124,7 @@ export const LabelHistory: Component<{
         label: new_label,
         new_start_ts: new_start,
         new_end_ts: new_end,
+        extend_forward: undefined,
       });
       set_flash(new_label);
       setTimeout(() => {
@@ -165,6 +166,11 @@ export const LabelHistory: Component<{
         start_ts,
         end_ts,
         label,
+        user_id: undefined,
+        confidence: undefined,
+        extend_forward: undefined,
+        overwrite: undefined,
+        allow_overlap: undefined,
       });
       set_flash(label);
       setTimeout(() => {

@@ -45,10 +45,10 @@ const PredictionBadge: Component<{ p: Accessor<Prediction> }> = (props) => (
 );
 
 export const ActivitySummary: Component<{
-  minutes?: Accessor<number>;
-  time_range?: Accessor<TimeRange | undefined>;
-  prediction?: Accessor<Prediction | undefined>;
-  show_empty?: boolean;
+  minutes: Accessor<number> | undefined;
+  time_range: Accessor<TimeRange | undefined> | undefined;
+  prediction: Accessor<Prediction | undefined> | undefined;
+  show_empty: boolean | undefined;
 }> = (props) => {
   const range = () =>
     props.time_range?.()

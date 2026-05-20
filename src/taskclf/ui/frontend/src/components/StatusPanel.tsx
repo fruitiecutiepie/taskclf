@@ -26,11 +26,11 @@ export const StatusPanel: Component<{
   latest_prediction: Accessor<Prediction | undefined>;
   latest_tray_state: Accessor<TrayState>;
   active_suggestion: Accessor<LabelSuggestion | undefined>;
-  pending_suggestions?: Accessor<LabelSuggestion[]>;
-  label_change_count?: Accessor<number>;
+  pending_suggestions: Accessor<LabelSuggestion[]> | undefined;
+  label_change_count: Accessor<number> | undefined;
   ws_stats: Accessor<WSStats>;
   train_state: Accessor<TrainState>;
-  on_open_label_recorder?: () => void;
+  on_open_label_recorder: (() => void) | undefined;
 }> = (props) => {
   const [tab, set_tab] = createSignal<PanelTab>("system");
 

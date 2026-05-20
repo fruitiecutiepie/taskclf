@@ -5,8 +5,8 @@ import type { PromptLabelEvent } from "./ws";
 // TypeScript's lib.dom.d.ts. Extend until upstream adds it.
 // https://developer.mozilla.org/en-US/docs/Web/API/Notification/Notification#renotify
 type NotificationOptionsExtended = NotificationOptions & {
-  renotify?: boolean;
-  requireInteraction?: boolean;
+  renotify: boolean | undefined;
+  requireInteraction: boolean | undefined;
 };
 
 let permission_granted = false;

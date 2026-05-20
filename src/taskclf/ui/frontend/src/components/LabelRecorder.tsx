@@ -42,17 +42,19 @@ function extend_forward_pref_read(): boolean {
 }
 
 type LabelRecorderProps = {
-  max_height?: number;
+  max_height: number | undefined;
   on_collapse: () => void;
-  prediction?: Accessor<Prediction | undefined>;
-  suggestion?: Accessor<LabelSuggestion | undefined>;
-  suggestions?: Accessor<LabelSuggestion[]>;
-  label_change_count?: Accessor<number>;
-  on_suggestion_dismiss?: (
-    reason?: SuggestionClearReason,
-    suggestion?: LabelSuggestion,
-  ) => void;
-  on_suggestion_select?: (suggestion: LabelSuggestion) => void;
+  prediction: Accessor<Prediction | undefined> | undefined;
+  suggestion: Accessor<LabelSuggestion | undefined> | undefined;
+  suggestions: Accessor<LabelSuggestion[]> | undefined;
+  label_change_count: Accessor<number> | undefined;
+  on_suggestion_dismiss:
+    | ((
+        reason: SuggestionClearReason | undefined,
+        suggestion: LabelSuggestion | undefined,
+      ) => void)
+    | undefined;
+  on_suggestion_select: ((suggestion: LabelSuggestion) => void) | undefined;
 };
 
 export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
@@ -162,8 +164,11 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
         start_ts: start.toISOString(),
         end_ts: now.toISOString(),
         label,
+        user_id: undefined,
         confidence: conf_percent() / 100,
         extend_forward: effective_extend,
+        overwrite: undefined,
+        allow_overlap: undefined,
       });
       set_flash(label);
       set_label_version((v) => v + 1);
@@ -197,9 +202,11 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
         start_ts: pending.start,
         end_ts: pending.end,
         label: pending.label,
+        user_id: undefined,
         confidence: pending.confidence,
         extend_forward: pending.extend_forward,
         overwrite: true,
+        allow_overlap: undefined,
       });
       set_flash(pending.label);
       set_label_version((v) => v + 1);
@@ -221,8 +228,10 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
         start_ts: pending.start,
         end_ts: pending.end,
         label: pending.label,
+        user_id: undefined,
         confidence: pending.confidence,
         extend_forward: pending.extend_forward,
+        overwrite: undefined,
         allow_overlap: true,
       });
       set_flash(pending.label);
@@ -250,6 +259,7 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
         start_ts: current.start_ts,
         end_ts: current.end_ts,
         label: current.label,
+        new_start_ts: undefined,
         new_end_ts: stop_ts,
         extend_forward: false,
       });
@@ -291,8 +301,12 @@ export const LabelRecorder: Component<LabelRecorderProps> = (props) => {
         last_label={last_ended_label}
       />
 
-      <ActivitySummary minutes={selected_minutes} prediction={props.prediction} />
-
+      <ActivitySummary
+        minutes={selected_minutes}
+        time_range={undefined}
+        prediction={props.prediction}
+        show_empty={undefined}
+      />
       <Show when={selected_minutes() !== 0 || fill_from_last()}>
         <LabelExtendToggle checked={extend_fwd} on_toggle={extend_fwd_toggle} />
       </Show>

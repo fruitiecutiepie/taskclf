@@ -2,8 +2,8 @@ import { compareVersions } from "./update_policy";
 
 export interface LauncherReleaseEntry {
   tag_name: string;
-  draft?: boolean;
-  prerelease?: boolean;
+  draft: boolean | undefined;
+  prerelease: boolean | undefined;
 }
 
 export function launcherVersionFromTag(tag: string): string | null {

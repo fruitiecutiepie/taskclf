@@ -27,13 +27,13 @@ export type Prediction = {
   confidence: number;
   ts: string;
   mapped_label: string;
-  current_app?: string;
-  provenance?: "manual" | "model";
+  current_app: string | undefined;
+  provenance: "manual" | "model" | undefined;
 };
 
 export type LabelSuggestion = {
   type: "suggest_label";
-  suggestion_id?: string;
+  suggestion_id: string | undefined;
   reason: string;
   old_label: string;
   suggested: string;
@@ -180,7 +180,7 @@ export type PromptLabelEvent = {
 export type SuggestionClearedEvent = {
   type: "suggestion_cleared";
   reason: string;
-  suggestion_id?: string;
+  suggestion_id: string | undefined;
 };
 
 export type SuggestionClearReason = "label_saved" | "skipped" | string;
@@ -236,7 +236,9 @@ export type TrainProgressEvent = {
 export type TrainCompleteEvent = {
   type: "train_complete";
   job_id: string;
-  metrics: { macro_f1?: number; weighted_f1?: number } | undefined;
+  metrics:
+    | { macro_f1: number | undefined; weighted_f1: number | undefined }
+    | undefined;
   model_dir: string | undefined;
 };
 
@@ -273,7 +275,9 @@ export type TrainState = {
   progress_pct: number | undefined;
   message: string | undefined;
   error: string | undefined;
-  metrics: { macro_f1?: number; weighted_f1?: number } | undefined;
+  metrics:
+    | { macro_f1: number | undefined; weighted_f1: number | undefined }
+    | undefined;
   model_dir: string | undefined;
 };
 
@@ -396,7 +400,7 @@ export function ws_store_new() {
 
   function suggestion_active_set_in_state(
     state: WebSocketStore,
-    preferred_key?: string | undefined,
+    preferred_key: string | undefined = undefined,
   ) {
     const current_key = state.active_suggestion
       ? label_suggestion_key(state.active_suggestion)
@@ -445,8 +449,8 @@ export function ws_store_new() {
   }
 
   function suggestion_queue_remove(
-    reason?: SuggestionClearReason,
-    suggestion_id?: string | undefined,
+    reason: SuggestionClearReason | undefined = undefined,
+    suggestion_id: string | undefined = undefined,
   ) {
     setStore(
       produce((state) => {
@@ -542,7 +546,10 @@ export function ws_store_new() {
     }
   }
 
-  function ws_stats_bump(now: string, extra?: (s: WSStats) => void) {
+  function ws_stats_bump(
+    now: string,
+    extra: ((s: WSStats) => void) | undefined = undefined,
+  ) {
     setStore(
       "ws_stats",
       produce((s) => {
@@ -801,8 +808,8 @@ export function ws_store_new() {
   }
 
   function suggestion_dismiss(
-    reason?: SuggestionClearReason,
-    suggestion?: LabelSuggestion,
+    reason: SuggestionClearReason | undefined = undefined,
+    suggestion: LabelSuggestion | undefined = undefined,
   ) {
     suggestion_queue_remove(
       reason,

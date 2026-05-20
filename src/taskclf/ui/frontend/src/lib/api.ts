@@ -59,7 +59,10 @@ export type ActivitySummary = FeatureSummary & {
   message: string | undefined;
 };
 
-async function api_json<T>(url: string, init?: RequestInit): Promise<T> {
+async function api_json<T>(
+  url: string,
+  init: RequestInit | undefined = undefined,
+): Promise<T> {
   const res = await fetch(url, init);
   if (!res.ok) {
     const text = await res.text().catch(() => "");
@@ -88,11 +91,11 @@ export async function label_create(body: {
   start_ts: string;
   end_ts: string;
   label: string;
-  user_id?: string;
-  confidence?: number;
-  extend_forward?: boolean;
-  overwrite?: boolean;
-  allow_overlap?: boolean;
+  user_id: string | undefined;
+  confidence: number | undefined;
+  extend_forward: boolean | undefined;
+  overwrite: boolean | undefined;
+  allow_overlap: boolean | undefined;
 }): Promise<LabelResponse> {
   return api_json(`${BASE}/labels`, {
     method: "POST",
@@ -144,9 +147,9 @@ export async function label_update(body: {
   start_ts: string;
   end_ts: string;
   label: string;
-  new_start_ts?: string;
-  new_end_ts?: string;
-  extend_forward?: boolean;
+  new_start_ts: string | undefined;
+  new_end_ts: string | undefined;
+  extend_forward: boolean | undefined;
 }): Promise<LabelResponse> {
   return api_json(`${BASE}/labels`, {
     method: "PUT",
@@ -171,12 +174,12 @@ export async function core_labels_list(): Promise<string[]> {
 }
 
 export async function notification_accept(body: {
-  suggestion_id?: string;
+  suggestion_id: string | undefined;
   block_start: string;
   block_end: string;
   label: string;
-  overwrite?: boolean;
-  allow_overlap?: boolean;
+  overwrite: boolean | undefined;
+  allow_overlap: boolean | undefined;
 }): Promise<LabelResponse> {
   return api_json(`${BASE}/notification/accept`, {
     method: "POST",
@@ -185,9 +188,9 @@ export async function notification_accept(body: {
   });
 }
 
-export async function notification_skip(body?: {
-  suggestion_id?: string;
-}): Promise<{ status: string }> {
+export async function notification_skip(
+  body: { suggestion_id: string | undefined } = { suggestion_id: undefined },
+): Promise<{ status: string }> {
   return api_json(`${BASE}/notification/skip`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -208,9 +211,9 @@ export async function user_config_get(): Promise<UserConfig> {
 }
 
 export async function user_config_update(patch: {
-  username?: string;
-  suggestion_banner_ttl_seconds?: number;
-  auto_save_suggestion_min_confidence?: number;
+  username: string | undefined;
+  suggestion_banner_ttl_seconds: number | undefined;
+  auto_save_suggestion_min_confidence: number | undefined;
 }): Promise<UserConfig> {
   return api_json(`${BASE}/config/user`, {
     method: "PUT",
@@ -260,9 +263,9 @@ export type DataCheck = {
 export async function training_start(params: {
   date_from: string;
   date_to: string;
-  num_boost_round?: number;
-  class_weight?: "balanced" | "none";
-  synthetic?: boolean;
+  num_boost_round: number | undefined;
+  class_weight: "balanced" | "none" | undefined;
+  synthetic: boolean | undefined;
 }): Promise<TrainStatus> {
   return api_json(`${BASE}/train/start`, {
     method: "POST",

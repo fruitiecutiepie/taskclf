@@ -4,7 +4,7 @@ const FRONTEND_LOG_MAX_LEN = 1000;
 
 function debug_enabled(): boolean {
   const vite_meta = import.meta as ImportMeta & {
-    env?: { DEV?: boolean };
+    env: { DEV: boolean | undefined } | undefined;
   };
   return vite_meta.env?.DEV === true;
 }

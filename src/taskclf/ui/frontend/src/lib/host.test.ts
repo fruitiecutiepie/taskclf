@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 function host_globals_clear() {
-  delete (window as typeof window & { electronHost?: unknown }).electronHost;
-  delete (window as typeof window & { pywebview?: unknown }).pywebview;
+  delete (window as typeof window & { electronHost: unknown | undefined }).electronHost;
+  delete (window as typeof window & { pywebview: unknown | undefined }).pywebview;
 }
 
 describe("host", () => {
@@ -15,7 +15,9 @@ describe("host", () => {
   it("uses the Electron bridge when available", async () => {
     const electron_invoke = vi.fn().mockResolvedValue(undefined);
     (
-      window as typeof window & { electronHost?: { invoke: typeof electron_invoke } }
+      window as typeof window & {
+        electronHost: { invoke: typeof electron_invoke } | undefined;
+      }
     ).electronHost = {
       invoke: electron_invoke,
     };
@@ -38,7 +40,9 @@ describe("host", () => {
     const dashboard_toggle = vi.fn().mockResolvedValue(undefined);
     (
       window as typeof window & {
-        pywebview?: { api?: { dashboard_toggle: typeof dashboard_toggle } };
+        pywebview:
+          | { api: { dashboard_toggle: typeof dashboard_toggle } | undefined }
+          | undefined;
       }
     ).pywebview = {
       api: {
@@ -70,11 +74,15 @@ describe("host", () => {
     };
     (
       window as typeof window & {
-        pywebview?: {
-          api?: {
-            show_transition_notification: typeof show_transition_notification;
-          };
-        };
+        pywebview:
+          | {
+              api:
+                | {
+                    show_transition_notification: typeof show_transition_notification;
+                  }
+                | undefined;
+            }
+          | undefined;
       }
     ).pywebview = {
       api: {

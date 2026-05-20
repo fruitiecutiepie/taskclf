@@ -16,17 +16,17 @@ export const PredictionBadge: Component<{
   latest_status: Accessor<StatusEvent>;
   latest_prediction: Accessor<Prediction | undefined>;
   live_status: Accessor<LiveStatusEvent | undefined>;
-  badge_display_override?: Accessor<BadgeDisplayOverride>;
+  badge_display_override: Accessor<BadgeDisplayOverride> | undefined;
   latest_tray_state: Accessor<TrayState>;
   active_suggestion: Accessor<LabelSuggestion | undefined>;
-  label_pinned?: Accessor<boolean>;
-  panel_pinned?: Accessor<boolean>;
-  on_toggle_panel?: () => void;
-  on_show_panel?: () => void;
-  on_hide_panel?: () => void;
-  on_toggle_label?: () => void;
-  on_show_label?: () => void;
-  on_hide_label?: () => void;
+  label_pinned: Accessor<boolean> | undefined;
+  panel_pinned: Accessor<boolean> | undefined;
+  on_toggle_panel: (() => void) | undefined;
+  on_show_panel: (() => void) | undefined;
+  on_hide_panel: (() => void) | undefined;
+  on_toggle_label: (() => void) | undefined;
+  on_show_label: (() => void) | undefined;
+  on_hide_label: (() => void) | undefined;
 }> = (props) => {
   const prediction_label = () => {
     const pred = props.latest_prediction();

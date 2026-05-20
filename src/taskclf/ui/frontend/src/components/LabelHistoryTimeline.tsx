@@ -5,7 +5,7 @@ import type { TimelineSegment } from "../lib/labelTimeline";
 
 export const LabelHistoryTimeline: Component<{
   segments: TimelineSegment[];
-  on_segment_click?: (seg: TimelineSegment, index: number) => void;
+  on_segment_click: ((seg: TimelineSegment, index: number) => void) | undefined;
 }> = (props) => {
   const [tooltip, set_tooltip] = createSignal<{ text: string; x: number } | undefined>(
     undefined,

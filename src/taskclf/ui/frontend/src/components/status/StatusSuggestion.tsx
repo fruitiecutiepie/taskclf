@@ -7,7 +7,7 @@ import { StatusSection } from "../ui/StatusSection";
 
 export const StatusSuggestion: Component<{
   suggestion: Accessor<LabelSuggestion | undefined>;
-  pending_count?: Accessor<number>;
+  pending_count: Accessor<number> | undefined;
 }> = (props) => {
   const sug = () => props.suggestion();
 

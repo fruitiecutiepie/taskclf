@@ -3,13 +3,13 @@ import https from "node:https";
 import { Readable } from "node:stream";
 
 export interface NodeFetchInit extends RequestInit {
-  maxRedirects?: number;
+  maxRedirects: number | undefined;
 }
 
 const REDIRECT_STATUS_CODES = new Set([301, 302, 303, 307, 308]);
 const NULL_BODY_STATUS_CODES = new Set([204, 205, 304]);
 
-function abortError(reason?: unknown): Error {
+function abortError(reason: unknown | undefined = undefined): Error {
   if (reason instanceof Error) {
     return reason;
   }
@@ -71,7 +71,7 @@ async function nodeFetchRequest(
   remainingRedirects: number,
 ): Promise<Response> {
   if (request.signal.aborted) {
-    throw abortError((request.signal as AbortSignal & { reason?: unknown }).reason);
+    throw abortError((request.signal as AbortSignal & { reason: unknown | undefined }).reason);
   }
 
   const url = new URL(request.url);
@@ -170,7 +170,7 @@ async function nodeFetchRequest(
     req.on("error", fail);
 
     const onAbort = () => {
-      const error = abortError((request.signal as AbortSignal & { reason?: unknown }).reason);
+      const error = abortError((request.signal as AbortSignal & { reason: unknown | undefined }).reason);
       req.destroy(error);
       fail(error);
     };
@@ -191,7 +191,7 @@ async function nodeFetchRequest(
 
 export async function nodeFetch(
   input: string | URL | Request,
-  init?: NodeFetchInit,
+  init: NodeFetchInit | undefined = undefined,
 ): Promise<Response> {
   const request = input instanceof Request && init === undefined
     ? input

@@ -4,7 +4,7 @@ export type LabelEntry = {
   label: string;
   start_ts: string;
   end_ts: string;
-  extend_forward?: boolean;
+  extend_forward: boolean | undefined;
 };
 
 export type OpenEndedLabelLike = Pick<
@@ -30,7 +30,7 @@ export type LabelItem = {
   label: string;
   start_ts: string;
   end_ts: string;
-  open_ended?: boolean;
+  open_ended: boolean | undefined;
 };
 
 export type TimelineItem = GapItem | LabelItem;

@@ -7,8 +7,8 @@ const TABS: PanelTab[] = ["system", "history", "training"];
 export const StatusPanelTab: Component<{
   active: Accessor<PanelTab>;
   on_change: Setter<PanelTab>;
-  history_pending?: Accessor<boolean>;
-  on_history_pending_click?: () => void;
+  history_pending: Accessor<boolean> | undefined;
+  on_history_pending_click: (() => void) | undefined;
 }> = (props) => (
   <div
     style={{

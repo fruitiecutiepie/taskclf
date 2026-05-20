@@ -25,7 +25,7 @@ type LabelTimePickerProps = {
   set_fill_from_last: (v: boolean) => void;
   has_current_label: Accessor<boolean>;
   last_label: Accessor<
-    | { start_ts: string; end_ts: string; extend_forward?: boolean }
+    | { start_ts: string; end_ts: string; extend_forward: boolean | undefined }
     | undefined
     | undefined
   >;

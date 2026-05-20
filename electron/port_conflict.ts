@@ -24,13 +24,13 @@ export type SpawnSyncResult = {
 export type SpawnSyncFn = (
   command: string,
   args: readonly string[],
-  options?: SpawnSyncOptionsWithStringEncoding,
+  options: SpawnSyncOptionsWithStringEncoding | undefined,
 ) => SpawnSyncResult;
 
 export function defaultSpawnSync(
   command: string,
   args: readonly string[],
-  options?: SpawnSyncOptionsWithStringEncoding,
+  options: SpawnSyncOptionsWithStringEncoding | undefined = undefined,
 ): SpawnSyncResult {
   const r = spawnSync(command, args as string[], {
     ...options,

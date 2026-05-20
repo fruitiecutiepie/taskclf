@@ -66,10 +66,15 @@ function suggestion_range_format(block_start: string, block_end: string): string
 
 export const PredictionSuggestion: Component<{
   suggestion: Accessor<LabelSuggestion | undefined>;
-  suggestions?: Accessor<LabelSuggestion[]>;
-  on_saved?: () => void;
-  on_dismiss?: (reason?: SuggestionClearReason, suggestion?: LabelSuggestion) => void;
-  on_select?: (suggestion: LabelSuggestion) => void;
+  suggestions: Accessor<LabelSuggestion[]> | undefined;
+  on_saved: (() => void) | undefined;
+  on_dismiss:
+    | ((
+        reason: SuggestionClearReason | undefined,
+        suggestion: LabelSuggestion | undefined,
+      ) => void)
+    | undefined;
+  on_select: ((suggestion: LabelSuggestion) => void) | undefined;
 }> = (props) => {
   const s = () => props.suggestion();
   const [error, set_error] = createSignal<string | undefined>(undefined);
@@ -90,7 +95,7 @@ export const PredictionSuggestion: Component<{
   };
 
   const pending_suggestions = () => {
-    if (props.suggestions) {
+    if (props.suggestions !== undefined) {
       return props.suggestions();
     }
     const sg = s();
@@ -131,19 +136,22 @@ export const PredictionSuggestion: Component<{
   const correction_label = () => selected_label();
 
   function notify_saved() {
-    if (props.on_saved) {
+    if (props.on_saved !== undefined) {
       props.on_saved();
     }
   }
 
-  function notify_dismiss(reason: SuggestionClearReason, suggestion?: LabelSuggestion) {
-    if (props.on_dismiss) {
+  function notify_dismiss(
+    reason: SuggestionClearReason,
+    suggestion: LabelSuggestion | undefined,
+  ) {
+    if (props.on_dismiss !== undefined) {
       props.on_dismiss(reason, suggestion);
     }
   }
 
   function select_suggestion(item: LabelSuggestion) {
-    if (props.on_select) {
+    if (props.on_select !== undefined) {
       props.on_select(item);
     }
   }
@@ -184,10 +192,12 @@ export const PredictionSuggestion: Component<{
     set_error(undefined);
     try {
       const payload = {
+        suggestion_id: sg.suggestion_id,
         block_start: sg.block_start,
         block_end: sg.block_end,
         label,
-        ...(sg.suggestion_id ? { suggestion_id: sg.suggestion_id } : {}),
+        overwrite: undefined,
+        allow_overlap: undefined,
       };
       await notification_accept(payload);
       set_overwrite_pending(undefined);
@@ -232,11 +242,12 @@ export const PredictionSuggestion: Component<{
     try {
       const sg = s();
       const payload = {
+        suggestion_id: sg?.suggestion_id,
         block_start: pending.start,
         block_end: pending.end,
         label: pending.label,
         overwrite: true as const,
-        ...(sg && sg.suggestion_id ? { suggestion_id: sg.suggestion_id } : {}),
+        allow_overlap: undefined,
       };
       await notification_accept(payload);
       set_overwrite_pending(undefined);
@@ -261,11 +272,12 @@ export const PredictionSuggestion: Component<{
     try {
       const sg = s();
       const payload = {
+        suggestion_id: sg?.suggestion_id,
         block_start: pending.start,
         block_end: pending.end,
         label: pending.label,
+        overwrite: undefined,
         allow_overlap: true as const,
-        ...(sg && sg.suggestion_id ? { suggestion_id: sg.suggestion_id } : {}),
       };
       await notification_accept(payload);
       set_overwrite_pending(undefined);
@@ -673,7 +685,12 @@ export const PredictionSuggestion: Component<{
               </div>
             </div>
           </Show>
-          <ActivitySummary time_range={suggestion_time_range} show_empty />
+          <ActivitySummary
+            minutes={undefined}
+            time_range={suggestion_time_range}
+            prediction={undefined}
+            show_empty
+          />
           <Show when={overwrite_pending()}>
             {(pending) => (
               <LabelOverwrite
