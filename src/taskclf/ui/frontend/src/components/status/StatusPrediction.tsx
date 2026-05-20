@@ -5,6 +5,13 @@ import type { Prediction } from "../../lib/ws";
 import { StatusRow } from "../ui/StatusRow";
 import { StatusSection } from "../ui/StatusSection";
 
+const STATUS_ROW_DEFAULTS = {
+  color: undefined,
+  dim: undefined,
+  mono: undefined,
+  tooltip: undefined,
+} as const;
+
 export const StatusPrediction: Component<{
   prediction: Accessor<Prediction | undefined>;
 }> = (props) => {
@@ -34,6 +41,7 @@ export const StatusPrediction: Component<{
         when={pred()}
         fallback={
           <StatusRow
+            {...STATUS_ROW_DEFAULTS}
             label="status"
             value="no prediction yet"
             dim
@@ -44,30 +52,35 @@ export const StatusPrediction: Component<{
         {(p) => (
           <>
             <StatusRow
+              {...STATUS_ROW_DEFAULTS}
               label="provenance"
               value={p().provenance ?? "unknown"}
               dim
               tooltip="How this label was determined — model prediction or manual assignment"
             />
             <StatusRow
+              {...STATUS_ROW_DEFAULTS}
               label="label"
               value={p().label}
               color={LABEL_COLORS[p().label] ?? "#e0e0e0"}
               tooltip="Raw label output from the model"
             />
             <StatusRow
+              {...STATUS_ROW_DEFAULTS}
               label="mapped_label"
               value={p().mapped_label}
               color={LABEL_COLORS[p().mapped_label] ?? "#e0e0e0"}
               tooltip="Label after applying any label-mapping rules"
             />
             <StatusRow
+              {...STATUS_ROW_DEFAULTS}
               label="confidence"
               value={`${Math.round(p().confidence * 100)}%`}
               color={p().confidence >= 0.5 ? "#22c55e" : "#ef4444"}
               tooltip="Model's confidence in the prediction (higher is better)"
             />
             <StatusRow
+              {...STATUS_ROW_DEFAULTS}
               label="ts"
               value={time_format(p().ts)}
               dim
@@ -76,6 +89,7 @@ export const StatusPrediction: Component<{
             <Show when={p().current_app}>
               {(app) => (
                 <StatusRow
+                  {...STATUS_ROW_DEFAULTS}
                   label="trigger_app"
                   value={app()}
                   dim

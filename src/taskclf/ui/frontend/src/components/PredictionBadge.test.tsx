@@ -66,6 +66,14 @@ describe("PredictionBadge", () => {
       label: undefined,
     }),
     active_suggestion: () => undefined,
+    label_pinned: () => false,
+    panel_pinned: () => false,
+    on_toggle_panel: undefined,
+    on_show_panel: undefined,
+    on_hide_panel: undefined,
+    on_toggle_label: undefined,
+    on_show_label: undefined,
+    on_hide_label: undefined,
   };
 
   it("falls back to live status when there is no latest prediction", () => {
@@ -95,6 +103,7 @@ describe("PredictionBadge", () => {
           mapped_label: "Build",
           confidence: 1,
           ts: "2026-04-05T10:01:00Z",
+          current_app: undefined,
           provenance: "manual",
         })}
         live_status={() => ({
@@ -119,6 +128,7 @@ describe("PredictionBadge", () => {
           mapped_label: "Build",
           confidence: 1,
           ts: "2026-04-05T10:01:00Z",
+          current_app: undefined,
           provenance: "manual",
         })}
         live_status={() => ({
@@ -147,6 +157,7 @@ describe("PredictionBadge", () => {
           mapped_label: "Build",
           confidence: 1,
           ts: "2026-04-05T10:01:00Z",
+          current_app: undefined,
           provenance: "manual",
         })}
         live_status={() => ({

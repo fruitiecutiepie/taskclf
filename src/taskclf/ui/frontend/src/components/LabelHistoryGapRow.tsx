@@ -179,7 +179,12 @@ export const LabelHistoryGapRow: Component<{
             />
           </div>
 
-          <ActivitySummary time_range={() => selected_range()} />
+          <ActivitySummary
+            minutes={undefined}
+            time_range={() => selected_range()}
+            prediction={undefined}
+            show_empty={undefined}
+          />
 
           <Show when={props.error}>
             <ErrorBanner message={props.error ?? ""} on_close={props.on_error_close} />

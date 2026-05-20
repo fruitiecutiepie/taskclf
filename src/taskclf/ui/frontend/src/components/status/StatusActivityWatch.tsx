@@ -4,6 +4,13 @@ import { ActivitySourceSetupCallout } from "../ActivitySourceSetupCallout";
 import { StatusRow } from "../ui/StatusRow";
 import { StatusSection } from "../ui/StatusSection";
 
+const STATUS_ROW_DEFAULTS = {
+  color: undefined,
+  dim: undefined,
+  mono: undefined,
+  tooltip: undefined,
+} as const;
+
 export const StatusActivityWatch: Component<{
   status: Accessor<StatusEvent>;
 }> = (props) => {
@@ -37,17 +44,20 @@ export const StatusActivityWatch: Component<{
       default_open={provider().state !== "ready"}
     >
       <StatusRow
+        {...STATUS_ROW_DEFAULTS}
         label="provider"
         value={provider().provider_name}
         tooltip="Configured activity source backing live monitoring"
       />
       <StatusRow
+        {...STATUS_ROW_DEFAULTS}
         label="state"
         value={provider().state}
         color={summary_color()}
         tooltip="Whether the configured activity source is ready for live summaries"
       />
       <StatusRow
+        {...STATUS_ROW_DEFAULTS}
         label="endpoint"
         value={provider().endpoint || "—"}
         dim
@@ -55,6 +65,7 @@ export const StatusActivityWatch: Component<{
         tooltip="Configured endpoint for the current activity source"
       />
       <StatusRow
+        {...STATUS_ROW_DEFAULTS}
         label="source_id"
         value={provider().source_id ?? "—"}
         dim
@@ -62,6 +73,7 @@ export const StatusActivityWatch: Component<{
         tooltip="Resolved source identifier used for live monitoring"
       />
       <StatusRow
+        {...STATUS_ROW_DEFAULTS}
         label="last_sample_count"
         value={String(provider().last_sample_count)}
         dim
@@ -90,7 +102,13 @@ export const StatusActivityWatch: Component<{
           </span>
           <For each={app_counts()}>
             {([app, count]) => (
-              <StatusRow label={`  ${app}`} value={String(count)} dim mono />
+              <StatusRow
+                {...STATUS_ROW_DEFAULTS}
+                label={`  ${app}`}
+                value={String(count)}
+                dim
+                mono
+              />
             )}
           </For>
         </div>

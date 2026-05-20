@@ -33,6 +33,16 @@ beforeEach(() => {
 });
 
 describe("LabelRecorder", () => {
+  const base_props = {
+    max_height: undefined,
+    prediction: undefined,
+    suggestion: undefined,
+    suggestions: undefined,
+    label_change_count: undefined,
+    on_suggestion_dismiss: undefined,
+    on_suggestion_select: undefined,
+  } as const;
+
   it("shows a stop action for the current open-ended label and ends it at click time", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-04-05T10:00:00Z"));
@@ -80,7 +90,7 @@ describe("LabelRecorder", () => {
       extend_forward: false,
     });
 
-    render(() => <LabelRecorder on_collapse={vi.fn()} />);
+    render(() => <LabelRecorder {...base_props} on_collapse={vi.fn()} />);
 
     expect(await screen.findByText(/^Current:/)).toBeInTheDocument();
 
@@ -138,7 +148,7 @@ describe("LabelRecorder", () => {
       extend_forward: true,
     });
 
-    render(() => <LabelRecorder on_collapse={vi.fn()} />);
+    render(() => <LabelRecorder {...base_props} on_collapse={vi.fn()} />);
 
     expect(await screen.findByText(/^Current:/)).toBeInTheDocument();
     expect(
@@ -168,7 +178,7 @@ describe("LabelRecorder", () => {
       extend_forward: true,
     });
 
-    render(() => <LabelRecorder on_collapse={vi.fn()} />);
+    render(() => <LabelRecorder {...base_props} on_collapse={vi.fn()} />);
 
     expect(await screen.findByText(/^Current:/)).toBeInTheDocument();
     expect(
@@ -190,7 +200,7 @@ describe("LabelRecorder", () => {
       },
     ]);
 
-    render(() => <LabelRecorder on_collapse={vi.fn()} />);
+    render(() => <LabelRecorder {...base_props} on_collapse={vi.fn()} />);
 
     await waitFor(() => {
       expect(labels_list).toHaveBeenCalledWith(1);
@@ -231,7 +241,7 @@ describe("LabelRecorder", () => {
       extend_forward: true,
     });
 
-    render(() => <LabelRecorder on_collapse={vi.fn()} />);
+    render(() => <LabelRecorder {...base_props} on_collapse={vi.fn()} />);
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "gap 1h30m" })).toBeInTheDocument();

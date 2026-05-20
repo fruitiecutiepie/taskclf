@@ -206,7 +206,12 @@ export const LabelHistoryRow: Component<{
             </Show>
           </div>
 
-          <ActivitySummary time_range={() => edited_range()} />
+          <ActivitySummary
+            minutes={undefined}
+            time_range={() => edited_range()}
+            prediction={undefined}
+            show_empty={undefined}
+          />
 
           <Show when={props.error}>
             <ErrorBanner message={props.error ?? ""} on_close={props.on_error_close} />

@@ -691,6 +691,7 @@ export function ws_store_new() {
                 confidence: data.confidence,
                 ts: data.ts,
                 mapped_label: data.label,
+                current_app: undefined,
                 provenance: "manual",
               } as Prediction | undefined),
             );

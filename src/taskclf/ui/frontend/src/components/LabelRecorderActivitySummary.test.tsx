@@ -20,6 +20,16 @@ vi.mock("../lib/api", () => ({
 }));
 
 describe("LabelRecorder activity summary", () => {
+  const base_props = {
+    max_height: undefined,
+    prediction: undefined,
+    suggestion: undefined,
+    suggestions: undefined,
+    label_change_count: undefined,
+    on_suggestion_dismiss: undefined,
+    on_suggestion_select: undefined,
+  } as const;
+
   it("keeps manual labeling interactive when the provider is unavailable", async () => {
     vi.mocked(core_labels_list).mockResolvedValue(["Build", "Write"]);
     vi.mocked(current_label_get).mockResolvedValue(undefined);
@@ -74,7 +84,7 @@ describe("LabelRecorder activity summary", () => {
         "Manual labeling still works, but activity summaries and automatic activity tracking are unavailable until this source is set up.",
     });
 
-    render(() => <LabelRecorder on_collapse={() => {}} />);
+    render(() => <LabelRecorder {...base_props} on_collapse={() => {}} />);
 
     fireEvent.click(await screen.findByRole("button", { name: "1m" }));
 

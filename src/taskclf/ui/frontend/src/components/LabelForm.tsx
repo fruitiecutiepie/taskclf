@@ -44,7 +44,11 @@ export const LabelForm: Component = () => {
         start_ts: start_ts(),
         end_ts: end_ts(),
         label: label(),
+        user_id: undefined,
         confidence: confidence(),
+        extend_forward: undefined,
+        overwrite: undefined,
+        allow_overlap: undefined,
       });
       set_status({
         type: "success",

@@ -14,7 +14,7 @@ describe("ErrorBanner", () => {
   });
 
   it("copies the current error text", async () => {
-    render(() => <ErrorBanner message="broken" />);
+    render(() => <ErrorBanner message="broken" on_close={undefined} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Copy error" }));
 

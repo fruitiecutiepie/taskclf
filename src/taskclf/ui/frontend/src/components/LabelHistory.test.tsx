@@ -89,7 +89,7 @@ describe("LabelHistory", () => {
 
     const [visible, set_visible] = createSignal(false);
 
-    render(() => <LabelHistory visible={visible} />);
+    render(() => <LabelHistory visible={visible} label_change_count={undefined} />);
 
     vi.setSystemTime(new Date(2026, 3, 6, 10, 0, 0, 0));
     const next_today = date_today_str();

@@ -350,6 +350,7 @@ const App: Component = () => {
             }}
           >
             <LabelRecorder
+              max_height={undefined}
               on_collapse={() => {
                 label_hide_cancel();
                 set_label_pinned(false);

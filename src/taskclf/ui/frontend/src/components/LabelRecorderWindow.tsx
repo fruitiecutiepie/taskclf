@@ -39,6 +39,7 @@ export const LabelRecorderWindow: Component = () => {
       >
         <HostWindowDragStrip />
         <LabelRecorder
+          max_height={undefined}
           on_collapse={window_collapse}
           prediction={ws.latest_prediction}
           suggestion={ws.active_suggestion}

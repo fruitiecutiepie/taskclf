@@ -64,7 +64,14 @@ describe("ActivitySummary", () => {
   it("shows a no-data message for empty ranges", async () => {
     vi.mocked(activity_summary_get).mockResolvedValueOnce(activity_summary_make());
 
-    render(() => <ActivitySummary time_range={range} show_empty />);
+    render(() => (
+      <ActivitySummary
+        minutes={undefined}
+        time_range={range}
+        prediction={undefined}
+        show_empty
+      />
+    ));
 
     expect(
       await screen.findByText("No activity data for this window"),
@@ -85,7 +92,14 @@ describe("ActivitySummary", () => {
       }),
     );
 
-    render(() => <ActivitySummary time_range={range} show_empty />);
+    render(() => (
+      <ActivitySummary
+        minutes={undefined}
+        time_range={range}
+        prediction={undefined}
+        show_empty
+      />
+    ));
 
     expect(await screen.findByText("Activity source unavailable")).toBeInTheDocument();
     expect(
@@ -96,7 +110,14 @@ describe("ActivitySummary", () => {
   it("shows a generic fallback when the summary request fails", async () => {
     vi.mocked(activity_summary_get).mockRejectedValueOnce(new Error("boom"));
 
-    render(() => <ActivitySummary time_range={range} show_empty />);
+    render(() => (
+      <ActivitySummary
+        minutes={undefined}
+        time_range={range}
+        prediction={undefined}
+        show_empty
+      />
+    ));
 
     await waitFor(() => {
       expect(

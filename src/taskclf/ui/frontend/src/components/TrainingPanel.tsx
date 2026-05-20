@@ -24,6 +24,13 @@ import { StatusProgress } from "./ui/StatusProgress";
 import { StatusRow } from "./ui/StatusRow";
 import { StatusSection } from "./ui/StatusSection";
 
+const STATUS_ROW_DEFAULTS = {
+  color: undefined,
+  dim: undefined,
+  mono: undefined,
+  tooltip: undefined,
+} as const;
+
 export const TrainingPanel: Component<{
   train_state: Accessor<TrainState>;
 }> = (props) => {
@@ -284,7 +291,12 @@ export const TrainingPanel: Component<{
 
   return (
     <div style={{ "font-size": "0.63rem" }}>
-      <StatusSection title="Data Readiness" default_open>
+      <StatusSection
+        title="Data Readiness"
+        summary={undefined}
+        summary_color={undefined}
+        default_open
+      >
         <div style={{ display: "flex", gap: "4px", "margin-bottom": "4px" }}>
           <div style={{ flex: 1 }}>
             <label
@@ -339,6 +351,7 @@ export const TrainingPanel: Component<{
           <div style={{ "margin-top": "4px" }}>
             <Show when={(data_check()?.dates_built.length ?? 0) > 0}>
               <StatusRow
+                {...STATUS_ROW_DEFAULTS}
                 label="built"
                 value={`${data_check()?.dates_built.length} day(s) from AW`}
                 color="#22c55e"
@@ -346,16 +359,19 @@ export const TrainingPanel: Component<{
               />
             </Show>
             <StatusRow
+              {...STATUS_ROW_DEFAULTS}
               label="features_days"
               value={`${data_check()?.dates_with_features.length ?? 0} / ${(data_check()?.dates_with_features.length ?? 0) + (data_check()?.dates_missing_features.length ?? 0)}`}
               tooltip="Days with activity data out of total days in range"
             />
             <StatusRow
+              {...STATUS_ROW_DEFAULTS}
               label="label_spans"
               value={String(data_check()?.label_span_count)}
               tooltip="Number of labeled time blocks in the selected range"
             />
             <StatusRow
+              {...STATUS_ROW_DEFAULTS}
               label="trainable_rows"
               value={
                 (data_check()?.trainable_rows ?? 0) > 0
@@ -375,7 +391,12 @@ export const TrainingPanel: Component<{
         </Show>
       </StatusSection>
 
-      <StatusSection title="Train Model" default_open>
+      <StatusSection
+        title="Train Model"
+        summary={undefined}
+        summary_color={undefined}
+        default_open
+      >
         <div
           style={{
             display: "flex",
@@ -541,6 +562,7 @@ export const TrainingPanel: Component<{
           default_open
         >
           <StatusRow
+            {...STATUS_ROW_DEFAULTS}
             label="status"
             value={ts().status}
             color={
@@ -554,6 +576,7 @@ export const TrainingPanel: Component<{
           />
           <Show when={ts().step}>
             <StatusRow
+              {...STATUS_ROW_DEFAULTS}
               label="step"
               value={ts().step ?? ""}
               dim
@@ -562,6 +585,7 @@ export const TrainingPanel: Component<{
           </Show>
           <Show when={ts().message}>
             <StatusRow
+              {...STATUS_ROW_DEFAULTS}
               label="message"
               value={ts().message ?? ""}
               dim
@@ -569,7 +593,7 @@ export const TrainingPanel: Component<{
             />
           </Show>
           <Show when={ts().progress_pct !== undefined && ts().status === "running"}>
-            <StatusProgress pct={ts().progress_pct ?? 0} />
+            <StatusProgress pct={ts().progress_pct ?? 0} color={undefined} />
           </Show>
           <Show when={visible_run_error()}>
             <ErrorBanner
@@ -579,12 +603,14 @@ export const TrainingPanel: Component<{
           </Show>
           <Show when={ts().metrics}>
             <StatusRow
+              {...STATUS_ROW_DEFAULTS}
               label="macro_f1"
               value={ts().metrics?.macro_f1?.toFixed(3) ?? "—"}
               color="#22c55e"
               tooltip="F1 score averaged equally across all classes — good for imbalanced datasets"
             />
             <StatusRow
+              {...STATUS_ROW_DEFAULTS}
               label="weighted_f1"
               value={ts().metrics?.weighted_f1?.toFixed(3) ?? "—"}
               color="#22c55e"
@@ -593,6 +619,7 @@ export const TrainingPanel: Component<{
           </Show>
           <Show when={ts().model_dir}>
             <StatusRow
+              {...STATUS_ROW_DEFAULTS}
               label="model_dir"
               value={ts().model_dir?.split("/").pop() ?? ts().model_dir ?? ""}
               dim
@@ -603,11 +630,17 @@ export const TrainingPanel: Component<{
         </StatusSection>
       </Show>
 
-      <StatusSection title="Models" summary={`${models().length}`}>
+      <StatusSection
+        title="Models"
+        summary={`${models().length}`}
+        summary_color={undefined}
+        default_open={undefined}
+      >
         <Show
           when={models().length > 0}
           fallback={
             <StatusRow
+              {...STATUS_ROW_DEFAULTS}
               label="status"
               value="no models found"
               dim
@@ -624,6 +657,7 @@ export const TrainingPanel: Component<{
                 }}
               >
                 <StatusRow
+                  {...STATUS_ROW_DEFAULTS}
                   label="id"
                   value={m.model_id}
                   mono
@@ -631,6 +665,7 @@ export const TrainingPanel: Component<{
                 />
                 <Show when={m.macro_f1 !== undefined}>
                   <StatusRow
+                    {...STATUS_ROW_DEFAULTS}
                     label="macro_f1"
                     value={m.macro_f1?.toFixed(3) ?? ""}
                     color="#22c55e"
@@ -639,6 +674,7 @@ export const TrainingPanel: Component<{
                 </Show>
                 <Show when={m.created_at}>
                   <StatusRow
+                    {...STATUS_ROW_DEFAULTS}
                     label="created"
                     value={m.created_at?.slice(0, 19).replace("T", " ") ?? ""}
                     dim
@@ -671,6 +707,7 @@ export const TrainingPanel: Component<{
                           if ("error" in row) {
                             return (
                               <StatusRow
+                                {...STATUS_ROW_DEFAULTS}
                                 label="inspect"
                                 value={row.error}
                                 color="#ef4444"
@@ -695,12 +732,14 @@ export const TrainingPanel: Component<{
                           return (
                             <>
                               <StatusRow
+                                {...STATUS_ROW_DEFAULTS}
                                 label="val_macro_f1"
                                 value={row.bundle_saved_validation.macro_f1.toFixed(4)}
                                 color="#22c55e"
                                 tooltip="Macro F1 on the validation split in the bundle"
                               />
                               <StatusRow
+                                {...STATUS_ROW_DEFAULTS}
                                 label="val_weighted_f1"
                                 value={row.bundle_saved_validation.weighted_f1.toFixed(
                                   4,
@@ -710,6 +749,7 @@ export const TrainingPanel: Component<{
                               />
                               <Show when={meta.train_date_from && meta.train_date_to}>
                                 <StatusRow
+                                  {...STATUS_ROW_DEFAULTS}
                                   label="trained"
                                   value={`${meta.train_date_from} — ${meta.train_date_to}`}
                                   dim
@@ -717,6 +757,7 @@ export const TrainingPanel: Component<{
                                 />
                               </Show>
                               <StatusRow
+                                {...STATUS_ROW_DEFAULTS}
                                 label="top_confusions"
                                 value={top_str}
                                 dim
@@ -729,6 +770,7 @@ export const TrainingPanel: Component<{
                     }
                   >
                     <StatusRow
+                      {...STATUS_ROW_DEFAULTS}
                       label="inspect"
                       value="loading…"
                       dim
