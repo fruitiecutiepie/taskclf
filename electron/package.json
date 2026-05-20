@@ -69,10 +69,5 @@
   },
   "dependencies": {
     "adm-zip": "0.5.16"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "electron"
-    ]
   }
 }

@@ -57,6 +57,12 @@ Behavior:
   a compatible sidecar backend
 - blocks until the Electron process exits
 
+The Electron workspace allows pnpm to run install-time build scripts for
+`electron` and `electron-winstaller` via `allowBuilds` in
+`electron/pnpm-workspace.yaml`. Keep those approvals with the workspace
+metadata so CI commands that use `pnpm --dir electron ...` see the same
+dependency policy as local installs.
+
 The Electron build also generates separate icon assets under `electron/build/`:
 
 - `icon.png` for the app/window icon on all platforms
