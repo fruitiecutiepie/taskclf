@@ -5,7 +5,7 @@ describe("gap_shortcut_label_from_end", () => {
   it("returns null when under one rounded minute", () => {
     const end = Date.parse("2026-04-05T10:00:00.000Z");
     const now = end + 29_000;
-    expect(gap_shortcut_label_from_end(end, now)).toBeNull();
+    expect(gap_shortcut_label_from_end(end, now)).toBeUndefined();
   });
 
   it("formats minutes and hours like the gap button", () => {

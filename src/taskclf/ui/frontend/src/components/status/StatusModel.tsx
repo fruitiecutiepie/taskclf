@@ -17,32 +17,40 @@ import type { TrayState } from "../../lib/ws";
 import { StatusRow } from "../ui/StatusRow";
 import { StatusSection } from "../ui/StatusSection";
 
+const STATUS_ROW_DEFAULTS = {
+  color: undefined,
+  dim: undefined,
+  mono: undefined,
+  tooltip: undefined,
+} as const;
+
 export const StatusModel: Component<{
   tray_state: Accessor<TrayState>;
 }> = (props) => {
   const t = () => props.tray_state();
 
-  const [bundle_inspect, set_bundle_inspect] =
-    createSignal<CurrentModelBundleInspectResponse | null>(null);
-  const [bundle_inspect_error, set_bundle_inspect_error] = createSignal<string | null>(
-    null,
-  );
+  const [bundle_inspect, set_bundle_inspect] = createSignal<
+    CurrentModelBundleInspectResponse | undefined
+  >(undefined);
+  const [bundle_inspect_error, set_bundle_inspect_error] = createSignal<
+    string | undefined
+  >(undefined);
 
   createEffect(
     on(
       () => [t().model_loaded, t().model_dir] as const,
       async ([loaded, dir]) => {
         if (!loaded || !dir) {
-          set_bundle_inspect(null);
-          set_bundle_inspect_error(null);
+          set_bundle_inspect(undefined);
+          set_bundle_inspect_error(undefined);
           return;
         }
         try {
           const r = await model_bundle_inspect_current();
           set_bundle_inspect(r);
-          set_bundle_inspect_error(null);
+          set_bundle_inspect_error(undefined);
         } catch (e: unknown) {
-          set_bundle_inspect(null);
+          set_bundle_inspect(undefined);
           set_bundle_inspect_error(
             e instanceof Error ? e.message : "Bundle inspect failed",
           );
@@ -64,8 +72,14 @@ export const StatusModel: Component<{
   });
 
   return (
-    <StatusSection title="Model" summary={summary()} summary_color={summary_color()}>
+    <StatusSection
+      title="Model"
+      summary={summary()}
+      summary_color={summary_color()}
+      default_open={undefined}
+    >
       <StatusRow
+        {...STATUS_ROW_DEFAULTS}
         label="loaded"
         value={t().model_loaded ? "yes" : "no"}
         color={t().model_loaded ? "#22c55e" : "#ef4444"}
@@ -74,6 +88,7 @@ export const StatusModel: Component<{
       <Show when={t().model_dir}>
         {(dir) => (
           <StatusRow
+            {...STATUS_ROW_DEFAULTS}
             label="model_dir"
             value={path_trunc(dir())}
             dim
@@ -85,6 +100,7 @@ export const StatusModel: Component<{
       <Show when={t().model_schema_hash}>
         {(hash) => (
           <StatusRow
+            {...STATUS_ROW_DEFAULTS}
             label="schema_hash"
             value={hash()}
             dim
@@ -97,12 +113,14 @@ export const StatusModel: Component<{
         {(label) => (
           <>
             <StatusRow
+              {...STATUS_ROW_DEFAULTS}
               label="suggested"
               value={label()}
               color={LABEL_COLORS[label()] ?? "#e0e0e0"}
               tooltip="Label the model suggests for the current activity block"
             />
             <StatusRow
+              {...STATUS_ROW_DEFAULTS}
               label="suggestion_conf"
               value={`${Math.round((t().suggested_confidence ?? 0) * 100)}%`}
               tooltip="Confidence of the current label suggestion"
@@ -112,6 +130,7 @@ export const StatusModel: Component<{
       </Show>
       <Show when={!t().suggested_label}>
         <StatusRow
+          {...STATUS_ROW_DEFAULTS}
           label="suggested"
           value="none"
           dim
@@ -120,6 +139,7 @@ export const StatusModel: Component<{
       </Show>
       <Show when={bundle_inspect_error()}>
         <StatusRow
+          {...STATUS_ROW_DEFAULTS}
           label="inspect"
           value={bundle_inspect_error() ?? ""}
           color="#ef4444"
@@ -135,6 +155,7 @@ export const StatusModel: Component<{
         }
       >
         <StatusRow
+          {...STATUS_ROW_DEFAULTS}
           label="inspect"
           value={
             bundle_inspect()?.loaded === false
@@ -166,12 +187,14 @@ export const StatusModel: Component<{
           return (
             <>
               <StatusRow
+                {...STATUS_ROW_DEFAULTS}
                 label="val_macro_f1"
                 value={row.bundle_saved_validation.macro_f1.toFixed(4)}
                 color="#22c55e"
                 tooltip="Macro F1 on the validation split saved in the bundle (not held-out test)"
               />
               <StatusRow
+                {...STATUS_ROW_DEFAULTS}
                 label="val_weighted_f1"
                 value={row.bundle_saved_validation.weighted_f1.toFixed(4)}
                 color="#22c55e"
@@ -179,6 +202,7 @@ export const StatusModel: Component<{
               />
               <Show when={meta.train_date_from && meta.train_date_to}>
                 <StatusRow
+                  {...STATUS_ROW_DEFAULTS}
                   label="trained"
                   value={`${meta.train_date_from} — ${meta.train_date_to}`}
                   dim
@@ -186,6 +210,7 @@ export const StatusModel: Component<{
                 />
               </Show>
               <StatusRow
+                {...STATUS_ROW_DEFAULTS}
                 label="top_confusions"
                 value={top_str}
                 dim

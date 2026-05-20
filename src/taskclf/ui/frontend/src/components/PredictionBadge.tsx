@@ -14,26 +14,26 @@ import { ConnectionDot } from "./ConnectionDot";
 export const PredictionBadge: Component<{
   status: Accessor<ConnectionStatus>;
   latest_status: Accessor<StatusEvent>;
-  latest_prediction: Accessor<Prediction | null>;
-  live_status: Accessor<LiveStatusEvent | null>;
-  badge_display_override?: Accessor<BadgeDisplayOverride>;
+  latest_prediction: Accessor<Prediction | undefined>;
+  live_status: Accessor<LiveStatusEvent | undefined>;
+  badge_display_override: Accessor<BadgeDisplayOverride> | undefined;
   latest_tray_state: Accessor<TrayState>;
-  active_suggestion: Accessor<LabelSuggestion | null>;
-  label_pinned?: Accessor<boolean>;
-  panel_pinned?: Accessor<boolean>;
-  on_toggle_panel?: () => void;
-  on_show_panel?: () => void;
-  on_hide_panel?: () => void;
-  on_toggle_label?: () => void;
-  on_show_label?: () => void;
-  on_hide_label?: () => void;
+  active_suggestion: Accessor<LabelSuggestion | undefined>;
+  label_pinned: Accessor<boolean> | undefined;
+  panel_pinned: Accessor<boolean> | undefined;
+  on_toggle_panel: (() => void) | undefined;
+  on_show_panel: (() => void) | undefined;
+  on_hide_panel: (() => void) | undefined;
+  on_toggle_label: (() => void) | undefined;
+  on_show_label: (() => void) | undefined;
+  on_hide_label: (() => void) | undefined;
 }> = (props) => {
   const prediction_label = () => {
     const pred = props.latest_prediction();
-    return pred ? pred.mapped_label || pred.label : null;
+    return pred ? pred.mapped_label || pred.label : undefined;
   };
 
-  const live_label = () => props.live_status()?.label ?? null;
+  const live_label = () => props.live_status()?.label ?? undefined;
 
   const display_label = () => {
     const override = props.badge_display_override?.();

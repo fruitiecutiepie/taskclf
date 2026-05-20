@@ -5,8 +5,8 @@ import type { PromptLabelEvent } from "./ws";
 // TypeScript's lib.dom.d.ts. Extend until upstream adds it.
 // https://developer.mozilla.org/en-US/docs/Web/API/Notification/Notification#renotify
 type NotificationOptionsExtended = NotificationOptions & {
-  renotify?: boolean;
-  requireInteraction?: boolean;
+  renotify: boolean | undefined;
+  requireInteraction: boolean | undefined;
 };
 
 let permission_granted = false;
@@ -75,9 +75,9 @@ export async function notification_permission_ensure(): Promise<boolean> {
 export function transition_notification_show(
   prompt: PromptLabelEvent,
   on_click: () => void,
-): Notification | null {
+): Notification | undefined {
   if (!permission_granted || !("Notification" in window)) {
-    return null;
+    return undefined;
   }
 
   const range = notification_range_format(prompt);

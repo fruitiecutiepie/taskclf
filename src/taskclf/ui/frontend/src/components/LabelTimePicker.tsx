@@ -25,7 +25,9 @@ type LabelTimePickerProps = {
   set_fill_from_last: (v: boolean) => void;
   has_current_label: Accessor<boolean>;
   last_label: Accessor<
-    { start_ts: string; end_ts: string; extend_forward?: boolean } | null | undefined
+    | { start_ts: string; end_ts: string; extend_forward: boolean | undefined }
+    | undefined
+    | undefined
   >;
 };
 
@@ -48,7 +50,7 @@ export const LabelTimePicker: Component<LabelTimePickerProps> = (props) => {
     const t = now_ms();
     const ll = props.last_label();
     if (props.has_current_label() || !ll?.end_ts || label_entry_is_open_ended(ll)) {
-      return null;
+      return undefined;
     }
     return gap_shortcut_label_from_end(iso_date_parse(ll.end_ts).getTime(), t);
   });

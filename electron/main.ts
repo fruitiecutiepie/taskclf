@@ -57,7 +57,9 @@ import { warmPillWindow } from "./shell_warm.js";
 function readAppDisplayName(): string {
   const pkgPath = path.join(__dirname, "..", "package.json");
   const raw = fs.readFileSync(pkgPath, "utf-8");
-  const pkg = JSON.parse(raw) as { build?: { productName?: string } };
+  const pkg = JSON.parse(raw) as {
+    build: { productName: string | undefined } | undefined;
+  };
   return pkg.build?.productName ?? "taskclf";
 }
 
@@ -65,9 +67,9 @@ const APP_DISPLAY_NAME = readAppDisplayName();
 
 type HostCommand = {
   cmd: string;
-  mode?: string;
-  message?: string;
-  prompt?: {
+  mode: string | undefined;
+  message: string | undefined;
+  prompt: {
     prev_app: string;
     new_app: string;
     block_start: string;
@@ -75,7 +77,7 @@ type HostCommand = {
     duration_min: number;
     suggested_label: string | null;
     suggestion_text: string | null;
-  };
+  } | undefined;
 };
 
 const COMPACT_SIZE = { width: 150, height: 30 };
@@ -293,7 +295,7 @@ function launcherLogFilePath(): string {
 function launcherLog(
   message: string,
   level: "info" | "error" = "info",
-  options?: { echoToConsole?: boolean },
+  options: { echoToConsole: boolean | undefined } | undefined = undefined,
 ): void {
   const ts = new Date().toISOString();
   const line = `[${ts}] [${level}] ${message}`;
@@ -364,7 +366,7 @@ function buildLauncherIssueUrl(title: string, detail: string): string {
   return url;
 }
 
-function fatalDialogDetail(message: string, detail?: string): string {
+function fatalDialogDetail(message: string, detail: string | undefined = undefined): string {
   const parts: string[] = [message];
   if (detail) {
     parts.push(`Details:\n${detail}`);
@@ -379,7 +381,7 @@ function fatalDialogDetail(message: string, detail?: string): string {
 async function showFatalLaunchError(
   title: string,
   message: string,
-  detail?: string,
+  detail: string | undefined = undefined,
 ): Promise<void> {
   if (fatalLaunchErrorShown || isQuitting) {
     return;
@@ -805,7 +807,7 @@ function transitionNotificationBody(prompt: NonNullable<HostCommand["prompt"]>):
 
 async function notificationActionPost(
   pathName: string,
-  body?: Record<string, unknown>,
+  body: Record<string, unknown> | undefined = undefined,
 ): Promise<{ ok: boolean; detail: string }> {
   const response = await sidecarRequest(pathName, {
     method: "POST",
@@ -1094,7 +1096,7 @@ async function waitForShell(url: string, timeoutMs = 30000): Promise<void> {
 
 async function sidecarRequest(
   pathName: string,
-  init?: RequestInit,
+  init: RequestInit | undefined = undefined,
 ): Promise<Response | null> {
   try {
     return await fetch(`http://127.0.0.1:${uiPort()}${pathName}`, init);
@@ -1170,10 +1172,10 @@ let updateCheckInProgress = false;
 function payloadResolutionDetails(
   resolution: PayloadResolution,
   activeVersion: string | null,
-  options?: {
-    selectedVersion?: string | null;
-    note?: string | null;
-  },
+  options: {
+    selectedVersion: string | null | undefined;
+    note: string | null | undefined;
+  } | undefined = undefined,
 ): string {
   const lines = [
     `Launcher version: ${resolution.launcherManifest.launcher_version}`,
@@ -1213,9 +1215,9 @@ async function applyPayloadResolution(
 async function applyPayloadResolutionAndRelaunch(
   resolution: PayloadResolution,
   heading: string,
-  options?: {
-    clearSelectedVersionBeforeRelaunch?: boolean;
-  },
+  options: {
+    clearSelectedVersionBeforeRelaunch: boolean | undefined;
+  } | undefined = undefined,
 ): Promise<void> {
   await applyPayloadResolution(resolution, heading);
   if (options?.clearSelectedVersionBeforeRelaunch) {
@@ -1225,7 +1227,7 @@ async function applyPayloadResolutionAndRelaunch(
   app.quit();
 }
 
-async function showUpdateCheckFailureDialog(detail?: string): Promise<void> {
+async function showUpdateCheckFailureDialog(detail: string | undefined = undefined): Promise<void> {
   await dialog.showMessageBox({
     type: "error",
     title: "Update Check Failed",
@@ -2262,11 +2264,11 @@ function formatProgressLine(event: UpdateProgressEvent): string {
   }
 }
 
-type ProgressWindowState = {
-  heading?: string;
-  detail?: string;
-  percent?: number | null;
-};
+type ProgressWindowState = Partial<{
+  heading: string | undefined;
+  detail: string | undefined;
+  percent: number | null | undefined;
+}>;
 
 function progressWindowPageHtml(heading: string, detail = ""): string {
   const h = escapeHtmlAttr(heading);

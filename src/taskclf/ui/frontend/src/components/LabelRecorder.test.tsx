@@ -22,17 +22,27 @@ vi.mock("./ActivitySummary", () => ({
 }));
 
 vi.mock("./PredictionSuggestion", () => ({
-  PredictionSuggestion: () => null,
+  PredictionSuggestion: () => undefined,
 }));
 
 beforeEach(() => {
   vi.clearAllMocks();
   vi.useRealTimers();
   vi.mocked(core_labels_list).mockResolvedValue(["Build", "Write"]);
-  vi.mocked(current_label_get).mockResolvedValue(null);
+  vi.mocked(current_label_get).mockResolvedValue(undefined);
 });
 
 describe("LabelRecorder", () => {
+  const base_props = {
+    max_height: undefined,
+    prediction: undefined,
+    suggestion: undefined,
+    suggestions: undefined,
+    label_change_count: undefined,
+    on_suggestion_dismiss: undefined,
+    on_suggestion_select: undefined,
+  } as const;
+
   it("shows a stop action for the current open-ended label and ends it at click time", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-04-05T10:00:00Z"));
@@ -43,7 +53,7 @@ describe("LabelRecorder", () => {
           end_ts: "2026-04-05T09:00:00Z",
           label: "Build",
           provenance: "manual",
-          user_id: null,
+          user_id: undefined,
           confidence: 1,
           extend_forward: true,
         },
@@ -54,7 +64,7 @@ describe("LabelRecorder", () => {
           end_ts: "2026-04-05T10:00:00.000Z",
           label: "Build",
           provenance: "manual",
-          user_id: null,
+          user_id: undefined,
           confidence: 1,
           extend_forward: false,
         },
@@ -65,22 +75,22 @@ describe("LabelRecorder", () => {
         end_ts: "2026-04-05T09:00:00Z",
         label: "Build",
         provenance: "manual",
-        user_id: null,
+        user_id: undefined,
         confidence: 1,
         extend_forward: true,
       })
-      .mockResolvedValueOnce(null);
+      .mockResolvedValueOnce(undefined);
     vi.mocked(label_update).mockResolvedValue({
       start_ts: "2026-04-05T09:00:00Z",
       end_ts: "2026-04-05T10:00:00.000Z",
       label: "Build",
       provenance: "manual",
-      user_id: null,
+      user_id: undefined,
       confidence: 1,
       extend_forward: false,
     });
 
-    render(() => <LabelRecorder on_collapse={vi.fn()} />);
+    render(() => <LabelRecorder {...base_props} on_collapse={vi.fn()} />);
 
     expect(await screen.findByText(/^Current:/)).toBeInTheDocument();
 
@@ -123,7 +133,7 @@ describe("LabelRecorder", () => {
         end_ts: "2026-04-05T09:05:00Z",
         label: "Build",
         provenance: "manual",
-        user_id: null,
+        user_id: undefined,
         confidence: 1,
         extend_forward: true,
       },
@@ -133,12 +143,12 @@ describe("LabelRecorder", () => {
       end_ts: "2026-04-05T09:05:00Z",
       label: "Build",
       provenance: "manual",
-      user_id: null,
+      user_id: undefined,
       confidence: 1,
       extend_forward: true,
     });
 
-    render(() => <LabelRecorder on_collapse={vi.fn()} />);
+    render(() => <LabelRecorder {...base_props} on_collapse={vi.fn()} />);
 
     expect(await screen.findByText(/^Current:/)).toBeInTheDocument();
     expect(
@@ -153,7 +163,7 @@ describe("LabelRecorder", () => {
         end_ts: "2026-04-05T10:00:00Z",
         label: "Write",
         provenance: "manual",
-        user_id: null,
+        user_id: undefined,
         confidence: 1,
         extend_forward: false,
       },
@@ -163,12 +173,12 @@ describe("LabelRecorder", () => {
       end_ts: "2026-04-05T09:00:00Z",
       label: "Build",
       provenance: "manual",
-      user_id: null,
+      user_id: undefined,
       confidence: 1,
       extend_forward: true,
     });
 
-    render(() => <LabelRecorder on_collapse={vi.fn()} />);
+    render(() => <LabelRecorder {...base_props} on_collapse={vi.fn()} />);
 
     expect(await screen.findByText(/^Current:/)).toBeInTheDocument();
     expect(
@@ -184,13 +194,13 @@ describe("LabelRecorder", () => {
         end_ts: "2026-04-05T09:30:00Z",
         label: "Build",
         provenance: "manual",
-        user_id: null,
+        user_id: undefined,
         confidence: 1,
         extend_forward: false,
       },
     ]);
 
-    render(() => <LabelRecorder on_collapse={vi.fn()} />);
+    render(() => <LabelRecorder {...base_props} on_collapse={vi.fn()} />);
 
     await waitFor(() => {
       expect(labels_list).toHaveBeenCalledWith(1);
@@ -216,7 +226,7 @@ describe("LabelRecorder", () => {
         end_ts: "2026-04-05T09:30:00Z",
         label: "Build",
         provenance: "manual",
-        user_id: null,
+        user_id: undefined,
         confidence: 1,
         extend_forward: false,
       },
@@ -226,12 +236,12 @@ describe("LabelRecorder", () => {
       end_ts: "2026-04-05T11:00:00.000Z",
       label: "Write",
       provenance: "manual",
-      user_id: null,
+      user_id: undefined,
       confidence: 1,
       extend_forward: true,
     });
 
-    render(() => <LabelRecorder on_collapse={vi.fn()} />);
+    render(() => <LabelRecorder {...base_props} on_collapse={vi.fn()} />);
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "gap 1h30m" })).toBeInTheDocument();

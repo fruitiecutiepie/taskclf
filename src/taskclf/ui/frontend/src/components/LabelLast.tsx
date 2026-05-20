@@ -9,12 +9,12 @@ type LabelLastProps = {
         label: string;
         start_ts: string;
         end_ts: string;
-        extend_forward?: boolean;
+        extend_forward: boolean | undefined;
       }
-    | null
+    | undefined
     | undefined
   >;
-  is_current?: Accessor<boolean>;
+  is_current: Accessor<boolean> | undefined;
 };
 
 const LabelLastContent: Component<{
@@ -22,9 +22,9 @@ const LabelLastContent: Component<{
     label: string;
     start_ts: string;
     end_ts: string;
-    extend_forward?: boolean;
+    extend_forward: boolean | undefined;
   }>;
-  is_current?: Accessor<boolean>;
+  is_current: Accessor<boolean> | undefined;
 }> = (props) => {
   const is_current = () =>
     props.is_current?.() ?? label_entry_is_open_ended(props.ll());

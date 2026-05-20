@@ -113,7 +113,7 @@ export const LabelTable: Component = () => {
                         color: "var(--text-muted)",
                       }}
                     >
-                      {row.confidence !== null
+                      {row.confidence !== undefined
                         ? `${Math.round(row.confidence * 100)}%`
                         : "—"}
                     </td>

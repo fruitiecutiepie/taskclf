@@ -38,7 +38,7 @@ describe("LabelHistory", () => {
           end_ts: iso_at_local_time(date_str, 10),
           label: "Build",
           provenance: "manual",
-          user_id: null,
+          user_id: undefined,
           confidence: 1,
           extend_forward: false,
         },
@@ -49,7 +49,7 @@ describe("LabelHistory", () => {
           end_ts: iso_at_local_time(date_str, 10),
           label: "Build",
           provenance: "manual",
-          user_id: null,
+          user_id: undefined,
           confidence: 1,
           extend_forward: false,
         },
@@ -58,7 +58,7 @@ describe("LabelHistory", () => {
           end_ts: iso_at_local_time(date_str, 11),
           label: "Write",
           provenance: "suggestion",
-          user_id: null,
+          user_id: undefined,
           confidence: 1,
           extend_forward: false,
         },
@@ -89,7 +89,7 @@ describe("LabelHistory", () => {
 
     const [visible, set_visible] = createSignal(false);
 
-    render(() => <LabelHistory visible={visible} />);
+    render(() => <LabelHistory visible={visible} label_change_count={undefined} />);
 
     vi.setSystemTime(new Date(2026, 3, 6, 10, 0, 0, 0));
     const next_today = date_today_str();

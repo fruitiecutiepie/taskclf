@@ -65,7 +65,7 @@ export function selectLatestCompatiblePayloadVersion(
 
 export function manifestUrlForLauncherVersion(
   version: string,
-  overrideUrl?: string,
+  overrideUrl: string | undefined,
 ): string {
   if (overrideUrl && overrideUrl.length > 0) {
     return overrideUrl;

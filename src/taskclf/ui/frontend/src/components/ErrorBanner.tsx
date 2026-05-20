@@ -31,15 +31,15 @@ async function error_text_copy(text: string): Promise<void> {
 
 export const ErrorBanner: Component<{
   message: string;
-  on_close?: () => void;
+  on_close: (() => void) | undefined;
 }> = (props) => {
   const [copy_state, set_copy_state] = createSignal<"idle" | "copied" | "failed">(
     "idle",
   );
-  let reset_timer: ReturnType<typeof setTimeout> | null = null;
+  let reset_timer: ReturnType<typeof setTimeout> | undefined;
 
   onCleanup(() => {
-    if (reset_timer !== null) {
+    if (reset_timer !== undefined) {
       clearTimeout(reset_timer);
     }
   });
@@ -52,12 +52,12 @@ export const ErrorBanner: Component<{
       frontend_log_error("Failed to copy error message", err);
       set_copy_state("failed");
     } finally {
-      if (reset_timer !== null) {
+      if (reset_timer !== undefined) {
         clearTimeout(reset_timer);
       }
       reset_timer = setTimeout(() => {
         set_copy_state("idle");
-        reset_timer = null;
+        reset_timer = undefined;
       }, 2000);
     }
   }

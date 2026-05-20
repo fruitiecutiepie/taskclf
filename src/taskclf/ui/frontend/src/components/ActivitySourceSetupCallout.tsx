@@ -3,7 +3,7 @@ import type { ActivityProviderStatus } from "../lib/api";
 
 export const ActivitySourceSetupCallout: Component<{
   provider: ActivityProviderStatus;
-  compact?: boolean;
+  compact: boolean | undefined;
 }> = (props) => {
   const compact = () => props.compact ?? false;
 

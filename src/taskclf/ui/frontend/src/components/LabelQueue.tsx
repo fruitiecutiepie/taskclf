@@ -71,7 +71,7 @@ export const LabelQueue: Component = () => {
                   >
                     {item.reason}
                     {item.predicted_label && ` · ${item.predicted_label}`}
-                    {item.confidence !== null
+                    {item.confidence !== undefined
                       && ` · ${Math.round(item.confidence * 100)}%`}
                   </div>
                 </div>

@@ -18,6 +18,11 @@ For frontend development with hot reload:
 taskclf ui --dev
 ```
 
+The frontend workspace allows pnpm to run `esbuild`'s install-time build
+script via `allowBuilds` in `src/taskclf/ui/frontend/pnpm-workspace.yaml`
+so CI commands that use `pnpm --dir src/taskclf/ui/frontend ...` see the same
+dependency policy as local installs.
+
 For browser-based full-stack development with frontend HMR plus backend
 auto-reload:
 

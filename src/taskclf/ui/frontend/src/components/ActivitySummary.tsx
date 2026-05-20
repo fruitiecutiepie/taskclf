@@ -45,23 +45,25 @@ const PredictionBadge: Component<{ p: Accessor<Prediction> }> = (props) => (
 );
 
 export const ActivitySummary: Component<{
-  minutes?: Accessor<number>;
-  time_range?: Accessor<TimeRange | null>;
-  prediction?: Accessor<Prediction | null>;
-  show_empty?: boolean;
+  minutes: Accessor<number> | undefined;
+  time_range: Accessor<TimeRange | undefined> | undefined;
+  prediction: Accessor<Prediction | undefined> | undefined;
+  show_empty: boolean | undefined;
 }> = (props) => {
   const range = () =>
     props.time_range?.()
-    ?? (props.minutes ? time_range_minutes(props.minutes()) : null);
+    ?? (props.minutes ? time_range_minutes(props.minutes()) : undefined);
 
-  const [summary, set_summary] = createSignal<ActivitySummaryData | null>(null);
+  const [summary, set_summary] = createSignal<ActivitySummaryData | undefined>(
+    undefined,
+  );
   const [is_loading, set_is_loading] = createSignal(false);
   const [request_failed, set_request_failed] = createSignal(false);
 
   createEffect(() => {
     const r = range();
     if (!r) {
-      set_summary(null);
+      set_summary(undefined);
       set_is_loading(false);
       set_request_failed(false);
       return;
@@ -83,7 +85,7 @@ export const ActivitySummary: Component<{
         if (cancelled) {
           return;
         }
-        set_summary(null);
+        set_summary(undefined);
         set_request_failed(true);
         set_is_loading(false);
       });
@@ -94,7 +96,7 @@ export const ActivitySummary: Component<{
   });
 
   const pred = () => props.prediction?.();
-  const provider = () => summary()?.activity_provider ?? null;
+  const provider = () => summary()?.activity_provider ?? undefined;
   const recent_apps = () => (summary()?.recent_apps ?? []).slice(0, 3);
   const has_recent_apps = () => recent_apps().length > 0;
   const feature_apps = () => (summary()?.top_apps ?? []).slice(0, 5);
@@ -102,7 +104,9 @@ export const ActivitySummary: Component<{
   const has_apps = () => has_recent_apps() || has_feature_apps();
   const has_stats = () => {
     const s = summary();
-    return s && (s.mean_keys_per_min != null || s.mean_clicks_per_min != null);
+    return (
+      s && (s.mean_keys_per_min !== undefined || s.mean_clicks_per_min !== undefined)
+    );
   };
   const has_coverage = () => {
     const s = summary();
@@ -194,46 +198,20 @@ export const ActivitySummary: Component<{
               </Show>
 
               <Show when={summary()?.range_state === "ok"}>
-                <>
-                  <Show when={has_apps()}>
-                    <div
-                      style={{
-                        display: "flex",
-                        "align-items": "center",
-                        gap: "6px",
-                        "flex-wrap": "wrap",
-                        "font-size": "0.6rem",
-                      }}
-                    >
-                      <Show
-                        when={has_recent_apps()}
-                        fallback={
-                          <For each={feature_apps()}>
-                            {(entry) => (
-                              <span
-                                style={{
-                                  display: "inline-flex",
-                                  "align-items": "center",
-                                  gap: "2px",
-                                  padding: "1px 5px",
-                                  "border-radius": "8px",
-                                  background: "var(--surface)",
-                                  border: "1px solid var(--border)",
-                                  color: "var(--text-muted)",
-                                }}
-                              >
-                                <span
-                                  style={{ "font-weight": "600", color: "var(--text)" }}
-                                >
-                                  {app_name_short(entry.app_id)}
-                                </span>
-                                {entry.buckets}m
-                              </span>
-                            )}
-                          </For>
-                        }
-                      >
-                        <For each={recent_apps()}>
+                <Show when={has_apps()}>
+                  <div
+                    style={{
+                      display: "flex",
+                      "align-items": "center",
+                      gap: "6px",
+                      "flex-wrap": "wrap",
+                      "font-size": "0.6rem",
+                    }}
+                  >
+                    <Show
+                      when={has_recent_apps()}
+                      fallback={
+                        <For each={feature_apps()}>
                           {(entry) => (
                             <span
                               style={{
@@ -250,48 +228,72 @@ export const ActivitySummary: Component<{
                               <span
                                 style={{ "font-weight": "600", color: "var(--text)" }}
                               >
-                                {app_name_short(entry.app)}
+                                {app_name_short(entry.app_id)}
                               </span>
-                              {entry.events}
+                              {entry.buckets}m
                             </span>
                           )}
                         </For>
-                      </Show>
-                    </div>
-                  </Show>
-
-                  <Show when={has_stats() || has_coverage()}>
-                    <div
-                      style={{
-                        display: "flex",
-                        "align-items": "center",
-                        gap: "8px",
-                        "font-size": "0.6rem",
-                        color: "var(--text-muted)",
-                        "flex-wrap": "wrap",
-                      }}
+                      }
                     >
-                      <Show when={rate_fmt(summary()?.mean_keys_per_min ?? null)}>
-                        {(v) => <span>keys {v()}/m</span>}
-                      </Show>
-                      <Show when={rate_fmt(summary()?.mean_clicks_per_min ?? null)}>
-                        {(v) => <span>clicks {v()}/m</span>}
-                      </Show>
-                      <Show when={rate_fmt(summary()?.mean_scroll_per_min ?? null)}>
-                        {(v) => <span>scroll {v()}/m</span>}
-                      </Show>
-                      <Show when={has_coverage()}>
-                        <span style={{ color: "var(--text-muted)", opacity: "0.7" }}>
-                          {summary()?.total_buckets}m
-                          <Show when={(summary()?.session_count ?? 0) > 1}>
-                            {" "}
-                            / {summary()?.session_count} sessions
-                          </Show>
-                        </span>
-                      </Show>
-                    </div>
-                  </Show>
-                </>
+                      <For each={recent_apps()}>
+                        {(entry) => (
+                          <span
+                            style={{
+                              display: "inline-flex",
+                              "align-items": "center",
+                              gap: "2px",
+                              padding: "1px 5px",
+                              "border-radius": "8px",
+                              background: "var(--surface)",
+                              border: "1px solid var(--border)",
+                              color: "var(--text-muted)",
+                            }}
+                          >
+                            <span
+                              style={{ "font-weight": "600", color: "var(--text)" }}
+                            >
+                              {app_name_short(entry.app)}
+                            </span>
+                            {entry.events}
+                          </span>
+                        )}
+                      </For>
+                    </Show>
+                  </div>
+                </Show>
+
+                <Show when={has_stats() || has_coverage()}>
+                  <div
+                    style={{
+                      display: "flex",
+                      "align-items": "center",
+                      gap: "8px",
+                      "font-size": "0.6rem",
+                      color: "var(--text-muted)",
+                      "flex-wrap": "wrap",
+                    }}
+                  >
+                    <Show when={rate_fmt(summary()?.mean_keys_per_min ?? undefined)}>
+                      {(v) => <span>keys {v()}/m</span>}
+                    </Show>
+                    <Show when={rate_fmt(summary()?.mean_clicks_per_min ?? undefined)}>
+                      {(v) => <span>clicks {v()}/m</span>}
+                    </Show>
+                    <Show when={rate_fmt(summary()?.mean_scroll_per_min ?? undefined)}>
+                      {(v) => <span>scroll {v()}/m</span>}
+                    </Show>
+                    <Show when={has_coverage()}>
+                      <span style={{ color: "var(--text-muted)", opacity: "0.7" }}>
+                        {summary()?.total_buckets}m
+                        <Show when={(summary()?.session_count ?? 0) > 1}>
+                          {" "}
+                          / {summary()?.session_count} sessions
+                        </Show>
+                      </span>
+                    </Show>
+                  </div>
+                </Show>
               </Show>
             </div>
           </Show>

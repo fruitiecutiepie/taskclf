@@ -4,7 +4,7 @@ export type LabelEntry = {
   label: string;
   start_ts: string;
   end_ts: string;
-  extend_forward?: boolean;
+  extend_forward: boolean | undefined;
 };
 
 export type OpenEndedLabelLike = Pick<
@@ -13,7 +13,7 @@ export type OpenEndedLabelLike = Pick<
 >;
 
 export type TimelineSegment = {
-  label: string | null;
+  label: string | undefined;
   start_ms: number;
   end_ms: number;
   fraction: number;
@@ -30,7 +30,7 @@ export type LabelItem = {
   label: string;
   start_ts: string;
   end_ts: string;
-  open_ended?: boolean;
+  open_ended: boolean | undefined;
 };
 
 export type TimelineItem = GapItem | LabelItem;
@@ -51,7 +51,7 @@ export function day_timeline_build(
 
   if (!entries.length) {
     const seg: TimelineSegment = {
-      label: null,
+      label: undefined,
       start_ms: day_start,
       end_ms: day_end,
       fraction: 1,
@@ -83,7 +83,7 @@ export function day_timeline_build(
 
     if (s > cursor) {
       segments.push({
-        label: null,
+        label: undefined,
         start_ms: cursor,
         end_ms: s,
         fraction: (s - cursor) / span_ms,
@@ -118,7 +118,7 @@ export function day_timeline_build(
 
   if (cursor < day_end) {
     segments.push({
-      label: null,
+      label: undefined,
       start_ms: cursor,
       end_ms: day_end,
       fraction: (day_end - cursor) / span_ms,

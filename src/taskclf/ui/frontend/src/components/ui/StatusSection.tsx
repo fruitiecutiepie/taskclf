@@ -2,9 +2,9 @@ import { type Component, createSignal, type JSX, Show } from "solid-js";
 
 export const StatusSection: Component<{
   title: string;
-  summary?: string;
-  summary_color?: string;
-  default_open?: boolean;
+  summary: string | undefined;
+  summary_color: string | undefined;
+  default_open: boolean | undefined;
   children: JSX.Element;
 }> = (props) => {
   const [open, set_open] = createSignal(props.default_open ?? false);

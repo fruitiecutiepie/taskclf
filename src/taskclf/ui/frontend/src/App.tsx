@@ -73,8 +73,8 @@ const App: Component = () => {
   const [panel_hovered, set_panel_hovered] = createSignal(false);
   const label_visible = () => label_pinned() || badge_hovered() || label_hovered();
   const panel_visible = () => panel_pinned() || dot_hovered() || panel_hovered();
-  let label_hide_timer: ReturnType<typeof setTimeout> | null = null;
-  let panel_hide_timer: ReturnType<typeof setTimeout> | null = null;
+  let label_hide_timer: ReturnType<typeof setTimeout> | undefined;
+  let panel_hide_timer: ReturnType<typeof setTimeout> | undefined;
 
   const open_label_grid = () => {
     if (browser_compact) {
@@ -85,16 +85,16 @@ const App: Component = () => {
   };
 
   const label_hide_cancel = () => {
-    if (label_hide_timer !== null) {
+    if (label_hide_timer !== undefined) {
       clearTimeout(label_hide_timer);
-      label_hide_timer = null;
+      label_hide_timer = undefined;
     }
   };
 
   const panel_hide_cancel = () => {
-    if (panel_hide_timer !== null) {
+    if (panel_hide_timer !== undefined) {
       clearTimeout(panel_hide_timer);
-      panel_hide_timer = null;
+      panel_hide_timer = undefined;
     }
   };
 
@@ -106,7 +106,7 @@ const App: Component = () => {
     label_hide_timer = setTimeout(() => {
       set_badge_hovered(false);
       set_label_hovered(false);
-      label_hide_timer = null;
+      label_hide_timer = undefined;
     }, CHILD_HIDE_DELAY_MS);
   };
 
@@ -118,7 +118,7 @@ const App: Component = () => {
     panel_hide_timer = setTimeout(() => {
       set_dot_hovered(false);
       set_panel_hovered(false);
-      panel_hide_timer = null;
+      panel_hide_timer = undefined;
     }, CHILD_HIDE_DELAY_MS);
   };
 
@@ -350,6 +350,7 @@ const App: Component = () => {
             }}
           >
             <LabelRecorder
+              max_height={undefined}
               on_collapse={() => {
                 label_hide_cancel();
                 set_label_pinned(false);

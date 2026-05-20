@@ -28,20 +28,27 @@ export const LabelForm: Component = () => {
   const [end_ts, set_end_ts] = createSignal("");
   const [label, set_label] = createSignal("");
   const [confidence, set_confidence] = createSignal(0.8);
-  const [status, set_status] = createSignal<{
-    type: "success" | "error";
-    msg: string;
-  } | null>(null);
+  const [status, set_status] = createSignal<
+    | {
+        type: "success" | "error";
+        msg: string;
+      }
+    | undefined
+  >(undefined);
 
   async function label_submit(e: Event) {
     e.preventDefault();
-    set_status(null);
+    set_status(undefined);
     try {
       const result = await label_create({
         start_ts: start_ts(),
         end_ts: end_ts(),
         label: label(),
+        user_id: undefined,
         confidence: confidence(),
+        extend_forward: undefined,
+        overwrite: undefined,
+        allow_overlap: undefined,
       });
       set_status({
         type: "success",

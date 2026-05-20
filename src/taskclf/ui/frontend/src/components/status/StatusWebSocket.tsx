@@ -5,6 +5,13 @@ import type { ConnectionStatus, WSStats } from "../../lib/ws";
 import { StatusRow } from "../ui/StatusRow";
 import { StatusSection } from "../ui/StatusSection";
 
+const STATUS_ROW_DEFAULTS = {
+  color: undefined,
+  dim: undefined,
+  mono: undefined,
+  tooltip: undefined,
+} as const;
+
 export const StatusWebSocket: Component<{
   status: Accessor<ConnectionStatus>;
   ws_stats: Accessor<WSStats>;
@@ -19,20 +26,24 @@ export const StatusWebSocket: Component<{
       title="WebSocket"
       summary={summary()}
       summary_color={summary_color()}
+      default_open={undefined}
     >
       <StatusRow
+        {...STATUS_ROW_DEFAULTS}
         label="status"
         value={props.status()}
         color={dot_color(props.status())}
         tooltip="Current WebSocket connection state"
       />
       <StatusRow
+        {...STATUS_ROW_DEFAULTS}
         label="messages"
         value={`${stats().message_count} total`}
         dim
         tooltip="Total messages received since page load"
       />
       <StatusRow
+        {...STATUS_ROW_DEFAULTS}
         label="breakdown"
         value={`st:${stats().status_count} pred:${stats().prediction_count} tray:${stats().tray_state_count} sug:${stats().suggestion_count}`}
         dim
@@ -40,12 +51,14 @@ export const StatusWebSocket: Component<{
         tooltip="Count of each message type: status, prediction, tray state, suggestion"
       />
       <StatusRow
+        {...STATUS_ROW_DEFAULTS}
         label="last_received"
         value={time_format(stats().last_message_at)}
         dim
         tooltip="When the last WebSocket message arrived"
       />
       <StatusRow
+        {...STATUS_ROW_DEFAULTS}
         label="reconnects"
         value={String(stats().reconnect_count)}
         dim
@@ -53,6 +66,7 @@ export const StatusWebSocket: Component<{
       />
       <Show when={stats().connected_since}>
         <StatusRow
+          {...STATUS_ROW_DEFAULTS}
           label="connected_since"
           value={time_format(stats().connected_since)}
           dim

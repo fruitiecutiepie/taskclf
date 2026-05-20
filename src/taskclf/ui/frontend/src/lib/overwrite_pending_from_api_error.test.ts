@@ -11,7 +11,9 @@ describe("overwrite_pending_from_api_error", () => {
   };
 
   it("returns null when the message has no JSON", () => {
-    expect(overwrite_pending_from_api_error(new Error("network"), params)).toBeNull();
+    expect(
+      overwrite_pending_from_api_error(new Error("network"), params),
+    ).toBeUndefined();
   });
 
   it("builds pending from structured detail.conflicting_spans", () => {
@@ -29,7 +31,7 @@ describe("overwrite_pending_from_api_error", () => {
     };
     const err = new Error(`409: ${JSON.stringify(body)}`);
     const p = overwrite_pending_from_api_error(err, params);
-    expect(p).not.toBeNull();
+    expect(p).not.toBeUndefined();
     expect(p?.conflicts).toHaveLength(1);
     expect(p?.conflicts[0].label).toBe("Build");
     expect(p?.label).toBe("Write");

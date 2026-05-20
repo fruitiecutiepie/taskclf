@@ -3,10 +3,10 @@ import type { Component } from "solid-js";
 export const StatusRow: Component<{
   label: string;
   value: string;
-  color?: string;
-  dim?: boolean;
-  mono?: boolean;
-  tooltip?: string;
+  color: string | undefined;
+  dim: boolean | undefined;
+  mono: boolean | undefined;
+  tooltip: string | undefined;
 }> = (props) => (
   <div
     style={{

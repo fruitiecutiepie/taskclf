@@ -46,9 +46,9 @@ function activity_summary_make(
     activity_provider: activity_provider_make(activity_provider),
     recent_apps: [],
     top_apps: [],
-    mean_keys_per_min: null,
-    mean_clicks_per_min: null,
-    mean_scroll_per_min: null,
+    mean_keys_per_min: undefined,
+    mean_clicks_per_min: undefined,
+    mean_scroll_per_min: undefined,
     total_buckets: 0,
     session_count: 0,
     range_state: "no_data",
@@ -82,6 +82,7 @@ beforeEach(() => {
 function suggestion_make(overrides: Partial<LabelSuggestion> = {}): LabelSuggestion {
   return {
     type: "suggest_label",
+    suggestion_id: undefined,
     reason: "App transition suggested a new label",
     old_label: "ReadResearch",
     suggested: "Write",
@@ -90,6 +91,15 @@ function suggestion_make(overrides: Partial<LabelSuggestion> = {}): LabelSuggest
     block_end: "2026-04-05T13:00:00Z",
     ...overrides,
   };
+}
+
+function suggestion_range_part_text(d: Date): string {
+  return d.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function suggestion_range_text(block_start: string, block_end: string): string {
@@ -101,20 +111,10 @@ function suggestion_range_text(block_start: string, block_end: string): string {
     || start.getDate() !== end.getDate();
 
   if (!crosses_local_day) {
-    return `${time_format(block_start)} → ${time_format(block_end)}`;
+    return `${suggestion_range_part_text(start)} → ${time_format(block_end)}`;
   }
 
-  return `${start.toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  })} → ${end.toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  })}`;
+  return `${suggestion_range_part_text(start)} → ${suggestion_range_part_text(end)}`;
 }
 
 function overlap_error_make(): Error {
@@ -135,10 +135,19 @@ function overlap_error_make(): Error {
 }
 
 describe("PredictionSuggestion", () => {
+  const base_props = {
+    suggestions: undefined,
+    on_saved: undefined,
+    on_dismiss: undefined,
+    on_select: undefined,
+  } as const;
+
   it("shows the applicable suggestion time range", () => {
     const suggestion = suggestion_make();
 
-    render(() => <PredictionSuggestion suggestion={() => suggestion} />);
+    render(() => (
+      <PredictionSuggestion {...base_props} suggestion={() => suggestion} />
+    ));
 
     expect(
       screen.getByText(
@@ -166,6 +175,8 @@ describe("PredictionSuggestion", () => {
       <PredictionSuggestion
         suggestion={() => active}
         suggestions={() => [active, later]}
+        on_saved={undefined}
+        on_dismiss={undefined}
         on_select={on_select}
       />
     ));
@@ -181,7 +192,9 @@ describe("PredictionSuggestion", () => {
   it("loads activity context for the suggestion block range", async () => {
     const suggestion = suggestion_make();
 
-    render(() => <PredictionSuggestion suggestion={() => suggestion} />);
+    render(() => (
+      <PredictionSuggestion {...base_props} suggestion={() => suggestion} />
+    ));
 
     await waitFor(() => {
       expect(vi.mocked(activity_summary_get)).toHaveBeenCalledWith(
@@ -200,7 +213,7 @@ describe("PredictionSuggestion", () => {
         activity_provider: activity_provider_make({
           state: "setup_required",
           summary_available: false,
-          source_id: null,
+          source_id: undefined,
         }),
         range_state: "provider_unavailable",
         message:
@@ -209,7 +222,9 @@ describe("PredictionSuggestion", () => {
     );
     const suggestion = suggestion_make();
 
-    render(() => <PredictionSuggestion suggestion={() => suggestion} />);
+    render(() => (
+      <PredictionSuggestion {...base_props} suggestion={() => suggestion} />
+    ));
 
     expect(await screen.findByText("Activity source unavailable")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Use suggestion" }));
@@ -229,7 +244,9 @@ describe("PredictionSuggestion", () => {
       block_end: new Date(2026, 3, 6, 0, 10, 0).toISOString(),
     });
 
-    render(() => <PredictionSuggestion suggestion={() => suggestion} />);
+    render(() => (
+      <PredictionSuggestion {...base_props} suggestion={() => suggestion} />
+    ));
 
     expect(
       screen.getByText(
@@ -246,8 +263,10 @@ describe("PredictionSuggestion", () => {
     render(() => (
       <PredictionSuggestion
         suggestion={() => suggestion}
+        suggestions={undefined}
         on_saved={on_saved}
         on_dismiss={on_dismiss}
+        on_select={undefined}
       />
     ));
 
@@ -267,7 +286,9 @@ describe("PredictionSuggestion", () => {
   it("opens the correction panel from Change label", async () => {
     const suggestion = suggestion_make();
 
-    render(() => <PredictionSuggestion suggestion={() => suggestion} />);
+    render(() => (
+      <PredictionSuggestion {...base_props} suggestion={() => suggestion} />
+    ));
 
     fireEvent.click(screen.getByRole("button", { name: "Change label" }));
 
@@ -283,7 +304,9 @@ describe("PredictionSuggestion", () => {
   it("saves the selected correction label", async () => {
     const suggestion = suggestion_make();
 
-    render(() => <PredictionSuggestion suggestion={() => suggestion} />);
+    render(() => (
+      <PredictionSuggestion {...base_props} suggestion={() => suggestion} />
+    ));
 
     fireEvent.click(screen.getByRole("button", { name: "Change label" }));
     fireEvent.click(await screen.findByRole("button", { name: "Debug" }));
@@ -302,7 +325,9 @@ describe("PredictionSuggestion", () => {
     vi.mocked(notification_accept).mockRejectedValueOnce(new Error("save failed"));
     const suggestion = suggestion_make();
 
-    render(() => <PredictionSuggestion suggestion={() => suggestion} />);
+    render(() => (
+      <PredictionSuggestion {...base_props} suggestion={() => suggestion} />
+    ));
 
     fireEvent.click(screen.getByRole("button", { name: "Use suggestion" }));
 
@@ -338,16 +363,18 @@ describe("PredictionSuggestion", () => {
         end_ts: suggestion.block_end,
         label: suggestion.suggested,
         provenance: "suggestion",
-        user_id: null,
-        confidence: null,
+        user_id: undefined,
+        confidence: undefined,
         extend_forward: false,
       });
 
     render(() => (
       <PredictionSuggestion
         suggestion={() => suggestion}
+        suggestions={undefined}
         on_saved={on_saved}
         on_dismiss={on_dismiss}
+        on_select={undefined}
       />
     ));
 
@@ -393,12 +420,14 @@ describe("PredictionSuggestion", () => {
         end_ts: suggestion.block_end,
         label: suggestion.suggested,
         provenance: "suggestion",
-        user_id: null,
-        confidence: null,
+        user_id: undefined,
+        confidence: undefined,
         extend_forward: false,
       });
 
-    render(() => <PredictionSuggestion suggestion={() => suggestion} />);
+    render(() => (
+      <PredictionSuggestion {...base_props} suggestion={() => suggestion} />
+    ));
 
     fireEvent.click(screen.getByRole("button", { name: "Use suggestion" }));
 
@@ -428,12 +457,14 @@ describe("PredictionSuggestion", () => {
         end_ts: suggestion.block_end,
         label: "Debug",
         provenance: "suggestion",
-        user_id: null,
-        confidence: null,
+        user_id: undefined,
+        confidence: undefined,
         extend_forward: false,
       });
 
-    render(() => <PredictionSuggestion suggestion={() => suggestion} />);
+    render(() => (
+      <PredictionSuggestion {...base_props} suggestion={() => suggestion} />
+    ));
 
     fireEvent.click(screen.getByRole("button", { name: "Change label" }));
     fireEvent.click(await screen.findByRole("button", { name: "Debug" }));
@@ -465,12 +496,14 @@ describe("PredictionSuggestion", () => {
         end_ts: suggestion.block_end,
         label: "Debug",
         provenance: "suggestion",
-        user_id: null,
-        confidence: null,
+        user_id: undefined,
+        confidence: undefined,
         extend_forward: false,
       });
 
-    render(() => <PredictionSuggestion suggestion={() => suggestion} />);
+    render(() => (
+      <PredictionSuggestion {...base_props} suggestion={() => suggestion} />
+    ));
 
     fireEvent.click(screen.getByRole("button", { name: "Change label" }));
     fireEvent.click(await screen.findByRole("button", { name: "Debug" }));

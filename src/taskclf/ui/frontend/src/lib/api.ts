@@ -1,3 +1,5 @@
+import { null_to_undefined } from "./nullish";
+
 const BASE = "/api";
 
 export type LabelResponse = {
@@ -5,8 +7,8 @@ export type LabelResponse = {
   end_ts: string;
   label: string;
   provenance: string;
-  user_id: string | null;
-  confidence: number | null;
+  user_id: string | undefined;
+  confidence: number | undefined;
   extend_forward: boolean;
 };
 
@@ -16,16 +18,16 @@ export type QueueItem = {
   bucket_start_ts: string;
   bucket_end_ts: string;
   reason: string;
-  confidence: number | null;
-  predicted_label: string | null;
+  confidence: number | undefined;
+  predicted_label: string | undefined;
   status: string;
 };
 
 export type FeatureSummary = {
   top_apps: { app_id: string; buckets: number }[];
-  mean_keys_per_min: number | null;
-  mean_clicks_per_min: number | null;
-  mean_scroll_per_min: number | null;
+  mean_keys_per_min: number | undefined;
+  mean_clicks_per_min: number | undefined;
+  mean_scroll_per_min: number | undefined;
   total_buckets: number;
   session_count: number;
 };
@@ -36,7 +38,7 @@ export type ActivityProviderStatus = {
   state: "checking" | "ready" | "setup_required";
   summary_available: boolean;
   endpoint: string;
-  source_id: string | null;
+  source_id: string | undefined;
   last_sample_count: number;
   last_sample_breakdown: Record<string, number>;
   setup_title: string;
@@ -54,23 +56,26 @@ export type ActivitySummary = FeatureSummary & {
   activity_provider: ActivityProviderStatus;
   recent_apps: AWLiveEntry[];
   range_state: "ok" | "no_data" | "provider_unavailable";
-  message: string | null;
+  message: string | undefined;
 };
 
-async function api_json<T>(url: string, init?: RequestInit): Promise<T> {
+async function api_json<T>(
+  url: string,
+  init: RequestInit | undefined = undefined,
+): Promise<T> {
   const res = await fetch(url, init);
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(`${res.status}: ${text}`);
   }
-  return res.json();
+  return null_to_undefined(await res.json());
 }
 
 export async function labels_list(limit = 50): Promise<LabelResponse[]> {
   return api_json(`${BASE}/labels?limit=${limit}`);
 }
 
-export async function current_label_get(): Promise<LabelResponse | null> {
+export async function current_label_get(): Promise<LabelResponse | undefined> {
   return api_json(`${BASE}/labels/current`);
 }
 
@@ -86,11 +91,11 @@ export async function label_create(body: {
   start_ts: string;
   end_ts: string;
   label: string;
-  user_id?: string;
-  confidence?: number;
-  extend_forward?: boolean;
-  overwrite?: boolean;
-  allow_overlap?: boolean;
+  user_id: string | undefined;
+  confidence: number | undefined;
+  extend_forward: boolean | undefined;
+  overwrite: boolean | undefined;
+  allow_overlap: boolean | undefined;
 }): Promise<LabelResponse> {
   return api_json(`${BASE}/labels`, {
     method: "POST",
@@ -142,9 +147,9 @@ export async function label_update(body: {
   start_ts: string;
   end_ts: string;
   label: string;
-  new_start_ts?: string;
-  new_end_ts?: string;
-  extend_forward?: boolean;
+  new_start_ts: string | undefined;
+  new_end_ts: string | undefined;
+  extend_forward: boolean | undefined;
 }): Promise<LabelResponse> {
   return api_json(`${BASE}/labels`, {
     method: "PUT",
@@ -169,12 +174,12 @@ export async function core_labels_list(): Promise<string[]> {
 }
 
 export async function notification_accept(body: {
-  suggestion_id?: string;
+  suggestion_id: string | undefined;
   block_start: string;
   block_end: string;
   label: string;
-  overwrite?: boolean;
-  allow_overlap?: boolean;
+  overwrite: boolean | undefined;
+  allow_overlap: boolean | undefined;
 }): Promise<LabelResponse> {
   return api_json(`${BASE}/notification/accept`, {
     method: "POST",
@@ -183,9 +188,9 @@ export async function notification_accept(body: {
   });
 }
 
-export async function notification_skip(body?: {
-  suggestion_id?: string;
-}): Promise<{ status: string }> {
+export async function notification_skip(
+  body: { suggestion_id: string | undefined } = { suggestion_id: undefined },
+): Promise<{ status: string }> {
   return api_json(`${BASE}/notification/skip`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -206,9 +211,9 @@ export async function user_config_get(): Promise<UserConfig> {
 }
 
 export async function user_config_update(patch: {
-  username?: string;
-  suggestion_banner_ttl_seconds?: number;
-  auto_save_suggestion_min_confidence?: number;
+  username: string | undefined;
+  suggestion_banner_ttl_seconds: number | undefined;
+  auto_save_suggestion_min_confidence: number | undefined;
 }): Promise<UserConfig> {
   return api_json(`${BASE}/config/user`, {
     method: "PUT",
@@ -220,26 +225,26 @@ export async function user_config_update(patch: {
 // -- Training ----------------------------------------------------------------
 
 export type TrainStatus = {
-  job_id: string | null;
+  job_id: string | undefined;
   status: "idle" | "running" | "complete" | "failed";
-  step: string | null;
-  progress_pct: number | null;
-  message: string | null;
-  error: string | null;
-  metrics: Record<string, unknown> | null;
-  model_dir: string | null;
-  started_at: string | null;
-  finished_at: string | null;
+  step: string | undefined;
+  progress_pct: number | undefined;
+  message: string | undefined;
+  error: string | undefined;
+  metrics: Record<string, unknown> | undefined;
+  model_dir: string | undefined;
+  started_at: string | undefined;
+  finished_at: string | undefined;
 };
 
 export type ModelBundle = {
   model_id: string;
   path: string;
   valid: boolean;
-  invalid_reason: string | null;
-  macro_f1: number | null;
-  weighted_f1: number | null;
-  created_at: string | null;
+  invalid_reason: string | undefined;
+  macro_f1: number | undefined;
+  weighted_f1: number | undefined;
+  created_at: string | undefined;
 };
 
 export type DataCheck = {
@@ -258,9 +263,9 @@ export type DataCheck = {
 export async function training_start(params: {
   date_from: string;
   date_to: string;
-  num_boost_round?: number;
-  class_weight?: "balanced" | "none";
-  synthetic?: boolean;
+  num_boost_round: number | undefined;
+  class_weight: "balanced" | "none" | undefined;
+  synthetic: boolean | undefined;
 }): Promise<TrainStatus> {
   return api_json(`${BASE}/train/start`, {
     method: "POST",

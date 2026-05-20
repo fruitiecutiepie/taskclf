@@ -4,10 +4,10 @@ import type { ConnectionStatus } from "../lib/ws";
 
 export const ConnectionDot: Component<{
   status: Accessor<ConnectionStatus>;
-  panel_pinned?: Accessor<boolean>;
-  on_toggle_panel?: () => void;
-  on_show_panel?: () => void;
-  on_hide_panel?: () => void;
+  panel_pinned: Accessor<boolean> | undefined;
+  on_toggle_panel: (() => void) | undefined;
+  on_show_panel: (() => void) | undefined;
+  on_hide_panel: (() => void) | undefined;
 }> = (props) => {
   const [hovered, set_hovered] = createSignal(false);
   const color = () => dot_color(props.status());

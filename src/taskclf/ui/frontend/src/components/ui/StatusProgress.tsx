@@ -1,6 +1,8 @@
 import type { Component } from "solid-js";
 
-export const StatusProgress: Component<{ pct: number; color?: string }> = (props) => (
+export const StatusProgress: Component<{ pct: number; color: string | undefined }> = (
+  props,
+) => (
   <div
     style={{
       height: "3px",

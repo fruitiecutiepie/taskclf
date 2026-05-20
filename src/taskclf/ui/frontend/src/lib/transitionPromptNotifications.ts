@@ -45,7 +45,7 @@ function transition_prompt_clone(prompt: PromptLabelEvent): PromptLabelEvent {
 }
 
 export function transition_prompt_notifications_bind(
-  prompt: Accessor<PromptLabelEvent | null>,
+  prompt: Accessor<PromptLabelEvent | undefined>,
   on_open_label_grid: () => void,
 ): void {
   onMount(() => {

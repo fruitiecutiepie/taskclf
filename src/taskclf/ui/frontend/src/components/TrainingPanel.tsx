@@ -24,6 +24,13 @@ import { StatusProgress } from "./ui/StatusProgress";
 import { StatusRow } from "./ui/StatusRow";
 import { StatusSection } from "./ui/StatusSection";
 
+const STATUS_ROW_DEFAULTS = {
+  color: undefined,
+  dim: undefined,
+  mono: undefined,
+  tooltip: undefined,
+} as const;
+
 export const TrainingPanel: Component<{
   train_state: Accessor<TrainState>;
 }> = (props) => {
@@ -42,40 +49,43 @@ export const TrainingPanel: Component<{
   );
   const [synthetic, set_synthetic] = createSignal(false);
 
-  const [data_check, set_data_check] = createSignal<DataCheck | null>(null);
-  const [checked_range, set_checked_range] = createSignal<{
-    from: string;
-    to: string;
-  } | null>(null);
+  const [data_check, set_data_check] = createSignal<DataCheck | undefined>(undefined);
+  const [checked_range, set_checked_range] = createSignal<
+    | {
+        from: string;
+        to: string;
+      }
+    | undefined
+  >(undefined);
   const [models, set_models] = createSignal<ModelBundle[]>([]);
   const [checking, set_checking] = createSignal(false);
-  const [check_error, set_check_error] = createSignal<string | null>(null);
-  const [train_error, set_train_error] = createSignal<string | null>(null);
+  const [check_error, set_check_error] = createSignal<string | undefined>(undefined);
+  const [train_error, set_train_error] = createSignal<string | undefined>(undefined);
   const [submitting, set_submitting] = createSignal(false);
   const [confirm_pending, set_confirm_pending] = createSignal(false);
   const [dismissed_run_error_key, set_dismissed_run_error_key] = createSignal<
-    string | null
-  >(null);
+    string | undefined
+  >(undefined);
 
-  const [expanded_bundle_id, set_expanded_bundle_id] = createSignal<string | null>(
-    null,
+  const [expanded_bundle_id, set_expanded_bundle_id] = createSignal<string | undefined>(
+    undefined,
   );
   const [bundle_inspect_by_id, set_bundle_inspect_by_id] = createSignal<
     Record<string, ModelBundleInspectBody | { error: string }>
   >({});
   const [bundle_inspect_loading_id, set_bundle_inspect_loading_id] = createSignal<
-    string | null
-  >(null);
+    string | undefined
+  >(undefined);
 
   const ts = () => props.train_state();
   const is_running = () => ts().status === "running";
   const run_error_key = () =>
-    ts().error ? `${ts().job_id ?? "no-job"}:${ts().error}` : null;
+    ts().error ? `${ts().job_id ?? "no-job"}:${ts().error}` : undefined;
   const visible_run_error = createMemo(() => {
     const error = ts().error;
     const key = run_error_key();
     if (!error || key === dismissed_run_error_key()) {
-      return null;
+      return undefined;
     }
     return error;
   });
@@ -84,9 +94,9 @@ export const TrainingPanel: Component<{
     on(
       () => [date_from(), date_to()],
       () => {
-        set_data_check(null);
-        set_checked_range(null);
-        set_check_error(null);
+        set_data_check(undefined);
+        set_checked_range(undefined);
+        set_check_error(undefined);
       },
       { defer: true },
     ),
@@ -107,8 +117,8 @@ export const TrainingPanel: Component<{
     on(
       run_error_key,
       (key) => {
-        if (key === null) {
-          set_dismissed_run_error_key(null);
+        if (key === undefined) {
+          set_dismissed_run_error_key(undefined);
         }
       },
       { defer: true },
@@ -128,7 +138,7 @@ export const TrainingPanel: Component<{
 
   const train_disabled_reason = createMemo(() => {
     if (synthetic()) {
-      return null;
+      return undefined;
     }
     const dc = data_check();
     if (!dc) {
@@ -143,7 +153,7 @@ export const TrainingPanel: Component<{
     if (dc.trainable_rows === 0) {
       return "Labels don't overlap any feature windows — adjust labels or date range";
     }
-    return null;
+    return undefined;
   });
 
   function models_sorted(ml: ModelBundle[]) {
@@ -168,7 +178,7 @@ export const TrainingPanel: Component<{
 
   async function toggle_bundle_inspect(model_id: string) {
     if (expanded_bundle_id() === model_id) {
-      set_expanded_bundle_id(null);
+      set_expanded_bundle_id(undefined);
       return;
     }
     set_expanded_bundle_id(model_id);
@@ -186,7 +196,7 @@ export const TrainingPanel: Component<{
         [model_id]: { error: msg },
       }));
     } finally {
-      set_bundle_inspect_loading_id(null);
+      set_bundle_inspect_loading_id(undefined);
     }
   }
 
@@ -195,7 +205,7 @@ export const TrainingPanel: Component<{
       return;
     }
     set_checking(true);
-    set_check_error(null);
+    set_check_error(undefined);
     try {
       const [dc, ml] = await Promise.all([
         training_data_check(date_from(), date_to()),
@@ -223,7 +233,7 @@ export const TrainingPanel: Component<{
     }
     set_confirm_pending(false);
     set_submitting(true);
-    set_train_error(null);
+    set_train_error(undefined);
     try {
       await training_start({
         date_from: date_from(),
@@ -281,7 +291,12 @@ export const TrainingPanel: Component<{
 
   return (
     <div style={{ "font-size": "0.63rem" }}>
-      <StatusSection title="Data Readiness" default_open>
+      <StatusSection
+        title="Data Readiness"
+        summary={undefined}
+        summary_color={undefined}
+        default_open
+      >
         <div style={{ display: "flex", gap: "4px", "margin-bottom": "4px" }}>
           <div style={{ flex: 1 }}>
             <label
@@ -336,6 +351,7 @@ export const TrainingPanel: Component<{
           <div style={{ "margin-top": "4px" }}>
             <Show when={(data_check()?.dates_built.length ?? 0) > 0}>
               <StatusRow
+                {...STATUS_ROW_DEFAULTS}
                 label="built"
                 value={`${data_check()?.dates_built.length} day(s) from AW`}
                 color="#22c55e"
@@ -343,16 +359,19 @@ export const TrainingPanel: Component<{
               />
             </Show>
             <StatusRow
+              {...STATUS_ROW_DEFAULTS}
               label="features_days"
               value={`${data_check()?.dates_with_features.length ?? 0} / ${(data_check()?.dates_with_features.length ?? 0) + (data_check()?.dates_missing_features.length ?? 0)}`}
               tooltip="Days with activity data out of total days in range"
             />
             <StatusRow
+              {...STATUS_ROW_DEFAULTS}
               label="label_spans"
               value={String(data_check()?.label_span_count)}
               tooltip="Number of labeled time blocks in the selected range"
             />
             <StatusRow
+              {...STATUS_ROW_DEFAULTS}
               label="trainable_rows"
               value={
                 (data_check()?.trainable_rows ?? 0) > 0
@@ -367,12 +386,17 @@ export const TrainingPanel: Component<{
         <Show when={check_error()}>
           <ErrorBanner
             message={check_error() ?? ""}
-            on_close={() => set_check_error(null)}
+            on_close={() => set_check_error(undefined)}
           />
         </Show>
       </StatusSection>
 
-      <StatusSection title="Train Model" default_open>
+      <StatusSection
+        title="Train Model"
+        summary={undefined}
+        summary_color={undefined}
+        default_open
+      >
         <div
           style={{
             display: "flex",
@@ -510,7 +534,7 @@ export const TrainingPanel: Component<{
           <Show when={train_error()}>
             <ErrorBanner
               message={train_error() ?? ""}
-              on_close={() => set_train_error(null)}
+              on_close={() => set_train_error(undefined)}
             />
           </Show>
         </div>
@@ -538,6 +562,7 @@ export const TrainingPanel: Component<{
           default_open
         >
           <StatusRow
+            {...STATUS_ROW_DEFAULTS}
             label="status"
             value={ts().status}
             color={
@@ -551,6 +576,7 @@ export const TrainingPanel: Component<{
           />
           <Show when={ts().step}>
             <StatusRow
+              {...STATUS_ROW_DEFAULTS}
               label="step"
               value={ts().step ?? ""}
               dim
@@ -559,14 +585,15 @@ export const TrainingPanel: Component<{
           </Show>
           <Show when={ts().message}>
             <StatusRow
+              {...STATUS_ROW_DEFAULTS}
               label="message"
               value={ts().message ?? ""}
               dim
               tooltip="Latest progress message from the trainer"
             />
           </Show>
-          <Show when={ts().progress_pct != null && ts().status === "running"}>
-            <StatusProgress pct={ts().progress_pct ?? 0} />
+          <Show when={ts().progress_pct !== undefined && ts().status === "running"}>
+            <StatusProgress pct={ts().progress_pct ?? 0} color={undefined} />
           </Show>
           <Show when={visible_run_error()}>
             <ErrorBanner
@@ -576,12 +603,14 @@ export const TrainingPanel: Component<{
           </Show>
           <Show when={ts().metrics}>
             <StatusRow
+              {...STATUS_ROW_DEFAULTS}
               label="macro_f1"
               value={ts().metrics?.macro_f1?.toFixed(3) ?? "—"}
               color="#22c55e"
               tooltip="F1 score averaged equally across all classes — good for imbalanced datasets"
             />
             <StatusRow
+              {...STATUS_ROW_DEFAULTS}
               label="weighted_f1"
               value={ts().metrics?.weighted_f1?.toFixed(3) ?? "—"}
               color="#22c55e"
@@ -590,6 +619,7 @@ export const TrainingPanel: Component<{
           </Show>
           <Show when={ts().model_dir}>
             <StatusRow
+              {...STATUS_ROW_DEFAULTS}
               label="model_dir"
               value={ts().model_dir?.split("/").pop() ?? ts().model_dir ?? ""}
               dim
@@ -600,11 +630,17 @@ export const TrainingPanel: Component<{
         </StatusSection>
       </Show>
 
-      <StatusSection title="Models" summary={`${models().length}`}>
+      <StatusSection
+        title="Models"
+        summary={`${models().length}`}
+        summary_color={undefined}
+        default_open={undefined}
+      >
         <Show
           when={models().length > 0}
           fallback={
             <StatusRow
+              {...STATUS_ROW_DEFAULTS}
               label="status"
               value="no models found"
               dim
@@ -621,13 +657,15 @@ export const TrainingPanel: Component<{
                 }}
               >
                 <StatusRow
+                  {...STATUS_ROW_DEFAULTS}
                   label="id"
                   value={m.model_id}
                   mono
                   tooltip="Unique identifier for this model bundle"
                 />
-                <Show when={m.macro_f1 != null}>
+                <Show when={m.macro_f1 !== undefined}>
                   <StatusRow
+                    {...STATUS_ROW_DEFAULTS}
                     label="macro_f1"
                     value={m.macro_f1?.toFixed(3) ?? ""}
                     color="#22c55e"
@@ -636,6 +674,7 @@ export const TrainingPanel: Component<{
                 </Show>
                 <Show when={m.created_at}>
                   <StatusRow
+                    {...STATUS_ROW_DEFAULTS}
                     label="created"
                     value={m.created_at?.slice(0, 19).replace("T", " ") ?? ""}
                     dim
@@ -668,6 +707,7 @@ export const TrainingPanel: Component<{
                           if ("error" in row) {
                             return (
                               <StatusRow
+                                {...STATUS_ROW_DEFAULTS}
                                 label="inspect"
                                 value={row.error}
                                 color="#ef4444"
@@ -692,12 +732,14 @@ export const TrainingPanel: Component<{
                           return (
                             <>
                               <StatusRow
+                                {...STATUS_ROW_DEFAULTS}
                                 label="val_macro_f1"
                                 value={row.bundle_saved_validation.macro_f1.toFixed(4)}
                                 color="#22c55e"
                                 tooltip="Macro F1 on the validation split in the bundle"
                               />
                               <StatusRow
+                                {...STATUS_ROW_DEFAULTS}
                                 label="val_weighted_f1"
                                 value={row.bundle_saved_validation.weighted_f1.toFixed(
                                   4,
@@ -707,6 +749,7 @@ export const TrainingPanel: Component<{
                               />
                               <Show when={meta.train_date_from && meta.train_date_to}>
                                 <StatusRow
+                                  {...STATUS_ROW_DEFAULTS}
                                   label="trained"
                                   value={`${meta.train_date_from} — ${meta.train_date_to}`}
                                   dim
@@ -714,6 +757,7 @@ export const TrainingPanel: Component<{
                                 />
                               </Show>
                               <StatusRow
+                                {...STATUS_ROW_DEFAULTS}
                                 label="top_confusions"
                                 value={top_str}
                                 dim
@@ -726,6 +770,7 @@ export const TrainingPanel: Component<{
                     }
                   >
                     <StatusRow
+                      {...STATUS_ROW_DEFAULTS}
                       label="inspect"
                       value="loading…"
                       dim

@@ -25,8 +25,8 @@ export interface PayloadPlatformData {
 }
 
 export interface PayloadManifest {
-  kind?: "payload";
-  schema_version?: number;
+  kind: "payload" | undefined;
+  schema_version: number | undefined;
   version: string;
   /** Keys are LLVM-style target triples, e.g. x86_64-unknown-linux-gnu */
   platforms: Record<string, PayloadPlatformData>;
@@ -35,16 +35,16 @@ export interface PayloadManifest {
 export type Manifest = PayloadManifest;
 
 export interface LauncherManifest {
-  kind?: "launcher";
-  schema_version?: number;
-  version?: string;
+  kind: "launcher" | undefined;
+  schema_version: number | undefined;
+  version: string | undefined;
   launcher_version: string;
   payload_index_url: string;
-  default_payload_selection?: {
+  default_payload_selection: {
     strategy: "latest-compatible";
-  };
+  } | undefined;
   compatible_payloads: CompatiblePayloadRange;
-  platforms?: Record<string, LauncherPlatformData>;
+  platforms: Record<string, LauncherPlatformData> | undefined;
 }
 
 export interface LauncherPlatformData {
@@ -59,7 +59,7 @@ export interface GitHubReleaseAsset {
 }
 
 export interface GitHubRelease extends LauncherReleaseEntry {
-  assets?: GitHubReleaseAsset[];
+  assets: GitHubReleaseAsset[] | undefined;
 }
 
 export interface LauncherResolution {
@@ -77,9 +77,9 @@ export interface PayloadIndexEntry {
 }
 
 export interface PayloadIndex {
-  kind?: "payload-index";
-  schema_version?: number;
-  generated_at?: string;
+  kind: "payload-index" | undefined;
+  schema_version: number | undefined;
+  generated_at: string | undefined;
   payloads: PayloadIndexEntry[];
 }
 
@@ -101,22 +101,22 @@ export type UpdatePhase = "download" | "verify" | "extract";
 export interface UpdateProgressEvent {
   phase: UpdatePhase;
   /** Bytes received so far during download */
-  receivedBytes?: number;
+  receivedBytes: number | undefined;
   /** Total bytes when Content-Length is present */
-  totalBytes?: number | null;
+  totalBytes: number | null | undefined;
   /** 0–100 when known; null if total size is unknown */
-  percent?: number | null;
+  percent: number | null | undefined;
 }
 
 export interface DownloadAndApplyOptions {
-  onProgress?: (event: UpdateProgressEvent) => void | Promise<void>;
+  onProgress: ((event: UpdateProgressEvent) => void | Promise<void>) | undefined;
 }
 
 export interface CheckForUpdateOptions {
   /** Abort manifest fetch after this many milliseconds; <= 0 disables the timeout. */
-  timeoutMs?: number;
-  preferredVersion?: string;
-  ignoreSelectedVersion?: boolean;
+  timeoutMs: number | undefined;
+  preferredVersion: string | undefined;
+  ignoreSelectedVersion: boolean | undefined;
 }
 
 const GITHUB_LAUNCHER_RELEASES_API_URL = "https://api.github.com/repos/fruitiecutiepie/taskclf/releases?per_page=100";
@@ -146,7 +146,7 @@ function describeFetchError(error: unknown): string {
     return String(error);
   }
 
-  const cause = (error as Error & { cause?: unknown }).cause;
+  const cause = (error as Error & { cause: unknown | undefined }).cause;
   if (cause === undefined || cause === null) {
     return error.message;
   }
@@ -161,11 +161,12 @@ function describeFetchError(error: unknown): string {
 async function updaterFetch(
   input: string,
   purpose: string,
-  init?: NodeFetchInit,
+  init: NodeFetchInit | undefined = undefined,
 ): Promise<Response> {
   try {
     return await nodeFetch(input, {
       cache: "no-store",
+      maxRedirects: init?.maxRedirects ?? undefined,
       ...init,
     });
   } catch (error) {
@@ -321,8 +322,8 @@ export let lastLauncherCheckFailure: string | null = null;
 async function fetchWithTimeout(
   input: string,
   purpose: string,
-  timeoutMs?: number,
-  init?: NodeFetchInit,
+  timeoutMs: number | undefined = undefined,
+  init: NodeFetchInit | undefined = undefined,
 ): Promise<Response> {
   if (timeoutMs === undefined || timeoutMs <= 0) {
     return updaterFetch(input, purpose, init);
@@ -334,7 +335,11 @@ async function fetchWithTimeout(
   }, timeoutMs);
 
   try {
-    return await updaterFetch(input, purpose, { ...init, signal: controller.signal });
+    return await updaterFetch(input, purpose, {
+      maxRedirects: init?.maxRedirects ?? undefined,
+      ...init,
+      signal: controller.signal,
+    });
   } finally {
     clearTimeout(timer);
   }
@@ -343,8 +348,8 @@ async function fetchWithTimeout(
 async function fetchJsonWithTimeout<T>(
   input: string,
   purpose: string,
-  timeoutMs?: number,
-  init?: NodeFetchInit,
+  timeoutMs: number | undefined = undefined,
+  init: NodeFetchInit | undefined = undefined,
 ): Promise<T> {
   const res = await fetchWithTimeout(input, purpose, timeoutMs, init);
   if (!res.ok) {
@@ -389,7 +394,7 @@ function launcherManifestUrlFromRelease(
   if (assetUrl) {
     return assetUrl;
   }
-  return manifestUrlForLauncherVersion(version);
+  return manifestUrlForLauncherVersion(version, undefined);
 }
 
 function validateLauncherPlatformData(
@@ -419,8 +424,8 @@ function findPayloadIndexEntry(payloadIndex: PayloadIndex, version: string): Pay
 function resolveDesiredPayloadVersion(
   launcherManifest: LauncherManifest,
   payloadIndex: PayloadIndex,
-  preferredVersion?: string,
-  ignoreSelectedVersion?: boolean,
+  preferredVersion: string | undefined = undefined,
+  ignoreSelectedVersion: boolean | undefined = undefined,
 ): {
   defaultVersion: string;
   version: string;
@@ -478,7 +483,7 @@ function resolveDesiredPayloadVersion(
 }
 
 export async function resolvePayloadRelease(
-  options?: CheckForUpdateOptions,
+  options: Partial<CheckForUpdateOptions> | undefined = undefined,
 ): Promise<PayloadResolution | null> {
   const launcherManifestUrl = manifestUrlForLauncherVersion(
     app.getVersion(),
@@ -554,7 +559,7 @@ export async function resolvePayloadRelease(
 }
 
 export async function resolveLauncherRelease(
-  options?: CheckForUpdateOptions,
+  options: Partial<CheckForUpdateOptions> | undefined = undefined,
 ): Promise<LauncherResolution | null> {
   const timeoutMs = options?.timeoutMs;
   lastLauncherCheckFailure = null;
@@ -564,7 +569,7 @@ export async function resolveLauncherRelease(
       GITHUB_LAUNCHER_RELEASES_API_URL,
       "launcher releases",
       timeoutMs,
-      { headers: githubApiHeaders() },
+      { headers: githubApiHeaders(), maxRedirects: undefined },
     );
     const latestTag = selectLatestLauncherReleaseTag(releases);
     if (latestTag === null) {
@@ -583,7 +588,7 @@ export async function resolveLauncherRelease(
       launcherManifestUrlFromRelease(matchingRelease, latestVersion),
       `launcher manifest for ${latestTag}`,
       timeoutMs,
-      { headers: githubApiHeaders() },
+      { headers: githubApiHeaders(), maxRedirects: undefined },
     );
     const effectiveLatestVersion = latestManifest.version ?? latestManifest.launcher_version ?? latestVersion;
     const currentVersion = app.getVersion();
@@ -612,7 +617,7 @@ export async function resolveLauncherRelease(
 }
 
 export async function checkForUpdate(
-  options?: CheckForUpdateOptions,
+  options: Partial<CheckForUpdateOptions> | undefined = undefined,
 ): Promise<PayloadResolution | null> {
   const resolution = await resolvePayloadRelease(options);
   if (resolution === null) {
@@ -701,7 +706,7 @@ async function streamPayloadToFile(
 
 export async function downloadAndApplyUpdate(
   manifest: PayloadManifest,
-  options?: DownloadAndApplyOptions,
+  options: DownloadAndApplyOptions | undefined = undefined,
 ): Promise<void> {
   const onProgress = options?.onProgress;
   try {
@@ -735,11 +740,21 @@ export async function downloadAndApplyUpdate(
 
     // Verify Hash (already verified while streaming; emit phase for UI)
     console.log(`[updater] Verifying hash...`);
-    await emitProgress(onProgress, { phase: "verify", percent: 100 });
+    await emitProgress(onProgress, {
+      phase: "verify",
+      receivedBytes: undefined,
+      totalBytes: undefined,
+      percent: 100,
+    });
 
     // Extract
     console.log(`[updater] Extracting payload...`);
-    await emitProgress(onProgress, { phase: "extract", percent: null });
+    await emitProgress(onProgress, {
+      phase: "extract",
+      receivedBytes: undefined,
+      totalBytes: undefined,
+      percent: null,
+    });
 
     const zip = new AdmZip(zipPath);
     zip.extractAllTo(payloadDir, true);
@@ -766,7 +781,7 @@ export async function downloadAndApplyUpdate(
 
 export async function downloadLauncherInstaller(
   resolution: LauncherResolution,
-  options?: DownloadAndApplyOptions,
+  options: DownloadAndApplyOptions | undefined = undefined,
 ): Promise<string> {
   if (!resolution.updateAvailable) {
     throw new Error(`Launcher v${resolution.currentVersion} is already current`);

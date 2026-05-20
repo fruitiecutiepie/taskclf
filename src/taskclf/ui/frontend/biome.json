@@ -27,7 +27,7 @@
         "noExplicitAny": "warn"
       },
       "complexity": {
-        "useOptionalChain": "error"
+        "useOptionalChain": "off"
       },
       "nursery": {
         "noJsxPropsBind": "off"

@@ -23,14 +23,14 @@ import { TrainingPanel } from "./TrainingPanel";
 export const StatusPanel: Component<{
   status: Accessor<ConnectionStatus>;
   latest_status: Accessor<StatusEvent>;
-  latest_prediction: Accessor<Prediction | null>;
+  latest_prediction: Accessor<Prediction | undefined>;
   latest_tray_state: Accessor<TrayState>;
-  active_suggestion: Accessor<LabelSuggestion | null>;
-  pending_suggestions?: Accessor<LabelSuggestion[]>;
-  label_change_count?: Accessor<number>;
+  active_suggestion: Accessor<LabelSuggestion | undefined>;
+  pending_suggestions: Accessor<LabelSuggestion[]> | undefined;
+  label_change_count: Accessor<number> | undefined;
   ws_stats: Accessor<WSStats>;
   train_state: Accessor<TrainState>;
-  on_open_label_recorder?: () => void;
+  on_open_label_recorder: (() => void) | undefined;
 }> = (props) => {
   const [tab, set_tab] = createSignal<PanelTab>("system");
 

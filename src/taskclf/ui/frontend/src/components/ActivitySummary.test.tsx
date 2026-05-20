@@ -44,9 +44,9 @@ function activity_summary_make(
     activity_provider: activity_provider_make(activity_provider),
     recent_apps: [],
     top_apps: [],
-    mean_keys_per_min: null,
-    mean_clicks_per_min: null,
-    mean_scroll_per_min: null,
+    mean_keys_per_min: undefined,
+    mean_clicks_per_min: undefined,
+    mean_scroll_per_min: undefined,
     total_buckets: 0,
     session_count: 0,
     range_state: "no_data",
@@ -64,7 +64,14 @@ describe("ActivitySummary", () => {
   it("shows a no-data message for empty ranges", async () => {
     vi.mocked(activity_summary_get).mockResolvedValueOnce(activity_summary_make());
 
-    render(() => <ActivitySummary time_range={range} show_empty />);
+    render(() => (
+      <ActivitySummary
+        minutes={undefined}
+        time_range={range}
+        prediction={undefined}
+        show_empty
+      />
+    ));
 
     expect(
       await screen.findByText("No activity data for this window"),
@@ -77,7 +84,7 @@ describe("ActivitySummary", () => {
         activity_provider: activity_provider_make({
           state: "setup_required",
           summary_available: false,
-          source_id: null,
+          source_id: undefined,
         }),
         range_state: "provider_unavailable",
         message:
@@ -85,7 +92,14 @@ describe("ActivitySummary", () => {
       }),
     );
 
-    render(() => <ActivitySummary time_range={range} show_empty />);
+    render(() => (
+      <ActivitySummary
+        minutes={undefined}
+        time_range={range}
+        prediction={undefined}
+        show_empty
+      />
+    ));
 
     expect(await screen.findByText("Activity source unavailable")).toBeInTheDocument();
     expect(
@@ -96,7 +110,14 @@ describe("ActivitySummary", () => {
   it("shows a generic fallback when the summary request fails", async () => {
     vi.mocked(activity_summary_get).mockRejectedValueOnce(new Error("boom"));
 
-    render(() => <ActivitySummary time_range={range} show_empty />);
+    render(() => (
+      <ActivitySummary
+        minutes={undefined}
+        time_range={range}
+        prediction={undefined}
+        show_empty
+      />
+    ));
 
     await waitFor(() => {
       expect(
