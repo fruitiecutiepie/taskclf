@@ -111,13 +111,13 @@ function getListeningPidUnix(
   platform: NodeJS.Platform,
   spawnSyncFn: SpawnSyncFn,
 ): number | null {
-  const lsof = spawnSyncFn("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"]);
+  const lsof = spawnSyncFn("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"], undefined);
   const pidFromLsof = parseFirstPidFromLsofT(lsof.stdout);
   if (pidFromLsof !== null) {
     return pidFromLsof;
   }
   if (platform === "linux") {
-    const ss = spawnSyncFn("ss", ["-lntp", `sport = :${port}`]);
+    const ss = spawnSyncFn("ss", ["-lntp", `sport = :${port}`], undefined);
     if (ss.status === 0 && ss.stdout) {
       return parsePidFromSsOutput(ss.stdout);
     }
@@ -128,7 +128,7 @@ function getListeningPidUnix(
 function getListeningPidWindows(port: number, spawnSyncFn: SpawnSyncFn): number | null {
   const script =
     `(Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty OwningProcess)`;
-  const ps = spawnSyncFn("powershell.exe", ["-NoProfile", "-Command", script]);
+  const ps = spawnSyncFn("powershell.exe", ["-NoProfile", "-Command", script], undefined);
   if (ps.status !== 0 && ps.status !== null) {
     return null;
   }
@@ -148,14 +148,14 @@ function getProcessCommandLine(
   if (platform === "win32") {
     const script =
       `(Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}").CommandLine`;
-    const ps = spawnSyncFn("powershell.exe", ["-NoProfile", "-Command", script]);
+    const ps = spawnSyncFn("powershell.exe", ["-NoProfile", "-Command", script], undefined);
     if (ps.status === 0 && ps.stdout.trim().length > 0) {
       return ps.stdout.trim();
     }
     return "";
   }
   const field = platform === "linux" ? "args=" : "command=";
-  const out = spawnSyncFn("ps", ["-p", String(pid), "-ww", "-o", field]);
+  const out = spawnSyncFn("ps", ["-p", String(pid), "-ww", "-o", field], undefined);
   if (out.status === 0) {
     return out.stdout.trim();
   }
@@ -207,9 +207,9 @@ export async function killPidAndWaitForPortFree(
   timeoutMs = DEFAULT_KILL_WAIT_MS,
 ): Promise<boolean> {
   if (platform === "win32") {
-    spawnSyncFn("taskkill.exe", ["/PID", String(pid), "/T"]);
+    spawnSyncFn("taskkill.exe", ["/PID", String(pid), "/T"], undefined);
   } else {
-    spawnSyncFn("kill", ["-TERM", String(pid)]);
+    spawnSyncFn("kill", ["-TERM", String(pid)], undefined);
   }
 
   const deadline = Date.now() + timeoutMs;
@@ -221,9 +221,9 @@ export async function killPidAndWaitForPortFree(
   }
 
   if (platform === "win32") {
-    spawnSyncFn("taskkill.exe", ["/PID", String(pid), "/T", "/F"]);
+    spawnSyncFn("taskkill.exe", ["/PID", String(pid), "/T", "/F"], undefined);
   } else {
-    spawnSyncFn("kill", ["-KILL", String(pid)]);
+    spawnSyncFn("kill", ["-KILL", String(pid)], undefined);
   }
 
   const hardDeadline = Date.now() + 3000;
